@@ -1,0 +1,11 @@
+{
+  "titulo":       "Sobre Nós",
+  "descricao":    "Conheça nossa história, valores e equipe.",
+  "keywords":     "sobre nós, história, empresa",
+  "layout":       "main",
+  "ativa":        true,
+  "no_menu":      true,
+  "menu_label":   "Sobre Nós",
+  "menu_ordem":   1,
+  "breadcrumb":   false
+}

@@ -1,0 +1,480 @@
+<?php
+declare(strict_types=1);
+
+// ════════════════════════════════════════════════════════
+// admin/controllers/ClipsController.php — v3
+// Adições: index() suporta ?json=1 para scroll infinito
+//           gerarPoster() gera thumb via ffmpeg
+// ════════════════════════════════════════════════════════
+class ClipsController extends Controller {
+
+    public function __construct() {
+        AuthHelper::requireAdmin();
+    }
+
+    // ── GET /admin/clips ─────────────────────────────────
+    public function index(): void {
+        $db      = Database::getInstance()->getConnection();
+        $page    = max(1, (int)($_GET['page'] ?? 1));
+        $perPage = 20;
+        $offset  = ($page - 1) * $perPage;
+        $isJson  = !empty($_GET['json']);
+
+        $busca  = SecurityHelper::sanitizeString($_GET['q']      ?? '');
+        $status = SecurityHelper::sanitizeString($_GET['status'] ?? '');
+        $ordem  = SecurityHelper::sanitizeString($_GET['ordem']  ?? 'recentes');
+
+        // WHERE dinâmico
+        $where  = "1=1";
+        $params = [];
+
+        if ($busca) {
+            $where   .= " AND c.titulo LIKE ?";
+            $params[] = "%{$busca}%";
+        }
+
+        switch ($status) {
+            case 'ativo':      $where .= " AND c.ativo = 1"; break;
+            case 'inativo':    $where .= " AND c.ativo = 0"; break;
+            case 'destaque':   $where .= " AND c.destaque = 1"; break;
+            case 'sem_poster': $where .= " AND (c.arquivo_poster IS NULL OR c.arquivo_poster = '')"; break;
+        }
+
+        // ORDER BY
+        $orderSql = match ($ordem) {
+            'visualizacoes' => 'c.total_views DESC',
+            'likes'         => 'c.total_likes DESC',
+            'ordem'         => 'c.ordem ASC, c.criado_em DESC',
+            default         => 'c.criado_em DESC',
+        };
+
+        // Count total
+        $stmtTotal = $db->prepare(
+            "SELECT COUNT(*) FROM clips c WHERE {$where}"
+        );
+        $stmtTotal->execute($params);
+        $total = (int)$stmtTotal->fetchColumn();
+
+        // Busca clips com nomes de produtos agrupados
+        $stmtClips = $db->prepare(
+            "SELECT c.*,
+                    GROUP_CONCAT(p.nome ORDER BY cp.ordem SEPARATOR ', ') AS _produto_nomes
+             FROM clips c
+             LEFT JOIN clip_produtos cp ON cp.clip_id = c.id
+             LEFT JOIN produtos p       ON p.id = cp.produto_id
+             WHERE {$where}
+             GROUP BY c.id
+             ORDER BY {$orderSql}
+             LIMIT ? OFFSET ?"
+        );
+        $execParams   = $params;
+        $execParams[] = $perPage;
+        $execParams[] = $offset;
+        $stmtClips->execute($execParams);
+        $clips = $stmtClips->fetchAll();
+
+        $hasMore = ($page * $perPage) < $total;
+
+        // Resposta JSON para o scroll infinito
+        if ($isJson) {
+            $this->json([
+                'ok'      => true,
+                'clips'   => $clips,
+                'page'    => $page,
+                'total'   => $total,
+                'has_more'=> $hasMore,
+            ]);
+            return;
+        }
+
+        // Resposta HTML (primeira carga)
+        $this->render('clips/index', [
+            'clips'   => $clips,
+            'total'   => $total,
+            'page'    => $page,
+            'perPage' => $perPage,
+            'hasMore' => $hasMore,
+            'busca'   => $busca,
+        ], 'admin');
+    }
+
+    // ── GET /admin/clips/form ────────────────────────────
+    public function form(): void {
+        $id   = SecurityHelper::sanitizeInt($_GET['id'] ?? 0);
+        $db   = Database::getInstance()->getConnection();
+        $clip = null;
+
+        if ($id) {
+            $stmt = $db->prepare("SELECT * FROM clips WHERE id = ? LIMIT 1");
+            $stmt->execute([$id]);
+            $clip = $stmt->fetch() ?: null;
+        }
+
+        $produtos = $db->query(
+            "SELECT id, nome FROM produtos
+             WHERE ativo=1 AND deleted_at IS NULL
+             ORDER BY nome ASC LIMIT 500"
+        )->fetchAll();
+
+        $produtosVinculados = $id ? (new Clip())->getProdutosDoClip($id) : [];
+
+        $this->render('clips/form', [
+            'clip'               => $clip,
+            'produtos'           => $produtos,
+            'produtosVinculados' => $produtosVinculados,
+        ], 'admin');
+    }
+
+    // ── POST /admin/clips/salvar ─────────────────────────
+    // public function salvar(): void {
+    //     $this->verifyCsrf();
+
+    //     $id        = SecurityHelper::sanitizeInt($_POST['id']          ?? 0);
+    //     $titulo    = SecurityHelper::sanitizeString($_POST['titulo']   ?? '');
+    //     $descricao = SecurityHelper::sanitizeString($_POST['descricao'] ?? '');
+    //     $ctaTxt    = SecurityHelper::sanitizeString($_POST['cta_texto'] ?? '');
+    //     $ctaLink   = SecurityHelper::sanitizeString($_POST['cta_link']  ?? '');
+    //     $destaque  = isset($_POST['destaque']) ? 1 : 0;
+    //     $ativo     = isset($_POST['ativo'])    ? 1 : 0;
+    //     $ordem     = SecurityHelper::sanitizeInt($_POST['ordem']       ?? 0);
+    //     $hashtags  = SecurityHelper::sanitizeString($_POST['hashtags'] ?? '');
+
+    //     // IDs dos produtos vinculados (array)
+    //     $produtoIds = array_values(array_filter(
+    //         array_map('intval', (array)($_POST['produto_ids'] ?? []))
+    //     ));
+
+    //     if (empty($titulo)) {
+    //         $this->json(['ok' => false, 'msg' => 'Título obrigatório.']);
+    //     }
+
+    //     $db  = Database::getInstance()->getConnection();
+    //     $svc = new ClipService();
+
+    //     $dados = [
+    //         'titulo'    => $titulo,
+    //         'descricao' => $descricao ?: null,
+    //         'cta_texto' => $ctaTxt    ?: null,
+    //         'cta_link'  => $ctaLink   ?: null,
+    //         'destaque'  => $destaque,
+    //         'ativo'     => $ativo,
+    //         'ordem'     => $ordem,
+    //         'hashtags'  => $hashtags  ?: null,
+    //     ];
+
+    //     if (!empty($_FILES['video']['tmp_name'])) {
+    //         try {
+    //             $resultado   = $svc->processar($_FILES['video']);
+    //             $dados       = array_merge($dados, $resultado);
+    //             $dados['status'] = 'ativo';
+    //         } catch (\Exception $e) {
+    //             $this->json(['ok' => false, 'msg' => $e->getMessage()]);
+    //         }
+    //     } elseif (!$id) {
+    //         $this->json(['ok' => false, 'msg' => 'Selecione um vídeo.']);
+    //     }
+
+    //     if (!empty($_FILES['poster']['tmp_name'])) {
+    //         $img    = new ImageProcessorService();
+    //         $result = $img->processar($_FILES['poster'], 'clips/posters');
+    //         $dados['arquivo_poster'] = $result['full'];
+    //     }
+
+    //     try {
+    //         if ($id > 0) {
+    //             $sets   = implode(',', array_map(fn($k) => "{$k}=?", array_keys($dados)));
+    //             $params = array_values($dados);
+    //             $params[] = $id;
+    //             $db->prepare("UPDATE clips SET {$sets} WHERE id=?")->execute($params);
+    //         } else {
+    //             $cols   = implode(',', array_keys($dados));
+    //             $vals   = implode(',', array_fill(0, count($dados), '?'));
+    //             $db->prepare("INSERT INTO clips ({$cols}) VALUES ({$vals})")
+    //                ->execute(array_values($dados));
+    //             $id = (int)$db->lastInsertId();
+    //         }
+
+    //         (new Clip())->sincronizarProdutos($id, $produtoIds);
+    //         $this->json(['ok' => true, 'msg' => 'Clip salvo!', 'id' => $id]);
+    //     } catch (\Exception $e) {
+    //         $this->json(['ok' => false, 'msg' => $e->getMessage()]);
+    //     }
+    // }
+
+    public function salvar(): void {
+    $this->verifyCsrf();
+
+    $id          = SecurityHelper::sanitizeInt($_POST['id']          ?? 0);
+    $titulo      = SecurityHelper::sanitizeString($_POST['titulo']   ?? '');
+    $descricao   = SecurityHelper::sanitizeString($_POST['descricao'] ?? '');
+    $ctaTxt      = SecurityHelper::sanitizeString($_POST['cta_texto'] ?? '');
+    $ctaLink     = SecurityHelper::sanitizeString($_POST['cta_link']  ?? '');
+    $destaque    = isset($_POST['destaque']) ? 1 : 0;
+    $ativo       = isset($_POST['ativo'])    ? 1 : 0;
+    $ordem       = SecurityHelper::sanitizeInt($_POST['ordem']       ?? 0);
+    $hashtags    = SecurityHelper::sanitizeString($_POST['hashtags'] ?? '');
+
+    // IDs dos produtos vinculados (array)
+    $produtoIds  = array_filter(
+        array_map('intval', (array)($_POST['produto_ids'] ?? []))
+    );
+
+    if (empty($titulo)) {
+        $this->json(['ok' => false, 'msg' => 'Título obrigatório.']);
+    }
+
+    $db  = Database::getInstance()->getConnection();
+    $svc = new ClipService();
+
+    $dados = [
+        'titulo'    => $titulo,
+        'descricao' => $descricao ?: null,
+        'cta_texto' => $ctaTxt    ?: null,
+        'cta_link'  => $ctaLink   ?: null,
+        'destaque'  => $destaque,
+        'ativo'     => $ativo,
+        'ordem'     => $ordem,
+        'hashtags'  => $hashtags  ?: null,
+    ];
+
+    if (!empty($_FILES['video']['tmp_name'])) {
+        try {
+            $resultado   = $svc->processar($_FILES['video']);
+            $dados       = array_merge($dados, $resultado);
+            $dados['status'] = 'ativo';
+        } catch (\Exception $e) {
+            $this->json(['ok' => false, 'msg' => $e->getMessage()]);
+        }
+    } elseif (!$id) {
+        $this->json(['ok' => false, 'msg' => 'Selecione um vídeo.']);
+    }
+
+    if (!empty($_FILES['poster']['tmp_name'])) {
+        $img    = new ImageProcessorService();
+        $result = $img->processar($_FILES['poster'], 'clips/posters');
+        $dados['arquivo_poster'] = $result['full'];
+    }
+
+    try {
+        if ($id > 0) {
+            $sets   = implode(',', array_map(fn($k) => "{$k}=?", array_keys($dados)));
+            $params = array_values($dados);
+            $params[] = $id;
+            $db->prepare("UPDATE clips SET {$sets} WHERE id=?")->execute($params);
+        } else {
+            $cols   = implode(',', array_keys($dados));
+            $vals   = implode(',', array_fill(0, count($dados), '?'));
+            $db->prepare("INSERT INTO clips ({$cols}) VALUES ({$vals})")
+               ->execute(array_values($dados));
+            $id = (int)$db->lastInsertId();
+        }
+
+        // Sincroniza produtos
+        (new Clip())->sincronizarProdutos($id, $produtoIds);
+
+        $this->json(['ok' => true, 'msg' => 'Clip salvo!', 'id' => $id]);
+    } catch (\Exception $e) {
+        $this->json(['ok' => false, 'msg' => $e->getMessage()]);
+    }
+}
+
+    // ── POST /admin/clips/excluir ────────────────────────
+    public function excluir(): void {
+        $this->verifyCsrf();
+        $id = SecurityHelper::sanitizeInt($_POST['id'] ?? 0);
+        if (!$id) $this->json(['ok' => false]);
+
+        $db   = Database::getInstance()->getConnection();
+        $stmt = $db->prepare("SELECT * FROM clips WHERE id=? LIMIT 1");
+        $stmt->execute([$id]);
+        $clip = $stmt->fetch();
+
+        if ($clip) {
+            (new ClipService())->deletar($clip);
+            $db->prepare("DELETE FROM clips WHERE id=?")->execute([$id]);
+        }
+        $this->json(['ok' => true]);
+    }
+
+    // ── POST /admin/clips/toggle-ativo ───────────────────
+    public function toggleAtivo(): void {
+        $this->verifyCsrf();
+        $id   = SecurityHelper::sanitizeInt($_POST['id'] ?? 0);
+        $db   = Database::getInstance()->getConnection();
+        $stmt = $db->prepare("SELECT ativo FROM clips WHERE id=? LIMIT 1");
+        $stmt->execute([$id]);
+        $novo = (int)$stmt->fetchColumn() ? 0 : 1;
+        $db->prepare("UPDATE clips SET ativo=? WHERE id=?")->execute([$novo, $id]);
+        $this->json(['ok' => true, 'ativo' => $novo]);
+    }
+
+    // ── POST /admin/clips/toggle-destaque ────────────────
+    public function toggleDestaque(): void {
+        $this->verifyCsrf();
+        $id   = SecurityHelper::sanitizeInt($_POST['id'] ?? 0);
+        $db   = Database::getInstance()->getConnection();
+        $stmt = $db->prepare("SELECT destaque FROM clips WHERE id=? LIMIT 1");
+        $stmt->execute([$id]);
+        $novo = (int)$stmt->fetchColumn() ? 0 : 1;
+        $db->prepare("UPDATE clips SET destaque=? WHERE id=?")->execute([$novo, $id]);
+        $this->json(['ok' => true, 'destaque' => $novo]);
+    }
+
+    // ── POST /admin/clips/gerar-poster ───────────────────
+    /**
+     * Gera o poster/thumbnail do vídeo via ffmpeg.
+     * Captura no segundo 1 do vídeo.
+     * Se ffmpeg não estiver disponível, retorna aviso.
+     */
+    public function gerarPoster(): void {
+        $this->verifyCsrf();
+        $id = SecurityHelper::sanitizeInt($_POST['id'] ?? 0);
+        if (!$id) $this->json(['ok' => false, 'msg' => 'ID inválido.']);
+
+        $db   = Database::getInstance()->getConnection();
+        $stmt = $db->prepare("SELECT arquivo_video FROM clips WHERE id=? LIMIT 1");
+        $stmt->execute([$id]);
+        $clip = $stmt->fetch();
+
+        if (!$clip || empty($clip['arquivo_video'])) {
+            $this->json(['ok' => false, 'msg' => 'Clip ou vídeo não encontrado.']);
+        }
+
+        $videoPath  = UPLOAD_PATH . '/clips/' . $clip['arquivo_video'];
+        if (!file_exists($videoPath)) {
+            $this->json(['ok' => false, 'msg' => 'Arquivo de vídeo não encontrado no servidor.']);
+        }
+
+        $ffmpegPath = SANDBOX ? 'C:/ffmpeg/bin/ffmpeg.exe' : 'ffmpeg';
+        // Verifica se ffmpeg está disponível
+        exec('which '.$ffmpegPath.' 2>&1', $out, $code);
+        if ($code !== 0) {
+            // Tenta caminho absoluto (Windows/Laragon)
+            exec(''.$ffmpegPath.' -version 2>&1', $out2, $code2);
+            if ($code2 !== 0) {
+                $this->json([
+                    'ok'  => false,
+                    'msg' => 'ffmpeg não encontrado. Instale o ffmpeg para usar esta função.',
+                ]);
+            }
+        }
+
+        $dir  = UPLOAD_PATH . '/clips/posters/';
+        if (!is_dir($dir)) mkdir($dir, 0755, true);
+
+        $hash       = bin2hex(random_bytes(6));
+        $posterFile = 'poster_auto_' . $hash . '.webp';
+        $posterPath = $dir . $posterFile;
+
+        // Captura no segundo 1 (ou no primeiro frame se o vídeo for menor que 1s)
+        $cmd = sprintf(
+            ''.$ffmpegPath.' -ss 1 -i %s -vframes 1 ' .
+            '-vf "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(720-iw)/2:(1280-ih)/2,setsar=1" ' .
+            '-y %s 2>&1',
+            escapeshellarg($videoPath),
+            escapeshellarg($posterPath)
+        );
+        exec($cmd, $cmdOut, $cmdCode);
+
+        // Se falhou com 1s, tenta no frame 0
+        if ($cmdCode !== 0 || !file_exists($posterPath)) {
+            $cmd2 = sprintf(
+                ''.$ffmpegPath.' -i %s -vframes 1 ' .
+                '-vf "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(720-iw)/2:(1280-ih)/2,setsar=1" ' .
+                '-y %s 2>&1',
+                escapeshellarg($videoPath),
+                escapeshellarg($posterPath)
+            );
+            exec($cmd2, $cmd2Out, $cmd2Code);
+        }
+
+        if (!file_exists($posterPath)) {
+            $this->json([
+                'ok'  => false,
+                'msg' => 'Falha ao gerar poster. Verifique se o vídeo não está corrompido.',
+            ]);
+        }
+
+        // Salva no banco
+        $db->prepare("UPDATE clips SET arquivo_poster=? WHERE id=?")
+           ->execute([$posterFile, $id]);
+
+        $this->json([
+            'ok'         => true,
+            'poster_url' => UPLOAD_URL . '/clips/posters/' . $posterFile,
+        ]);
+    }
+
+    // ── GET /admin/clips/comentarios ────────────────────
+    public function comentarios(): void {
+        $db     = Database::getInstance()->getConnection();
+        $filtro = $_GET['status'] ?? 'pendente';
+
+        $statusValidos = ['pendente', 'aprovado', 'rejeitado'];
+        if (!in_array($filtro, $statusValidos)) $filtro = 'pendente';
+
+        $stmt = $db->prepare(
+            "SELECT cc.*, c.titulo AS clip_titulo
+             FROM clip_comentarios cc
+             JOIN clips c ON c.id = cc.clip_id
+             WHERE cc.status = ?
+             ORDER BY cc.criado_em " . ($filtro === 'pendente' ? 'ASC' : 'DESC') . "
+             LIMIT 100"
+        );
+        $stmt->execute([$filtro]);
+        $comentarios = $stmt->fetchAll();
+
+        $pendentes = (int)$db->query(
+            "SELECT COUNT(*) FROM clip_comentarios WHERE status='pendente'"
+        )->fetchColumn();
+
+        $this->render('clips/comentarios', [
+            'comentarios' => $comentarios,
+            'pendentes'   => $pendentes,
+            'filtro'      => $filtro,
+        ], 'admin');
+    }
+
+    // ── POST /admin/clips/moderar-comentario ─────────────
+    public function moderarComentario(): void {
+        $this->verifyCsrf();
+        $id     = SecurityHelper::sanitizeInt($_POST['id']     ?? 0);
+        $status = $_POST['status'] ?? '';
+        if (!$id) $this->json(['ok' => false]);
+
+        $db = Database::getInstance()->getConnection();
+
+        // Exclusão permanente
+        if ($status === 'excluir') {
+            $db->prepare("DELETE FROM clip_comentarios WHERE id=?")->execute([$id]);
+            $this->json(['ok' => true]);
+        }
+
+        if (!in_array($status, ['aprovado', 'rejeitado'])) {
+            $this->json(['ok' => false, 'msg' => 'Status inválido.']);
+        }
+
+        // Ajusta contador
+        $stmt = $db->prepare(
+            "SELECT status, clip_id FROM clip_comentarios WHERE id=? LIMIT 1"
+        );
+        $stmt->execute([$id]);
+        $c = $stmt->fetch();
+
+        if ($c) {
+            if ($c['status'] !== 'aprovado' && $status === 'aprovado') {
+                $db->prepare(
+                    "UPDATE clips SET total_comentarios = total_comentarios+1 WHERE id=?"
+                )->execute([$c['clip_id']]);
+            }
+            if ($c['status'] === 'aprovado' && $status === 'rejeitado') {
+                $db->prepare(
+                    "UPDATE clips SET total_comentarios = GREATEST(total_comentarios-1,0) WHERE id=?"
+                )->execute([$c['clip_id']]);
+            }
+        }
+
+        $db->prepare("UPDATE clip_comentarios SET status=? WHERE id=?")->execute([$status, $id]);
+        $this->json(['ok' => true]);
+    }
+}

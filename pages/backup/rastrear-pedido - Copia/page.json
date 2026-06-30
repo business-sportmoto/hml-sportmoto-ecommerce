@@ -1,0 +1,11 @@
+{
+  "titulo":       "Rastrear pedido",
+  "descricao":    "Acompanhe seu pedido de forma simples e rápida. Insira seu código de rastreamento para obter informações atualizadas sobre a localização e status da sua entrega.",
+  "keywords":     "rastrear pedido, acompanhamento, entrega",
+  "layout":       "main",
+  "ativa":        true,
+  "no_menu":      true,
+  "menu_label":   "Rastrear pedido",
+  "menu_ordem":   1,
+  "breadcrumb":   false
+}

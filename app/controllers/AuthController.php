@@ -1,0 +1,1453 @@
+<?php
+// app/controllers/AuthController.php
+// Gerencia todo o fluxo de autenticação:
+// registro → verificação e-mail → login → 2FA → recuperação de senha.
+
+class AuthController extends Controller {
+
+    /**
+     * Hash bcrypt válido usado para timing-safe login.
+     * NUNCA corresponde a nenhuma senha real — serve apenas para
+     * gastar o mesmo tempo de CPU quando o usuário não existe.
+     * Se PASSWORD_ALGO mudar (ex: argon2), regenerar com o novo algoritmo.
+     */
+    private const DUMMY_HASH = '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi';
+
+    private User             $userModel;
+    private TokenService     $tokenService;
+    private TwoFactorService $twoFactorService;
+    private TotpService      $totpService;
+
+    public function __construct() {
+        $this->userModel        = new User();
+        $this->tokenService     = new TokenService();
+        $this->twoFactorService = new TwoFactorService();
+        $this->totpService      = new TotpService();
+    }
+
+    /**
+     * Gate de 2FA. Chamado após senha/código validados mas ANTES de
+     * finalizar o login. Se o usuário tem 2FA ativo: guarda estado
+     * pendente, envia código e sinaliza ao frontend para ir à tela 2FA.
+     * Retorna true se interrompeu o fluxo (2FA pendente).
+     */
+    private function maybeRequire2FA(array $user, bool $lembrar): bool {
+        if (!$this->twoFactorService->isAtivo((int)$user['id'])) {
+            return false;
+        }
+
+        // Marca a pendência — NAO envia codigo ainda.
+        // O envio acontece em send2FAChannel() apos o usuario escolher
+        // o canal (e-mail / WhatsApp / SMS) na tela /autenticacao-2fa.
+        Session::set('_2fa_pending_user',    (int)$user['id']);
+        Session::set('_2fa_pending_cliente', (int)$user['cliente_id']);
+        Session::set('_2fa_lembrar',         $lembrar);
+
+        $this->json([
+            'ok'         => false,
+            'requer_2fa' => true,
+            'redirect'   => BASE_URL . '/autenticacao-2fa',
+            'msg'        => 'Verificacao em duas etapas necessaria.',
+        ]);
+        return true;
+    }
+
+    /**
+     * Canais de 2FA disponiveis. E-mail sempre existe; WhatsApp/SMS
+     * dependem de celular cadastrado. SMS fica como gancho desabilitado.
+     */
+    private function getCanais2FA(array $perfil, int $userId): array {
+        $email   = $perfil['email']   ?? '';
+        $celular = preg_replace('/\D/', '', $perfil['celular'] ?? '');
+        $temCel  = strlen($celular) >= 10;
+        $temTotp = $this->totpService->isAtivo($userId);
+
+        return [
+            // TOTP primeiro quando disponível — é o canal mais rápido
+            // (código já está no app, sem esperar envio) e mais seguro
+            // (não depende de e-mail/SMS poderem ser interceptados).
+            'totp' => [
+                'habilitado' => $temTotp,
+                'label'      => 'App autenticador',
+                'destino'    => 'Código do seu app (Google Authenticator, Authy, etc.)',
+            ],
+            'email' => [
+                'habilitado' => $email !== '',
+                'label'      => 'E-mail',
+                'destino'    => $this->maskEmail2($email),
+            ],
+            'whatsapp' => [
+                'habilitado' => $temCel,
+                'label'      => 'WhatsApp',
+                'destino'    => $temCel ? $this->maskPhone($celular) : 'Sem celular cadastrado',
+            ],
+            'sms' => [
+                'habilitado' => false,  // habilitar quando houver gateway SMS
+                'label'      => 'SMS',
+                'destino'    => $temCel ? $this->maskPhone($celular) : 'Sem celular cadastrado',
+                'em_breve'   => true,
+            ],
+        ];
+    }
+
+    private function maskEmail2(string $email): string {
+        if (!str_contains($email, '@')) return $email;
+        [$u, $dom] = explode('@', $email, 2);
+        return mb_substr($u, 0, 1) . str_repeat('*', max(1, mb_strlen($u) - 1)) . '@' . $dom;
+    }
+
+    private function maskPhone(string $cel): string {
+        if (strlen($cel) < 4) return $cel;
+        return '(' . substr($cel, 0, 2) . ') ****-**' . substr($cel, -2);
+    }
+
+
+    // ── Formulário de login ───────────────────────────────────
+
+    public function loginForm(): void {
+        if (Session::isClienteLogado()) {
+            $this->redirect(BASE_URL . '/minha-conta');
+        }
+        SeoHelper::setTitle('Entrar');
+        SeoHelper::setRobots('noindex, follow');
+        $this->render('auth/login', [
+            'etapa'  => 'identidade',
+            'valor'  => '',
+            'erro'   => Session::getFlash('error'),
+        ], 'minimal');
+    }
+
+    // ── Etapa 1: verifica se o usuário existe ─────────────────
+
+    public function checkIdentity(): void {
+        $this->verifyCsrf();
+
+        $valor = SecurityHelper::sanitizeString($_POST['login'] ?? '');
+        $valor = trim($valor);
+
+        if (empty($valor)) {
+            $this->json(['ok' => false, 'msg' => 'Informe o e-mail ou CPF.']);
+        }
+
+        // ── Rate limit em 2 camadas (anti-enumeration) ────
+        // Este endpoint revela se uma conta existe (UX em 2 etapas),
+        // então o limite precisa ser apertado:
+        //   curto prazo: 10 consultas / 5 min  (digitação humana real)
+        //   longo prazo: 30 consultas / 1 hora (bloqueia scraping lento)
+        $ipKey = md5($_SERVER['REMOTE_ADDR'] ?? '');
+        if (SecurityHelper::rateLimitExceeded('check_identity_'   . $ipKey, 10, 300) ||
+            SecurityHelper::rateLimitExceeded('check_identity_h_' . $ipKey, 30, 3600)) {
+            usleep(random_int(150000, 400000));
+            $this->json(['ok' => false, 'msg' => 'Muitas tentativas. Aguarde alguns minutos.']);
+        }
+
+        $db   = Database::getInstance()->getConnection();
+        $user = $this->findUserByLogin($db, $valor);
+
+        // ── Delay artificial (150–400ms) ──────────────────
+        // Aplica-se a TODAS as respostas: iguala estatisticamente o
+        // tempo entre "existe" e "não existe" e torna a enumeração
+        // em massa cara (cada consulta custa ao menos ~250ms).
+        usleep(random_int(150000, 400000));
+
+        if (!$user) {
+            // Não encontrado → redireciona para cadastro
+            $this->json([
+                'ok'          => false,
+                'nao_existe'  => true,
+                'redirect'    => BASE_URL . '/cadastro?origem=' . urlencode($valor),
+                'msg'         => 'Conta não encontrada. Vamos criar uma para você!',
+            ]);
+        }
+
+        if (!$user['ativo']) {
+            $this->json(['ok' => false, 'msg' => 'Esta conta está desativada. Entre em contato com o suporte.']);
+        }
+
+        /**
+         * Conta sem senha local definida (senha_definida = 0) — não deve
+         * ver a etapa de senha (não tem senha para digitar). Trata aqui,
+         * na etapa 1, em vez de na etapa de senha: o cliente é desviado
+         * antes mesmo de o campo de senha aparecer. Dois cenários,
+         * diferenciados por clientes.tray_id:
+         *
+         *  - Importado da Tray (tray_id preenchido): migrado de outra
+         *    plataforma, que não exportou senha. Redireciona direto para
+         *    "definir senha", já com o e-mail na query string.
+         *
+         *  - Criado via Google (sem tray_id): orienta a usar o login
+         *    Google (botão próprio na tela) ou "Esqueci minha senha".
+         */
+        if (isset($user['senha_definida']) && (int)$user['senha_definida'] === 0) {
+            $veioDaTray = !empty($user['tray_id']);
+
+            if ($veioDaTray) {
+                Session::flash('info', 'Você precisa definir uma nova senha para ter acesso a sua conta.');
+                
+                $this->json([
+                    'ok'            => false,
+                    'definir_senha' => true,
+                    'email'         => $user['email'],
+                    'redirect'      => BASE_URL . '/recuperar-senha?email=' . urlencode($user['email']),
+                    'msg'           => 'Identificamos sua conta da nossa loja anterior. '
+                                     . 'Por segurança, defina uma nova senha para continuar.',
+                ]);
+            }
+
+            $this->json([
+                'ok'  => false,
+                'sem_senha_google' => true,
+                'msg' => 'Esta conta usa login com Google. Entre com o Google ou use "Esqueci minha senha".',
+            ]);
+        }
+
+        // Usuário encontrado → retorna dados para exibir a etapa de senha
+        $this->json([
+            'ok'        => true,
+            'nome'      => mb_substr($user['nome'], 0, strpos($user['nome'], ' ') ?: 20),
+            'avatar'    => $this->getAvatar($db, $user['id']),
+            'email_mask'=> $this->maskEmail($user['email']),
+            'login'     => $valor,
+        ]);
+    }
+
+    // ── Etapa 2a: login com senha ─────────────────────────────
+
+    // public function login(): void {
+    //     $this->verifyCsrf();
+
+    //     $login  = SecurityHelper::sanitizeString($_POST['login'] ?? '');
+    //     $senha  = $_POST['senha'] ?? '';
+    //     $lembrar = !empty($_POST['lembrar']);
+
+    //     if (empty($login) || empty($senha)) {
+    //         $this->json(['ok' => false, 'msg' => 'Preencha todos os campos.']);
+    //     }
+
+    //     $rateKey = 'login_' . md5($login);
+    //     if (SecurityHelper::rateLimitExceeded($rateKey, 5, 900)) {
+    //         $this->json(['ok' => false, 'msg' => 'Muitas tentativas. Tente novamente em 15 minutos.']);
+    //     }
+
+    //     $db   = Database::getInstance()->getConnection();
+    //     $user = $this->findUserByLogin($db, $login);
+
+    //     if (!$user || !password_verify($senha, $user['senha_hash'])) {
+    //         $this->json(['ok' => false, 'msg' => 'Senha incorreta.']);
+    //     }
+
+    //     if (!$user['ativo']) {
+    //         $this->json(['ok' => false, 'msg' => 'Conta desativada.']);
+    //     }
+
+    //     // Verifica e-mail verificado
+    //     if (!$user['email_verificado']) {
+    //         $this->json([
+    //             'ok'              => false,
+    //             'email_pendente'  => true,
+    //             'msg'             => 'Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada.',
+    //             'login'           => $login,
+    //         ]);
+    //     }
+
+    //     SecurityHelper::clearRateLimit($rateKey);
+    //     $this->finalizeLogin($user, $lembrar, $db);
+    // }
+
+    // // app/controllers/AuthController.php — método login() existente
+
+    // public function login(): void {
+    //     $this->verifyCsrf();
+    //     $email = mb_strtolower(trim($_POST['email'] ?? ''));
+    //     $senha = $_POST['senha'] ?? '';
+
+    //     $stmt = $this->db->prepare(
+    //         "SELECT id, nome, email, senha, senha_definida, ativo
+    //         FROM clientes WHERE email = ? LIMIT 1"
+    //     );
+    //     $stmt->execute([$email]);
+    //     $cliente = $stmt->fetch();
+
+    //     if (!$cliente || !$cliente['ativo']) {
+    //         AuthLogService::registrar(null, 'login_fail', 'failed', 'local', ['email' => $email]);
+    //         $this->json(['ok' => false, 'msg' => 'E-mail ou senha incorretos.']);
+    //     }
+
+    //     // Se conta foi criada por social, não tem senha real — orienta o usuário
+    //     if (!$cliente['senha_definida']) {
+    //         AuthLogService::registrar((int)$cliente['id'], 'login_fail', 'failed', 'local', [
+    //             'motivo' => 'sem_senha_definida',
+    //         ]);
+    //         $this->json([
+    //             'ok'  => false,
+    //             'msg' => 'Esta conta foi criada via Google. Faça login com Google ou use ' .
+    //                     '"Esqueci minha senha" para definir uma senha.',
+    //         ]);
+    //     }
+
+    //     if (!password_verify($senha, $cliente['senha'])) {
+    //         AuthLogService::registrar((int)$cliente['id'], 'login_fail', 'failed', 'local');
+    //         $this->json(['ok' => false, 'msg' => 'E-mail ou senha incorretos.']);
+    //     }
+
+    //     session_regenerate_id(true);
+    //     Session::set('cliente_id',    (int)$cliente['id']);
+    //     Session::set('cliente_nome',  $cliente['nome']);
+    //     Session::set('cliente_email', $cliente['email']);
+    //     Session::set('login_provider', 'local');
+
+    //     AuthLogService::registrar((int)$cliente['id'], 'login_ok', 'success', 'local');
+
+    //     if (class_exists('VeiculoService')) {
+    //         (new VeiculoService())->carregarDoCliente((int)$cliente['id']);
+    //     }
+
+    //     $this->json(['ok' => true, 'redirect' => BASE_URL . '/minha-conta']);
+    // }
+
+    public function login(): void
+    {
+        $this->verifyCsrf();
+
+        $login   = SecurityHelper::sanitizeString($_POST['login'] ?? $_POST['email'] ?? '');
+        $senha   = $_POST['senha'] ?? '';
+        $lembrar = !empty($_POST['lembrar']);
+
+        if (empty($login) || empty($senha)) {
+            $this->json(['ok' => false, 'msg' => 'Preencha todos os campos.']);
+        }
+
+        // ── Rate limit em 2 camadas (IP + conta) + CAPTCHA ────
+        $ip             = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        $recaptchaToken = $_POST['recaptcha_token'] ?? null;
+        $rateLimit      = new RateLimitService();
+        $rl             = $rateLimit->check($ip, $login, $recaptchaToken);
+
+        if ($rl['status'] === 'blocked') {
+            $this->json(['ok' => false, 'msg' => $rl['msg']]);
+        }
+        if ($rl['status'] === 'captcha') {
+            // Token ausente ou score insuficiente — front precisa gerar
+            // (ou regerar) o token do reCAPTCHA v3 e reenviar o login.
+            $this->json([
+                'ok'               => false,
+                'captcha_required' => true,
+                'msg'              => $rl['msg'],
+            ]);
+        }
+
+        $db = Database::getInstance()->getConnection();
+
+        $user = $this->findUserByLogin($db, $login);
+
+        if (!$user) {
+            // ── Timing-safe ───────────────────────────────
+            // Executa um verify contra hash dummy para igualar a
+            // latência com o caminho "usuário existe" — sem isso,
+            // a diferença de tempo revela quais e-mails têm conta.
+            password_verify($senha, self::DUMMY_HASH);
+
+            $rateLimit->register($ip, $login, false, 'senha');
+
+            if (class_exists('AuthLogService')) {
+                AuthLogService::registrar(null, 'login_fail', 'failed', 'local', ['login' => $login]);
+            }
+
+            $this->json(['ok' => false, 'msg' => 'E-mail ou senha incorretos.']);
+        }
+
+        if (!$user['ativo']) {
+            $this->json(['ok' => false, 'msg' => 'Conta desativada.']);
+        }
+
+        /**
+         * Conta sem senha local definida (senha_definida = 0). Dois
+         * cenários possíveis, diferenciados por clientes.tray_id:
+         *
+         *  - Importada da Tray (tray_id preenchido): cliente migrado de
+         *    outra plataforma. A Tray não exporta senha, então ele nunca
+         *    teve senha aqui — precisa definir uma. Redireciona direto
+         *    para o fluxo de "definir senha" (decisão de UX: sem fricção
+         *    de clicar em link).
+         *
+         *  - Criada via Google (sem tray_id): mantém o comportamento
+         *    atual — orienta a logar com Google ou usar "Esqueci senha".
+         */
+        if (isset($user['senha_definida']) && (int)$user['senha_definida'] === 0) {
+            if (class_exists('AuthLogService')) {
+                AuthLogService::registrar((int)$user['id'], 'login_fail', 'failed', 'local', [
+                    'motivo' => 'sem_senha_definida',
+                ]);
+            }
+
+            $veioDaTray = !empty($user['tray_id']);
+
+            if ($veioDaTray) {
+                $this->json([
+                    'ok'              => false,
+                    'definir_senha'   => true, // front redireciona automaticamente
+                    'email'           => $user['email'],
+                    'redirect'        => BASE_URL . '/recuperar-senha?email=' . urlencode($user['email']),
+                    'msg'             => 'Identificamos sua conta da nossa loja anterior. '
+                                       . 'Por segurança, defina uma nova senha para continuar.',
+                ]);
+            }
+
+            $this->json([
+                'ok'  => false,
+                'msg' => 'Esta conta foi criada via Google. Faça login com Google ou use "Esqueci minha senha" para definir uma senha.',
+            ]);
+        }
+
+        if (!password_verify($senha, $user['senha_hash'])) {
+            $rateLimit->register($ip, $login, false, 'senha');
+
+            if (class_exists('AuthLogService')) {
+                AuthLogService::registrar((int)$user['id'], 'login_fail', 'failed', 'local');
+            }
+
+            $this->json(['ok' => false, 'msg' => 'E-mail ou senha incorretos.']);
+        }
+
+        if (!$user['email_verificado']) {
+            $this->json([
+                'ok'             => false,
+                'email_pendente' => true,
+                'msg'            => 'Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada.',
+                'login'          => $login,
+            ]);
+        }
+
+        $rateLimit->register($ip, $login, true, 'senha');
+        $rateLimit->clearAccount($login);
+
+        if (class_exists('AuthLogService')) {
+            AuthLogService::registrar((int)$user['id'], 'login_ok', 'success', 'local');
+        }
+
+        // ── Gate de 2FA ───────────────────────────────────
+        // Senha OK, mas se o usuário tem 2FA ativo, NÃO loga ainda:
+        // envia código e interrompe aqui. O login completa em twoFactor().
+        if ($this->maybeRequire2FA($user, $lembrar)) {
+            return;
+        }
+
+        $this->finalizeLogin($user, $lembrar);
+    }
+
+    // ── Etapa 2b: enviar código por e-mail ───────────────────
+
+    public function sendLoginCode(): void {
+        $this->verifyCsrf();
+
+        $login = SecurityHelper::sanitizeString($_POST['login'] ?? '');
+        if (empty($login)) {
+            $this->json(['ok' => false, 'msg' => 'Informe o e-mail ou CPF.']);
+        }
+
+        // Rate limit de ENVIO de código (evita flood de e-mails)
+        $ip        = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        $rateLimit = new RateLimitService();
+        if (SecurityHelper::rateLimitExceeded('login_code_send_' . md5($login), 3, 600)) {
+            $this->json(['ok' => false, 'msg' => 'Aguarde antes de solicitar outro código.']);
+        }
+
+        $db   = Database::getInstance()->getConnection();
+        $user = $this->findUserByLogin($db, $login);
+
+        if (!$user || !$user['ativo']) {
+            // Resposta genérica por segurança
+            $this->json(['ok' => true, 'msg' => 'Se a conta existir, o código será enviado.']);
+        }
+
+        // Gera código numérico de 6 dígitos
+        $code     = SecurityHelper::generateNumericCode(6);
+        $expiraEm = date('Y-m-d H:i:s', time() + 600); // 10 minutos
+
+        // Invalida códigos anteriores
+        $db->prepare(
+            "UPDATE tokens_verificacao SET usado = 1
+             WHERE usuario_id = ? AND tipo = 'email_verify' AND usado = 0"
+        )->execute([$user['id']]);
+
+        $db->prepare(
+            "INSERT INTO tokens_verificacao (usuario_id, token, tipo, expira_em)
+             VALUES (?, ?, 'email_verify', ?)"
+        )->execute([$user['id'], $code, $expiraEm]);
+
+        // Envia e-mail
+        MailHelper::sendLoginCode($user['email'], $user['nome'], $code);
+
+        $this->json([
+            'ok'         => true,
+            'email_mask' => $this->maskEmail($user['email']),
+            'msg'        => 'Código enviado para ' . $this->maskEmail($user['email']),
+        ]);
+    }
+
+    // ── Etapa 2b: validar código de login ─────────────────────
+
+    public function validateLoginCode(): void {
+        $this->verifyCsrf();
+
+        $login   = SecurityHelper::sanitizeString($_POST['login'] ?? '');
+        $codigo  = trim($_POST['codigo'] ?? '');
+        $lembrar = !empty($_POST['lembrar']);
+
+        if (empty($login) || strlen($codigo) !== 6) {
+            $this->json(['ok' => false, 'msg' => 'Código inválido.']);
+        }
+
+        $ip        = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        $rateLimit = new RateLimitService();
+
+        // Rate limit por código: 5 tentativas / 10 min → força novo código
+        $rlCode = $rateLimit->checkCode($ip, $login);
+        if ($rlCode['status'] === 'blocked') {
+            $this->json(['ok' => false, 'msg' => $rlCode['msg']]);
+        }
+
+        $db   = Database::getInstance()->getConnection();
+        $user = $this->findUserByLogin($db, $login);
+
+        if (!$user) {
+            // Timing-safe + registra para o rate limit
+            $rateLimit->register($ip, $login, false, 'codigo_email');
+            $this->json(['ok' => false, 'msg' => 'Código incorreto ou expirado.']);
+        }
+
+        // Valida o código
+        $stmt = $db->prepare(
+            "SELECT id FROM tokens_verificacao
+             WHERE usuario_id = ?
+               AND token      = ?
+               AND tipo       = 'email_verify' -- / login_code
+               AND usado      = 0
+               AND expira_em  > NOW()
+             LIMIT 1"
+        );
+        $stmt->execute([$user['id'], $codigo]);
+        $tokenRow = $stmt->fetch();
+
+        if (!$tokenRow) {
+            $rateLimit->register($ip, $login, false, 'codigo_email');
+            $this->json(['ok' => false, 'msg' => 'Código incorreto ou expirado.']);
+        }
+
+        // Consome o token
+        $db->prepare(
+            "UPDATE tokens_verificacao SET usado = 1 WHERE id = ?"
+        )->execute([$tokenRow['id']]);
+
+        $rateLimit->register($ip, $login, true, 'codigo_email');
+        $rateLimit->clearAccount($login);
+
+        // Gate de 2FA também no login por código de e-mail
+        if ($this->maybeRequire2FA($user, $lembrar)) {
+            return;
+        }
+
+        $this->finalizeLogin($user, $lembrar);
+    }
+
+    // ── 2FA ───────────────────────────────────────────────────
+
+    public function twoFactorForm(): void {
+        if (!Session::has('_2fa_pending_user')) {
+            $this->redirect(BASE_URL . '/login');
+        }
+
+        $userId = (int)Session::get('_2fa_pending_user');
+        $perfil = $this->userModel->findWithProfile($userId);
+
+        SeoHelper::setTitle('Verificação em dois fatores');
+        $this->render('auth/two-factor', [
+            'canais' => $this->getCanais2FA($perfil ?? [], $userId),
+        ], 'minimal');
+    }
+
+    /**
+     * POST /autenticacao-2fa/enviar
+     * Envia o código pelo canal escolhido (email | whatsapp | sms).
+     * Gera o código UMA vez via TwoFactorService; o canal só muda a entrega.
+     */
+    public function send2FAChannel(): void {
+        $this->verifyCsrf();
+
+        $userId = (int)Session::get('_2fa_pending_user');
+        if (!$userId) {
+            $this->json(['ok' => false, 'msg' => 'Sessão expirada. Faça login novamente.', 'restart' => true]);
+        }
+
+        $canal  = SecurityHelper::sanitizeString($_POST['canal'] ?? '');
+        $perfil = $this->userModel->findWithProfile($userId);
+        $canais = $this->getCanais2FA($perfil ?? [], $userId);
+
+        if (!isset($canais[$canal]) || !$canais[$canal]['habilitado']) {
+            $this->json(['ok' => false, 'msg' => 'Canal de verificação indisponível.']);
+        }
+
+        // TOTP é diferente dos outros canais: não há nada para "enviar"
+        // — o código já existe no app do usuário, gerado localmente a
+        // cada 30s. Só confirma a escolha e libera a etapa de digitar.
+        if ($canal === 'totp') {
+            Session::set('_2fa_canal_usado', 'totp');
+            $this->json([
+                'ok'      => true,
+                'canal'   => 'totp',
+                'destino' => $canais['totp']['destino'],
+                'msg'     => 'Digite o código do seu app autenticador.',
+            ]);
+        }
+
+        // Rate limit de ENVIO (evita flood): 3 envios / 5 min por usuário
+        if (SecurityHelper::rateLimitExceeded('2fa_send_' . $userId, 3, 300)) {
+            $this->json(['ok' => false, 'msg' => 'Aguarde antes de solicitar outro código.']);
+        }
+
+        // Gera o código (mesma lógica do painel)
+        $code = $this->twoFactorService->solicitarVerificacao($userId, 'login');
+
+        try {
+            switch ($canal) {
+                case 'whatsapp':
+                    // $perfil tem nome, celular, email — formato que o service espera
+                    WhatsappService::sendCodigoVerificacao($perfil, $code, 10);
+                    break;
+
+                case 'sms':
+                    // GANCHO — habilitar quando houver gateway de SMS:
+                    // SmsService::sendCodigo($perfil['celular'], $code, 10);
+                    $this->json(['ok' => false, 'msg' => 'SMS ainda não disponível.']);
+                    break;
+
+                case 'email':
+                default:
+                    MailHelper::send2FACode($perfil['email'], $perfil['nome'], $code);
+                    break;
+            }
+        } catch (\Throwable $e) {
+            error_log('[AuthController] envio 2FA (' . $canal . '): ' . $e->getMessage());
+            $this->json(['ok' => false, 'msg' => 'Não foi possível enviar o código. Tente outro canal.']);
+        }
+
+        Session::set('_2fa_canal_usado', $canal);
+
+        $this->json([
+            'ok'      => true,
+            'canal'   => $canal,
+            'destino' => $canais[$canal]['destino'],
+            'msg'     => 'Código enviado por ' . $canais[$canal]['label'] . '.',
+        ]);
+    }
+
+    public function twoFactor(): void {
+        $this->verifyCsrf();
+
+        $userId = Session::get('_2fa_pending_user');
+        if (!$userId) {
+            $this->redirect(BASE_URL . '/login');
+            return;
+        }
+
+        $code = trim($_POST['code'] ?? '');
+
+        // Rate limit do código 2FA: 5 tentativas / 10 min
+        $ip        = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        $rateLimit = new RateLimitService();
+        $user      = $this->userModel->findWithProfile($userId);
+        $emailRL   = $user['email'] ?? ('uid_' . $userId);
+
+        $rlCode = $rateLimit->checkCode($ip, $emailRL);
+        if ($rlCode['status'] === 'blocked') {
+            // Invalida a sessão 2FA pendente — força recomeçar o login
+            Session::remove('_2fa_pending_user');
+            Session::remove('_2fa_pending_cliente');
+            Session::remove('_2fa_lembrar');
+            if (AuthHelper::isAjax()) {
+                $this->json(['ok' => false, 'msg' => $rlCode['msg'], 'restart' => true]);
+            }
+            Session::flash('error', $rlCode['msg']);
+            $this->redirect(BASE_URL . '/login');
+            return;
+        }
+
+        // Roteia a validação conforme o canal escolhido na etapa anterior.
+        // TOTP/backup não passam por TwoFactorService (que gera/envia
+        // código temporário) — validam contra o segredo permanente do app.
+        $canalUsado = Session::get('_2fa_canal_usado', 'email');
+
+        if ($canalUsado === 'totp') {
+            $segredo     = $this->totpService->getSegredo((int)$userId);
+            $codigoValido = $segredo && $this->totpService->validarCodigo($segredo, $code);
+
+            // Fallback: se não bateu como TOTP, tenta como código de
+            // backup de uso único (cobre "perdi o celular, mas tenho a
+            // lista de códigos salva").
+            if (!$codigoValido) {
+                $codigoValido = $this->totpService->validarCodigoBackup((int)$userId, $code);
+            }
+        } else {
+            // Mesmo sistema do painel (e-mail/WhatsApp/SMS)
+            $codigoValido = $this->twoFactorService->validarCodigo($userId, $code, 'login');
+        }
+
+        if (!$codigoValido) {
+            $rateLimit->register($ip, $emailRL, false, '2fa');
+            if (AuthHelper::isAjax()) {
+                $this->json(['ok' => false, 'msg' => 'Código inválido ou expirado.']);
+            }
+            Session::flash('error', 'Código inválido ou expirado. Tente novamente.');
+            $this->redirect(BASE_URL . '/autenticacao-2fa');
+            return;
+        }
+
+        $rateLimit->register($ip, $emailRL, true, '2fa');
+        $rateLimit->clearAccount($emailRL);
+
+        $lembrar = Session::get('_2fa_lembrar', false);
+
+        Session::remove('_2fa_pending_user');
+        Session::remove('_2fa_pending_cliente');
+        Session::remove('_2fa_lembrar');
+        Session::remove('_2fa_canal_usado');
+
+        if (AuthHelper::isAjax()) {
+            // finalizeLogin já responde JSON com redirect
+            $this->finalizeLogin($user, $lembrar);
+            return;
+        }
+
+        $this->finalizeLogin($user, $lembrar);
+    }
+
+    /**
+     * Finaliza o processo de login: cria sessão e redireciona.
+     */
+    protected function finalizeLogin(array $user, bool $lembrar): void {
+        $db = Database::getInstance()->getConnection();
+
+        // ── Anti session-fixation ─────────────────────────
+        // Novo ID de sessão a cada login: um session ID fixado
+        // antes da autenticação não pode ser reaproveitado.
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_regenerate_id(true);
+        }
+
+        $cliente = ['id' => $user['cliente_id']];
+        Session::loginCliente($user, $cliente, $lembrar);
+        SecurityHelper::clearRateLimit('login_' . md5($user['email']));
+
+        // Estado de verificação na sessão
+        $stmt = $db->prepare("SELECT verificado FROM clientes WHERE id = ? LIMIT 1");
+        $stmt->execute([$user['cliente_id']]);
+        Session::set('cliente_verificado', (bool)$stmt->fetchColumn());
+
+        if ($lembrar) {
+            // Cria sessão persistente com cookie (30 dias)
+            $this->tokenService->createRememberToken($user['id']);
+        } else {
+            // Registra sessão de auditoria sem cookie (24h)
+            $this->registerAuditSession($user['id'], $db);
+
+            // ── Modal "continuar conectado aqui?" ─────────────
+            // Só quando o usuário NÃO marcou lembrar-me E o dispositivo
+            // já é reconhecido (2+ logins de sucesso anteriores com o
+            // mesmo User-Agent + faixa de IP) — evita perguntar de novo
+            // para quem decidiu não confiar nesta máquina pela primeira
+            // vez. Não decide nada agora: só sinaliza para a próxima
+            // página exibir a modal (login responde via JSON/redirect,
+            // não renderiza HTML aqui).
+            try {
+                $emailHash = hash('sha256', mb_strtolower(trim($user['email'])));
+                $reconhecido = (new DeviceRecognitionService())
+                    ->isDispositivoReconhecido((int)$user['id'], $emailHash);
+
+                if ($reconhecido) {
+                    Session::set('_mostrar_modal_lembrar', true);
+                }
+            } catch (\Throwable $e) {
+                // Nunca bloqueia o login por falha nesta heurística.
+                error_log('[AuthController] DeviceRecognitionService: ' . $e->getMessage());
+            }
+        }
+
+        // ── Alerta de novo dispositivo ────────────────────
+        // Nunca bloqueia o login: best-effort em try/catch.
+        try {
+            $this->alertNewDevice($db, $user);
+        } catch (\Throwable $e) {
+            error_log('[AuthController] alertNewDevice: ' . $e->getMessage());
+        }
+
+        $redirectUrl = AuthHelper::getRedirectAfterLogin();
+
+        $svc = new VeiculoService();
+        $svc->carregarDoCliente((int)$cliente['id']);
+
+        $this->json([
+            'ok'       => true,
+            'redirect' => $redirectUrl,
+            'msg'      => 'Bem-vindo(a), ' . mb_substr($user['nome'], 0,
+                        strpos($user['nome'] . ' ', ' ')) . '!',
+        ]);
+    }
+    /**
+     * E-mail de alerta quando o login vem de IP E dispositivo nunca
+     * vistos antes para esta conta. Usa a base do login_attempts.
+     *
+     * Regras anti-ruído:
+     *  - Primeiro login na era da auditoria (zero sucessos anteriores)
+     *    → NÃO alerta: vira a baseline. Evita disparar e-mail para os
+     *    6 mil usuários existentes no primeiro login pós-deploy.
+     *  - IP OU user-agent já vistos em sucesso anterior → conhecido.
+     */
+    private function alertNewDevice(PDO $db, array $user): void {
+        $ip = @inet_pton($_SERVER['REMOTE_ADDR'] ?? '') ?: str_repeat("\0", 16);
+        $ua = mb_substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255);
+        $emailHash = hash('sha256', mb_strtolower(trim($user['email'])));
+
+        // Histórico total de sucessos (exclui o registro deste login,
+        // inserido segundos atrás pelo RateLimitService::register)
+        $stmt = $db->prepare(
+            "SELECT COUNT(*) FROM login_attempts
+             WHERE email_hash = ? AND sucesso = 1
+               AND criado_em < (NOW() - INTERVAL 10 SECOND)"
+        );
+        $stmt->execute([$emailHash]);
+        $historico = (int)$stmt->fetchColumn();
+
+        if ($historico === 0) return; // baseline — primeiro login auditado
+
+        // Este IP ou este dispositivo já apareceram em sucesso anterior?
+        $stmt = $db->prepare(
+            "SELECT COUNT(*) FROM login_attempts
+             WHERE email_hash = ? AND sucesso = 1
+               AND criado_em < (NOW() - INTERVAL 10 SECOND)
+               AND (ip = ? OR user_agent = ?)"
+        );
+        $stmt->execute([$emailHash, $ip, $ua]);
+        $conhecido = (int)$stmt->fetchColumn() > 0;
+
+        if ($conhecido) return;
+
+        $dispositivo = SessionManager::parseUserAgent($ua);
+
+        if (class_exists('MailHelper') && method_exists('MailHelper', 'sendNewDeviceAlert')) {
+            MailHelper::sendNewDeviceAlert(
+                $user['email'],
+                $user['nome'],
+                $dispositivo,
+                $_SERVER['REMOTE_ADDR'] ?? ''
+            );
+        }
+
+        error_log(sprintf(
+            '[SECURITY] Novo dispositivo no login — usuário %d (%s): %s / %s',
+            $user['id'], $user['email'], $dispositivo, $_SERVER['REMOTE_ADDR'] ?? ''
+        ));
+    }
+
+    /**
+     * Registra sessão de auditoria sem cookie (login sem "lembrar").
+     * Expira em 24h ou quando o usuário fizer logout.
+     */
+    private function registerAuditSession(int $userId, PDO $db): void {
+        $ip     = $_SERVER['REMOTE_ADDR']     ?? null;
+        $ua     = $_SERVER['HTTP_USER_AGENT'] ?? null;
+        $device = SessionManager::parseUserAgent($ua ?? '');
+
+        $token = hash('sha256', session_id() . $userId . time());
+
+        $db->prepare(
+            "INSERT INTO sessoes_persistentes
+            (usuario_id, token, ip, user_agent, nome_dispositivo,
+            ultima_atividade, expira_em)
+            VALUES (?, ?, ?, ?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 24 HOUR))"
+        )->execute([$userId, $token, $ip, $ua, $device]);
+
+        // Salva o token e o ID da linha na sessão PHP. O ID permite que
+        // a revogação remota (painel) force logout a cada request.
+        Session::set('_audit_session_token',   $token);
+        Session::set('_sessao_persistente_id', (int)$db->lastInsertId());
+    }
+
+    /**
+     * GET /sessao/verificar-modal-lembrar
+     * Chamado pelo JS do layout principal (fora do checkout) ao
+     * carregar qualquer página pós-login. Consome a flag — só retorna
+     * true UMA vez por login, nunca mais até o próximo login sem
+     * "lembrar-me".
+     */
+    public function verificarModalLembrar(): void {
+        $mostrar = (bool)Session::get('_mostrar_modal_lembrar', false);
+        Session::remove('_mostrar_modal_lembrar');
+
+        $this->json(['ok' => true, 'mostrar' => $mostrar]);
+    }
+
+    /**
+     * POST /sessao/confirmar-lembrar
+     * Resposta "Sim, continuar conectado aqui" da modal pós-login.
+     * Exige senha — criar uma sessão persistente de longa duração numa
+     * interação separada do login merece a mesma confirmação que o
+     * checkbox teria exigido no momento certo (reduz a janela de
+     * alguém com acesso temporário à sessão já aberta criar uma sessão
+     * persistente sem ser o titular da conta).
+     */
+    public function confirmarLembrar(): void {
+        if (!Session::isClienteLogado()) {
+            $this->json(['ok' => false, 'msg' => 'Sessão expirada.']);
+        }
+
+        $senha  = $_POST['senha'] ?? '';
+        $userId = (int)Session::get('usuario_id');
+
+        $db   = Database::getInstance()->getConnection();
+        $stmt = $db->prepare("SELECT senha_hash FROM usuarios WHERE id = ? LIMIT 1");
+        $stmt->execute([$userId]);
+        $hash = $stmt->fetchColumn();
+
+        if (!$hash || !password_verify($senha, $hash)) {
+            $this->json(['ok' => false, 'msg' => 'Senha incorreta.']);
+        }
+
+        // IMPORTANTE: capturar o ID da sessão de auditoria ANTES de
+        // chamar createRememberToken() — esse método sobrescreve
+        // _sessao_persistente_id na sessão com o ID da nova linha de 30
+        // dias. Se lêssemos depois, apagaríamos a sessão errada (a
+        // própria recém-criada, não a de 24h).
+        $auditId = (int)Session::get('_sessao_persistente_id', 0);
+
+        // Mesma criação de sessão persistente que o checkbox "lembrar-me"
+        // já dispara no login — reaproveita o método existente para não
+        // duplicar a lógica de cookie/token/família.
+        $this->tokenService->createRememberToken($userId);
+
+        // Remove a sessão de auditoria de 24h criada no login (sem
+        // lembrar-me) — senão ela fica órfã no banco, duplicando a
+        // sessão deste mesmo dispositivo na lista de sessões ativas.
+        //
+        // Ordem proposital: cria a de 30 dias PRIMEIRO, depois apaga a
+        // de 24h. Se o delete falhar, o cliente fica com a sessão que
+        // pediu (30 dias) e sobra só a de 24h, que expira sozinha — em
+        // vez do risco inverso de ficar sem nenhuma sessão.
+        //
+        // Filtra por usuario_id também, por segurança (IDOR).
+        if ($auditId > 0) {
+            $db->prepare(
+                "DELETE FROM sessoes_persistentes WHERE id = ? AND usuario_id = ?"
+            )->execute([$auditId, $userId]);
+
+            // O token de auditoria não vale mais — a sessão atual agora é
+            // identificada pelo cookie ec_remember (criado acima).
+            Session::remove('_audit_session_token');
+        }
+
+        $this->json(['ok' => true, 'msg' => 'Pronto! Você vai continuar conectado aqui.']);
+    }
+
+    private function getAvatar(PDO $db, int $userId): ?string {
+        $stmt = $db->prepare(
+            "SELECT avatar FROM clientes WHERE usuario_id = ? LIMIT 1"
+        );
+        $stmt->execute([$userId]);
+        $avatar = $stmt->fetchColumn();
+        return $avatar ? UPLOAD_URL . '/avatars/' . $avatar : null;
+    }
+
+    private function maskEmail(string $email): string {
+        [$local, $domain] = explode('@', $email);
+        $visible = mb_substr($local, 0, 2);
+        $stars   = str_repeat('*', max(2, mb_strlen($local) - 2));
+        return $visible . $stars . '@' . $domain;
+    }
+
+    // ── Logout ────────────────────────────────────────────────
+
+    public function logout(): void {
+        $userId = Session::get('usuario_id');
+
+        if ($userId) {
+            $db = Database::getInstance()->getConnection();
+
+            if (!empty($_COOKIE['ec_remember'])) {
+                // Remove APENAS a sessão do cookie atual
+                $tokenHash = hash('sha256', $_COOKIE['ec_remember']);
+                $db->prepare(
+                    "DELETE FROM sessoes_persistentes
+                    WHERE usuario_id = ? AND token = ?"
+                )->execute([$userId, $tokenHash]);
+
+                // Apaga o cookie
+                TokenService::clearRememberCookie();
+
+            } else {
+                // Remove APENAS a sessão de auditoria atual
+                $auditToken = Session::get('_audit_session_token');
+                if ($auditToken) {
+                    $db->prepare(
+                        "DELETE FROM sessoes_persistentes
+                        WHERE usuario_id = ? AND token = ?"
+                    )->execute([$userId, $auditToken]);
+                }
+            }
+        }
+
+        $svc = new VeiculoService();
+        $svc->limparSessao();
+
+        Session::logoutCliente();
+        Session::flash('info', 'Você saiu da sua contas.');
+        $this->redirect(BASE_URL . '/login');
+    }
+
+    // ── Formulário de cadastro ────────────────────────────────
+
+    public function registerForm(): void {
+        if (Session::isClienteLogado()) {
+            $this->redirect(BASE_URL . '/minha-conta');
+        }
+
+        $_GET['origem'] = urldecode($_GET['origem'] ?? '');
+        // Pré-preenche se veio do login
+        $origem = SecurityHelper::sanitizeString($_GET['origem'] ?? '');
+        $email  = filter_var($origem, FILTER_VALIDATE_EMAIL) ? $origem : '';
+        $cpf    = !$email ? $origem : '';
+
+        SeoHelper::setTitle('Criar conta');
+        $this->render('auth/register', [
+            'email_pre' => $email,
+            'cpf_pre'   => $cpf,
+        ], 'minimal');
+    }
+
+    // ── Processar cadastro ────────────────────────────────────
+
+    public function register(): void {
+        $this->verifyCsrf();
+
+        $nome    = SecurityHelper::sanitizeString($_POST['nome']    ?? '');
+        $email   = SecurityHelper::sanitizeEmail( $_POST['email']   ?? '');
+        $cpf     = preg_replace('/\D/', '', $_POST['cpf'] ?? '');
+        $senha   = $_POST['senha']    ?? '';
+        $confirmar = $_POST['confirmar_senha'] ?? '';
+        $newsletter = isset($_POST['newsletter']);
+
+        $errors = [];
+        if (mb_strlen($nome) < 3)               $errors[] = 'Nome muito curto.';
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'E-mail inválido.';
+        if (!SecurityHelper::validatePassword($senha))  $errors[] = 'Senha fraca. Use 8+ caracteres, maiúsculas, minúsculas e números.';
+        if ($senha !== $confirmar)               $errors[] = 'As senhas não conferem.';
+        if (!empty($cpf) && !SecurityHelper::validateCpf($cpf)) $errors[] = 'CPF inválido.';
+
+        if ($errors) {
+            $this->json(['ok' => false, 'errors' => $errors]);
+        }
+
+        $db = Database::getInstance()->getConnection();
+
+        // Verifica e-mail duplicado
+        $stmt = $db->prepare("SELECT id FROM usuarios WHERE email = ? LIMIT 1");
+        $stmt->execute([$email]);
+        if ($stmt->fetchColumn()) {
+            $this->json(['ok' => false, 'msg' => 'Este e-mail já está cadastrado.',
+                         'redirect' => BASE_URL . '/login?login=' . urlencode($email)]);
+        }
+
+        // Verifica CPF duplicado
+        if (!empty($cpf)) {
+            $stmt = $db->prepare("SELECT id FROM clientes WHERE cpf = ? LIMIT 1");
+            $stmt->execute([$cpf]);
+            if ($stmt->fetchColumn()) {
+                $this->json(['ok' => false, 'msg' => 'Este CPF já está cadastrado.']);
+            }
+        }
+
+        try {
+            $db->beginTransaction();
+
+            $tipo = 'cliente';
+
+            // Cria usuário (email_verificado = 0)
+            $senhaHash = password_hash($senha, PASSWORD_ARGON2ID);
+            $db->prepare(
+                "INSERT INTO usuarios (nome, email, senha_hash, tipo, email_verificado, ativo, criado_em)
+                 VALUES (?, ?, ?, ?, 0, 1, NOW())"
+            )->execute([$nome, $email, $senhaHash, $tipo]);
+            $userId = (int)$db->lastInsertId();
+
+            // Cria cliente
+            $db->prepare(
+                "INSERT INTO clientes (usuario_id, cpf, newsletter, criado_em)
+                 VALUES (?, ?, ?, NOW())"
+            )->execute([
+                $userId,
+                $cpf ?: null,
+                $newsletter ? 1 : 0,
+            ]);
+
+            // Gera código de verificação (6 dígitos numéricos)
+            $code     = SecurityHelper::generateNumericCode(6);
+            $expiraEm = date('Y-m-d H:i:s', time() + 86400); // 24h
+
+            $db->prepare(
+                "INSERT INTO tokens_verificacao (usuario_id, token, tipo, expira_em)
+                 VALUES (?, ?, 'email_verify', ?)"
+            )->execute([$userId, $code, $expiraEm]);
+
+            $db->commit();
+
+            // Envia e-mail de verificação
+            MailHelper::sendEmailVerification($email, $nome, $code);
+
+            $stmt_c = $db->prepare("SELECT id FROM clientes WHERE usuario_id = ? LIMIT 1");
+            $stmt_c->execute([$userId]);
+            $c_id = $stmt_c->fetchColumn();
+            if ($c_id) {
+                // No método register(), dentro da transaction, após criar o cliente:                
+                $db->prepare(
+                    "INSERT INTO wishlist (cliente_id, nome, padrao, criado_em)
+                    VALUES (?, 'Meus favoritos', 1, NOW())"
+                )->execute([$c_id]);
+            }
+            
+
+            $this->json([
+                'ok'         => true,
+                'verificacao'=> true,
+                'email_mask' => $this->maskEmail($email),
+                'msg'        => 'Conta criada! Verifique seu e-mail para ativar.',
+            ]);
+
+        } catch (Exception $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            LogService::error('Erro no cadastro: ' . $e->getMessage());
+            $this->json(['ok' => false, 'msg' => 'Erro ao criar conta. Tente novamente.', 'error'=>$e->getMessage(), 'trace'=>$e->getTraceAsString(), 'line'=>$e->getLine()]);
+        }
+    }
+
+    private function validateRegister(array $data): array {
+        $errors = [];
+
+        if (mb_strlen($data['nome']) < 3) {
+            $errors[] = 'Nome deve ter pelo menos 3 caracteres.';
+        }
+        if (!SecurityHelper::validateEmail($data['email'])) {
+            $errors[] = 'E-mail inválido.';
+        }
+        if ($this->userModel->emailExists($data['email'])) {
+            $errors[] = 'Este e-mail já está cadastrado.';
+        }
+        if (!SecurityHelper::validatePassword($data['senha'])) {
+            $errors[] = 'Senha fraca. Use ao menos 8 caracteres, letras maiúsculas, minúsculas e números.';
+        }
+        if ($data['senha'] !== $data['confirmar']) {
+            $errors[] = 'As senhas não conferem.';
+        }
+        if (!empty($data['cpf']) && !SecurityHelper::validateCpf($data['cpf'])) {
+            $errors[] = 'CPF inválido.';
+        }
+        if (!empty($data['cpf']) && $this->userModel->cpfExists($data['cpf'])) {
+            $errors[] = 'Este CPF já está cadastrado.';
+        }
+
+        return $errors;
+    }
+
+    // ── Verificação de e-mail ─────────────────────────────────
+
+    public function verifyEmail(string $token): void {
+        // Aceita token na URL (link antigo) ou código numérico (novo)
+        $db = Database::getInstance()->getConnection();
+
+        $stmt = $db->prepare(
+            "SELECT t.id, t.usuario_id, t.expira_em
+             FROM tokens_verificacao t
+             WHERE t.token   = ?
+               AND t.tipo    = 'email_verify'
+               AND t.usado   = 0
+             LIMIT 1"
+        );
+        $stmt->execute([$token]);
+        $row = $stmt->fetch();
+
+        if (!$row) {
+            SeoHelper::setTitle('Link inválido');
+            $this->render('auth/verify-invalid', [], 'minimal');
+            return;
+        }
+
+        if (strtotime($row['expira_em']) < time()) {
+            SeoHelper::setTitle('Link expirado');
+            $this->render('auth/verify-expired', [
+                'usuario_id' => $row['usuario_id'],
+            ], 'minimal');
+            return;
+        }
+
+        // Ativa o e-mail
+        $db->prepare(
+            "UPDATE usuarios SET email_verificado = 1 WHERE id = ?"
+        )->execute([$row['usuario_id']]);
+
+        $db->prepare(
+            "UPDATE tokens_verificacao SET usado = 1 WHERE id = ?"
+        )->execute([$row['id']]);
+
+        // Faz login automático após verificar
+        $stmtUser = $db->prepare(
+            "SELECT u.*, c.id AS cliente_id
+             FROM usuarios u
+             JOIN clientes c ON c.usuario_id = u.id
+             WHERE u.id = ? LIMIT 1"
+        );
+        $stmtUser->execute([$row['usuario_id']]);
+        $user = $stmtUser->fetch();
+
+        if ($user) {
+            $this->finalizeLogin($user, false);
+        } else {
+            Session::flash('success', 'E-mail verificado! Faça login para continuar.');
+            $this->redirect(BASE_URL . '/login');
+        }
+    }
+
+    public function resendVerification(): void {
+        $this->verifyCsrf();
+
+        $login = SecurityHelper::sanitizeString($_POST['login'] ?? '');
+        if (empty($login)) {
+            $this->json(['ok' => false, 'msg' => 'Informe o e-mail.']);
+        }
+
+        $rateKey = 'resend_verify_' . md5($login);
+        if (SecurityHelper::rateLimitExceeded($rateKey, 3, 600)) {
+            $this->json(['ok' => false, 'msg' => 'Aguarde antes de solicitar outro código.']);
+        }
+
+        $db   = Database::getInstance()->getConnection();
+        $user = $this->findUserByLogin($db, $login);
+
+        if (!$user || $user['email_verificado']) {
+            $this->json(['ok' => true, 'msg' => 'Se houver pendência, o código será reenviado.']);
+        }
+
+        $code     = SecurityHelper::generateNumericCode(6);
+        $expiraEm = date('Y-m-d H:i:s', time() + 86400);
+
+        $db->prepare(
+            "UPDATE tokens_verificacao SET usado = 1
+             WHERE usuario_id = ? AND tipo = 'email_verify' AND usado = 0"
+        )->execute([$user['id']]);
+
+        $db->prepare(
+            "INSERT INTO tokens_verificacao (usuario_id, token, tipo, expira_em)
+             VALUES (?, ?, 'email_verify', ?)"
+        )->execute([$user['id'], $code, $expiraEm]);
+
+        MailHelper::sendEmailVerification($user['email'], $user['nome'], $code);
+
+        $this->json(['ok' => true, 'msg' => 'Novo código enviado para ' . $this->maskEmail($user['email'])]);
+
+        $rateKey = 'login_' . md5($login);
+        SecurityHelper::clearRateLimit($rateKey);
+
+        $rateKeyCod = 'login_code_val_' . md5($login);
+        SecurityHelper::clearRateLimit($rateKeyCod);
+    }
+
+    // ── Esqueci a senha ───────────────────────────────────────
+
+    public function forgotForm(): void {
+        SeoHelper::setTitle('Recuperar senha');
+        $this->render('auth/forgot-password', [], 'minimal');
+    }
+
+    public function forgot(): void {
+        $this->verifyCsrf();
+
+        $email = SecurityHelper::sanitizeEmail($_POST['email'] ?? '');
+
+        // Rate limit: evita spam de e-mails de recuperação
+        if (SecurityHelper::rateLimitExceeded('forgot_' . md5($email), 3, 900)) {
+            if (AuthHelper::isAjax()) {
+                $this->json(['ok' => true, 'msg' => 'Se o e-mail existir, você receberá as instruções.']);
+            }
+            Session::flash('info', 'Se o e-mail existir em nossa base, você receberá as instruções.');
+            $this->redirect(BASE_URL . '/recuperar-senha');
+            return;
+        }
+
+        if (!SecurityHelper::validateEmail($email)) {
+            if (AuthHelper::isAjax()) {
+                $this->json(['ok' => false, 'msg' => 'E-mail inválido.']);
+            }
+            Session::flash('error', 'Informe um e-mail válido.');
+            $this->redirect(BASE_URL . '/recuperar-senha');
+            return;
+        }
+
+        $user = $this->userModel->findByEmail($email);
+
+        // Resposta genérica independente de existir ou não (evita user enumeration)
+        if ($user && $user['tipo'] === 'cliente' && $user['ativo']) {
+            $token = $this->tokenService->createPasswordResetToken($user['id']);
+            MailHelper::sendPasswordReset($user['email'], $user['nome'], $token);
+        }
+
+        $msg = 'Se o e-mail estiver cadastrado, você receberá as instruções em breve.';
+
+        if (AuthHelper::isAjax()) {
+            $this->json(['ok' => true, 'msg' => $msg]);
+        }
+        Session::flash('success', $msg);
+        $this->redirect(BASE_URL . '/recuperar-senha');
+    }
+
+    // ── Redefinir senha ───────────────────────────────────────
+
+    public function resetForm(string $token): void {
+        if (!$this->tokenService->passwordResetTokenExists($token)) {
+            Session::flash('error', 'Link inválido ou expirado. Solicite um novo.');
+            $this->redirect(BASE_URL . '/recuperar-senha');
+            return;
+        }
+        SeoHelper::setTitle('Nova senha');
+        $this->render('auth/reset-password', ['token' => $token], 'minimal');
+    }
+
+    public function reset(): void {
+        $this->verifyCsrf();
+
+        $token  = $_POST['token'] ?? '';
+        $senha  = $_POST['senha'] ?? '';
+        $conf   = $_POST['confirmar_senha'] ?? '';
+
+        $userId = $this->tokenService->consumePasswordResetToken($token);
+
+        if (!$userId) {
+            if (AuthHelper::isAjax()) {
+                $this->json(['ok' => false, 'msg' => 'Link inválido ou expirado.']);
+            }
+            Session::flash('error', 'Link inválido ou expirado. Solicite um novo.');
+            $this->redirect(BASE_URL . '/recuperar-senha');
+            return;
+        }
+
+        if (!SecurityHelper::validatePassword($senha)) {
+            if (AuthHelper::isAjax()) {
+                $this->json(['ok' => false, 'msg' => 'Senha fraca. Use ao menos 8 caracteres, maiúsculas, minúsculas e números.']);
+            }
+            Session::flash('error', 'Senha fraca. Use ao menos 8 caracteres, maiúsculas, minúsculas e números.');
+            $this->redirect(BASE_URL . '/redefinir-senha/' . $token);
+            return;
+        }
+
+        if ($senha !== $conf) {
+            if (AuthHelper::isAjax()) {
+                $this->json(['ok' => false, 'msg' => 'As senhas não conferem.']);
+            }
+            Session::flash('error', 'As senhas não conferem.');
+            $this->redirect(BASE_URL . '/redefinir-senha/' . $token);
+            return;
+        }
+
+        $this->userModel->updatePassword($userId, $senha);
+
+        // Revoga TODAS as sessões persistentes (todos os dispositivos).
+        // Se a conta foi comprometida, o atacante perde o acesso agora —
+        // deleteRememberToken só removia a sessão do dispositivo atual,
+        // que num reset de senha geralmente nem é o do dono.
+        $this->tokenService->revokeAllSessions($userId);
+
+        SecurityHelper::regenerateCsrf();
+
+        if (AuthHelper::isAjax()) {
+            $this->json(['ok' => true, 'redirect' => BASE_URL . '/login']);
+        }
+        Session::flash('success', 'Senha redefinida com sucesso! Faça login com sua nova senha.');
+        $this->redirect(BASE_URL . '/login');
+    }
+
+    // ── Helpers privados ──────────────────────────────────────
+
+    private function user2faEnabled(int $userId): bool {
+        // Por padrão desabilitado — implementar coluna `2fa_ativo` em usuarios se quiser por usuário
+        return false;
+    }
+
+    /**
+     * Mescla o carrinho do visitante ao cliente após login.
+     */
+    private function mergeGuestCart(int $clienteId): void {
+        $carrinhoId = Session::getCarrinhoId();
+        if (!$carrinhoId) return;
+
+        $db = Database::getInstance()->getConnection();
+
+        // Verifica se o carrinho anônimo existe e não pertence a ninguém
+        $stmt = $db->prepare(
+            "SELECT id FROM carrinhos WHERE id = ? AND cliente_id IS NULL LIMIT 1"
+        );
+        $stmt->execute([$carrinhoId]);
+        if (!$stmt->fetch()) return;
+
+        // Verifica se o cliente já tem carrinho ativo
+        $stmt = $db->prepare(
+            "SELECT id FROM carrinhos WHERE cliente_id = ? ORDER BY atualizado_em DESC LIMIT 1"
+        );
+        $stmt->execute([$clienteId]);
+        $clienteCarrinho = $stmt->fetchColumn();
+
+        if ($clienteCarrinho) {
+            // Move itens do carrinho anônimo para o carrinho do cliente
+            // (em caso de conflito de produto, soma quantidades)
+            $db->prepare(
+                "INSERT INTO carrinho_itens (carrinho_id, produto_id, estoque_id, quantidade, preco_unitario, opcoes_selecionadas)
+                 SELECT ?, produto_id, estoque_id, quantidade, preco_unitario, opcoes_selecionadas
+                 FROM carrinho_itens WHERE carrinho_id = ?
+                 ON DUPLICATE KEY UPDATE quantidade = carrinho_itens.quantidade + VALUES(quantidade)"
+            )->execute([$clienteCarrinho, $carrinhoId]);
+
+            $db->prepare("DELETE FROM carrinhos WHERE id = ?")->execute([$carrinhoId]);
+            Session::setCarrinhoId($clienteCarrinho);
+        } else {
+            // Atribui o carrinho anônimo ao cliente
+            $db->prepare(
+                "UPDATE carrinhos SET cliente_id = ? WHERE id = ?"
+            )->execute([$clienteId, $carrinhoId]);
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────
+
+    public function findUserByLogin(PDO $db, string $valor): ?array {
+        $isCpf = preg_match('/^\d{11}$/', preg_replace('/\D/', '', $valor));
+
+        if ($isCpf) {
+            $cpf  = preg_replace('/\D/', '', $valor);
+            $stmt = $db->prepare(
+                "SELECT u.*, c.id AS cliente_id, c.tray_id
+                 FROM usuarios u
+                 JOIN clientes c ON c.usuario_id = u.id
+                 WHERE c.cpf = ? AND u.deleted_at IS NULL
+                 LIMIT 1"
+            );
+            $stmt->execute([$cpf]);
+        } else {
+            $stmt = $db->prepare(
+                "SELECT u.*, c.id AS cliente_id, c.tray_id
+                 FROM usuarios u
+                 JOIN clientes c ON c.usuario_id = u.id
+                 WHERE u.email = ? AND u.deleted_at IS NULL
+                 LIMIT 1"
+            );
+            $stmt->execute([$valor]);
+        }
+
+        return $stmt->fetch() ?: null;
+    }
+}

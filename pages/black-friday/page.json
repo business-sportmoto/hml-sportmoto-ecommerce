@@ -1,0 +1,11 @@
+{
+  "titulo":       "Black Friday 2026",
+  "descricao":    "Conheça nossa história, valores e equipe.",
+  "keywords":     "sobre nós, história, empresa",
+  "layout":       "main",
+  "ativa":        true,
+  "no_menu":      true,
+  "menu_label":   "Black Friday",
+  "menu_ordem":   1,
+  "breadcrumb":   false
+}

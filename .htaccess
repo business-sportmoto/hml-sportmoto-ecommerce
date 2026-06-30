@@ -1,0 +1,118 @@
+# .htaccess — e-commerce final com segurança e performance
+
+Options -Indexes
+ServerSignature Off
+RewriteEngine On
+
+RewriteEngine On
+RewriteRule ^\.env - [F,L]
+
+# Bloqueia acesso direto ao .env
+<Files ".env">
+    Require all denied
+    Order allow,deny
+    Deny from all
+</Files>
+
+<FilesMatch "^\.env">
+    Require all denied
+</FilesMatch>
+
+# REDIRECT PRODUTOS → PRODUTO
+RewriteRule ^produtos/(.*)$ /produto/$1 [R=301,L]
+#RewriteRule ^marcas/(.*)$ /marca/$1 [R=301,L]
+
+# ── Segurança ─────────────────────────────────────────────────
+# Protege arquivos sensíveis
+<FilesMatch "\.(env|log|sql|sh|bak|git|htpasswd|htaccess|lock|md|yml|yaml|pem|key)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+
+# Bloqueia acesso direto a pastas protegidas
+RewriteRule ^(config|core|app|storage|vendor)(/|$) - [F,L]
+
+# Previne leitura de arquivos PHP em uploads
+<FilesMatch "\.(php|php3|php4|php5|phtml|phps)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Libera apenas o index
+<Files "index.php">
+    Allow from all
+</Files>
+
+# ── HTTPS forçado (ativar em produção) ────────────────────────
+# RewriteCond %{HTTPS} off
+# RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+# ── www → sem-www (ativar conforme preferência) ───────────────
+# RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
+# RewriteRule ^ https://%1%{REQUEST_URI} [R=301,L]
+
+# Adicionar ANTES da regra de URL amigável existente
+
+# Serve arquivos estáticos da pasta pages/ diretamente
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule ^pages/.+\.(css|js|png|jpg|jpeg|gif|webp|svg|ico|woff2|woff|ttf)$ - [L]
+
+# ── URL amigáveis ─────────────────────────────────────────────
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php?route=$1 [QSA,L]
+
+# Sitemap.xml → arquivo PHP
+RewriteRule ^sitemap\.xml$ sitemap.php [L]
+
+# ── Headers de segurança ──────────────────────────────────────
+<IfModule mod_headers.c>
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    Header unset X-Powered-By
+    Header unset Server
+</IfModule>
+
+# ── Cache de assets estáticos ─────────────────────────────────
+<IfModule mod_expires.c>
+    ExpiresActive On
+
+    # Imagens
+    ExpiresByType image/jpeg  "access plus 1 year"
+    ExpiresByType image/png   "access plus 1 year"
+    ExpiresByType image/webp  "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    ExpiresByType image/gif   "access plus 1 year"
+    ExpiresByType image/x-icon "access plus 1 year"
+
+    # CSS e JS — 1 mês (cache busting via ?v= no PHP)
+    ExpiresByType text/css          "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType text/javascript   "access plus 1 month"
+
+    # Fontes
+    ExpiresByType font/woff2  "access plus 1 year"
+    ExpiresByType font/woff   "access plus 1 year"
+    ExpiresByType font/ttf    "access plus 1 year"
+
+    # HTML — sem cache (conteúdo dinâmico)
+    ExpiresByType text/html   "access plus 0 seconds"
+</IfModule>
+
+# ── Compressão gzip ───────────────────────────────────────────
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/css
+    AddOutputFilterByType DEFLATE application/javascript text/javascript
+    AddOutputFilterByType DEFLATE application/json application/xml
+    AddOutputFilterByType DEFLATE image/svg+xml font/woff2 font/woff
+</IfModule>
+
+# ── ETag ──────────────────────────────────────────────────────
+<IfModule mod_headers.c>
+    Header unset ETag
+</IfModule>
+FileETag None

@@ -1,0 +1,84 @@
+# ==========================================================
+# /admin/.htaccess
+# Fluxo:
+# Navegador
+#   -> admin/.htaccess
+#   -> admin/index.php
+#   -> AdminRouter
+#   -> AuthHelper::requireAdmin()
+#   -> Controller
+#   -> View + layout
+# ==========================================================
+
+Options -Indexes
+DirectoryIndex index.php
+
+<IfModule mod_rewrite.c>
+RewriteEngine On
+
+# ----------------------------------------------------------
+# BASE
+# ----------------------------------------------------------
+RewriteBase /admin/
+
+# ----------------------------------------------------------
+# SEGURANÇA BÁSICA
+# ----------------------------------------------------------
+
+# Bloqueia acesso direto a arquivos sensíveis
+RewriteRule ^(\.env|composer\.(json|lock)|package\.json|yarn\.lock)$ - [F,L,NC]
+
+# Bloqueia pastas internas (ajuste se quiser)
+RewriteRule ^(core|app|config|storage|vendor)/ - [F,L,NC]
+
+# ----------------------------------------------------------
+# ARQUIVOS REAIS
+# Se existir arquivo ou pasta física, entrega normal
+# ----------------------------------------------------------
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# ----------------------------------------------------------
+# ASSETS ADMIN
+# Ex:
+# /admin/assets/css/style.css
+# /admin/uploads/img.png
+# ----------------------------------------------------------
+RewriteRule ^(assets|uploads)/ - [L,NC]
+
+# ----------------------------------------------------------
+# TODAS AS ROTAS VÃO PARA index.php
+# ----------------------------------------------------------
+RewriteRule ^$ index.php [QSA,L]
+RewriteRule ^(.+)$ index.php?route=$1 [QSA,L]
+
+</IfModule>
+
+# ==========================================================
+# PHP / UTF-8 / HEADERS
+# ==========================================================
+
+AddDefaultCharset UTF-8
+
+<IfModule mod_headers.c>
+
+# Segurança
+Header always set X-Frame-Options "SAMEORIGIN"
+Header always set X-Content-Type-Options "nosniff"
+Header always set Referrer-Policy "strict-origin-when-cross-origin"
+Header always set X-XSS-Protection "1; mode=block"
+
+# Cache assets
+<FilesMatch "\.(css|js|jpg|jpeg|png|gif|svg|webp|ico|woff|woff2)$">
+Header set Cache-Control "public, max-age=2592000"
+</FilesMatch>
+
+</IfModule>
+
+# ==========================================================
+# ERROS CUSTOMIZADOS (opcional)
+# ==========================================================
+
+ErrorDocument 403 /admin/index.php?route=403
+ErrorDocument 404 /admin/index.php?route=404

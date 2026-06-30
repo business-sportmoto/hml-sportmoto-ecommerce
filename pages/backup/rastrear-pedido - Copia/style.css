@@ -1,0 +1,223 @@
+:root {
+  --background: hsl(220 20% 7%);
+  --foreground: hsl(0 0% 95%);
+  --card: hsl(220 18% 10%);
+  --card-foreground: hsl(0 0% 95%);
+  --primary: #37db89;
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(220 15% 15%);
+  --secondary-foreground: hsl(0 0% 90%);
+  --muted: hsl(220 12% 18%);
+  --muted-foreground: hsl(220 10% 55%);
+  --accent: #23c16b;
+  --accent-foreground: hsl(0 0% 100%);
+  --border: hsl(220 15% 18%);
+  --radius: 1rem;
+  --font-heading: 'Rajdhani', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --gradient-brand: linear-gradient(135deg, hsl(198, 85%, 55%), hsl(148, 100%, 55%));
+  --gradient-dark: linear-gradient(180deg, hsl(220 20% 7%) 0%, hsl(220 25% 4%) 100%);
+  --shadow-glow: 0 0 30px hsla(229, 85%, 55%, 0.15);
+  --shadow-card: 0 8px 32px hsl(0 0% 0% / 0.3);
+  --container: 1200px;
+}
+html { scroll-behavior: smooth; }
+body {
+  background: var(--background);
+}
+.custom-page--rastrear-pedido a { color: inherit; text-decoration: none; }
+.custom-page--rastrear-pedido h1,
+.custom-page--rastrear-pedido h2,
+.custom-page--rastrear-pedido h3,
+.custom-page--rastrear-pedido h4,
+.custom-page--rastrear-pedido h5,
+.custom-page--rastrear-pedido h6 { font-family: var(--font-heading); margin: 0; color :#fff}
+.custom-page--rastrear-pedido p { margin: 0; }
+.custom-page--rastrear-pedido .site-shell { min-height: 100vh; background: var(--background); }
+.custom-page--rastrear-pedido .container { width: min(calc(100% - 2rem), var(--container)); margin: 0 auto; }
+.custom-page--rastrear-pedido .section-space { padding: 4rem 0; }
+@media (min-width: 768px) { .custom-page--rastrear-pedido .section-space { padding: 6rem 0; } }
+.custom-page--rastrear-pedido .gradient-brand { background: var(--gradient-brand); }
+.custom-page--rastrear-pedido .text-gradient-brand {
+  background: var(--gradient-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.custom-page--rastrear-pedido .text-primary { color: var(--primary); }
+.custom-page--rastrear-pedido .text-accent { color: var(--accent); }
+.custom-page--rastrear-pedido .card-shadow { box-shadow: var(--shadow-card); }
+.custom-page--rastrear-pedido .brand-wrap { display: flex; align-items: center; gap: .75rem; }
+.custom-page--rastrear-pedido .brand-icon {
+  width: 2.5rem; height: 2.5rem; border-radius: .75rem;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.custom-page--rastrear-pedido .brand-icon svg { width: 1.25rem; height: 1.25rem; color: var(--primary-foreground); }
+.custom-page--rastrear-pedido .brand-name { font-size: clamp(1.6rem, 2vw, 2rem); font-weight: 700; letter-spacing: -0.02em; }
+.custom-page--rastrear-pedido .header-label { color: var(--muted-foreground); font-size: .95rem; display:none; }
+@media (min-width: 640px) { .custom-page--rastrear-pedido .header-label { display:block; } }
+.custom-page--rastrear-pedido .hero-section { position: relative; overflow: hidden; }
+.custom-page--rastrear-pedido .hero-glow {
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at top, hsl(217.16deg 85% 55% / 8%), transparent 60%);
+  pointer-events: none;
+}
+.custom-page--rastrear-pedido .hero-inner { position: relative; text-align: center; }
+.custom-page--rastrear-pedido .hero-content { max-width: 52rem; margin: 0 auto; }
+.custom-page--rastrear-pedido .badge {
+  display: inline-flex; align-items: center; gap: .5rem; border-radius: 999px;
+  padding: .5rem 1rem; border: 1px solid var(--border); font-size: .92rem; font-weight: 500;
+}
+.custom-page--rastrear-pedido .badge svg { width: 1rem; height: 1rem; }
+.custom-page--rastrear-pedido .badge-primary { 
+  color: var(--primary);
+    background: hsl(143.61deg 85% 55% / 10%);
+    border-color: hsl(140.14deg 85% 55% / 30%);
+ }
+.custom-page--rastrear-pedido .badge-muted { color: var(--muted-foreground); background: var(--card); }
+.custom-page--rastrear-pedido .hero-title {
+  font-size: clamp(2.5rem, 5vw, 4.5rem);
+  line-height: 1.05; font-weight: 700; letter-spacing: -0.03em;
+  margin: 1.5rem 0 1rem;
+}
+.custom-page--rastrear-pedido .hero-subtitle {
+  font-size: clamp(1rem, 2vw, 1.15rem);
+  color: var(--muted-foreground);
+  max-width: 42rem; margin: 0 auto 2.5rem;
+}
+.custom-page--rastrear-pedido .tracking-box {
+  max-width: 48rem; margin: 0 auto; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 1.2rem; background: var(--card);
+}
+.custom-page--rastrear-pedido .tracking-box__header {
+  padding: 1rem 1.5rem; text-align: left; color: var(--muted-foreground);
+  border-bottom: 1px solid var(--border); background: hsl(220 15% 15% / .5); font-size: .95rem; font-weight: 500;
+}
+.custom-page--rastrear-pedido .tracking-box__body { padding: 2rem; }
+.custom-page--rastrear-pedido .tracking-embed-placeholder {
+  min-height: 200px; display: flex; align-items: center; justify-content: center;
+}
+.custom-page--rastrear-pedido .tracking-embed-text { font-size: .95rem; color: var(--muted-foreground); }
+.custom-page--rastrear-pedido .section-heading { text-align: center; margin-bottom: 3rem; }
+.custom-page--rastrear-pedido .section-heading--tight { margin-bottom: 2rem; }
+.custom-page--rastrear-pedido .section-heading h2 { font-size: clamp(2rem, 4vw, 3rem); font-weight: 700; letter-spacing: -0.03em; }
+.custom-page--rastrear-pedido .section-heading p { color: var(--muted-foreground); margin-top: .75rem; }
+.custom-page--rastrear-pedido .cards-grid { display: grid; gap: 1.5rem; max-width: 72rem; margin: 0 auto; }
+.custom-page--rastrear-pedido .cards-grid--2 { max-width: 64rem; }
+@media (min-width: 768px) { .custom-page--rastrear-pedido .cards-grid--2 { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (min-width: 640px) { .custom-page--rastrear-pedido .cards-grid--3 { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (min-width: 1024px) { .custom-page--rastrear-pedido .cards-grid--3 { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+.custom-page--rastrear-pedido .info-card, .custom-page--rastrear-pedido .testimonial-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 1.25rem;
+  padding: 1.5rem; box-shadow: var(--shadow-card);
+  transition: all .3s ease;
+}
+.custom-page--rastrear-pedido .info-card:hover, .custom-page--rastrear-pedido .testimonial-card:hover, .custom-page--rastrear-pedido .faq-item:hover {
+  border-color: hsla(213, 85%, 55%, 0.4); box-shadow: var(--shadow-glow);
+}
+.custom-page--rastrear-pedido .info-card__icon {
+  width: 3rem; height: 3rem; border-radius: .9rem; display:flex; align-items:center; justify-content:center; margin-bottom:1rem;
+}
+.custom-page--rastrear-pedido .info-card__icon svg { width:1.5rem; height:1.5rem; color: var(--primary-foreground); }
+.custom-page--rastrear-pedido .info-card h3, .custom-page--rastrear-pedido .email-alert h2 { font-size: 1.6rem; margin-bottom: .5rem; color: #fff;}
+.custom-page--rastrear-pedido .info-card p, .custom-page--rastrear-pedido .testimonial-card p, .custom-page--rastrear-pedido .faq-answer p, .custom-page--rastrear-pedido .email-alert__intro, .custom-page--rastrear-pedido .calendar-card p { color: var(--muted-foreground); font-size: .95rem; line-height: 1.7; }
+.custom-page--rastrear-pedido .email-alert {
+  max-width: 48rem; margin: 0 auto; border-radius: 1.25rem; padding: 2rem;
+  border: 1px solid hsl(148.65deg 100% 55% / 30%);
+    background: hsl(162.07deg 100% 55% / 5%);
+}
+@media (min-width:768px){ .custom-page--rastrear-pedido .email-alert{ padding:2.5rem; } }
+.custom-page--rastrear-pedido .email-alert__header { display:flex; align-items:center; gap:.75rem; margin-bottom:1.5rem; }
+.custom-page--rastrear-pedido .email-alert__icon {
+  width:2.5rem;
+  height:2.5rem;
+  border-radius:999px;
+  border: 1px solid hsl(148.65deg 100% 55% / 30%);
+    background: hsl(162.07deg 100% 55% / 5%);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  -webkit-border-radius:999px;
+  -moz-border-radius:999px;
+  -ms-border-radius:999px;
+  -o-border-radius:999px;
+}
+.custom-page--rastrear-pedido .email-alert__icon svg { width:1.25rem; height:1.25rem; color: var(--accent); }
+.custom-page--rastrear-pedido .check-list { list-style:none; padding:0; margin:1.5rem 0 0; display:grid; gap:1rem; }
+.custom-page--rastrear-pedido .check-list li { display:flex; align-items:flex-start; gap:.75rem; }
+.custom-page--rastrear-pedido .check-list svg { width:1.25rem; height:1.25rem; color: var(--primary); flex-shrink:0; margin-top:.1rem; }
+.custom-page--rastrear-pedido .check-list span { font-size:.95rem; color: hsl(0 0% 92%); }
+.custom-page--rastrear-pedido .calendar-wrap { max-width: 52rem; margin: 0 auto; }
+.calendar-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 1.25rem; padding: 1.5rem;
+}
+@media (min-width:768px){ .custom-page--rastrear-pedido .calendar-card{ padding:2rem; } }
+.custom-page--rastrear-pedido .calendar-card p + p { margin-top: 1rem; margin-bottom: 1.5rem; }
+.custom-page--rastrear-pedido .calendar-table-wrap { overflow-x:auto; }
+.custom-page--rastrear-pedido .calendar-grid {
+  display:grid; grid-template-columns: repeat(7, minmax(52px, 1fr)); gap:.25rem;
+  min-width:400px; text-align:center; font-size:.95rem;
+}
+.custom-page--rastrear-pedido .calendar-day-label {
+  padding:.75rem 0; font-size:.75rem; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color: var(--muted-foreground);
+}
+.custom-page--rastrear-pedido .calendar-cell {
+  height:2.5rem; display:flex; align-items:center; justify-content:center; border-radius:.7rem; color:hsl(0 0% 95% / .7);
+}
+.custom-page--rastrear-pedido .calendar-cell.start { background: var(--gradient-brand); color: var(--primary-foreground); font-weight:700; }
+.custom-page--rastrear-pedido .calendar-cell.end { background: var(--accent); color: var(--accent-foreground); font-weight:700; }
+.custom-page--rastrear-pedido .calendar-cell.business { background: hsl(202.07deg 85% 55% / 10%); color: var(--primary); }
+.custom-page--rastrear-pedido .calendar-cell.weekend { color: hsl(220 10% 55% / .4); }
+.custom-page--rastrear-pedido .calendar-legend { display:flex; gap:1rem; flex-wrap:wrap; margin-top:1.5rem; color:var(--muted-foreground); font-size:.78rem; }
+.custom-page--rastrear-pedido .calendar-legend div { display:flex; align-items:center; gap:.5rem; }
+.custom-page--rastrear-pedido .legend-chip { width:.75rem; height:.75rem; border-radius:.2rem; display:inline-block; }
+.custom-page--rastrear-pedido .legend-chip--business { background:hsl(202.07deg 85% 55% / 10%); }
+.custom-page--rastrear-pedido .legend-chip--delivery { background: var(--accent); }
+.custom-page--rastrear-pedido .testimonial-head { display:flex; align-items:center; gap:.75rem; margin-bottom:1rem; }
+.custom-page--rastrear-pedido .avatar {
+  width:2.75rem; height:2.75rem; border-radius:999px; display:flex; align-items:center; justify-content:center; font-size:.9rem; font-weight:700; color:var(--primary-foreground);
+}
+.custom-page--rastrear-pedido .testimonial-head strong { display:block; font-size:.95rem; }
+.custom-page--rastrear-pedido .testimonial-head small { display:block; font-size:.78rem; color:var(--muted-foreground); margin-top:.15rem; }
+.custom-page--rastrear-pedido .stars { display:flex; gap:.1rem; margin-bottom:.75rem; }
+.custom-page--rastrear-pedido .stars svg { width:1rem; height:1rem; }
+.custom-page--rastrear-pedido .stars .is-filled { color: var(--primary); fill: var(--primary); }
+.custom-page--rastrear-pedido .stars .is-empty { color: var(--muted); fill: var(--muted); }
+.custom-page--rastrear-pedido .faq-section { background: var(--gradient-dark); }
+.custom-page--rastrear-pedido .faq-list { max-width: 52rem; margin: 0 auto; display:grid; gap:.75rem; }
+.custom-page--rastrear-pedido .faq-item {
+  background: hsl(220 18% 10% / .6); border:1px solid var(--border); border-radius:1rem;
+  backdrop-filter: blur(8px); transition: all .3s ease;
+}
+.custom-page--rastrear-pedido .faq-question {
+  width:100%; border:none; background:none; color:inherit; cursor:pointer; text-align:left;
+  display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:1.25rem 1.5rem;
+}
+.custom-page--rastrear-pedido .faq-question span { font-size:.95rem; font-weight:500; color: var(--foreground); padding-right:1rem; }
+.custom-page--rastrear-pedido .faq-question svg { width:1.25rem; height:1.25rem; flex-shrink:0; color: var(--muted-foreground); transition: transform .3s ease, color .3s ease; }
+.custom-page--rastrear-pedido .faq-answer { display:none; padding:0 1.5rem 1.25rem; }
+.custom-page--rastrear-pedido .faq-item.is-open .faq-question svg { transform:rotate(180deg); color: var(--primary); }
+.custom-page--rastrear-pedido .site-footer {
+  background: hsl(220 18% 10% / .5); border-top: 1px solid var(--border); padding: 2rem 0;
+}
+.custom-page--rastrear-pedido .footer-inner {
+  display:flex; align-items:center; justify-content:center; gap:1rem; flex-direction:column; text-align:center; color: var(--muted-foreground); font-size:.95rem;
+}
+.custom-page--rastrear-pedido .footer-brand { display:flex; align-items:center; gap:.5rem; }
+.custom-page--rastrear-pedido .footer-brand svg { width:1rem; height:1rem; color: var(--primary); }
+.custom-page--rastrear-pedido .footer-brand span { color: var(--foreground); font-family: var(--font-heading); font-weight:600; }
+.custom-page--rastrear-pedido .scroll-fade-in, 
+.custom-page--rastrear-pedido .scroll-slide-left, 
+.custom-page--rastrear-pedido .scroll-slide-right {
+  opacity:0; transition: opacity .7s ease-out, transform .7s ease-out;
+}
+.custom-page--rastrear-pedido .scroll-fade-in { transform: translateY(30px); }
+.custom-page--rastrear-pedido .scroll-slide-left { transform: translateX(-40px); }
+.custom-page--rastrear-pedido .scroll-slide-right { transform: translateX(40px); }
+.custom-page--rastrear-pedido .scroll-fade-in.visible, .custom-page--rastrear-pedido .scroll-slide-left.visible, .custom-page--rastrear-pedido .scroll-slide-right.visible { opacity:1; transform:none; }
+@media (max-width: 767px) {
+  .custom-page--rastrear-pedido .tracking-box__body { padding: 1.5rem; }
+  .custom-page--rastrear-pedido .calendar-grid { grid-template-columns: repeat(7, minmax(48px, 1fr)); }
+  .custom-page--rastrear-pedido .faq-question { padding: 1rem 1.1rem; }
+  .custom-page--rastrear-pedido .faq-answer { padding: 0 1.1rem 1rem; }
+}

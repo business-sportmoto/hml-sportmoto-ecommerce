@@ -1,0 +1,444 @@
+
+.icon-picker-inline {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.icon-preview {
+    width: 42px;
+    height: 42px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+}
+
+.icon-preview svg,
+.icon-finder-item-svg svg {
+    width: 22px;
+    height: 22px;
+    display: block;
+}
+
+.icon-finder-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: none;
+}
+
+.icon-finder-modal.is-open {
+    display: block;
+}
+
+.icon-finder-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+}
+
+.icon-finder-dialog {
+    position: relative;
+    width: min(980px, calc(100% - 32px));
+    max-height: calc(100vh - 40px);
+    margin: 20px auto;
+    background: #fff;
+    border-radius: 14px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.icon-finder-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid #eee;
+}
+
+.icon-finder-close {
+    border: 0;
+    background: transparent;
+    font-size: 28px;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.icon-finder-toolbar {
+    padding: 16px 20px;
+    border-bottom: 1px solid #eee;
+}
+
+.icon-finder-search {
+    width: 100%;
+    height: 44px;
+    border: 1px solid #dcdcdc;
+    border-radius: 10px;
+    padding: 0 14px;
+    font-size: 14px;
+}
+
+.icon-finder-grid {
+    padding: 16px 20px 20px;
+    overflow: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+}
+
+.icon-finder-item {
+    border: 1px solid #e7e7e7;
+    border-radius: 12px;
+    background: #fff;
+    padding: 14px 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: .18s ease;
+}
+
+.icon-finder-item:hover {
+    border-color: #111;
+    transform: translateY(-2px);
+}
+
+.icon-finder-item-svg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 32px;
+    margin-bottom: 10px;
+    color: #222;
+}
+
+.icon-finder-item-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: #111;
+}
+
+.icon-finder-item-key {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: #777;
+}
+
+
+.icon-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.6);
+    display: none;
+    z-index: 9999;
+}
+
+.icon-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.icon-modal-content {
+    width: 800px;
+    max-height: 80vh;
+    background: #1e1e1e;
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.icon-header {
+    padding: 10px;
+    display: flex;
+    gap: 10px;
+    background: #2a2a2a;
+}
+
+.icon-header input {
+    flex: 1;
+    padding: 8px;
+    border: none;
+    border-radius: 6px;
+}
+
+.icon-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+    gap: 10px;
+    padding: 15px;
+    overflow-y: auto;
+}
+
+.icon-item {
+    background: #2a2a2a;
+    padding: 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: center;
+}
+
+.icon-item:hover {
+    background: #444;
+}
+
+.icon-item svg {
+    width: 22px;
+    height: 22px;
+    fill: #fff;
+}
+
+.icon-finder-modal {
+    display: none;
+}
+
+.icon-finder-modal.is-open {
+    display: block;
+}
+
+/* ============================= */
+/* MODAL */
+/* ============================= */
+
+.icon-finder-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    display: none;
+}
+
+.icon-finder-modal.is-open {
+    display: block;
+}
+
+.icon-finder-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,.65);
+}
+
+.icon-finder-dialog {
+    position: relative;
+    width: min(900px, 95%);
+    max-height: 85vh;
+    margin: 40px auto;
+    background: #1e1e1e;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* ============================= */
+/* HEADER */
+/* ============================= */
+
+.icon-finder-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    background: #2a2a2a;
+    border-bottom: 1px solid #333;
+}
+
+.icon-finder-header h3 {
+    color: #fff;
+    font-size: 16px;
+}
+
+.icon-finder-close {
+    background: transparent;
+    border: 0;
+    color: #fff;
+    font-size: 22px;
+    cursor: pointer;
+}
+
+/* ============================= */
+/* TOOLBAR */
+/* ============================= */
+
+.icon-finder-toolbar {
+    padding: 12px 16px;
+    background: #252525;
+    border-bottom: 1px solid #333;
+    display: flex;
+    gap: 10px;
+}
+
+.icon-finder-search {
+    flex: 1;
+    height: 40px;
+    border-radius: 8px;
+    border: none;
+    padding: 0 12px;
+    background: #111;
+    color: #fff;
+    font-size: 14px;
+}
+
+.icon-finder-search::placeholder {
+    color: #777;
+}
+
+.btn-add-icon-toggle {
+    height: 40px;
+    padding: 0 14px;
+    border-radius: 8px;
+    border: none;
+    background: #ea5b73;
+    color: #fff;
+    cursor: pointer;
+    margin: 10px auto;
+    width: calc(100% - 20px);
+}
+
+/* ============================= */
+/* GRID */
+/* ============================= */
+
+.icon-finder-grid {
+    padding: 16px;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+    gap: 12px;
+    background: #1e1e1e;
+}
+
+.icon-finder-item {
+    border: 1px solid #333;
+    border-radius: 10px;
+    padding: 10px;
+    background: #2a2a2a;
+    cursor: pointer;
+    transition: .15s ease;
+    text-align: center;
+    position: relative;
+
+}
+
+.icon-finder-item:hover {
+    background: #3a3a3a;
+    border-color: #555;
+    transform: translateY(-2px);
+}
+
+.icon-finder-item-svg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
+    margin-bottom: 6px;
+}
+
+.icon-finder-item-svg svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+    color: #fff;
+}
+
+.icon-finder-item-label {
+    font-size: 11px;
+    color: #ccc;
+}
+
+.icon-finder-item-key {
+    font-size: 10px;
+    color: #888;
+}
+
+/* ============================= */
+/* ADD ICON BOX */
+/* ============================= */
+
+.add-icon-box {
+    padding: 16px;
+    background: #252525;
+    border-top: 1px solid #333;
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.add-icon-box input,
+.add-icon-box textarea {
+    width: 100%;
+    border-radius: 8px;
+    border: none;
+    padding: 10px;
+    background: #111;
+    color: #fff;
+    font-size: 13px;
+    margin-bottom: 10px;
+}
+
+.add-icon-box textarea {
+    min-height: 100px;
+    resize: vertical;
+}
+
+#btnSaveNewIcon {
+    background: #00c853;
+    border: none;
+    border-radius: 8px;
+    height: 40px;
+    color: #fff;
+    cursor: pointer;
+}
+
+#newIconFeedback {
+    font-size: 12px;
+    color: #ccc;
+}
+
+/* ============================= */
+/* BLOCO ICON (FORA DO MODAL) */
+/* ============================= */
+
+/* ============================= */
+/* RESPONSIVO */
+/* ============================= */
+
+@media (max-width: 600px) {
+    .icon-finder-dialog {
+        width: 95%;
+        margin: 20px auto;
+    }
+
+    .icon-finder-grid {
+        grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+    }
+}
+
+.icon-context-menu {
+    position: absolute;
+    background: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 8px;
+    display: none;
+    z-index: 999999;
+    min-width: 150px;
+}
+
+.icon-context-menu button {
+    width: 100%;
+    padding: 10px;
+    background: none;
+    border: 0;
+    color: #fff;
+    text-align: left;
+    cursor: pointer;
+}
+
+.icon-context-menu button:hover {
+    background: #333;
+}

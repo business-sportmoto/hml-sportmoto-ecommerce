@@ -1,0 +1,53 @@
+# robots.txt — E-commerce
+
+User-agent: *
+Allow: /
+Allow: /produto/
+Allow: /categoria/
+Allow: /marca/
+Allow: /busca
+Allow: /sitemap.xml
+
+# Bloqueia áreas privadas
+Disallow: /admin/
+Disallow: /minha-conta/
+Disallow: /checkout/
+Disallow: /carrinho/
+Disallow: /login
+Disallow: /cadastro
+Disallow: /recuperar-senha
+Disallow: /redefinir-senha
+Disallow: /api/
+Disallow: /uploads/
+Disallow: /storage/
+Disallow: /vendor/
+Disallow: /config/
+
+# Bloqueia parâmetros de sessão e rastreamento
+Disallow: /*?sessid=
+Disallow: /*?utm_
+Disallow: /*&utm_
+
+# Bots de qualidade — permite tudo
+User-agent: Googlebot
+Allow: /
+
+User-agent: Googlebot-Image
+Allow: /uploads/products/
+Allow: /uploads/banners/
+
+User-agent: Bingbot
+Allow: /
+
+# Bloqueia bots mal-comportados
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
+# Sitemap
+Sitemap: https://sportmoto.com.br/sitemap.xml

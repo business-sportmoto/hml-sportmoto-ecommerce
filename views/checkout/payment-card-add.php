@@ -1,0 +1,379 @@
+<?php
+// ════════════════════════════════════════════════════════
+// views/checkout/payment-card-add.php  —  v2 (hosted fields)
+//
+// Diferenças da v1:
+//   - Os <input> de número, validade e CVV foram REMOVIDOS
+//   - Cada um virou uma <div> vazia (hosted field container)
+//   - O SDK da Malga injeta iframes hospedados em hosted-fields.malga.io
+//     DENTRO dessas divs — os dados do cartão NUNCA tocam nosso DOM
+//   - Mantemos UX visual (preview do cartão, validações de UI) via eventos
+//     que o SDK emite (cardTypeChanged, validity)
+//   - O nome do titular continua sendo input normal (não é dado PCI-sensível
+//     e várias bandeiras nem validam ele, mas mantém a UX familiar)
+//   - Apelido segue normal também
+//
+// Compliance: este modelo se enquadra no PCI DSS SAQ-A (o nível mais baixo,
+// sem auditoria), porque dados de cartão não passam pelo nosso domínio.
+// ════════════════════════════════════════════════════════
+
+$malgaClientId = defined('MALGA_PUBLIC_CLIENT_ID') ? MALGA_PUBLIC_CLIENT_ID : '';
+$malgaApiKey   = defined('MALGA_PUBLIC_API_KEY')   ? MALGA_PUBLIC_API_KEY   : '';
+$malgaSandbox  = defined('MALGA_SANDBOX')          ? (bool) MALGA_SANDBOX   : true;
+
+
+?>
+teste
+<div class="checkout-section">
+  <div class="section-head">
+    <div class="section-head-back">
+      <a href="<?= BASE_URL ?>/checkout/payment" class="back-link">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        Voltar
+      </a>
+    </div>
+    <h2>
+      <span class="section-num">3</span>
+      Adicionar cartão de crédito
+    </h2>
+    <p class="section-sub">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round">
+        <rect x="3" y="11" width="18" height="11" rx="2"/>
+        <path d="M7 11V7a5 5 0 0110 0v4"/>
+      </svg>
+      Dados nunca trafegam pelo nosso servidor — vão direto pra Malga
+    </p>
+  </div>
+
+  <!-- Preview do cartão (atualizado pelos eventos do SDK) -->
+  <div class="card-preview-3d-wrap" style="margin-bottom:24px;">
+    <div class="credit-card-preview">
+      <div class="card-prev-brand" id="card-prev-brand">
+        <span class="card-prev-brand-placeholder">CARTÃO</span>
+      </div>
+      <div class="card-prev-number" id="card-prev-number">•••• •••• •••• ••••</div>
+      <div class="card-prev-bottom">
+        <div>
+          <div class="card-prev-label">Titular</div>
+          <div class="card-prev-holder" id="card-prev-holder">NOME COMPLETO</div>
+        </div>
+        <div>
+          <div class="card-prev-label">Validade</div>
+          <div class="card-prev-expiry" id="card-prev-expiry">MM/AA</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <form id="form-card-add" novalidate autocomplete="off">
+    <?= SecurityHelper::csrfField() ?>
+
+    <!-- Campos populados pelo JS após tokenização -->
+    <input type="hidden" name="gateway_token" id="gateway_token">
+    <input type="hidden" name="bandeira"      id="card-brand-value">
+    <input type="hidden" name="ultimos_4"     id="card-last4-value">
+
+    <!-- ════════ NÚMERO ════════ -->
+    <div class="form-group">
+      <label for="card-number">
+        Número do cartão
+        <span class="card-brand-detected" id="card-brand-detected"></span>
+      </label>
+      <!-- Container vazio: a Malga injeta um iframe AQUI -->
+      <div id="card-number" class="form-control hosted-field" data-placeholder="0000 0000 0000 0000"></div>
+      <span class="field-error" id="err-numero"></span>
+    </div>
+
+    <!-- ════════ NOME (input normal — não é dado PCI sensível) ════════ -->
+    <div class="form-group">
+      <label for="card-holder-name">Nome impresso no cartão</label>
+      <div id="card-holder-name" class="form-control hosted-field" data-placeholder="Como está no cartão"></div>
+      <span class="field-error" id="err-nome"></span>
+    </div>
+
+    <div class="form-row">
+      <!-- ════════ VALIDADE ════════ -->
+      <div class="form-group form-col">
+        <label for="card-expiration-date">Validade</label>
+        <div id="card-expiration-date" class="form-control hosted-field" data-placeholder="MM/AA"></div>
+        <span class="field-error" id="err-validade"></span>
+      </div>
+
+      <!-- ════════ CVV ════════ -->
+      <div class="form-group form-col">
+        <label for="card-cvv">
+          CVV
+          <span class="cvv-tip" title="3 dígitos no verso (4 no Amex)">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+          </span>
+        </label>
+        <div id="card-cvv" class="form-control hosted-field" data-placeholder="000"></div>
+        <span class="field-error" id="err-cvv"></span>
+      </div>
+    </div>
+
+    <!-- Apelido — input normal (não é PCI) -->
+    <div class="form-group">
+      <label for="apelido_cartao">
+        Apelido do cartão
+        <span class="label-opt">opcional · só você vê</span>
+      </label>
+      <input type="text" id="apelido_cartao" name="apelido"
+             class="form-control"
+             placeholder="Ex: Cartão do trabalho, Visa pessoal…"
+             maxlength="40" autocomplete="off">
+      <small class="form-help">Facilita identificar na próxima compra.</small>
+    </div>
+
+    <!-- Tornar padrão -->
+    <label class="save-card-toggle">
+      <input type="checkbox" name="padrao" value="1" id="chk-padrao">
+      <span class="save-card-toggle-box">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </span>
+      <span class="save-card-toggle-text">
+        <strong>Tornar cartão padrão</strong>
+        <small>Usado automaticamente nas próximas compras</small>
+      </span>
+    </label>
+
+    <!-- Trust row -->
+    <div class="card-add-trust">
+      <span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+        Dados criptografados pela Malga (PCI DSS Level 1)
+      </span>
+      <span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round">
+          <rect x="3" y="11" width="18" height="11" rx="2"/>
+          <path d="M7 11V7a5 5 0 0110 0v4"/>
+        </svg>
+        Nunca tocam nosso servidor
+      </span>
+    </div>
+
+    <div id="card-add-error" class="form-alert" style="display:none;"></div>
+
+    <button type="submit" class="btn btn-primary btn-full" id="btn-save-card" disabled>
+      <span class="btn-text">Salvar e usar este cartão</span>
+      <span class="btn-loading" style="display:none;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.5" stroke-linecap="round" style="animation:spin 1s linear infinite;">
+          <path d="M21 12a9 9 0 11-6.219-8.56"/>
+        </svg>
+        Validando cartão…
+      </span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2.5" stroke-linecap="round">
+        <line x1="5" y1="12" x2="19" y2="12"/>
+        <polyline points="12 5 19 12 12 19"/>
+      </svg>
+    </button>
+  </form>
+</div>
+
+<style>
+.hosted-field {
+  position: relative;
+  padding: 0;
+  min-height: 44px;
+  overflow: hidden;
+}
+.hosted-field iframe {
+  border: 0;
+  width: 100%;
+  height: 44px;
+  display: block;
+}
+.hosted-field:not(.is-ready)::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  color: var(--c-text-muted, #94a3b8);
+  font-size: 14px;
+  pointer-events: none;
+}
+.form-control.hosted-field.is-focused {
+  outline: 2px solid var(--c-primary, #0a66c2);
+  outline-offset: -1px;
+}
+.form-control.hosted-field.is-invalid {
+  border-color: var(--c-danger, #dc2626);
+}
+.card-add-trust {
+  display:flex; flex-wrap:wrap; gap:16px;
+  padding:10px 14px; background:var(--c-bg);
+  border-radius:8px; margin:8px 0 14px;
+}
+.card-add-trust span {
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:11.5px; font-weight:700; color:var(--c-text-muted);
+}
+.card-add-trust svg { stroke:var(--c-success); }
+.card-prev-label {
+  font-size:9px; font-weight:700; letter-spacing:.8px;
+  text-transform:uppercase; color:rgba(255,255,255,.6); margin-bottom:2px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.btn-loading { display:inline-flex; align-items:center; gap:8px; }
+#btn-save-card:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>
+<!-- ════ Substitua o bloco <style> no final de payment-card-add.php ════ -->
+<style>
+/*
+ * Hosted fields — containers que recebem iframes da Malga.
+ *
+ * Problema anterior: o ::before com position:absolute cobria o iframe,
+ * bloqueando cliques. Também: o próprio container bloqueava enquanto
+ * não tinha .is-ready.
+ *
+ * Solução:
+ *   - Antes de .is-ready: container tem pointer-events:none (não bloqueia
+ *     o iframe, que ainda não existe)
+ *   - ::before exibe o placeholder MAS com pointer-events:none
+ *   - Depois de .is-ready: pointer-events volta ao normal; ::before some
+ */
+
+.hosted-field {
+  position: relative;
+  padding: 0;
+  min-height: 44px;
+  overflow: visible;        /* era 'hidden' — cortava o iframe em alguns layouts */
+  pointer-events: auto;     /* garante que o iframe dentro recebe eventos */
+}
+
+/* Iframe injetado pelo SDK */
+.hosted-field iframe {
+  border: 0;
+  width: 100%;
+  height: 44px;
+  display: block;
+  position: relative;
+  z-index: 1;               /* fica acima do ::before */
+}
+
+/* Placeholder exibido enquanto os iframes ainda não carregaram */
+.hosted-field:not(.is-ready)::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  color: var(--c-text-muted, #94a3b8);
+  font-size: 14px;
+  pointer-events: none;     /* não intercepta cliques */
+  z-index: 0;               /* abaixo do iframe */
+}
+
+/* Quando pronto: remove o placeholder */
+.hosted-field.is-ready::before {
+  display: none;
+}
+
+/* Foco visual (adicionado pelo SDK via malga-hosted-field-focused) */
+.form-control.hosted-field.malga-hosted-field-focused,
+.form-control.hosted-field.is-focused {
+  outline: 2px solid var(--c-primary, #0a66c2);
+  outline-offset: -1px;
+}
+
+.form-control.hosted-field.is-invalid {
+  border-color: var(--c-danger, #dc2626);
+}
+
+.card-add-trust {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 10px 14px;
+  background: var(--c-bg);
+  border-radius: 8px;
+  margin: 8px 0 14px;
+}
+.card-add-trust span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--c-text-muted);
+}
+.card-add-trust svg { stroke: var(--c-success); }
+
+.card-prev-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,.6);
+  margin-bottom: 2px;
+}
+</style>
+<!--
+  Carrega o SDK Malga como ESM e a glue do checkout.
+  ATENÇÃO: type="module" é obrigatório porque o SDK só publica ESM/CJS.
+  O glue exporta uma função global SportMotoMalgaCheckout pra ser usada
+  pelos handlers jQuery existentes, sem forçar async/await no resto do site.
+-->
+<script type="module">
+  import { MalgaTokenization } from '<?= PerformanceHelper::assetVersion('vendor/malga/malga-tokenization-2.3.0.js') ?>';
+  window.__MalgaTokenization = MalgaTokenization;
+  window.dispatchEvent(new Event('malga-sdk-ready'));  
+</script>
+<script src="<?= PerformanceHelper::assetVersion('js/checkout-malga.js?v=1') ?>" defer></script>  
+<script>
+  // Boot do checkout (jQuery-friendly, sem async/await direto);
+  $(function() {
+    
+    
+    SportMotoMalgaCheckout.init({
+      clientId:  <?= json_encode($malgaClientId) ?>,
+      apiKey:    <?= json_encode($malgaApiKey) ?>,
+      sandbox:   <?= json_encode($malgaSandbox) ?>,
+      onReady:   function() { 
+        $('#btn-save-card').prop('disabled', false); 
+      },
+      onSubmit:  function(tokenData) {
+        console.log(tokenData);
+        
+        // tokenData: { tokenId, brand, last4 }
+        $('#gateway_token').val(tokenData.tokenId);
+        $('#card-brand-value').val(tokenData.brand || '');
+        $('#card-last4-value').val(tokenData.last4 || '');
+
+        // submit normal — o backend já aceita gateway_token na rota
+        // /checkout/payment/card/add (POST)
+        $.post('<?= BASE_URL ?>/checkout/payment/card/add', $('#form-card-add').serialize())
+          .done(function(resp) {
+            if (resp.ok) {
+              window.location.href = resp.redirect || '<?= BASE_URL ?>/checkout/payment';
+            } else {
+              SportMotoMalgaCheckout.showError(resp.msg || 'Não foi possível salvar o cartão.');
+            }
+          })
+          .fail(function() {
+            SportMotoMalgaCheckout.showError('Erro de comunicação. Tente novamente.');
+          });
+      },
+      onError: function(msg) {
+        SportMotoMalgaCheckout.showError('Error: '+msg);
+      }
+    });
+  });
+</script>

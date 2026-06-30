@@ -1,0 +1,74 @@
+# ============================================================================
+# .gitignore — sportmoto.com
+# Principio: versiona CODIGO. Nunca versiona SEGREDO, DADO de usuario ou LIXO.
+# Pareado com o deploy script do Ploi (que roda composer install no servidor).
+# ============================================================================
+
+# ── SEGREDOS (nunca vao pro Git — ficam no .env do servidor) ───────────────
+.env
+.env.*
+!.env.example
+# NOTA: config/database.php, config/env.php e config/config.php FORAM removidos
+# deste ignore de proposito. Apos mover os segredos pro .env, eles viraram
+# CODIGO (leem do .env) e PRECISAM ir pro deploy, senao a app nao sobe.
+
+# ── DEPENDENCIAS (instaladas no servidor via `composer install` no deploy) ──
+/vendor/
+/node_modules/
+
+# ── DADOS DE USUARIO (uploads dinamicos — nao sao codigo) ──────────────────
+/uploads/
+# NOTA: /assets/images/ NAO esta aqui — sao imagens do TEMA (logo, hero,
+# icones PWA, splash) e DEVEM ir pro Git. Uploads de usuario vao pra /uploads.
+
+# ── ARTEFATOS QUE NAO RODAM EM PRODUCAO (nao enviar pro servidor) ──────────
+/tests/
+/script/
+/preview/
+/public/
+/.claude/
+
+# Scripts utilitarios soltos / dumps / backups (vazamento se forem pro server)
+/db.backup
+/migration.sql
+/diagnose_webhook.php
+/gerar-icones-pwa.php
+/malga-status.sh
+
+# ── STORAGE / CACHE / LOGS (gerados em runtime) ────────────────────────────
+/storage/cache/*
+/storage/logs/*
+/storage/email-imports/errors/*
+/logs/
+/cache/
+*.log
+*.tmp
+
+# Mantem as pastas no Git mas ignora o conteudo (placeholder .gitkeep)
+!/storage/cache/.gitkeep
+!/storage/logs/.gitkeep
+
+# ── DUMPS DE BANCO (qualquer .sql/.backup solto) ───────────────────────────
+*.sql
+*.backup
+db.backup
+
+# ── AMBIENTE DEV / OS / IDE ────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.bat
+.vscode/
+.idea/
+*.code-workspace
+
+# Composer cache local (se houver)
+composer.phar
+
+# ============================================================================
+# CONFERIR APOS APLICAR:
+#   git check-ignore config/config.php   -> deve retornar VAZIO (vai pro Git)
+#   git check-ignore .env                 -> deve retornar .env  (ignorado)
+#   git check-ignore uploads/foto.jpg     -> deve retornar match (ignorado)
+#   git check-ignore assets/images/logo.svg -> deve retornar VAZIO (vai pro Git)
+#   git check-ignore vendor/              -> deve retornar match (ignorado)
+# ============================================================================
