@@ -23,7 +23,7 @@ define('META_WABA_ID', getenv('META_WABA_ID'));
 // gemini-2.5-pro: Mais avançado, pago
 
 // ─── Ambiente ────────────────────────────────────────────────
-define('APP_ENV',   'development'); // 'production' em produção. e homologation em homologação
+define('APP_ENV', getenv('APP_ENV') ?? 'development'); // 'production' em produção. e homologation em homologação
 define('APP_DEBUG', APP_ENV === 'development');
 
 // ─── Banco de dados ──────────────────────────────────────────
@@ -31,19 +31,20 @@ define('DB_HOST',    'localhost');
 define('DB_PORT',    '3306');
 
 if(APP_ENV == 'development'){ //Quando tiver no localhost
-    define('BASE_URL', 'https://ecommerce.dev');
-    define('DB_NAME',    'ecommerce_db');
-    define('DB_USER',    'root');
+    define('BASE_URL',   getenv('DEV_BASE_URL'));
+    define('DB_NAME',    getenv('DEV_DB_NAME'));
+    define('DB_USER',    getenv('DEV_DB_USER'));
     define('DB_PASS',    '');
 }elseif(APP_ENV == 'production'){ // //Site pronto
-    define('DB_NAME',    'ecommerce_db');
-    define('DB_USER',    'root');
+    define('BASE_URL',   getenv('PROD_BASE_URL'));
+    define('DB_NAME',    getenv('PROD_DB_NAME'));
+    define('DB_USER',    getenv('PROD_DB_USER'));
     define('DB_PASS',    '');
 }elseif(APP_ENV == 'homologation'){ // Processo de teste 
-    define('DB_NAME',    'homo_ecommerce_db');
-    define('DB_USER',    'homo_rsqj_sm');
-    define('DB_PASS',    'Azenha@24*homo');
-    define('BASE_URL', 'https://homo-v2.sportmoto.com.br');
+    define('BASE_URL',   getenv('HML_BASE_URL'));
+    define('DB_NAME',    getenv('HML_DB_NAME') );
+    define('DB_USER',    getenv('HML_DB_USER') );
+    define('DB_PASS',    getenv('HML_DB_PASS'));    
 }
 
 // ─── URL base ────────────────────────────────────────────────
@@ -88,7 +89,7 @@ define('MAIL_PORT',     587);
 define('MAIL_USER',     'noreply@sualoja.com.br');
 define('MAIL_PASS',     'senha_smtp');
 define('MAIL_FROM',     'noreply@sualoja.com.br');
-define('MAIL_FROM_NAME','Sua Loja');
+define('MAIL_FROM_NAME','Sportmoto');
 
 
 // ─── Tratamento de erros ─────────────────────────────────────
@@ -112,7 +113,7 @@ date_default_timezone_set('America/Sao_Paulo');
 // php -r "echo base64_encode(random_bytes(32));"
 // NUNCA commite essa chave em repositórios. Use variável de ambiente em produção.
 define('DOC_ENCRYPT_KEY', getenv('DOC_ENCRYPT_KEY') ?: 'TROQUE_ESTA_CHAVE_POR_UMA_GERADA');
-define('DOC_ENCRYPT_ALGO', 'AES-256-CBC');
+define('DOC_ENCRYPT_ALGO', getenv('DOC_ENCRYPT_ALGO'));
 define('DOC_MAX_SIZE',     10 * 1024 * 1024); // 10MB
 define('DOC_ALLOWED_MIME', ['image/jpeg', 'image/png', 'image/webp']);
 define('DOC_TOKEN_TTL',    1800); // 30 minutos para o link mobile
