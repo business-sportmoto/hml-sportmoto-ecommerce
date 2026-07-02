@@ -27,7 +27,7 @@ define('APP_ENV', getenv('APP_ENV') ?? 'development'); // 'production' em produ�
 define('APP_DEBUG', APP_ENV === 'development');
 
 // ─── Banco de dados ──────────────────────────────────────────
-define('DB_HOST',    'localhost');
+define('DB_HOST',    '127.0.0.1');
 define('DB_PORT',    '3306');
 
 if(APP_ENV == 'development'){ //Quando tiver no localhost
