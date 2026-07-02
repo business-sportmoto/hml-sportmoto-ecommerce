@@ -1,1214 +1,1008 @@
 <?php
-declare(strict_types=1);
+// admin/controllers/ProdutosController.php
 
-// ════════════════════════════════════════════════════════
-// app/services/PromocaoService.php
-//
-// Engine de avaliação de promoções automáticas.
-// Toda regra de negócio fica aqui — model e controller
-// só delegam.
-//
-// Fluxo principal:
-//   avaliarCarrinho() → lista de ResultadoPromocao
-//   aplicar()         → persiste no pedido confirmado
-// ════════════════════════════════════════════════════════
-
-class PromocaoService {
-
-    private Promocao $model;
-    private PDO      $db;
+class ProdutosController extends Controller {
 
     public function __construct() {
-        $this->model = new Promocao();
-        $this->db    = Database::getInstance()->getConnection();
+        AuthHelper::requireAdmin();
     }
 
-    // ══════════════════════════════════════════════════
-    // PREVIEW — chamado pelo carrinho para exibir ao cliente
-    // ══════════════════════════════════════════════════
+    // ── Listagem ──────────────────────────────────────────
+    public function index(): void {
+        $db      = Database::getInstance()->getConnection();
+        $page    = max(1, (int)($_GET['page'] ?? 1));
+        $perPage = 20;
+        $offset  = ($page - 1) * $perPage;
 
-    /**
-     * Gera cards de preview para exibição no carrinho.
-     * Diferente de avaliarCarrinho(): retorna tanto promoções
-     * já aplicadas quanto as "disponíveis" (itens elegíveis
-     * existem, mas quantidade ainda não atingiu nenhuma faixa)
-     * e sempre inclui a próxima faixa quando há uma acima.
-     *
-     * Cada card tem:
-     *   estado: 'aplicada' | 'proxima_faixa' | 'disponivel'
-     *   progresso_pct: 0-100 para a barra de progresso
-     *   msg: texto motivacional principal
-     */
-    public function previewCarrinho(
-        array  $itens,
-        float  $subtotal,
-        float  $frete,
-        ?int   $clienteId = null,
-        array  $contexto  = []
-    ): array {
-        // Garante que os itens têm marca_id e categoria_id preenchidos.
-        $itens = $this->enriquecerItens($itens);
+        $search = trim(SecurityHelper::sanitizeString($_GET['q'] ?? ''));
+        $marcaId = SecurityHelper::sanitizeInt(  $_GET['marca_id']     ?? 0);
+        $catId   = SecurityHelper::sanitizeInt(  $_GET['categoria_id'] ?? 0);
+        $status  = SecurityHelper::sanitizeString($_GET['status']       ?? '');
+        $estoque = SecurityHelper::sanitizeString($_GET['estoque']      ?? '');
+        $temVar  = $_GET['tem_variacao'] ?? '';
 
-        // Recalcula subtotal dos itens enriquecidos (preco × qtd).
-        // O subtotal externo pode ter sido calculado com keys diferentes
-        // (valor_unitario × quantidade via calcularTotais do Cart), gerando
-        // valor 0 e fazendo gatilhos de valor sempre dispararem ou nunca.
-        $subtotal  = $this->calcularSubtotalItens($itens);
-        $promocoes = $this->model->getAtivasAgora();
-        $cards     = [];
+        // Atributos dinâmicos: attr_{tipo_id} => valor
+        $atributosFiltros = [];
+        foreach ($_GET as $key => $val) {
+            if (!str_starts_with($key, 'attr_') || trim((string)$val) === '') continue;
+            $tipoId = (int)substr($key, 5);
+            if ($tipoId <= 0) continue;
 
-        foreach ($promocoes as $promo) {
-            // Valida restrições de data/hora e audiência
-            if (!$this->validarDiaHora($promo))                         continue;
-            if (!$this->validarAudiencia($promo, $clienteId, $contexto)) continue;
+            // Busca o papel deste tipo
+            $stmtPapel = $db->prepare(
+                "SELECT papel FROM atributo_tipos WHERE id = ? LIMIT 1"
+            );
+            $stmtPapel->execute([$tipoId]);
+            $papel = $stmtPapel->fetchColumn();
 
-            $card = match($promo['tipo']) {
-                'desconto_progressivo' => $this->cardProgressivo($promo, $itens, $frete),
-                'frete_gratis'         => $this->cardFreteGratis($promo, $subtotal, $frete),
-                'brinde'               => $this->cardBrinde($promo, $itens, $subtotal),
-                'compre_ganhe'         => $this->cardCompraGanhe($promo, $itens),
-                'cashback'             => $this->cardCashback($promo, $itens, $subtotal),
-                default                => null,
-            };
-
-            if ($card !== null) $cards[] = $card;
-        }
-
-        // Aplicadas primeiro, depois disponíveis/quase lá
-        usort($cards, function (array $a, array $b): int {
-            $ordem = ['aplicada' => 0, 'proxima_faixa' => 1, 'disponivel' => 2];
-            return ($ordem[$a['estado']] ?? 9) <=> ($ordem[$b['estado']] ?? 9);
-        });
-
-        return $cards;
-    }
-
-    // ── Cards por tipo ─────────────────────────────────
-
-    private function cardProgressivo(array $promo, array $itens, float $frete): ?array {
-        $cfg    = $promo['configuracao'];
-        $faixas = $cfg['faixas'] ?? [];
-        if (empty($faixas)) return null;
-
-        // Faixas ordenadas crescente (quantidade mínima)
-        usort($faixas, fn($a, $b) => $a['qtd'] <=> $b['qtd']);
-
-        $itensElegiveis = $this->filtrarItensElegiveis($promo, $itens);
-        // Sem nenhum item elegível no carrinho — promoção não é relevante
-        if (empty($itensElegiveis)) return null;
-
-        $modo       = $cfg['modo_contagem'] ?? 'unidades';
-        $tipoDesc   = $cfg['tipo_desconto'] ?? 'percentual';
-        $quantidade = $this->contarQuantidade($itensElegiveis, $modo);
-
-        // Encontra faixa atual (maior que o carrinho satisfaz)
-        $faixaAtual = null;
-        $idxAtual   = -1;
-        foreach ($faixas as $idx => $f) {
-            if ($quantidade >= $f['qtd']) { $faixaAtual = $f; $idxAtual = $idx; }
-        }
-
-        // Próxima faixa (a primeira acima da atual, ou a primeira se nenhuma ativa)
-        $proximaFaixa = null;
-        if ($idxAtual < count($faixas) - 1) {
-            $proximaFaixa = $faixas[$idxAtual + 1];
-        } elseif ($faixaAtual === null) {
-            $proximaFaixa = $faixas[0]; // ainda não atingiu nem a primeira
-        }
-
-        $subtotalElegivel = (float)array_sum(array_map(
-            fn($i) => $i['preco'] * $i['qtd'], $itensElegiveis
-        ));
-
-        // Desconto atual
-        $desconto = 0.0;
-        if ($faixaAtual !== null) {
-            $desconto = $tipoDesc === 'percentual'
-                ? round($subtotalElegivel * ($faixaAtual['pct'] / 100), 2)
-                : round(($faixaAtual['valor'] ?? 0) * $quantidade, 2);
-
-            if ($cfg['frete_gratis'] ?? false) {
-                $desconto += $frete;
+            if ($papel) {
+                $atributosFiltros[] = [
+                    'tipo_id' => $tipoId,
+                    'valor'   => SecurityHelper::sanitizeString($val),
+                    'papel'   => $papel, // 'variacao' | 'agrupador'
+                ];
             }
         }
 
-        // Estado
-        $estado = match(true) {
-            $faixaAtual !== null && $proximaFaixa !== null => 'proxima_faixa',
-            $faixaAtual !== null                           => 'aplicada',
-            default                                        => 'disponivel',
-        };
+        // ── WHERE base ────────────────────────────────────────
+        $where  = "p.deleted_at IS NULL";
+        $params = [];
 
-        // Progresso percentual — usa posição absoluta em relação ao
-        // alvo (próxima faixa), não relativa entre faixas.
-        // O cálculo anterior (atual-base)/(alvo-base) dava 0% quando
-        // o cliente estava exatamente no limiar de uma faixa (atual==base).
-        $progresso = 0;
-        if ($proximaFaixa !== null) {
-            $alvo      = (int)$proximaFaixa['qtd'];
-            $progresso = $alvo > 0
-                ? min(99, (int)($quantidade / $alvo * 100))
-                : 99;
-        } elseif ($faixaAtual !== null) {
-            $progresso = 100;
+        foreach ($atributosFiltros as $af) {
+            if ($af['papel'] === 'variacao') {
+                // Variações: busca em sku_atributos
+                $where   .= " AND EXISTS (
+                    SELECT 1 FROM produto_skus ps_a
+                    JOIN sku_atributos sa_a ON sa_a.sku_id = ps_a.id
+                    WHERE ps_a.produto_id       = p.id
+                    AND sa_a.atributo_tipo_id = ?
+                    AND sa_a.valor            = ?
+                    AND ps_a.ativo            = 1
+                )";
+            } else {
+                // Agrupadores: busca em produto_atributos_agrupadores
+                $where   .= " AND EXISTS (
+                    SELECT 1 FROM produto_atributos_agrupadores paa_f
+                    WHERE paa_f.produto_id       = p.id
+                    AND paa_f.atributo_tipo_id = ?
+                    AND paa_f.valor            = ?
+                )";
+            }
+            $params[] = $af['tipo_id'];
+            $params[] = $af['valor'];
         }
 
-        // Mensagem
-        $unidade = $modo === 'distintos' ? 'produto distinto' : 'unidade';
-        $plural  = fn(int $n, string $s) => $n === 1 ? "1 {$s}" : "{$n} {$s}s";
-
-        if ($estado === 'aplicada') {
-            $msg = $this->labelFaixa($faixaAtual, $tipoDesc) . ' de desconto aplicado!';
-        } elseif ($proximaFaixa !== null) {
-            $falta = $proximaFaixa['qtd'] - $quantidade;
-            $label = $this->labelFaixa($proximaFaixa, $tipoDesc);
-            $msg   = "Adicione mais {$plural($falta, $unidade)} e ganhe {$label}";
+        // Status — padrão mostra ativos
+        if ($status === 'ativo') {
+            $where .= " AND p.ativo = 1";
+        } elseif ($status === 'inativo') {
+            $where .= " AND p.ativo = 0";
+        } elseif ($status === 'destaque') {
+            $where .= " AND p.destaque = 1 AND p.ativo = 1";
         } else {
-            $falta = $faixas[0]['qtd'] - $quantidade;
-            $label = $this->labelFaixa($faixas[0], $tipoDesc);
-            $msg   = "Adicione {$plural($falta, $unidade)} e ganhe {$label}";
+            $where .= " AND p.ativo = 1";
         }
 
-        return [
-            'promocao_id'   => $promo['id'],
-            'nome'          => $promo['nome'],
-            'tipo'          => 'desconto_progressivo',
-            'estado'        => $estado,
-            'desconto'      => $desconto,
-            'desconto_fmt'  => $desconto > 0 ? PriceHelper::format($desconto) : null,
-            'faixa_atual'   => $faixaAtual,
-            'proxima_faixa' => $proximaFaixa,
-            'quantidade'    => $quantidade,
-            'falta_qtd'     => $proximaFaixa ? max(0, $proximaFaixa['qtd'] - $quantidade) : 0,
-            'progresso_pct' => $progresso,
-            'msg'           => $msg,
-        ];
-    }
-
-    private function cardFreteGratis(array $promo, float $subtotal, float $frete): ?array {
-        $cfg     = $promo['configuracao'];
-        $minimo  = (float)($cfg['valor_minimo'] ?? 0);
-
-        if ($frete <= 0) return null; // frete já grátis
-
-        $falta     = max(0, $minimo - $subtotal);
-        $aplicada  = $subtotal >= $minimo;
-        $progresso = $minimo > 0
-            ? min(99, (int)($subtotal / $minimo * 100))
-            : ($aplicada ? 100 : 0);
-
-        return [
-            'promocao_id'    => $promo['id'],
-            'nome'           => $promo['nome'],
-            'tipo'           => 'frete_gratis',
-            'estado'         => $aplicada ? 'aplicada' : 'disponivel',
-            'desconto'       => $aplicada ? $frete : 0.0,
-            'desconto_fmt'   => $aplicada ? PriceHelper::format($frete) : null,
-            'falta_valor'    => $falta,
-            'falta_valor_fmt'=> $falta > 0 ? PriceHelper::format($falta) : null,
-            'progresso_pct'  => $aplicada ? 100 : $progresso,
-            'msg'            => $aplicada
-                ? 'Frete grátis aplicado!'
-                : 'Falta ' . PriceHelper::format($falta) . ' para frete grátis',
-        ];
-    }
-
-    private function labelFaixa(array $faixa, string $tipo): string {
-        if ($tipo === 'percentual') {
-            return number_format((float)$faixa['pct'], 1, ',', '') . '%';
+        // Busca textual
+        if ($search !== '') {
+            $like     = '%' . $search . '%';
+            $where   .= " AND (
+                p.nome      LIKE ?
+                OR p.sku_legado LIKE ?
+                OR EXISTS (
+                    SELECT 1 FROM produto_skus ps_s
+                    WHERE ps_s.produto_id = p.id
+                    AND ps_s.sku LIKE ?
+                    AND ps_s.ativo = 1
+                )
+            )";
+            $params[] = $like;
+            $params[] = $like;
+            $params[] = $like;
         }
-        return 'R$ ' . number_format((float)($faixa['valor'] ?? 0), 2, ',', '.');
+
+        // Marca
+        if ($marcaId > 0) {
+            $where   .= " AND p.marca_id = ?";
+            $params[] = $marcaId;
+        }
+
+        // Categoria — usa produto_categorias
+        if ($catId > 0) {
+            $where   .= " AND EXISTS (
+                SELECT 1 FROM produto_categorias pc_f
+                WHERE pc_f.produto_id = p.id
+                AND pc_f.categoria_id = ?
+            )";
+            $params[] = $catId;
+        }
+
+        // Estoque
+        if ($estoque === 'ok') {
+            $where .= " AND p.estoque_total > COALESCE(p.estoque_minimo, 0)";
+        } elseif ($estoque === 'baixo') {
+            $where .= " AND p.estoque_total > 0
+                        AND p.estoque_total <= COALESCE(p.estoque_minimo, 0)";
+        } elseif ($estoque === 'zero') {
+            $where .= " AND p.estoque_total = 0";
+        }
+
+        // Tipo
+        if ($temVar !== '') {
+            $where   .= " AND p.tem_variacao = ?";
+            $params[] = (int)$temVar;
+        }
+
+
+        // ── Count ─────────────────────────────────────────────
+        $stmtCount = $db->prepare(
+            "SELECT COUNT(DISTINCT p.id)
+            FROM produtos p
+            WHERE {$where}"
+        );
+        $stmtCount->execute($params);
+        $total = (int)$stmtCount->fetchColumn();
+
+        // ── Busca paginada ────────────────────────────────────
+        $stmt = $db->prepare(
+            "SELECT p.id, p.nome, p.slug, p.sku_legado,
+                    p.preco, p.preco_promo,
+                    p.estoque_total, p.estoque_minimo,
+                    p.ativo, p.destaque, p.lancamento,
+                    p.tem_variacao, p.criado_em,
+                    pi.arquivo AS imagem,
+                    c.nome     AS categoria_nome,
+                    m.nome     AS marca_nome
+            FROM produtos p
+            LEFT JOIN produto_imagens pi
+                    ON pi.produto_id = p.id AND pi.principal = 1
+            LEFT JOIN categorias c ON c.id = p.categoria_id
+            LEFT JOIN marcas m     ON m.id = p.marca_id
+            WHERE {$where}
+            ORDER BY p.criado_em DESC
+            LIMIT ? OFFSET ?"
+        );
+        $stmt->execute(array_merge($params, [$perPage, $offset]));
+        $produtos = $stmt->fetchAll();
+
+        // ── Suporte para filtros da view ──────────────────────
+        $marcas = $db->query(
+            "SELECT id, nome FROM marcas WHERE ativo=1 ORDER BY nome ASC"
+        )->fetchAll();
+
+        $categorias = $db->query(
+            "SELECT id, nome, parent_id FROM categorias WHERE ativo=1
+            ORDER BY parent_id ASC, nome ASC"
+        )->fetchAll();
+
+        // Só atributos de variação que têm valores cadastrados
+        $atributos = $db->query(
+            "SELECT at.id, at.nome, at.papel,
+                    GROUP_CONCAT(av.valor ORDER BY av.ordem SEPARATOR '||') AS valores
+            FROM atributo_tipos at
+            JOIN atributo_valores av ON av.atributo_tipo_id = at.id
+            GROUP BY at.id
+            ORDER BY at.papel ASC, at.ordenacao ASC, at.nome ASC"
+        )->fetchAll();
+
+        
+
+        // Monta filtros ativos para exibição de tags
+        $filtrosAtivos = array_filter([
+            'q'            => $search,
+            'marca_id'     => $marcaId   ?: '',
+            'categoria_id' => $catId     ?: '',
+            'status'       => $status,
+            'estoque'      => $estoque,
+            'tem_variacao' => $temVar,
+            ...(array_map(fn($v) => $v, $atributosFiltros)),
+        ]);
+
+        $this->render('produtos/index', [
+            'produtos'      => $produtos,
+            'total'         => $total,
+            'page'          => $page,
+            'perPage'       => $perPage,
+            'marcas'        => $marcas,
+            'categorias'    => $categorias,
+            'atributos'     => $atributos,
+            'filtrosAtivos' => $filtrosAtivos,
+            'totalFiltros'  => count($filtrosAtivos),
+        ], 'admin');
+    }
+    
+
+    // ── Formulário criar ──────────────────────────────────
+    public function criar(): void {
+        $data = $this->getFormData();
+        $this->render('produtos/form', array_merge($data, [
+            'produto' => null,
+            'titulo'  => 'Novo produto',
+            'imagens' => [],
+            'skus'    => [],
+            'atributos_tipos' => $this->getAtributosTipos(),
+        ]), 'admin');
     }
 
-    // ══════════════════════════════════════════════════
-    // AVALIAÇÃO — chamada pelo carrinho/checkout
-    // ══════════════════════════════════════════════════
+    // ── Formulário editar ─────────────────────────────────
+    public function editar(int $id): void {
+        $db   = Database::getInstance()->getConnection();
+        $stmt = $db->prepare("SELECT * FROM produtos WHERE id = ? AND deleted_at IS NULL LIMIT 1");
+        $stmt->execute([$id]);
+        $produto = $stmt->fetch();
 
-    /**
-     * Avalia todas as promoções ativas contra o carrinho e retorna
-     * uma lista de ResultadoPromocao ordenada por prioridade.
-     *
-     * Lógica de acumulação:
-     *   - promoções são avaliadas em ordem de prioridade (maior primeiro)
-     *   - se uma promoção não é acumulavel, nenhuma de menor prioridade
-     *     será incluída no resultado — a não ser que a próxima também
-     *     seja acumulavel (ela se declara compatível com quem veio antes)
-     *
-     * @param array $itens      formato: [{produto_id, preco, qtd, categoria_id,
-     *                                     marca_id, caracteristicas[], em_promocao}]
-     * @param float $subtotal   valor total dos itens antes de descontos
-     * @param float $frete      valor do frete calculado
-     * @param ?int  $clienteId
-     * @param array $contexto   dados extras: ['primeira_compra', 'score', ...]
-     */
-    public function avaliarCarrinho(
-        array  $itens,
-        float  $subtotal,
-        float  $frete,
-        ?int   $clienteId = null,
-        array  $contexto  = []
-    ): array {
-        $itens             = $this->enriquecerItens($itens);
-        $subtotal          = $this->calcularSubtotalItens($itens); // preco × qtd real
-        $promocoes         = $this->model->getAtivasAgora();
-        $resultados        = [];
-        $bloqueado         = false;
-        $descontoAcumulado = 0.0;
+        if (!$produto) {
+            Session::flash('error', 'Produto não encontrado.');
+            $this->redirect(BASE_URL . '/admin/produtos');
+        }
 
-        foreach ($promocoes as $promo) {
-            if ($bloqueado) break;
+        // Imagens
+        $stmt = $db->prepare(
+            "SELECT * FROM produto_imagens WHERE produto_id = ? ORDER BY ordem ASC"
+        );
+        $stmt->execute([$id]);
+        $imagens = $stmt->fetchAll();
 
-            $resultado = $this->avaliarUma(
-                $promo, $itens, $subtotal, $frete, $clienteId, $contexto, $descontoAcumulado
-            );
-            if ($resultado === null) continue;
+        // SKUs com atributos
+        // Dentro do try/catch, após salvar o produto principal
+        // Substitua todo o bloco de SKUs por:
 
-            $resultados[]       = $resultado;
-            $descontoAcumulado += ($resultado['desconto_produto'] ?? 0.0)
-                                + ($resultado['desconto_frete']   ?? 0.0);
+        // admin/controllers/ProdutosController.php — método editar()
+        // Substitua a query de SKUs por:
 
-            if (!$promo['acumulavel']) {
-                $bloqueado = true;
+        $stmt = $db->prepare(
+            "SELECT ps.*,
+                    ps.preco_promo,
+                    GROUP_CONCAT(
+                        CONCAT(sa.atributo_tipo_id, ':', sa.valor)
+                        ORDER BY at.ordenacao SEPARATOR '||'
+                    ) AS atributos_raw
+            FROM produto_skus ps
+            LEFT JOIN sku_atributos sa ON sa.sku_id = ps.id
+            LEFT JOIN atributo_tipos at ON at.id = sa.atributo_tipo_id
+            WHERE ps.produto_id = ?
+            GROUP BY ps.id
+            ORDER BY ps.id ASC"
+        );
+        $stmt->execute([$id]);
+        $skusRaw = $stmt->fetchAll();
+
+        // Normaliza os atributos em array [tipo_id => valor]
+        $skus = array_map(function ($sku) {
+            $attrs = [];
+            if (!empty($sku['atributos_raw'])) {
+                foreach (explode('||', $sku['atributos_raw']) as $par) {
+                    [$tipoId, $valor] = explode(':', $par, 2);
+                    $attrs[(int)$tipoId] = $valor;
+                }
             }
+            $sku['atributos_map'] = $attrs;
+            return $sku;
+        }, $skusRaw);
+        // Atributos agrupadores do produto
+        $stmt = $db->prepare(
+            "SELECT paa.*, at.nome AS tipo_nome, at.slug AS tipo_slug,
+                    at.tipo_display
+             FROM produto_atributos_agrupadores paa
+             JOIN atributo_tipos at ON at.id = paa.atributo_tipo_id
+             WHERE paa.produto_id = ?
+             ORDER BY at.ordenacao"
+        );
+        $stmt->execute([$id]);
+        $agrupadores = $stmt->fetchAll();
+
+        $stmt = $db->prepare(
+            "SELECT pc.caracteristica_id, pc.valor,
+                    c.nome, c.tipo, c.unidade, c.opcoes,
+                    c.placeholder, c.obrigatorio,
+                    cc.obrigatorio AS cat_obrigatorio,
+                    cc.ordem       AS cat_ordem
+            FROM produto_caracteristicas pc
+            JOIN caracteristicas c ON c.id = pc.caracteristica_id
+            LEFT JOIN categoria_caracteristicas cc
+                    ON cc.caracteristica_id = pc.caracteristica_id
+                AND cc.categoria_id = ?
+            WHERE pc.produto_id = ?
+            ORDER BY cc.ordem ASC, c.ordem ASC"
+        );
+        $stmt->execute([$produto['categoria_id'], $id]);
+        $valoresCaracteristicas = $stmt->fetchAll();
+
+        // Converte para mapa [id => valor]
+        $mapaCaracteristicas = [];
+        foreach ($valoresCaracteristicas as $vc) {
+            $mapaCaracteristicas[$vc['caracteristica_id']] = $vc['valor'];
         }
 
-        return $resultados;
+        // Busca as características disponíveis da categoria
+        // Busca características de TODAS as categorias do produto
+        $stmt = $db->prepare(
+            "SELECT DISTINCT c.*, cc.obrigatorio AS cat_obrigatorio, cc.ordem AS cat_ordem
+            FROM caracteristicas c
+            JOIN categoria_caracteristicas cc ON cc.caracteristica_id = c.id
+            JOIN produto_categorias pc ON pc.categoria_id = cc.categoria_id
+            WHERE pc.produto_id = ? AND c.ativo = 1
+            ORDER BY cc.ordem ASC, c.ordem ASC"
+        );
+        $stmt->execute([$id]);
+        $caracteristicasCategoria = $stmt->fetchAll();
+
+        // No método editar() — busca categorias do produto:
+        $stmt = $db->prepare(
+            "SELECT categoria_id, principal
+            FROM produto_categorias
+            WHERE produto_id = ?
+            ORDER BY principal DESC"
+        );
+        $stmt->execute([$id]);
+        $produtoCategorias = $stmt->fetchAll();
+        // Mapa [categoria_id => principal]
+        $mapaCategorias = array_column($produtoCategorias, 'principal', 'categoria_id');
+
+        $data = $this->getFormData();
+        $this->render('produtos/form', array_merge($data, [
+            'produto'           => $produto,
+            'titulo'            => 'Editar: ' . $produto['nome'],
+            'imagens'           => $imagens,
+            'skus'              => $skus,
+            'agrupadores'       => $agrupadores,
+            'atributos_tipos'   => $this->getAtributosTipos(),
+            'mapaCategorias'    => $mapaCategorias,
+            'caracteristicasCategoria' => $caracteristicasCategoria,
+            'mapaCaracteristicas'      => $mapaCaracteristicas,
+            
+        ]), 'admin');
     }
 
-    /**
-     * Calcula o totais de desconto agregando todos os resultados.
-     * Retorna: ['desconto_produto', 'desconto_frete', 'brindes', 'total_desconto']
-     */
-    public function calcularTotais(array $resultados): array {
-        $descontoProduto = 0.0;
-        $descontoFrete   = 0.0;
-        $brindes         = [];
+    // ── Salvar ────────────────────────────────────────────
+    public function salvar(): void {
+        $this->verifyCsrf();
 
-        foreach ($resultados as $r) {
-            $descontoProduto += $r['desconto_produto'];
-            $descontoFrete   += $r['desconto_frete'];
-            foreach ($r['brindes'] as $b) {
-                $brindes[] = $b;
-            }
+        $id          = SecurityHelper::sanitizeInt($_POST['id']              ?? 0);
+        $nome        = SecurityHelper::sanitizeString($_POST['nome']         ?? '');
+        $catId       = SecurityHelper::sanitizeInt($_POST['categoria_id']    ?? 0);
+        $marcaId     = SecurityHelper::sanitizeInt($_POST['marca_id']        ?? 0);
+        $familiaId   = SecurityHelper::sanitizeInt($_POST['familia_id']      ?? 0);
+        $preco       = (float)str_replace(',', '.', $_POST['preco']          ?? 0);
+        $precoPromo  = !empty($_POST['preco_promo']) && (float)$_POST['preco_promo'] > 0
+                    ? (float)str_replace(',', '.', $_POST['preco_promo'])
+                    : null;
+        $promoIn     = !empty($_POST['promo_inicio']) ? $_POST['promo_inicio'] : null;
+        $promoFim    = !empty($_POST['promo_fim'])    ? $_POST['promo_fim']    : null;
+        // $estoque     = SecurityHelper::sanitizeInt($_POST['estoque_total']   ?? 0);
+        $estoqueMin  = SecurityHelper::sanitizeInt($_POST['estoque_minimo']  ?? 0);
+        $peso        = !empty($_POST['peso_kg'])         ? (float)$_POST['peso_kg']         : null;
+        $comprimento = !empty($_POST['comprimento_cm'])  ? (float)$_POST['comprimento_cm']  : null;
+        $largura     = !empty($_POST['largura_cm'])       ? (float)$_POST['largura_cm']      : null;
+        $altura      = !empty($_POST['altura_cm'])        ? (float)$_POST['altura_cm']       : null;
+        $descCurta   = $_POST['descricao_curta']  ?? '';
+        $descricao   = $_POST['descricao']        ?? '';
+        $metaTitle   = SecurityHelper::sanitizeString($_POST['meta_title']        ?? '');
+        $metaDesc    = SecurityHelper::sanitizeString($_POST['meta_description']  ?? '');
+        $metaKw      = SecurityHelper::sanitizeString($_POST['meta_keywords']     ?? '');
+        $googleCat   = SecurityHelper::sanitizeString($_POST['google_category']   ?? '');
+        $skuLegado   = SecurityHelper::sanitizeString($_POST['sku_legado']        ?? '');
+        $ativo       = isset($_POST['ativo'])      && $_POST['ativo']      == '1' ? 1 : 0;
+        $destaque    = isset($_POST['destaque'])   && $_POST['destaque']   == '1' ? 1 : 0;
+        $lancamento  = isset($_POST['lancamento']) && $_POST['lancamento'] == '1' ? 1 : 0;
+        $temVar      = isset($_POST['tem_variacao']) ? 1 : 0;
+
+        $caracteristicas    = $_POST['caracteristicas'] ?? [];
+        $categoriasPost     = $_POST['categorias'] ?? [];
+
+        // Após extrair as variáveis, antes do beginTransaction():
+
+        // ── Validações ────────────────────────────────────────────
+
+        if (empty($nome)) {
+            $this->json(['ok' => false, 'msg' => 'Nome é obrigatório.']);
         }
 
-        return [
-            'desconto_produto' => round($descontoProduto, 2),
-            'desconto_frete'   => round($descontoFrete,   2),
-            'brindes'          => $brindes,
-            'total_desconto'   => round($descontoProduto + $descontoFrete, 2),
-        ];
-    }
-
-    // ══════════════════════════════════════════════════
-    // PERSISTÊNCIA — chamada após confirmação do pedido
-    // ══════════════════════════════════════════════════
-
-    /**
-     * Registra as promoções aplicadas. Deve ser chamado dentro da
-     * mesma transação do processo de criação do pedido.
-     * (sem beginTransaction() próprio — mesmo padrão do CouponService)
-     */
-    public function aplicar(array $resultados, int $pedidoId, ?int $clienteId): void {
-        foreach ($resultados as $r) {
-            $tipo = 'desconto';
-            if ($r['desconto_frete'] > 0 && $r['desconto_produto'] === 0.0) {
-                $tipo = 'frete_gratis';
-            } elseif (!empty($r['brindes'])) {
-                $tipo = 'brinde';
-            }
-
-            $this->model->registrarAplicacao(
-                promocaoId:      $r['promocao_id'],
-                pedidoId:        $pedidoId,
-                clienteId:       $clienteId,
-                tipoBeneficio:   $tipo,
-                valorDesconto:   $r['desconto_produto'] + $r['desconto_frete'],
-                produtoBrindeId: $r['brindes'][0]['produto_id'] ?? null,
-                qtdBrinde:       $r['brindes'][0]['quantidade'] ?? 0,
-                detalhes:        [
-                    'desconto_produto'       => $r['desconto_produto'],
-                    'desconto_frete'         => $r['desconto_frete'],
-                    'brindes'                => $r['brindes'],
-                    'faixa_aplicada'         => $r['faixa_aplicada'] ?? null,
-                    'itens_elegiveis'        => $r['itens_elegiveis'] ?? [],
-                    'itens_desconto'         => $r['itens_desconto']  ?? [],
-                    // campos de cashback — lidos por CashbackService
-                    'cashback_pct'           => $r['cashback_pct']           ?? null,
-                    'cashback_base'          => $r['cashback_base']          ?? null,
-                    'cashback_valor'         => $r['cashback_valor']         ?? null,
-                    'cashback_validade_dias' => $r['cashback_validade_dias'] ?? null,
-                ],
-            );
-        }
-    }
-
-    // ══════════════════════════════════════════════════
-    // AVALIAÇÃO INDIVIDUAL (privado)
-    // ══════════════════════════════════════════════════
-
-    /**
-     * Avalia uma promoção específica contra o carrinho.
-     * Retorna null se o carrinho não é elegível.
-     * Retorna array de resultado se elegível.
-     */
-    private function avaliarUma(
-        array  $promo,
-        array  $itens,
-        float  $subtotal,
-        float  $frete,
-        ?int   $clienteId,
-        array  $contexto,
-        float  $descontoAcumulado = 0.0  // descontos já aplicados por promoções anteriores
-    ): ?array {
-        // ── 1. Restrições temporais ────────────────────
-        if (!$this->validarDiaHora($promo)) return null;
-
-        // ── 2. Restrições de audiência ─────────────────
-        if (!$this->validarAudiencia($promo, $clienteId, $contexto)) return null;
-
-        // ── 3. Condições do carrinho ───────────────────
-        if ($promo['valor_minimo_carrinho'] !== null && $subtotal < $promo['valor_minimo_carrinho']) {
-            return null;
-        }
-        if ($promo['qtd_minima_itens'] !== null) {
-            $totalItens = $this->somarQtd($itens);
-            if ($totalItens < $promo['qtd_minima_itens']) return null;
+        // Preço zerado só é permitido se tem variações (preço vem dos SKUs)
+        if (!$temVar && $preco <= 0) {
+            $this->json([
+                'ok'  => false,
+                'msg' => 'O preço do produto não pode ser zero. Informe um valor válido.',
+            ]);
         }
 
-        // ── 4. Filtra itens elegíveis ──────────────────
-        $itensElegiveis = $this->filtrarItensElegiveis($promo, $itens);
-        if (empty($itensElegiveis)) return null;
-
-        // ── 5. Avalia por tipo ─────────────────────────
-        return match($promo['tipo']) {
-            'desconto_progressivo' => $this->avaliarProgressivo($promo, $itensElegiveis, $frete),
-            'frete_gratis'         => $this->avaliarFreteGratis($promo, $itensElegiveis, $subtotal, $frete),
-            'brinde'               => $this->avaliarBrinde($promo, $itensElegiveis, $subtotal),
-            'compre_ganhe'         => $this->avaliarCompraGanhe($promo, $itensElegiveis),
-            'cashback'             => $this->avaliarCashback($promo, $itensElegiveis, $subtotal, $descontoAcumulado),
-            default                => null,
-        };
-    }
-
-    // ── Desconto progressivo ───────────────────────────
-
-    private function avaliarProgressivo(array $promo, array $itensElegiveis, float $frete): ?array {
-        $cfg = $promo['configuracao'];
-        $faixas = $cfg['faixas'] ?? [];
-
-        if (empty($faixas)) return null;
-
-        // Ordena faixas decrescente pra pegar a maior que se aplica
-        usort($faixas, fn($a, $b) => $b['qtd'] <=> $a['qtd']);
-
-        // Conta a quantidade segundo o modo configurado
-        $modoContagem = $cfg['modo_contagem'] ?? 'unidades';
-        $quantidade   = $this->contarQuantidade($itensElegiveis, $modoContagem);
-
-        // Encontra a faixa que se aplica (maior qtd que o carrinho satisfaz)
-        $faixaAplicada = null;
-        foreach ($faixas as $faixa) {
-            if ($quantidade >= $faixa['qtd']) {
-                $faixaAplicada = $faixa;
-                break;
-            }
+        // Preço promocional não pode ser maior ou igual ao preço regular
+        if ($precoPromo !== null && $precoPromo >= $preco) {
+            $this->json([
+                'ok'  => false,
+                'msg' => 'O preço promocional deve ser menor que o preço regular.',
+            ]);
         }
 
-        if ($faixaAplicada === null) return null; // quantidade insuficiente pra qualquer faixa
-
-        // Calcula desconto — incide APENAS nos itens elegíveis
-        $subtotalElegivel = array_sum(array_map(
-            fn($i) => $i['preco'] * $i['qtd'],
-            $itensElegiveis
-        ));
-
-        $tipoDesc = $cfg['tipo_desconto'] ?? 'percentual';
-        $desconto = match($tipoDesc) {
-            'percentual'    => round($subtotalElegivel * ($faixaAplicada['pct'] / 100), 2),
-            'fixo_por_item' => round($faixaAplicada['valor'] * $quantidade, 2),
-            default         => 0.0,
-        };
-
-        $descontoFrete = ($cfg['frete_gratis'] ?? false) ? $frete : 0.0;
-
-        return [
-            'promocao_id'      => $promo['id'],
-            'promocao_nome'    => $promo['nome'],
-            'tipo'             => 'desconto_progressivo',
-            'desconto_produto' => $desconto,
-            'desconto_frete'   => $descontoFrete,
-            'brindes'          => [],
-            'faixa_aplicada'   => $faixaAplicada,
-            'quantidade_contada' => $quantidade,
-            'itens_elegiveis'  => array_column($itensElegiveis, 'produto_id'),
-            'msg'              => $this->msgProgressivo($faixaAplicada, $tipoDesc, $quantidade),
-        ];
-    }
-
-    private function contarQuantidade(array $itensElegiveis, string $modo): int {
-        return match($modo) {
-            // Total de unidades (2x o mesmo = 2)
-            'unidades'  => $this->somarQtd($itensElegiveis),
-            // Itens distintos (2 produtos diferentes = 2, mesmo que com qtd > 1 cada)
-            'distintos' => count($itensElegiveis),
-            default     => $this->somarQtd($itensElegiveis),
-        };
-    }
-
-    private function msgProgressivo(array $faixa, string $tipo, int $qtd): string {
-        if ($tipo === 'percentual') {
-            return "{$faixa['pct']}% de desconto ({$qtd} itens elegíveis)";
-        }
-        return "Desconto de R$ " . number_format($faixa['valor'], 2, ',', '.') . " por item";
-    }
-
-    // ── Frete grátis automático ────────────────────────
-
-    private function avaliarFreteGratis(
-        array $promo, array $itensElegiveis, float $subtotal, float $frete
-    ): ?array {
-        $cfg = $promo['configuracao'];
-        $minimo = (float)($cfg['valor_minimo'] ?? 0);
-
-        if ($subtotal < $minimo) return null;
-        if ($frete <= 0) return null; // já grátis, sem sentido aplicar
-
-        return [
-            'promocao_id'      => $promo['id'],
-            'promocao_nome'    => $promo['nome'],
-            'tipo'             => 'frete_gratis',
-            'desconto_produto' => 0.0,
-            'desconto_frete'   => $frete,
-            'brindes'          => [],
-            'faixa_aplicada'   => null,
-            'itens_elegiveis'  => [],
-            'msg'              => 'Frete grátis',
-        ];
-    }
-
-    // ── Brinde ─────────────────────────────────────────
-
-    /**
-     * Avalia elegibilidade do brinde e retorna resultado para o checkout.
-     * Sem estoque no produto brinde → retorna null (bloqueia a promoção).
-     * desconto_produto = preço do brinde × qtd (será coberto como desconto
-     * no pedido — o item entra com o valor real, zerando o custo ao cliente).
-     */
-    private function avaliarBrinde(array $promo, array $itensElegiveis, float $subtotal): ?array {
-        $cfg             = $promo['configuracao'];
-        $produtoBrindeId = (int)($cfg['produto_brinde_id'] ?? 0);
-        $qtdBrinde       = max(1, (int)($cfg['quantidade_brinde'] ?? 1));
-
-        if (!$produtoBrindeId) return null;
-
-        // Sem estoque → bloqueia a promoção inteira
-        if (!$this->brindeTemEstoque($produtoBrindeId)) return null;
-
-        // Verifica gatilho
-        if (!$this->gatilhoBrindeAtingido($cfg, $itensElegiveis, $subtotal)) return null;
-
-        $produto = $this->getBrindeProduto($produtoBrindeId);
-        if (!$produto) return null;
-
-        $precoBrinde   = (float)$produto['preco'];
-        $totalDesconto = round($precoBrinde * $qtdBrinde, 2);
-
-        return [
-            'promocao_id'      => $promo['id'],
-            'promocao_nome'    => $promo['nome'],
-            'tipo'             => 'brinde',
-            'desconto_produto' => $totalDesconto,
-            'desconto_frete'   => 0.0,
-            'brindes'          => [[
-                'produto_id' => $produtoBrindeId,
-                'nome'       => $produto['nome'],
-                'slug'       => $produto['slug'],
-                'preco'      => $precoBrinde,
-                'quantidade' => $qtdBrinde,
-                'imagem'     => $produto['imagem'],
-            ]],
-            'faixa_aplicada'   => null,
-            'itens_elegiveis'  => [],
-            'msg'              => '🎁 Brinde: ' . $produto['nome'],
-        ];
-    }
-
-    /**
-     * Card de preview do brinde para o carrinho.
-     * Retorna card mesmo quando ainda não atingido (estado='disponivel')
-     * mostrando o progresso até o gatilho.
-     */
-    private function cardBrinde(array $promo, array $itens, float $subtotal): ?array {
-        $cfg             = $promo['configuracao'];
-        $produtoBrindeId = (int)($cfg['produto_brinde_id'] ?? 0);
-        $qtdBrinde       = max(1, (int)($cfg['quantidade_brinde'] ?? 1));
-
-        if (!$produtoBrindeId) return null;
-        if (!$this->brindeTemEstoque($produtoBrindeId)) return null;
-
-        $produto = $this->getBrindeProduto($produtoBrindeId);
-        if (!$produto) return null;
-
-        $itensElegiveis = $this->filtrarItensElegiveis($promo, $itens);
-        $gatilho        = $cfg['gatilho'] ?? 'valor';
-        $atingido       = $this->gatilhoBrindeAtingido($cfg, $itensElegiveis, $subtotal);
-
-        // Calcula progresso e mensagem
-        [$progresso, $msg] = $this->progressoBrinde($cfg, $gatilho, $itensElegiveis, $subtotal, $atingido, $produto['nome']);
-
-        $precoBrinde = (float)$produto['preco'];
-        $imagemUrl   = !empty($produto['imagem'])
-            ? (defined('UPLOAD_URL') ? UPLOAD_URL : BASE_URL . '/uploads')
-              . '/produtos/' . $produto['imagem']
-            : null;
-
-        return [
-            'promocao_id'    => $promo['id'],
-            'promocao_nome'  => $promo['nome'],
-            'tipo'           => 'brinde',
-            'estado'         => $atingido ? 'aplicada' : 'disponivel',
-            'desconto'       => $atingido ? round($precoBrinde * $qtdBrinde, 2) : 0.0,
-            'desconto_fmt'   => $atingido ? PriceHelper::format(round($precoBrinde * $qtdBrinde, 2)) : null,
-            'brindes'        => $atingido ? [[
-                'produto_id' => $produtoBrindeId,
-                'nome'       => $produto['nome'],
-                'slug'       => $produto['slug'] ?? '',
-                'quantidade' => $qtdBrinde,
-                'preco'      => $precoBrinde,
-                'preco_fmt'  => PriceHelper::format($precoBrinde),
-                'imagem_url' => $imagemUrl,
-            ]] : [],
-            'progresso_pct'  => $progresso,
-            'msg'            => $msg,
-            'teste'=>'testing'
-        ];
-    }
-
-    private function gatilhoBrindeAtingido(array $cfg, array $itensElegiveis, float $subtotal): bool {
-        $gatilho = $cfg['gatilho'] ?? 'valor';
-
-        $valorOk = true;
-        $qtdOk   = true;
-
-        if (in_array($gatilho, ['valor', 'ambos'], true)) {
-            $valorMin = (float)($cfg['valor_minimo'] ?? 0);
-
-            // Usa subtotal APENAS dos itens elegíveis do escopo.
-            // Sem isso, um brinde de "marca ASX ≥ R$200" dispara pelo
-            // valor total do carrinho, incluindo produtos de outras marcas.
-            $subtotalElegivel = $this->calcularSubtotalItens($itensElegiveis);
-            $valorOk          = $subtotalElegivel >= $valorMin;
-        }
-
-        if (in_array($gatilho, ['quantidade', 'ambos'], true)) {
-            $qtdMin = (int)($cfg['qtd_minima'] ?? 1);
-            $modo   = $cfg['modo_contagem'] ?? 'unidades';
-            $qtdOk  = $this->contarQuantidade($itensElegiveis, $modo) >= $qtdMin;
-        }
-
-        return match($gatilho) {
-            'valor'      => $valorOk,
-            'quantidade' => $qtdOk,
-            'ambos'      => $valorOk && $qtdOk,
-            default      => false,
-        };
-    }
-
-    /**
-     * Retorna [progresso_pct, msg] para o card de preview do brinde.
-     */
-    private function progressoBrinde(
-        array  $cfg,
-        string $gatilho,
-        array  $itensElegiveis,
-        float  $subtotal,
-        bool   $atingido,
-        string $nomeBrinde
-    ): array {
-        if ($atingido) {
-            return [100, '🎁 Brinde: ' . $nomeBrinde . ' incluído!'];
-        }
-
-        // Para gatilho "ambos", usa o critério mais próximo de ser atingido
-        if ($gatilho === 'valor' || $gatilho === 'ambos') {
-            $valorMin         = (float)($cfg['valor_minimo'] ?? 0);
-            $subtotalElegivel = $this->calcularSubtotalItens($itensElegiveis);
-            if ($valorMin > 0) {
-                $pct   = min(99, (int)($subtotalElegivel / $valorMin * 100));
-                $falta = PriceHelper::format(max(0, $valorMin - $subtotalElegivel));
-                if ($gatilho === 'valor') {
-                    return [$pct, '🎁 Falta ' . $falta . ' para ganhar: ' . $nomeBrinde];
+        // Se tem variações, valida que todos os SKUs têm preço
+        if ($temVar) {
+            $skus = $_POST['skus'] ?? [];
+            foreach ($skus as $key => $sku) {
+                $skuCodigo = trim($sku['sku'] ?? '');
+                $skuPreco  = (float)str_replace(',', '.', $sku['preco'] ?? 0);
+                if (!empty($skuCodigo) && $skuPreco <= 0) {
+                    $this->json([
+                        'ok'  => false,
+                        'msg' => "O SKU \"{$skuCodigo}\" está com preço zero. Informe um valor válido.",
+                    ]);
                 }
             }
         }
 
-        if ($gatilho === 'quantidade' || $gatilho === 'ambos') {
-            $qtdMin = (int)($cfg['qtd_minima'] ?? 1);
-            $modo   = $cfg['modo_contagem'] ?? 'unidades';
-            $atual  = $this->contarQuantidade($itensElegiveis, $modo);
-            $pct    = $qtdMin > 0 ? min(99, (int)($atual / $qtdMin * 100)) : 0;
-            $falta  = max(0, $qtdMin - $atual);
-            $un     = $modo === 'distintos' ? 'produto distinto' : 'unidade';
-            $plural = $falta === 1 ? "1 {$un}" : "{$falta} {$un}s";
-            return [$pct, '🎁 Adicione mais ' . $plural . ' para ganhar: ' . $nomeBrinde];
+        // Garante que categoria_id principal está incluída
+        if ($catId && !in_array((string)$catId, array_keys($categoriasPost))) {
+            $categoriasPost[$catId] = ['principal' => 1];
         }
 
-        return [0, '🎁 Ganhe: ' . $nomeBrinde];
+        $db   = Database::getInstance()->getConnection();
+        $slug = $id > 0
+                ? SlugHelper::unique($nome, 'produtos', (string)$id)
+                : SlugHelper::unique($nome, 'produtos');
+
+        $campos = [
+            'nome'             => $nome,
+            'slug'             => $slug,
+            'categoria_id'     => $catId    ?: null,
+            'marca_id'         => $marcaId  ?: null,
+            'familia_id'       => $familiaId ?: null,
+            'sku_legado'       => $skuLegado ?: null,
+            'preco'            => $preco,
+            'preco_promo'      => $precoPromo,
+            'promo_inicio'     => $promoIn,
+            'promo_fim'        => $promoFim,
+            // 'estoque_total'    => $estoque,
+            'estoque_minimo'   => $estoqueMin,
+            'peso_kg'          => $peso,
+            'comprimento_cm'   => $comprimento,
+            'largura_cm'       => $largura,
+            'altura_cm'        => $altura,
+            'descricao_curta'  => $descCurta  ?: null,
+            'descricao'        => $descricao  ?: null,
+            'meta_title'       => $metaTitle  ?: null,
+            'meta_description' => $metaDesc   ?: null,
+            'meta_keywords'    => $metaKw     ?: null,
+            'google_category'  => $googleCat  ?: null,
+            'ativo'            => $ativo,
+            'destaque'         => $destaque,
+            'lancamento'       => $lancamento,
+            'tem_variacao'     => $temVar,
+        ];
+
+        
+        try {
+            $db->beginTransaction();
+
+            // ── Produto ───────────────────────────────────────
+            // if ($id > 0) {
+            //     $sets   = implode(', ', array_map(fn($k) => "{$k} = ?", array_keys($campos)));
+            //     $params = array_values($campos);
+            //     $params[] = $id;
+            //     $db->prepare("UPDATE produtos SET {$sets} WHERE id = ?")->execute($params);
+            // }
+            if ($id > 0) {
+                // ── GATILHO: captura preço vigente ANTES do update ──
+                $gatilho = new ProdutoGatilhoService();
+                $precoAntigo = $gatilho->lerPrecoAtual($id);
+                // ────────────────────────────────────────────────────
+
+                $sets   = implode(', ', array_map(fn($k) => "{$k} = ?", array_keys($campos)));
+                $params = array_values($campos);
+                $params[] = $id;
+                $db->prepare("UPDATE produtos SET {$sets} WHERE id = ?")->execute($params);
+
+                // ── GATILHO: compara e dispara queda de preço ──
+                // $precoNovo é o preço vigente novo. Usa a mesma lógica de promoção.
+                $precoNovo = ($precoPromo !== null && $precoPromo > 0)
+                        ? $precoPromo   // se cadastrou promo, ela é o preço vigente
+                        : $preco;
+                $gatilho->verificarQuedaPreco($id, $precoAntigo, (float)$precoNovo);
+                // ────────────────────────────────────────────────
+            }
+            
+            else {
+                $cols   = implode(', ', array_keys($campos));
+                $vals   = implode(', ', array_fill(0, count($campos), '?'));
+                $db->prepare(
+                    "INSERT INTO produtos ({$cols}) VALUES ({$vals})"
+                )->execute(array_values($campos));
+                $id = (int)$db->lastInsertId();
+            }
+
+            // Características (relacionamento)
+            // if (!empty($caracteristicas)) {
+            //     $stmtDel = $db->prepare(
+            //         "DELETE FROM produto_caracteristicas WHERE produto_id = ?"
+            //     );
+            //     $stmtDel->execute([$id]);
+
+            //     $stmtIns = $db->prepare(
+            //         "INSERT INTO produto_caracteristicas
+            //         (produto_id, caracteristica_id, valor)
+            //         VALUES (?, ?, ?)"
+            //     );
+            //     foreach ($caracteristicas as $charId => $valor) {
+            //         $charId = (int)$charId;
+            //         $valor  = trim((string)$valor);
+            //         if ($charId && $valor !== '') {
+            //             $stmtIns->execute([$id, $charId, $valor]);
+            //         }
+            //     }
+            // }
+
+            // ── Compatibilidades ──────────────────────────────────────
+            $compat = new MotoCompatibilidade();
+            $itens  = [];
+
+            foreach ($_POST['compatibilidades'] ?? [] as $key => $item) {
+                $montId  = SecurityHelper::sanitizeInt($item['montadora_id'] ?? 0);
+                if (!$montId) continue;
+                $itens[] = [
+                    'montadora_id' => $montId,
+                    'modelo_id'    => !empty($item['modelo_id']) ? (int)$item['modelo_id'] : null,
+                    'ano_inicio'   => !empty($item['ano_inicio']) ? (int)$item['ano_inicio'] : null,
+                    'ano_fim'      => !empty($item['ano_fim'])    ? (int)$item['ano_fim']    : null,
+                    'observacao'   => $item['observacao'] ?? '',
+                ];
+            }
+            $compat->salvarCompatibildades($id, $itens);
+
+            if (!empty($categoriasPost)) {
+                $db->prepare(
+                    "DELETE FROM produto_categorias WHERE produto_id = ?"
+                )->execute([$id]);
+
+                // ── Garante que existe EXATAMENTE UMA principal ───────
+                // 1. Coleta quais marcaram como principal
+                $principaisMarcadas = array_filter(
+                    $categoriasPost,
+                    fn($c) => !empty($c['principal']) && (int)$c['principal'] === 1
+                );
+
+                // 2. Se nenhuma marcou → a primeira vira principal
+                // 3. Se mais de uma marcou → só a primeira conta
+                $idPrincipal = null;
+                if (!empty($principaisMarcadas)) {
+                    $idPrincipal = (int)array_key_first($principaisMarcadas);
+                } else {
+                    $idPrincipal = (int)array_key_first($categoriasPost);
+                }
+
+                $stmtCat = $db->prepare(
+                    "INSERT INTO produto_categorias (produto_id, categoria_id, principal)
+                    VALUES (?, ?, ?)"
+                );
+
+                foreach ($categoriasPost as $cid => $cfg) {
+                    $cid       = (int)$cid;
+                    $principal = ($cid === $idPrincipal) ? 1 : 0; // só uma pode ser 1
+                    if ($cid) {
+                        $stmtCat->execute([$id, $cid, $principal]);
+                    }
+                }
+
+                // Atualiza categoria_id do produto com a principal
+                $db->prepare(
+                    "UPDATE produtos SET categoria_id = ? WHERE id = ?"
+                )->execute([$idPrincipal, $id]);
+            }
+
+            
+
+            // ── Agrupadores ───────────────────────────────────
+            $agrupadores = $_POST['agrupadores'] ?? [];
+
+            $db->prepare(
+                "DELETE FROM produto_atributos_agrupadores WHERE produto_id = ?"
+            )->execute([$id]);
+
+            if (!empty($agrupadores)) {
+                $stmtAg = $db->prepare(
+                    "INSERT INTO produto_atributos_agrupadores
+                    (produto_id, atributo_tipo_id, valor, valor_hex)
+                    VALUES (?, ?, ?, ?)"
+                );
+                foreach ($agrupadores as $ag) {
+                    $tipoId = SecurityHelper::sanitizeInt($ag['tipo_id'] ?? 0);
+                    $valor  = SecurityHelper::sanitizeString($ag['valor']    ?? '');
+                    $hex    = SecurityHelper::sanitizeString($ag['valor_hex']?? '');
+
+                    if (!$tipoId || empty($valor)) continue;
+                    if ($hex && !preg_match('/^#[0-9a-fA-F]{6}$/', $hex)) $hex = '';
+
+                    $stmtAg->execute([$id, $tipoId, $valor, $hex ?: null]);
+                }
+            }
+
+            // ── SKUs ──────────────────────────────────────────
+            $skus = $_POST['skus'] ?? [];
+
+            if (!empty($skus)) {
+                $stmtSkuUpdate = $db->prepare(
+                    "UPDATE produto_skus
+                    SET sku=?, preco=?, preco_promo=?, estoque=?, ativo=?
+                    WHERE id=? AND produto_id=?"
+                );
+                $stmtSkuInsert = $db->prepare(
+                    "INSERT INTO produto_skus
+                    (produto_id, sku, preco, preco_promo, estoque, ativo)
+                    VALUES (?,?,?,?,?,?)"
+                );
+                $stmtDelAttrs  = $db->prepare(
+                    "DELETE FROM sku_atributos WHERE sku_id=?"
+                );
+                $stmtInsAttr   = $db->prepare(
+                    "INSERT INTO sku_atributos (sku_id, atributo_tipo_id, valor)
+                    VALUES (?,?,?)"
+                );
+
+                foreach ($skus as $key => $sku) {
+                    $skuCodigo = SecurityHelper::sanitizeString($sku['sku']      ?? '');
+                    $skuPreco  = (float)str_replace(',', '.', $sku['preco']      ?? 0);
+                    $skuPromo  = !empty($sku['preco_promo']) && (float)$sku['preco_promo'] > 0
+                                ? (float)str_replace(',', '.', $sku['preco_promo'])
+                                : null;
+                    $skuEst    = SecurityHelper::sanitizeInt($sku['estoque']     ?? 0);
+                    $skuAtivo  = isset($sku['ativo']) && $sku['ativo'] == '1' ? 1 : 0;
+                    $attrs     = $sku['atributos'] ?? [];
+
+                    if (empty($skuCodigo)) continue;
+
+                    // Persiste o SKU
+                    if (is_numeric($key) && (int)$key > 0) {
+                        $skuId = (int)$key;
+                        $stmtSkuUpdate->execute([
+                            $skuCodigo, $skuPreco, $skuPromo, $skuEst, $skuAtivo,
+                            $skuId, $id,
+                        ]);
+                    } else {
+                        $stmtSkuInsert->execute([
+                            $id, $skuCodigo, $skuPreco, $skuPromo, $skuEst, $skuAtivo,
+                        ]);
+                        $skuId = (int)$db->lastInsertId();
+                    }
+
+                    // Salva atributos do SKU
+                    $stmtDelAttrs->execute([$skuId]);
+
+                    foreach ($attrs as $tipoId => $valor) {
+                        $tipoId = (int)$tipoId;
+                        $valor  = SecurityHelper::sanitizeString(trim((string)$valor));
+                        if ($tipoId <= 0 || $valor === '') continue;
+                        $stmtInsAttr->execute([$skuId, $tipoId, $valor]);
+                    }
+                }
+
+                // Atualiza estoque total somando SKUs ativos
+                // (só quando tem variação — se não tem, usa o campo manual)
+                if ($temVar) {
+                    $db->prepare(
+                        "UPDATE produtos
+                        SET estoque_total = COALESCE((
+                            SELECT SUM(estoque)
+                            FROM produto_skus
+                            WHERE produto_id = ? AND ativo = 1
+                        ), 0)
+                        WHERE id = ?"
+                    )->execute([$id, $id]);
+                }
+            }
+
+            $db->commit();
+
+            $this->json([
+                'ok'   => true,
+                'msg'  => $id ? 'Produto salvo!' : 'Produto criado!',
+                'id'   => $id,
+                'slug' => $slug,
+            ]);
+
+        } catch (Exception $e) {
+            $db->rollBack();
+            LogService::error('Erro ao salvar produto: ' . $e->getMessage());
+            $this->json(['ok' => false, 'msg' => 'Erro ao salvar: ' . $e->getMessage()]);
+        }
     }
 
-    /**
-     * Verifica se o produto brinde tem saldo disponível em estoque.
-     * Usa estoque_saldo (ledger) com prioridade sobre produtos.estoque_total.
-     * Retorna false se sem estoque → bloqueia a promoção.
-     */
-    private function brindeTemEstoque(int $produtoId): bool {
-        $stmt = $this->db->prepare(
-            "SELECT CASE
-                WHEN EXISTS (SELECT 1 FROM estoque_saldo WHERE produto_id = ?)
-                THEN (SELECT SUM(saldo) > 0 FROM estoque_saldo WHERE produto_id = ?)
-                ELSE (SELECT estoque_total > 0 FROM produtos WHERE id = ?)
-             END AS tem_estoque"
-        );
-        $stmt->execute([$produtoId, $produtoId, $produtoId]);
-        return (bool)$stmt->fetchColumn();
+    // ── Upload de imagem ──────────────────────────────────
+    public function uploadImagem(): void {
+        $this->verifyCsrf();
+        $produtoId = SecurityHelper::sanitizeInt($_POST['produto_id'] ?? 0);
+        if (!$produtoId) $this->json(['ok' => false, 'msg' => 'Produto inválido.']);
+
+        if (empty($_FILES['imagem']['tmp_name'])) {
+            $this->json(['ok' => false, 'msg' => 'Nenhuma imagem enviada.']);
+        }
+
+        $ext     = strtolower(pathinfo($_FILES['imagem']['name'], PATHINFO_EXTENSION));
+        $allowed = ['jpg','jpeg','png','webp'];
+        if (!in_array($ext, $allowed)) {
+            $this->json(['ok' => false, 'msg' => 'Formato inválido.']);
+        }
+        if ($_FILES['imagem']['size'] > 5 * 1024 * 1024) {
+            $this->json(['ok' => false, 'msg' => 'Máximo 5MB por imagem.']);
+        }
+
+        $dir  = UPLOAD_PATH . '/products/';
+        if (!is_dir($dir)) mkdir($dir, 0755, true);
+
+        $arquivo = 'prod_' . $produtoId . '_' . uniqid() . '.' . $ext;
+        if (!move_uploaded_file($_FILES['imagem']['tmp_name'], $dir . $arquivo)) {
+            $this->json(['ok' => false, 'msg' => 'Erro ao salvar imagem.']);
+        }
+
+        $db = Database::getInstance()->getConnection();
+
+        // Verifica se é a primeira imagem (principal)
+        $stmt = $db->prepare("SELECT COUNT(*) FROM produto_imagens WHERE produto_id = ?");
+        $stmt->execute([$produtoId]);
+        $isPrincipal = (int)$stmt->fetchColumn() === 0 ? 1 : 0;
+
+        // Ordem
+        $stmt = $db->prepare("SELECT COALESCE(MAX(ordem),0)+1 FROM produto_imagens WHERE produto_id = ?");
+        $stmt->execute([$produtoId]);
+        $ordem = (int)$stmt->fetchColumn();
+
+        $db->prepare(
+            "INSERT INTO produto_imagens (produto_id, arquivo, principal, ordem)
+             VALUES (?, ?, ?, ?)"
+        )->execute([$produtoId, $arquivo, $isPrincipal, $ordem]);
+
+        $imgId = (int)$db->lastInsertId();
+
+        $this->json([
+            'ok'        => true,
+            'id'        => $imgId,
+            'arquivo'   => $arquivo,
+            'url'       => UPLOAD_URL . '/products/' . $arquivo,
+            'principal' => $isPrincipal,
+        ]);
     }
 
-    /**
-     * Busca dados do produto brinde para compor o resultado.
-     * Usa preco_promo quando ativo — o desconto cobre o preço real do produto.
-     */
-    private function getBrindeProduto(int $produtoId): ?array {
-        // COALESCE simples: usa preco_promo se preenchido, senão preco.
-        // Evita referências a colunas opcionais (promo_inicio/promo_fim)
-        // que podem não existir em todas as instalações.
-        $stmt = $this->db->prepare(
-            "SELECT p.id, p.nome, p.slug,
-                    COALESCE(NULLIF(p.preco_promo, 0), p.preco) AS preco,
-                    pi.arquivo AS imagem
-             FROM   produtos p
-             LEFT   JOIN produto_imagens pi
-                    ON  pi.produto_id = p.id AND pi.principal = 1
-             WHERE  p.id = ? AND p.ativo = 1 AND p.deleted_at IS NULL
-             LIMIT  1"
+    // ── Definir imagem principal ──────────────────────────
+    public function setPrincipal(): void {
+        $this->verifyCsrf();
+        $imgId     = SecurityHelper::sanitizeInt($_POST['imagem_id']  ?? 0);
+        $produtoId = SecurityHelper::sanitizeInt($_POST['produto_id'] ?? 0);
+        if (!$imgId || !$produtoId) $this->json(['ok' => false]);
+
+        $db = Database::getInstance()->getConnection();
+        $db->prepare("UPDATE produto_imagens SET principal=0 WHERE produto_id=?")->execute([$produtoId]);
+        $db->prepare("UPDATE produto_imagens SET principal=1 WHERE id=?")->execute([$imgId]);
+
+        $this->json(['ok' => true]);
+    }
+
+    // ── Remover imagem ────────────────────────────────────
+    public function removerImagem(): void {
+        $this->verifyCsrf();
+        $imgId = SecurityHelper::sanitizeInt($_POST['imagem_id'] ?? 0);
+        if (!$imgId) $this->json(['ok' => false]);
+
+        $db   = Database::getInstance()->getConnection();
+        $stmt = $db->prepare("SELECT * FROM produto_imagens WHERE id = ? LIMIT 1");
+        $stmt->execute([$imgId]);
+        $img = $stmt->fetch();
+
+        if (!$img) $this->json(['ok' => false, 'msg' => 'Imagem não encontrada.']);
+
+        $file = UPLOAD_PATH . '/products/' . $img['arquivo'];
+        if (file_exists($file)) unlink($file);
+
+        $db->prepare("DELETE FROM produto_imagens WHERE id = ?")->execute([$imgId]);
+
+        // Se era principal, define a próxima como principal
+        if ($img['principal']) {
+            $stmt = $db->prepare(
+                "SELECT id FROM produto_imagens WHERE produto_id = ? ORDER BY ordem ASC LIMIT 1"
+            );
+            $stmt->execute([$img['produto_id']]);
+            $proximo = $stmt->fetchColumn();
+            if ($proximo) {
+                $db->prepare("UPDATE produto_imagens SET principal=1 WHERE id=?")->execute([$proximo]);
+            }
+        }
+
+        $this->json(['ok' => true]);
+    }
+
+    // ── Reordenar imagens ─────────────────────────────────
+    public function reordenarImagens(): void {
+        $this->verifyCsrf();
+        $ordens = $_POST['ordens'] ?? [];
+        if (empty($ordens)) $this->json(['ok' => false]);
+
+        $db   = Database::getInstance()->getConnection();
+        $stmt = $db->prepare("UPDATE produto_imagens SET ordem = ? WHERE id = ?");
+        foreach ($ordens as $ordem => $imgId) {
+            $stmt->execute([$ordem, (int)$imgId]);
+        }
+        $this->json(['ok' => true]);
+    }
+
+    // ── Excluir produto ───────────────────────────────────
+    public function excluir(): void {
+        $this->verifyCsrf();
+        $id = SecurityHelper::sanitizeInt($_POST['id'] ?? 0);
+        if (!$id) $this->json(['ok' => false]);
+
+        $db = Database::getInstance()->getConnection();
+        $db->prepare(
+            "UPDATE produtos SET deleted_at = NOW(), ativo = 0 WHERE id = ?"
+        )->execute([$id]);
+
+        $this->json(['ok' => true, 'msg' => 'Produto excluído.']);
+    }
+
+    // ── Toggle ativo ──────────────────────────────────────
+    public function toggleAtivo(): void {
+        $this->verifyCsrf();
+        $id = SecurityHelper::sanitizeInt($_POST['id'] ?? 0);
+        if (!$id) $this->json(['ok' => false]);
+
+        $db   = Database::getInstance()->getConnection();
+        $stmt = $db->prepare("SELECT ativo FROM produtos WHERE id = ? LIMIT 1");
+        $stmt->execute([$id]);
+        $novo = (int)$stmt->fetchColumn() ? 0 : 1;
+
+        $db->prepare("UPDATE produtos SET ativo = ? WHERE id = ?")->execute([$novo, $id]);
+        $this->json(['ok' => true, 'ativo' => $novo]);
+    }
+
+    // ── Helpers privados ──────────────────────────────────
+    private function getFormData(): array {
+        $db = Database::getInstance()->getConnection();
+
+        $categorias = $db->query(
+            "SELECT id, nome, parent_id FROM categorias WHERE ativo=1 ORDER BY parent_id ASC, nome ASC"
+        )->fetchAll();
+
+        $marcas = $db->query(
+            "SELECT id, nome FROM marcas WHERE ativo=1 ORDER BY nome ASC"
+        )->fetchAll();
+
+        $familias = $db->query(
+            "SELECT id, nome FROM familia_produtos ORDER BY nome ASC"
+        )->fetchAll();
+
+        return compact('categorias', 'marcas', 'familias');
+    }
+
+    private function getAtributosTipos(): array {
+        return Database::getInstance()->getConnection()->query(
+            "SELECT id, nome, slug, tipo_display, papel
+             FROM atributo_tipos
+             ORDER BY papel ASC, ordenacao ASC, nome ASC"
+        )->fetchAll();
+    }
+
+    // <?php
+    // admin/controllers/ProdutosController.php
+    // Adicionar estes dois métodos ao controller existente
+
+    // ── Endpoint: alterar preço do produto (simples ou pai) ───
+    public function alterarPreco(): void {
+        $this->verifyCsrf();
+
+        $produtoId = SecurityHelper::sanitizeInt($_POST['produto_id'] ?? 0);
+        $preco     = (float)str_replace(',', '.', $_POST['preco'] ?? 0);
+        $modo      = $_POST['modo'] ?? 'simples'; // 'simples' | 'pai' | 'todos'
+
+        if (!$produtoId || $preco <= 0) {
+            $this->json(['ok' => false, 'msg' => 'Dados inválidos.']);
+        }
+
+        $db = Database::getInstance()->getConnection();
+
+        try {
+            // ── GATILHO: preço antigo antes ──
+            $gatilho = new ProdutoGatilhoService();
+            $precoAntigo = $gatilho->lerPrecoAtual($produtoId);
+            // ──────────────────────────────────
+
+            $db->beginTransaction();
+            $db->prepare("UPDATE produtos SET preco = ? WHERE id = ?")
+            ->execute([$preco, $produtoId]);
+
+            // Se modo 'todos' → atualiza todos os SKUs também
+            if ($modo === 'todos') {
+                $db->prepare(
+                    "UPDATE produto_skus SET preco = ? WHERE produto_id = ? AND ativo = 1"
+                )->execute([$preco, $produtoId]);
+            }
+
+            $db->commit();
+
+            $gatilho->verificarQuedaPreco($produtoId, $precoAntigo, (float)$preco);
+
+            $this->json([
+                'ok'  => true,
+                'msg' => $modo === 'todos'
+                        ? 'Preço atualizado em todas as variações.'
+                        : 'Preço atualizado.',
+            ]);
+
+        } catch (\Exception $e) {
+            $db->rollBack();
+            $this->json(['ok' => false, 'msg' => $e->getMessage()]);
+        }
+    }
+
+    // ── Endpoint: alterar preço de SKU específico ─────────────
+    public function alterarPrecoSku(): void {
+        $this->verifyCsrf();
+
+        $skuId     = SecurityHelper::sanitizeInt($_POST['sku_id']     ?? 0);
+        $produtoId = SecurityHelper::sanitizeInt($_POST['produto_id'] ?? 0);
+        $preco     = (float)str_replace(',', '.', $_POST['preco']     ?? 0);
+        $todos     = isset($_POST['todos']) && $_POST['todos'] == '1';
+
+        if (!$skuId || !$produtoId || $preco <= 0) {
+            $this->json(['ok' => false, 'msg' => 'Dados inválidos.']);
+        }
+
+        $db = Database::getInstance()->getConnection();
+
+        try {
+            $db->beginTransaction();
+
+            if ($todos) {
+                // Aplica em todos os SKUs do produto
+                $db->prepare(
+                    "UPDATE produto_skus SET preco = ? WHERE produto_id = ? AND ativo = 1"
+                )->execute([$preco, $produtoId]);
+                // Atualiza também o produto pai
+                $db->prepare(
+                    "UPDATE produtos SET preco = ? WHERE id = ?"
+                )->execute([$preco, $produtoId]);
+            } else {
+                // Só este SKU
+                $db->prepare(
+                    "UPDATE produto_skus SET preco = ? WHERE id = ? AND produto_id = ?"
+                )->execute([$preco, $skuId, $produtoId]);
+            }
+
+            $db->commit();
+
+            $this->json([
+                'ok'  => true,
+                'msg' => $todos ? 'Preço atualizado em todas as variações.' : 'Preço do SKU atualizado.',
+            ]);
+
+        } catch (\Exception $e) {
+            $db->rollBack();
+            $this->json(['ok' => false, 'msg' => $e->getMessage()]);
+        }
+    }
+
+    // ── Endpoint: retorna SKUs de um produto para edição ──────
+    public function skusParaEdicao(): void {
+        $produtoId = SecurityHelper::sanitizeInt($_GET['produto_id'] ?? 0);
+        if (!$produtoId) $this->json(['ok' => false, 'skus' => []]);
+
+        $db   = Database::getInstance()->getConnection();
+        $stmt = $db->prepare(
+            "SELECT ps.id, ps.sku, ps.preco, ps.preco_promo, ps.ativo,
+                    COALESCE(
+                        (SELECT es.saldo FROM estoque_saldo es
+                        WHERE es.sku_id = ps.id AND es.produto_id = ps.produto_id
+                        LIMIT 1),
+                        ps.estoque
+                    ) AS estoque,
+                    GROUP_CONCAT(
+                        CONCAT(at.nome, ': ', sa.valor)
+                        ORDER BY at.ordenacao ASC
+                        SEPARATOR ' | '
+                    ) AS atributos_str
+            FROM produto_skus ps
+            LEFT JOIN sku_atributos sa  ON sa.sku_id = ps.id
+            LEFT JOIN atributo_tipos at ON at.id = sa.atributo_tipo_id
+            WHERE ps.produto_id = ? AND ps.ativo = 1
+            GROUP BY ps.id, ps.sku, ps.preco, ps.preco_promo, ps.ativo, ps.estoque, ps.produto_id
+            ORDER BY ps.id ASC"
         );
         $stmt->execute([$produtoId]);
-        return $stmt->fetch() ?: null;
-    }
+        $skus = $stmt->fetchAll();
 
-    // ── Compre X leve Y ────────────────────────────────
-
-    /**
-     * Avalia "compre X leve Y": itens elegíveis são ordenados pelo
-     * preço unitário (mais barato primeiro), e os Y mais baratos
-     * recebem `desconto_pct`% de desconto — 100% = grátis.
-     *
-     * Aplica apenas uma vez (sem repetição): se o carrinho tiver 6
-     * itens e a regra for "compre 3 pague 2", apenas 1 item ganha
-     * o desconto (não 2).
-     *
-     * Os itens entram no pedido com seu valor original; o desconto
-     * é injetado em desconto_produto e reduz o total do pedido.
-     * Os detalhes salvos em promocao_aplicacoes identificam quais
-     * produtos receberam o desconto para o sistema de NF-e aplicar
-     * o CFOP correto.
-     */
-    private function avaliarCompraGanhe(array $promo, array $itensElegiveis): ?array {
-        $cfg     = $promo['configuracao'];
-        $comprar = max(2, (int)($cfg['comprar']    ?? 2));
-        $levar   = max(1, (int)($cfg['levar']      ?? 1));
-        $pctDesc = min(100, max(0, (float)($cfg['desconto_pct'] ?? 100)));
-
-        if ($levar >= $comprar) return null; // configuração inválida
-
-        // Conta unidades elegíveis — precisa de ao menos X
-        $totalQtd = $this->somarQtd($itensElegiveis);
-        if ($totalQtd < $comprar) return null;
-
-        // Seleciona os Y itens de MENOR preço sem usort.
-        // usort com float/string do PDO pode ordenar errado em alguns
-        // ambientes; seleção por mínimo explícito é sempre confiável.
-        $unitarios        = $this->expandirEmUnidades($itensElegiveis);
-        $itensComDesconto = $this->selecionarMaisBaratos($unitarios, $levar);
-        $totalDesconto    = round(
-            array_sum(array_map(fn($u) => $u['preco'] * ($pctDesc / 100), $itensComDesconto)),
-            2
-        );
-
-        if ($totalDesconto <= 0) return null;
-
-        return [
-            'promocao_id'      => $promo['id'],
-            'promocao_nome'    => $promo['nome'],
-            'tipo'             => 'compre_ganhe',
-            'desconto_produto' => $totalDesconto,
-            'desconto_frete'   => 0.0,
-            'brindes'          => [],
-            'faixa_aplicada'   => null,
-            'itens_elegiveis'  => array_unique(array_column($itensElegiveis, 'produto_id')),
-            // snapshot dos itens que receberam desconto → usado pelo sistema de NF-e
-            'itens_desconto'   => $itensComDesconto,
-            'msg'              => $this->msgCompraGanhe($comprar, $levar, $pctDesc, $itensComDesconto),
-        ];
-    }
-
-    /**
-     * Card de preview do "Compre X leve Y" para o carrinho.
-     * Mostra progresso (itens no carrinho / X necessários) e quais
-     * itens ganhariam o benefício se aplicado agora.
-     */
-    private function cardCompraGanhe(array $promo, array $itens): ?array {
-        $cfg     = $promo['configuracao'];
-        $comprar = max(2, (int)($cfg['comprar']    ?? 2));
-        $levar   = max(1, (int)($cfg['levar']      ?? 1));
-        $pctDesc = min(100, max(0, (float)($cfg['desconto_pct'] ?? 100)));
-
-        if ($levar >= $comprar) return null;
-
-        $itensElegiveis = $this->filtrarItensElegiveis($promo, $itens);
-        if (empty($itensElegiveis)) return null;
-
-        $totalQtd  = $this->somarQtd($itensElegiveis);
-        $atingido  = $totalQtd >= $comprar;
-        $progresso = min(99, $comprar > 0 ? (int)($totalQtd / $comprar * 100) : 0);
-
-        $desconto = 0.0;
-        $itensComDesconto = [];
-        if ($atingido) {
-            $unitarios        = $this->expandirEmUnidades($itensElegiveis);
-            $itensComDesconto = $this->selecionarMaisBaratos($unitarios, $levar);
-            $desconto         = round(
-                array_sum(array_map(fn($u) => $u['preco'] * ($pctDesc / 100), $itensComDesconto)),
-                2
-            );
-        }
-
-        return [
-            'promocao_id'     => $promo['id'],
-            'promocao_nome'   => $promo['nome'],
-            'tipo'            => 'compre_ganhe',
-            'estado'          => $atingido ? 'aplicada' : 'disponivel',
-            'desconto'        => $desconto,
-            'desconto_fmt'    => $desconto > 0 ? PriceHelper::format($desconto) : null,
-            'desconto_pct'    => $pctDesc,
-            'brindes'         => [],
-            'progresso_pct'   => $atingido ? 100 : $progresso,
-            'msg'             => $this->msgCompraGanhe($comprar, $levar, $pctDesc, $itensComDesconto, $totalQtd),
-            // Itens que recebem o desconto, agregados por produto_id.
-            // O JS usa isso para: (a) badge no item certo do carrinho e
-            // (b) mostrar "desconto aplicado em X" no card de preview.
-            'itens_desconto'  => $this->agregarItensDesconto($itensComDesconto, $pctDesc),
-        ];
-    }
-
-    /**
-     * Expande itens do carrinho em unidades individuais.
-     * Item com qtd=3 a R$50 vira 3 entradas de R$50.
-     * Usado para ordenar por preço e aplicar o desconto nos Y mais baratos.
-     */
-    /**
-     * Seleciona os Y itens de menor preço de uma lista de unidades expandidas.
-     *
-     * Usa seleção por mínimo explícito em vez de usort para evitar
-     * comportamento inconsistente com floats que vieram do PDO como string.
-     * O(N × Y) — Y é tipicamente 1-3, então praticamente O(N).
-     *
-     * Exemplo: items = [500, 200, 100], Y = 1 → retorna [100]
-     */
-    private function selecionarMaisBaratos(array $unitarios, int $quantidade): array {
-        $selecionados = [];
-        $pool         = $unitarios; // cópia mutável
-
-        for ($i = 0; $i < $quantidade && !empty($pool); $i++) {
-            $minPreco = PHP_FLOAT_MAX;
-            $minKey   = null;
-
-            foreach ($pool as $k => $u) {
-                $preco = (float)$u['preco'];
-                if ($preco < $minPreco) {
-                    $minPreco = $preco;
-                    $minKey   = $k;
-                }
-            }
-
-            if ($minKey !== null) {
-                $selecionados[] = $pool[$minKey];
-                unset($pool[$minKey]); // remove para não selecionar duas vezes
-            }
-        }
-
-        return $selecionados;
-    }
-
-    /**
-     * Agrega unidades descontadas por produto_id.
-     * expandirEmUnidades() cria uma entrada por unidade — 3 unidades
-     * do produto A viram 3 entradas. Aqui consolida em:
-     * [{produto_id, qtd_desconto, preco, desconto_unitario}]
-     * para o JS saber exatamente qual produto e quantas unidades
-     * receberam o desconto.
-     */
-    private function agregarItensDesconto(array $itensComDesconto, float $pctDesc): array {
-        $mapa = [];
-        foreach ($itensComDesconto as $u) {
-            $pid = (int)$u['produto_id'];
-            if (!isset($mapa[$pid])) {
-                $mapa[$pid] = [
-                    'produto_id'       => $pid,
-                    'qtd_desconto'     => 0,
-                    'preco'            => (float)$u['preco'],
-                    'desconto_unitario'=> round((float)$u['preco'] * $pctDesc / 100, 2),
-                ];
-            }
-            $mapa[$pid]['qtd_desconto']++;
-        }
-        return array_values($mapa);
-    }
-
-    /**
-     * Calcula o subtotal de um array de itens usando preco × qtd.
-     * Aceita 'qtd' ou 'quantidade' como chave de quantidade.
-     *
-     * Substitui chamadas a $cart->calcularTotais() que usam keys
-     * diferentes (valor_unitario × quantidade) e retornam 0 quando
-     * os itens já foram enriquecidos com a chave 'preco'.
-     */
-    private function calcularSubtotalItens(array $itens): float {
-        $total = 0.0;
-        foreach ($itens as $item) {
-            $preco = (float)($item['preco'] ?? 0);
-            $qtd   = (int)($item['qtd'] ?? $item['quantidade'] ?? 0);
-            $total += $preco * $qtd;
-        }
-        return round($total, 2);
-    }
-
-    /**
-     * Soma a quantidade de itens num array, aceitando tanto 'qtd'
-     * (formato de getItensParaCupom) quanto 'quantidade' (outros contextos).
-     * Evita retornar 0 quando a chave existe mas com nome diferente.
-     */
-    private function somarQtd(array $itens): int {
-        $total = 0;
-        foreach ($itens as $item) {
-            $total += (int)($item['qtd'] ?? $item['quantidade'] ?? 0);
-        }
-        return $total;
-    }
-
-    private function expandirEmUnidades(array $itens): array {
-        $unitarios = [];
-        foreach ($itens as $item) {
-            // Aceita 'qtd' (getItensParaCupom) ou 'quantidade' (outros contextos)
-            $qtd = (int)($item['qtd'] ?? $item['quantidade'] ?? 1);
-            for ($q = 0; $q < $qtd; $q++) {
-                $unitarios[] = [
-                    'produto_id' => (int)$item['produto_id'],
-                    'preco'      => (float)$item['preco'],
-                ];
-            }
-        }
-        return $unitarios;
-    }
-
-    private function msgCompraGanhe(
-        int   $comprar,
-        int   $levar,
-        float $pct,
-        array $itensComDesconto,
-        int   $qtdAtual = -1
-    ): string {
-        $paga  = $comprar - $levar;
-        $label = $pct >= 100
-            ? ($levar === 1 ? '1 item grátis' : "{$levar} itens grátis")
-            : ($levar === 1 ? "1 item com {$pct}% off" : "{$levar} itens com {$pct}% off");
-
-        if (!empty($itensComDesconto)) {
-            // Promoção atingida — mostra o desconto
-            return "Compre {$comprar} leve {$paga}: {$label} aplicado!";
-        }
-
-        // Ainda não atingida — mostra quantos faltam
-        $falta = $comprar - max(0, $qtdAtual);
-        $un    = $falta === 1 ? 'item' : 'itens';
-        return "Adicione mais {$falta} {$un}: {$label} para você!";
-    }
-
-    // ── Cashback ────────────────────────────────────────
-
-    /**
-     * Cashback: não gera desconto imediato no checkout.
-     * Registra o percentual e o valor prometido; o crédito real é
-     * concedido via CashbackService 7 dias após o pedido ser entregue.
-     *
-     * Base de cálculo = subtotal dos itens elegíveis após desconto:
-     *   subtotal_elegivel × (1 - descontoAcumulado/subtotal_total)
-     * Onde descontoAcumulado = descontos já aplicados por outras promoções
-     * na mesma rodada de avaliação, passado pelo loop de avaliarCarrinho().
-     */
-    private function avaliarCashback(
-        array $promo,
-        array $itensElegiveis,
-        float $subtotal,
-        float $descontoAcumulado
-    ): ?array {
-        $cfg        = $promo['configuracao'];
-        $pct        = min(100, max(0.01, (float)($cfg['percentual']    ?? 5)));
-        $validaDias = max(1, (int)($cfg['validade_dias'] ?? 90));
-
-        if (empty($itensElegiveis)) return null;
-
-        // Subtotal dos itens elegíveis (bruto)
-        $subtotalElegivel = (float)array_sum(array_map(
-            fn($i) => $i['preco'] * $i['qtd'],
-            $itensElegiveis
-        ));
-
-        // Aplica proporção de desconto acumulado sobre os itens elegíveis
-        $ratioDesconto    = $subtotal > 0 ? min(1, $descontoAcumulado / $subtotal) : 0;
-        $baseCalculo      = round($subtotalElegivel * (1 - $ratioDesconto), 2);
-        $cashbackValor    = round($baseCalculo * $pct / 100, 2);
-
-        if ($cashbackValor <= 0) return null;
-
-        return [
-            'promocao_id'      => $promo['id'],
-            'promocao_nome'    => $promo['nome'],
-            'tipo'             => 'cashback',
-            'desconto_produto' => 0.0,   // sem desconto no checkout
-            'desconto_frete'   => 0.0,
-            'brindes'          => [],
-            'faixa_aplicada'   => null,
-            'itens_elegiveis'  => array_unique(array_column($itensElegiveis, 'produto_id')),
-            // campos específicos do cashback — lidos por CashbackService
-            'cashback_pct'     => $pct,
-            'cashback_base'    => $baseCalculo,
-            'cashback_valor'   => $cashbackValor,
-            'cashback_validade_dias' => $validaDias,
-            'msg'              => number_format($pct, 1, ',', '') . '% de cashback ('
-                                  . PriceHelper::format($cashbackValor)
-                                  . ' em créditos 7 dias após entrega)',
-        ];
-    }
-
-    /**
-     * Card de preview do cashback para o carrinho.
-     * Sempre mostra — o cashback não tem "estado" de atingido/não-atingido
-     * como os outros tipos (ele sempre se aplica se os itens são elegíveis),
-     * mas mostra se os itens elegíveis existem no carrinho.
-     */
-    private function cardCashback(array $promo, array $itens, float $subtotal): ?array {
-        $cfg      = $promo['configuracao'];
-        $pct      = min(100, max(0.01, (float)($cfg['percentual'] ?? 5)));
-        $validade = max(1, (int)($cfg['validade_dias'] ?? 90));
-
-        $itensElegiveis = $this->filtrarItensElegiveis($promo, $itens);
-        if (empty($itensElegiveis)) return null;
-
-        $subtotalElegivel = (float)array_sum(array_map(
-            fn($i) => $i['preco'] * $i['qtd'],
-            $itensElegiveis
-        ));
-        $cashbackEstimado = round($subtotalElegivel * $pct / 100, 2);
-
-        return [
-            'promocao_id'    => $promo['id'],
-            'promocao_nome'  => $promo['nome'],
-            'tipo'           => 'cashback',
-            'estado'         => 'aplicada',  // se elegível, sempre aplicado
-            'desconto'       => 0.0,
-            'desconto_fmt'   => null,
-            'cashback_valor' => $cashbackEstimado,
-            'cashback_fmt'   => PriceHelper::format($cashbackEstimado),
-            'cashback_pct'   => $pct,
-            'validade_dias'  => $validade,
-            'brindes'        => [],
-            'progresso_pct'  => 100,
-            'msg'            => number_format($pct, 1, ',', '') . '% de volta em créditos · '
-                                . PriceHelper::format($cashbackEstimado)
-                                . ' disponíveis em 7 dias após entrega · validade '
-                                . $validade . ' dias',
-        ];
-    }
-
-    // ══════════════════════════════════════════════════
-    // ENRIQUECIMENTO DE ITENS
-    // ══════════════════════════════════════════════════
-
-    /**
-     * Preenche marca_id e categoria_id ausentes (valor 0) nos itens
-     * do carrinho com uma única query IN — evita N+1.
-     *
-     * getItensParaCupom() retorna 0 para esses campos quando
-     * getItensComVariacoes() não faz JOIN com a tabela produtos.
-     * Sem esse enriquecimento, qualquer escopo de marca/categoria
-     * filtra tudo (in_array(0, [3]) = false → nenhum item elegível).
-     */
-    private function enriquecerItens(array $itens): array {
-        if (empty($itens)) return $itens;
-
-        // Sempre enriquece: categorias_ids precisa vir de produto_categorias
-        // (pivot que guarda TODAS as categorias do produto), não de
-        // produtos.categoria_id que só guarda a principal.
-        // Sem isso, uma categoria especial como "Dia dos Namorados" nunca
-        // matcheia porque o produto tem categoria principal "Capacetes".
-        $ids = array_unique(array_map('intval',
-            array_column($itens, 'produto_id')
-        ));
-        $ids = array_filter($ids);
-        if (empty($ids)) return $itens;
-
-        $in = implode(',', $ids);
-
-        // Uma única query: marca + TODAS as categorias + preço real do produto.
-        // preco_produto é buscado direto do cadastro para garantir que a
-        // comparação de preços (selecionarMaisBaratos) use o valor correto —
-        // o preco vindo do carrinho (valor_unitario) pode estar incorreto.
-        $stmt = $this->db->query(
-            "SELECT p.id   AS produto_id,
-                    p.preco AS preco_produto,
-                    p.marca_id,
-                    GROUP_CONCAT(DISTINCT pc.categoria_id ORDER BY pc.principal DESC)
-                        AS todas_categorias
-             FROM produtos p
-             LEFT JOIN produto_categorias pc ON pc.produto_id = p.id
-             WHERE p.id IN ({$in})
-             GROUP BY p.id, p.marca_id"
-        );
-
-        $mapa = [];
-        foreach ($stmt->fetchAll() as $row) {
-            $categorias = $row['todas_categorias']
-                ? array_map('intval', explode(',', $row['todas_categorias']))
-                : [];
-            $mapa[(int)$row['produto_id']] = [
-                'marca_id'       => (int)$row['marca_id'],
-                'categorias_ids' => $categorias,
-                'preco_produto'  => $row['preco_produto'],
-                // mantém categoria_id como a principal (primeiro da lista,
-                // já ordenado por principal DESC no GROUP_CONCAT)
-                'categoria_id'   => $categorias[0] ?? 0,
-            ];
-        }
-
-        return array_map(function (array $item) use ($mapa): array {
-            $pid = (int)$item['produto_id'];
-            if (!isset($mapa[$pid])) return $item;
-
-            if (empty($item['marca_id']))     $item['marca_id']     = $mapa[$pid]['marca_id'];
-            if (empty($item['categoria_id'])) $item['categoria_id'] = $mapa[$pid]['categoria_id'];
-            // categorias_ids sempre vem daqui — getItensParaCupom() não o fornece
-            $item['categorias_ids'] = $mapa[$pid]['categorias_ids'];
-            // Sobrescreve com o preço real do cadastro (fix do usuário):
-            // valor_unitario no carrinho pode estar incorreto em alguns cenários
-            $item['preco'] = $mapa[$pid]['preco_produto'];
-            return $item;
-        }, $itens);
-    }
-
-    // ══════════════════════════════════════════════════
-    // FILTROS E VALIDAÇÕES
-    // ══════════════════════════════════════════════════
-
-    /**
-     * Filtra os itens do carrinho que se enquadram no escopo da promoção.
-     * null em qualquer dimensão de escopo = sem restrição nessa dimensão.
-     * Múltiplas dimensões preenchidas = item precisa satisfazer TODAS (AND).
-     */
-    private function filtrarItensElegiveis(array $promo, array $itens): array {
-        $temEscopo = !empty($promo['escopo_produtos'])
-                  || !empty($promo['escopo_categorias'])
-                  || !empty($promo['escopo_marcas'])
-                  || !empty($promo['escopo_caracteristicas']);
-
-        // Sem nenhum escopo definido: todos os itens são elegíveis
-        if (!$temEscopo) return $itens;
-
-        return array_values(array_filter($itens, function (array $item) use ($promo): bool {
-            // Produtos específicos — se definido, o item precisa estar na lista
-            if (!empty($promo['escopo_produtos'])) {
-                if (!in_array((int)$item['produto_id'], $promo['escopo_produtos'], true)) {
-                    return false;
-                }
-            }
-            // Categorias — verifica TODAS as categorias do produto,
-            // não só a principal. Permite promoções em categorias
-            // especiais (ex: "Dia dos Namorados") sem alterar a
-            // categoria principal do produto.
-            if (!empty($promo['escopo_categorias'])) {
-                $categoriasItem = $item['categorias_ids'] ?? [];
-                if (empty($categoriasItem)) {
-                    // fallback: usa categoria_id simples se categorias_ids
-                    // não foi preenchido (não deveria acontecer após enriquecerItens)
-                    $categoriasItem = [(int)($item['categoria_id'] ?? 0)];
-                }
-                if (empty(array_intersect($categoriasItem, $promo['escopo_categorias']))) {
-                    return false;
-                }
-            }
-            // Marcas
-            if (!empty($promo['escopo_marcas'])) {
-                if (!in_array((int)($item['marca_id'] ?? 0), $promo['escopo_marcas'], true)) {
-                    return false;
-                }
-            }
-            // Características: [{id: 1, valor: "Adulto"}, ...] — item precisa ter TODAS
-            if (!empty($promo['escopo_caracteristicas'])) {
-                $caracItem = $item['caracteristicas'] ?? [];
-                foreach ($promo['escopo_caracteristicas'] as $filtro) {
-                    $encontrou = false;
-                    foreach ($caracItem as $c) {
-                        if ((int)$c['id'] === (int)$filtro['id']
-                            && strtolower((string)$c['valor']) === strtolower((string)$filtro['valor'])) {
-                            $encontrou = true;
-                            break;
-                        }
-                    }
-                    if (!$encontrou) return false;
-                }
-            }
-            return true;
-        }));
-    }
-
-    private function validarDiaHora(array $promo): bool {
-        $agora = new \DateTime('now');
-
-        // Dias da semana (0=dom...6=sab)
-        if (!empty($promo['dias_semana'])) {
-            $diaSemana = (int)$agora->format('w');
-            if (!in_array($diaSemana, $promo['dias_semana'], true)) return false;
-        }
-
-        // Horário (para promoções relâmpago)
-        if ($promo['horario_inicio'] !== null && $promo['horario_fim'] !== null) {
-            $horaAtual = $agora->format('H:i:s');
-            if ($horaAtual < $promo['horario_inicio'] || $horaAtual > $promo['horario_fim']) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private function validarAudiencia(array $promo, ?int $clienteId, array $contexto): bool {
-        // Restrição de clientes específicos
-        if (!empty($promo['clientes_ids'])) {
-            if ($clienteId === null) return false;
-            if (!in_array($clienteId, $promo['clientes_ids'], true)) return false;
-        }
-
-        // Apenas primeira compra
-        if ($promo['apenas_primeira_compra']) {
-            if (!($contexto['primeira_compra'] ?? false)) return false;
-        }
-
-        // Score mínimo
-        if ($promo['score_minimo'] !== null) {
-            $score = (int)($contexto['score'] ?? 0);
-            if ($score < $promo['score_minimo']) return false;
-        }
-
-        return true;
+        $this->json(['ok' => true, 'skus' => $skus]);
     }
 }
