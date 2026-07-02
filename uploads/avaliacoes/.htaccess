@@ -1,0 +1,4 @@
+# uploads/avaliacoes/.htaccess
+<FilesMatch "\.(php|phtml|phar)$">
+    Require all denied
+</FilesMatch>

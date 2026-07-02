@@ -23,7 +23,7 @@ define('META_WABA_ID', getenv('META_WABA_ID'));
 // gemini-2.5-pro: Mais avançado, pago
 
 // ─── Ambiente ────────────────────────────────────────────────
-define('APP_ENV', getenv('APP_ENV') ?? 'development'); // 'production' em produção. e homologation em homologação
+define('APP_ENV', getenv('APP_ENV')); // 'production' em produção. e homologation em homologação
 define('APP_DEBUG', APP_ENV === 'development');
 
 // ─── Banco de dados ──────────────────────────────────────────
@@ -93,15 +93,15 @@ define('MAIL_FROM_NAME','Sportmoto');
 
 
 // ─── Tratamento de erros ─────────────────────────────────────
-// if (APP_DEBUG) {
+if (APP_DEBUG) {
     error_reporting(E_ALL);
     ini_set('display_errors', 1);
-// } else {
-//     error_reporting(0);
-//     ini_set('display_errors', 0);
-//     ini_set('log_errors', 1);
-//     ini_set('error_log', STORAGE_PATH . '/logs/php_errors.log');
-// }
+} else {
+    error_reporting(0);
+    ini_set('display_errors', 0);
+    ini_set('log_errors', 1);
+    ini_set('error_log', STORAGE_PATH . '/logs/php_errors.log');
+}
 
 // Fuso horário padrão Brasil
 date_default_timezone_set('America/Sao_Paulo');

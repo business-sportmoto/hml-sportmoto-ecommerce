@@ -17,7 +17,7 @@
 /node_modules/
 
 # ── DADOS DE USUARIO (uploads dinamicos — nao sao codigo) ──────────────────
-/uploads/
+#/uploads/
 # NOTA: /assets/images/ NAO esta aqui — sao imagens do TEMA (logo, hero,
 # icones PWA, splash) e DEVEM ir pro Git. Uploads de usuario vao pra /uploads.
 
