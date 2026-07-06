@@ -211,7 +211,7 @@ class TrayImportService {
             } catch (\Throwable $e) {
                 $erros[] = [
                     'linha' => $linhaNum ?? 0,
-                    'msg'   => $e->getMessage(),
+                    'msg'   => $e->getMessage() . ' - file:'. $e->getFile() . ' - line:'. $e->getLine(),
                 ];
                 error_log("[TrayImport] Linha {$linhaNum}: " . $e->getMessage());
             }
@@ -278,7 +278,7 @@ class TrayImportService {
         $altura      = $this->decimal($r[self::P['altura']]      ?? '0');
 
         $marcaId    = $this->findOrCreateMarca($this->utf8($r[self::P['marca']] ?? ''));
-        $catId      = $this->findOrCreateCategoria($this->utf8($r[self::P['categoria']] ?? ''));
+        // $catId      = $this->findOrCreateCategoria($this->utf8($r[self::P['categoria']] ?? ''));
 
         $campos = [
             'tray_id'          => $trayId,
