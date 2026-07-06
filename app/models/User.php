@@ -104,44 +104,60 @@ class User extends Model {
      * Tenta autenticar por e-mail e senha.
      * Gerencia tentativas de login e bloqueio temporário.
      */
-    public function authenticate(string $email, string $senha): array {
+    public function authenticate(string $email, string $senha): array
+    {
         $user = $this->findByEmail($email);
-
+    
+        // Anti-timing: e-mail inexistente ainda paga o custo de um password_verify
+        // (contra hash dummy), para o tempo ser indistinguível de senha errada.
         if (!$user) {
-            return ['ok' => false, 'msg' => 'E-mail ou senha incorretos.'];
+            $this->dummyVerify($senha);
+            return ['ok' => false, 'reason' => 'invalid'];
         }
-
-        // Verifica bloqueio temporário
-        if (!empty($user['bloqueado_ate']) && strtotime($user['bloqueado_ate']) > time()) {
-            $minutos = ceil((strtotime($user['bloqueado_ate']) - time()) / 60);
-            return ['ok' => false, 'msg' => "Conta temporariamente bloqueada. Tente em {$minutos} minuto(s)."];
+    
+        // Bloqueio temporário por conta — sem vazar que a conta existe.
+        if (!empty($user['bloqueado_ate']) && strtotime((string) $user['bloqueado_ate']) > time()) {
+            $this->dummyVerify($senha); // consome tempo equivalente
+            $retryMin = (int) ceil((strtotime((string) $user['bloqueado_ate']) - time()) / 60);
+            return ['ok' => false, 'reason' => 'locked', 'retry_min' => $retryMin];
         }
-
-        // Verifica conta ativa
+    
+        // Verifica a senha SEMPRE (custo real do hash) antes de qualquer decisão.
+        $passwordOk = password_verify($senha, (string) $user['senha_hash']);
+    
         if (!$user['ativo']) {
-            return ['ok' => false, 'msg' => 'Esta conta está desativada.'];
+            return ['ok' => false, 'reason' => 'inactive'];
         }
-
-        // Verifica senha
-        if (!password_verify($senha, $user['senha_hash'])) {
-            $this->registerFailedAttempt($user['id'], $user['tentativas_login']);
-            return ['ok' => false, 'msg' => 'E-mail ou senha incorretos.'];
+    
+        if (!$passwordOk) {
+            $this->registerFailedAttempt((int) $user['id'], (int) $user['tentativas_login']);
+            return ['ok' => false, 'reason' => 'invalid'];
         }
-
-        // Login bem-sucedido — reseta tentativas
+    
+        // Sucesso — reseta tentativas e último login (UTC para consistência).
         $this->db->prepare(
-            "UPDATE usuarios SET tentativas_login = 0, bloqueado_ate = NULL, ultimo_login = NOW()
-             WHERE id = ?"
+            "UPDATE usuarios
+                SET tentativas_login = 0, bloqueado_ate = NULL, ultimo_login = UTC_TIMESTAMP()
+            WHERE id = ?"
         )->execute([$user['id']]);
-
-        // Atualiza hash se necessário (password_needs_rehash)
-        if (password_needs_rehash($user['senha_hash'], PASSWORD_ALGO)) {
-            $novoHash = password_hash($senha, PASSWORD_ALGO);
+    
+        // Rehash oportunista se algoritmo/custo mudou.
+        if (password_needs_rehash((string) $user['senha_hash'], PASSWORD_ALGO)) {
             $this->db->prepare("UPDATE usuarios SET senha_hash = ? WHERE id = ?")
-                     ->execute([$novoHash, $user['id']]);
+                    ->execute([password_hash($senha, PASSWORD_ALGO), $user['id']]);
         }
-
+    
         return ['ok' => true, 'user' => $user];
+    }
+
+    private function dummyVerify(string $senha): void
+    {
+        static $dummyHash = null;
+        if ($dummyHash === null) {
+            // Senha aleatória descartável; o valor nunca corresponderá a login real.
+            $dummyHash = password_hash(bin2hex(random_bytes(16)), PASSWORD_ALGO);
+        }
+        password_verify($senha, $dummyHash);
     }
 
     private function registerFailedAttempt(int $userId, int $attempts): void {

@@ -52,6 +52,7 @@ class AdminPromocaoController extends Controller {
         try {
             $data = $this->parseFormData();
             $id   = $this->model->salvar($data);
+            Promocao::invalidarCache();
 
             $this->redirect(ADMIN_URL . '/promocoes/' . $id . '?criada=1');
         } catch (\Throwable $e) {
@@ -95,6 +96,7 @@ class AdminPromocaoController extends Controller {
             $data       = $this->parseFormData();
             $data['id'] = $id;
             $this->model->salvar($data);
+            Promocao::invalidarCache();
 
             $this->redirect(ADMIN_URL . '/promocoes/' . $id . '?salvo=1');
         } catch (\Throwable $e) {
@@ -107,6 +109,7 @@ class AdminPromocaoController extends Controller {
     public function toggle(int $id): void {
         $this->verifyCsrf();
         $this->model->toggleAtivo($id);
+        Promocao::invalidarCache();
         $this->json(['ok' => true]);
     }
 
@@ -115,6 +118,7 @@ class AdminPromocaoController extends Controller {
         $this->verifyCsrf();
         $adminId = (int)Session::get('admin_id');
         $this->model->softDelete($id, $adminId);
+        Promocao::invalidarCache();
         $this->json(['ok' => true]);
     }
 
@@ -124,6 +128,24 @@ class AdminPromocaoController extends Controller {
 
     private function parseFormData(): array {
         $tipo = SecurityHelper::sanitizeString($_POST['tipo'] ?? '');
+        $nome = trim(SecurityHelper::sanitizeString($_POST['nome'] ?? ''));
+
+        // ── Validações server-side (JS do form é contornável) ──
+        if (mb_strlen($nome) < 3) {
+            throw new \InvalidArgumentException('Nome da promoção deve ter ao menos 3 caracteres.');
+        }
+
+        $tiposValidos = ['desconto_progressivo', 'frete_gratis', 'brinde',
+                         'compre_ganhe', 'cashback', 'relampago', 'fidelidade'];
+        if (!in_array($tipo, $tiposValidos, true)) {
+            throw new \InvalidArgumentException('Tipo de promoção inválido.');
+        }
+
+        $dataInicio = $_POST['data_inicio'] ?: null;
+        $dataFim    = $_POST['data_fim']    ?: null;
+        if ($dataInicio && $dataFim && strtotime($dataInicio) > strtotime($dataFim)) {
+            throw new \InvalidArgumentException('Data de início não pode ser posterior à data de fim.');
+        }
 
         // ── Configuração específica por tipo ──────────────
         $configuracao = match($tipo) {
@@ -156,6 +178,38 @@ class AdminPromocaoController extends Controller {
             default => [],
         };
 
+        // ── Validações de integridade por tipo ─────────────
+        // Impedem salvar promoções silenciosamente quebradas.
+        switch ($tipo) {
+            case 'brinde':
+                if ($configuracao['produto_brinde_id'] <= 0) {
+                    throw new \InvalidArgumentException('Selecione o produto brinde.');
+                }
+                if (in_array($configuracao['gatilho'], ['valor', 'ambos'], true)
+                    && $configuracao['valor_minimo'] <= 0) {
+                    throw new \InvalidArgumentException('Informe o valor mínimo do gatilho.');
+                }
+                break;
+
+            case 'desconto_progressivo':
+                if (empty($configuracao['faixas'])) {
+                    throw new \InvalidArgumentException('Adicione ao menos uma faixa de desconto.');
+                }
+                break;
+
+            case 'compre_ganhe':
+                if ($configuracao['levar'] >= $configuracao['comprar']) {
+                    throw new \InvalidArgumentException('"Leva" (Y) deve ser menor que "Comprar" (X).');
+                }
+                break;
+
+            case 'frete_gratis':
+                if ($configuracao['valor_minimo'] < 0) {
+                    throw new \InvalidArgumentException('Valor mínimo não pode ser negativo.');
+                }
+                break;
+        }
+
         // ── Escopos (arrays de IDs) ───────────────────────
         $parseIds = fn(string $key): ?array => !empty($_POST[$key])
             ? array_map('intval', array_filter(explode(',', $_POST[$key])))
@@ -183,15 +237,15 @@ class AdminPromocaoController extends Controller {
             : null;
 
         return [
-            'nome'                   => SecurityHelper::sanitizeString($_POST['nome'] ?? ''),
+            'nome'                   => $nome,
             'descricao'              => SecurityHelper::sanitizeString($_POST['descricao'] ?? ''),
             'tipo'                   => $tipo,
             'ativo'                  => isset($_POST['ativo']) ? 1 : 0,
-            'prioridade'             => (int)($_POST['prioridade'] ?? 0),
+            'prioridade'             => max(0, (int)($_POST['prioridade'] ?? 0)),
             'acumulavel'             => isset($_POST['acumulavel']) ? 1 : 0,
             'acumula_cupom'          => isset($_POST['acumula_cupom']) ? 1 : 0,
-            'data_inicio'            => $_POST['data_inicio'] ?: null,
-            'data_fim'               => $_POST['data_fim']    ?: null,
+            'data_inicio'            => $dataInicio,
+            'data_fim'               => $dataFim,
             'dias_semana'            => $diasSemana,
             'horario_inicio'         => $_POST['horario_inicio'] ?: null,
             'horario_fim'            => $_POST['horario_fim']    ?: null,

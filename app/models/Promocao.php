@@ -10,8 +10,18 @@ class Promocao {
 
     private PDO $db;
 
+    /** Cache por request de getAtivasAgora() — evita query duplicada
+     *  quando preview + avaliação rodam na mesma requisição.
+     *  Não persiste entre requests (sem staleness). */
+    private static ?array $cacheAtivas = null;
+
     public function __construct() {
         $this->db = Database::getInstance()->getConnection();
+    }
+
+    /** Invalida o cache — chamar após criar/editar/toggle/excluir. */
+    public static function invalidarCache(): void {
+        self::$cacheAtivas = null;
     }
 
     // ── Leitura ────────────────────────────────────────
@@ -22,6 +32,8 @@ class Promocao {
      * A engine de regras (PromocaoService) faz a avaliação fina.
      */
     public function getAtivasAgora(): array {
+        if (self::$cacheAtivas !== null) return self::$cacheAtivas;
+
         $stmt = $this->db->prepare(
             "SELECT * FROM promocoes
              WHERE ativo = 1
@@ -34,7 +46,7 @@ class Promocao {
         $rows = $stmt->fetchAll();
 
         // Decodifica JSON uma vez aqui, não espalhado pela service
-        return array_map([$this, 'decodeJson'], $rows);
+        return self::$cacheAtivas = array_map([$this, 'decodeJson'], $rows);
     }
 
     public function findById(int $id): ?array {

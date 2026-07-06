@@ -1,88 +1,132 @@
 <?php
+declare(strict_types=1);
+
 // admin/controllers/AdminAuthController.php
 
-class AdminAuthController extends Controller {
+/**
+ * Controlador de autenticacao do painel administrativo (endurecido).
+ *
+ * CAMADAS (defense in depth):
+ *  1. WAF/rate-limit da Cloudflare na borda (config no painel, fora deste codigo).
+ *  2. AuthLogService::loginGate() — rate-limit por IP real + circuit breaker global.
+ *  3. User::authenticate em tempo constante, retorno NEUTRO (anti-enumeracao).
+ *  4. AuthLogService::registrar() — auditoria estruturada com IP real.
+ *  5. Sessao regenerada por Session::loginAdmin (anti-fixation) — ja existente.
+ *
+ * Vocabulario login_status: 'fail' / 'success'.
+ *
+ * @see OWASP A01 (Broken Access Control), A07 (Auth Failures), A09 (Logging)
+ */
+final class AdminAuthController extends Controller
+{
+    /** Piso de tempo (ms) por tentativa — nivela ruido residual de timing. */
+    private const MIN_RESPONSE_MS = 350;
 
-    public function loginForm(): void {
+    public function loginForm(): void
+    {
         if (Session::isAdminLogado()) {
             $this->redirect(ADMIN_URL . '/dashboard');
         }
-
-        // Renderiza a view diretamente sem layout do front-end
         $this->renderAdmin('auth/login', [
-            'pageTitle' => 'Login — Admin',
+            'pageTitle' => 'Acesso — Painel Administrativo',
         ]);
     }
 
-    public function login(): void {
+    public function login(): void
+    {
+        $startedAt = hrtime(true);
         $this->verifyCsrf();
 
         $email = SecurityHelper::sanitizeEmail($_POST['email'] ?? '');
-        $senha = $_POST['senha'] ?? '';
+        $senha = (string) ($_POST['senha'] ?? '');
+        $ip    = AuthLogService::clientIp();
 
-        if (SecurityHelper::rateLimitExceeded('admin_login_' . md5($email), 5, 900)) {
-            Session::flash('error', 'Muitas tentativas. Aguarde 15 minutos.');
-            $this->redirect(ADMIN_URL . '/login');
+        // ── Camada 2: rate-limit por IP + circuit breaker global ──────────
+        $gate = AuthLogService::loginGate();
+        if (!$gate['allowed']) {
+            AuthLogService::registrar(
+                null, 'admin_login', 'fail', 'local',
+                ['motivo' => 'throttled:' . $gate['reason'], 'ip_real' => $ip]
+            );
+            $mins = (int) ceil($gate['retry_after'] / 60);
+            $this->finishWithError($startedAt, "Muitas tentativas. Tente novamente em {$mins} minuto(s).");
         }
 
-        $userModel = new User();
-        $result    = $userModel->authenticate($email, $senha);
+        // ── Camada 3: autenticacao em tempo constante, retorno neutro ─────
+        $result = (new User())->authenticate($email, $senha);
 
-        if (!$result['ok']) {
-            Session::flash('error', $result['msg']);
-            $this->redirect(ADMIN_URL . '/login');
+        $isAdmin =
+            ($result['ok'] ?? false) === true
+            && (($result['user']['tipo'] ?? null) === 'admin')
+            && !empty($result['user']['admin_id']);
+
+        if (!$isAdmin) {
+            // Registra falha (alimenta o throttle por IP). NUNCA distinguir
+            // 'invalid'/'locked'/'inactive'/'nao-admin' ao usuario.
+            AuthLogService::registrar(
+                null, 'admin_login', 'fail', 'local',
+                ['motivo' => $result['reason'] ?? 'invalid', 'ip_real' => $ip]
+            );
+            $this->finishWithError($startedAt, 'Credenciais invalidas.');
         }
 
-        $user = $result['user'];
-
-        if ($user['tipo'] !== 'admin' || empty($user['admin_id'])) {
-            Session::flash('error', 'Acesso não autorizado.');
-            $this->redirect(ADMIN_URL . '/login');
-        }
-
+        $user  = $result['user'];
         $admin = [
-            'id'          => $user['admin_id'],
-            'nivel'       => $user['nivel'],
-            'permissoes'  => $user['permissoes'],
+            'id'         => $user['admin_id'],
+            'nivel'      => $user['nivel'],
+            'permissoes' => $user['permissoes'],
         ];
+
         Session::loginAdmin($user, $admin);
-        SecurityHelper::clearRateLimit('admin_login_' . md5($email));
 
-        // Log de acesso
-        try {
-            $db = Database::getInstance()->getConnection();
-            $db->prepare(
-                "INSERT INTO logs (nivel, canal, mensagem, usuario_id, ip)
-                 VALUES ('info', 'admin', ?, ?, ?)"
-            )->execute([
-                "Login admin: {$user['email']}",
-                $user['id'],
-                $_SERVER['REMOTE_ADDR'] ?? null,
-            ]);
-        } catch (Exception) {}
+        AuthLogService::registrar(
+            null, 'admin_login', 'success', 'local',
+            ['admin_id' => (int) $user['admin_id'], 'email' => $user['email'], 'ip_real' => $ip]
+        );
 
+        $this->normalizeTiming($startedAt);
         $this->redirect(ADMIN_URL . '/dashboard');
     }
 
-    public function logout(): void {
+    public function logout(): void
+    {
+        $adminId = Session::getAdminId();
         Session::logoutAdmin();
+        AuthLogService::registrar(
+            null, 'admin_logout', 'success', 'local',
+            ['admin_id' => $adminId, 'ip_real' => AuthLogService::clientIp()]
+        );
         $this->redirect(ADMIN_URL . '/login');
     }
 
-    /**
-     * Renderiza uma view do admin com layout próprio do painel.
-     * Evita usar o sistema de layouts do front-end público.
-     */
-    private function renderAdmin(string $view, array $data = []): void {
-        $data['csrf_token'] = SecurityHelper::generateCsrf();
+    // ── internos ──────────────────────────────────────────────────────────
 
-        // Procura a view em admin/views/
-        $viewFile = ADMIN_PATH . '/views/' . str_replace('.', '/', $view) . '.php';
+    /** Finaliza tentativa falha com tempo minimo e mensagem generica. */
+    private function finishWithError(int $startedAt, string $message): never
+    {
+        $this->normalizeTiming($startedAt);
+        Session::flash('error', $message);
+        $this->redirect(ADMIN_URL . '/login');
+    }
 
-        if (!file_exists($viewFile)) {
-            throw new RuntimeException("View admin '{$view}' não encontrada em {$viewFile}.");
+    /** Garante MIN_RESPONSE_MS desde o inicio da request. */
+    private function normalizeTiming(int $startedAt): void
+    {
+        $elapsedMs = (hrtime(true) - $startedAt) / 1_000_000;
+        $remaining = self::MIN_RESPONSE_MS - $elapsedMs;
+        if ($remaining > 0) {
+            usleep((int) ($remaining * 1000));
         }
+    }
 
+    /** Renderiza view do painel sem layout do front; dados controlados. */
+    private function renderAdmin(string $view, array $data = []): void
+    {
+        $data['csrf_token'] = SecurityHelper::generateCsrf();
+        $viewFile = ADMIN_PATH . '/views/' . str_replace('.', '/', $view) . '.php';
+        if (!file_exists($viewFile)) {
+            throw new RuntimeException("View admin '{$view}' nao encontrada.");
+        }
         extract($data, EXTR_SKIP);
         include $viewFile;
         exit;

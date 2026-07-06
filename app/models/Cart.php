@@ -181,7 +181,7 @@ class Cart extends Model {
         $stmt->execute([$carrinhoId]);
         $itens = $stmt->fetchAll();
 
-        if (empty($itens)) return ['teste'=>0];
+        if (empty($itens)) return [];
 
         // Coleta IDs para buscar atributos em batch
         $produtoIds = array_unique(array_column($itens, 'produto_id'));

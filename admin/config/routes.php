@@ -62,6 +62,33 @@ AdminRouter::get('/api/buscar-caracteristicas', 'AdminApiController@buscarCaract
 // e ANTES das rotas com parâmetros dinâmicos {id:\d+} — mesmo padrão
 // já usado em outras rotas estáticas vs dinâmicas do projeto.
 
+// Admin
+AdminRouter::get ('/carrinhos-abandonados',                    'AdminCarrinhoAbandonadoController@index');
+
+// ⚠ Declarar ANTES de '/admin/carrinhos-abandonados/{id:\d+}' —
+// garante que "templates" nunca seja engolido por um router que
+// teste padrões em ordem de declaração.
+AdminRouter::get ('/carrinhos-abandonados/templates',                  'AdminCarrinhoAbandonadoController@templatesIndex');
+AdminRouter::get ('/carrinhos-abandonados/templates/novo',             'AdminCarrinhoAbandonadoController@templatesNovo');
+AdminRouter::post('/carrinhos-abandonados/templates/novo',             'AdminCarrinhoAbandonadoController@templatesCriar');
+AdminRouter::get ('/carrinhos-abandonados/templates/{id:\d+}',         'AdminCarrinhoAbandonadoController@templatesEditar');
+AdminRouter::post('/carrinhos-abandonados/templates/{id:\d+}',         'AdminCarrinhoAbandonadoController@templatesAtualizar');
+AdminRouter::post('/carrinhos-abandonados/templates/{id:\d+}/toggle',  'AdminCarrinhoAbandonadoController@templatesToggle');
+AdminRouter::post('/carrinhos-abandonados/templates/{id:\d+}/excluir', 'AdminCarrinhoAbandonadoController@templatesExcluir');
+
+AdminRouter::get ('/carrinhos-abandonados/dashboard',          'AdminCarrinhoAbandonadoController@dashboard');
+AdminRouter::get ('/carrinhos-abandonados/exportar',           'AdminCarrinhoAbandonadoController@exportar');
+AdminRouter::get ('/carrinhos-abandonados/{id:\d+}',           'AdminCarrinhoAbandonadoController@show');
+AdminRouter::post('/carrinhos-abandonados/{id:\d+}/status',      'AdminCarrinhoAbandonadoController@mudarStatus');
+AdminRouter::post('/carrinhos-abandonados/{id:\d+}/responsavel', 'AdminCarrinhoAbandonadoController@atribuir');
+AdminRouter::post('/carrinhos-abandonados/{id:\d+}/anotacao',    'AdminCarrinhoAbandonadoController@anotar');
+AdminRouter::post('/carrinhos-abandonados/{id:\d+}/agendar',     'AdminCarrinhoAbandonadoController@agendar');
+AdminRouter::post('/carrinhos-abandonados/{id:\d+}/whatsapp',    'AdminCarrinhoAbandonadoController@whatsapp');
+AdminRouter::post('/carrinhos-abandonados/{id:\d+}/email',       'AdminCarrinhoAbandonadoController@email');
+AdminRouter::post('/carrinhos-abandonados/{id:\d+}/link',        'AdminCarrinhoAbandonadoController@gerarLink');
+// Público
+
+
 
 // ── Produtos ──────────────────────────────────────────────
 // AdminRouter::get('/produtos',                      'ProductAdminController@index');

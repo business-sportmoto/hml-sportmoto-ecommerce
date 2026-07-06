@@ -1615,7 +1615,7 @@ class CheckoutController extends Controller {
         $promocaoService    = new PromocaoService();
         $itensCupom         = $itensCupom ?? $cart->getItensParaCupom($clienteId); // reusa se já buscou
         $primeiraCompra     = !isset($primeiraCompra)
-            ? ((new Customer())->countOrders($clienteId) === 0)
+            ? ((new Customer())->getPedidosCount($clienteId) === 0)
             : $primeiraCompra;
 
         $contextoPromo = [
@@ -1755,6 +1755,33 @@ class CheckoutController extends Controller {
             // resultado líquido = R$0 para o cliente. Entra no pedido,
             // na NF-e e controla estoque normalmente.
             foreach ($brindes as $brinde) {
+                $brindeId = (int)$brinde['produto_id'];
+
+                // ── Anti race condition ──────────────────────────
+                // O estoque foi verificado em avaliarBrinde(), mas entre
+                // a avaliação e este INSERT outro checkout concorrente
+                // pode ter levado a última unidade. Lock pessimista na
+                // linha do produto + re-verificação dentro da transação.
+                $db->prepare("SELECT id FROM produtos WHERE id = ? FOR UPDATE")
+                   ->execute([$brindeId]);
+
+                $stmtSaldo = $db->prepare(
+                    "SELECT CASE
+                        WHEN EXISTS (SELECT 1 FROM estoque_saldo WHERE produto_id = ?)
+                        THEN (SELECT COALESCE(SUM(saldo),0) FROM estoque_saldo WHERE produto_id = ?)
+                        ELSE (SELECT COALESCE(estoque_total,0) FROM produtos WHERE id = ?)
+                     END"
+                );
+                $stmtSaldo->execute([$brindeId, $brindeId, $brindeId]);
+                $saldoAtual = (int)$stmtSaldo->fetchColumn();
+
+                if ($saldoAtual < (int)$brinde['quantidade']) {
+                    // Esgotou entre a avaliação e a confirmação.
+                    // Rollback total: cliente re-tenta e a promoção não
+                    // dispara mais (avaliarBrinde retorna null sem estoque).
+                    throw new \RuntimeException('BRINDE_ESGOTADO');
+                }
+
                 $db->prepare(
                     "INSERT INTO pedido_itens
                      (pedido_id, produto_id, sku_id, nome_produto,
@@ -1763,7 +1790,7 @@ class CheckoutController extends Controller {
                      VALUES (?,?,NULL,?,?,?,?,NULL,1)"
                 )->execute([
                     $pedidoId,
-                    (int)$brinde['produto_id'],
+                    $brindeId,
                     $brinde['nome'] . ' (Brinde)',
                     (int)$brinde['quantidade'],
                     (float)$brinde['preco'],
@@ -1776,6 +1803,18 @@ class CheckoutController extends Controller {
         } catch (\Throwable $e) {
             $db->rollBack();
             error_log('[process] ' . $e->getMessage());
+
+            // Mensagem específica para brinde esgotado durante o checkout
+            // (evento raro de concorrência) — orienta o cliente sem vazar
+            // detalhes internos.
+            if ($e->getMessage() === 'BRINDE_ESGOTADO') {
+                $this->json([
+                    'ok'  => false,
+                    'msg' => 'O brinde da promoção esgotou agora há pouco. '
+                           . 'Atualize a página e finalize novamente.',
+                ]);
+                return;
+            }
             $this->json(['ok' => false, 'msg' => 'Erro interno ao criar pedido. Tente novamente.']);
         }
     

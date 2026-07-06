@@ -28,15 +28,20 @@ class PromocaoController extends Controller {
         $ip = $_SERVER['REMOTE_ADDR'] ?? '';
         if (SecurityHelper::rateLimitExceeded('promo_preview_' . md5($ip), 30, 60)) {
             $this->json(['ok' => true, 'cards' => []]);
+            return; // defense in depth: garante interrupção mesmo se json() não der exit
         }
 
         $clienteId = Session::isClienteLogado()
             ? (int)Session::get('cliente_id') : null;
 
-        $itens    = $this->cart->getItensParaCupom($clienteId);
-        $totais   = $this->cart->calcularTotais2($itens);
-        $subtotal = (float)($totais['subtotal'] ?? 0);
-        $frete    = (float)(Session::get('checkout_state')['frete']['valor'] ?? 0);
+        $itens = $this->cart->getItensParaCupom($clienteId);
+        $frete = (float)(Session::get('checkout_state')['frete']['valor'] ?? 0);
+
+        // Subtotal é recalculado DENTRO do previewCarrinho() a partir dos
+        // itens enriquecidos (preco × qtd). O calcularTotais() do Cart usa
+        // keys diferentes (valor_unitario × quantidade) e retornava 0 aqui.
+        // Passamos 0.0 — o valor é ignorado e substituído internamente.
+        $subtotal = 0.0;
 
         // Verifica se é primeira compra (para promoções com essa restrição)
         $primeiraCompra = false;
@@ -64,8 +69,6 @@ class PromocaoController extends Controller {
             'ok'    => true,
             'cards' => $cards,
             'total' => count($cards),
-            'totais' => $itens,
-            'clienteId' => ($clienteId),
         ]);
     }
 }

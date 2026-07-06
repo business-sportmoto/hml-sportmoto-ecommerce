@@ -534,7 +534,7 @@ class CartController extends Controller {
                     ?: ($cart['codigo_vendedor'] ?: null);
 
         
-        $itemsFormatted = array_map(function ($item) {
+        $itemsFormatted = (count($items) > 0) ? array_map(function ($item) {
             $nomeItem = $item['nome_produto'] ?? $item['nome'] ?? 'Produto';
 
             return [
@@ -553,7 +553,7 @@ class CartController extends Controller {
                 'subtotal_fmt' => PriceHelper::format((float)($item['subtotal']       ?? 0)),
                 'atributos'    => $item['atributos'] ?? [],
             ];
-        }, $items);
+        }, $items) : [];
 
         $parcelas      = PriceHelper::installments((float)($totals['total'] ?? 0));
         $ultimaParcela = end($parcelas);

@@ -1,0 +1,343 @@
+/* =============================================================================
+   admin-login.css — Painel Administrativo Sportmoto
+   Enterprise premium · dark · self-hosted (CSP-safe) · GPU-only motion
+   Salvar em: admin/assets/css/admin-login.css
+   ============================================================================= */
+
+/* ---- DESIGN TOKENS -------------------------------------------------------- */
+:root {
+  /* Base neutra fria (Zinc/Slate) — sem "AI purple" */
+  --bg-0:        #0a0b0d;
+  --bg-1:        #101216;
+  --surface:     rgba(22, 25, 31, 0.72);
+  --surface-hi:  rgba(30, 34, 42, 0.9);
+  --line:        rgba(255, 255, 255, 0.08);
+  --line-hi:     rgba(255, 255, 255, 0.14);
+
+  --text-0:      #f4f5f7;   /* títulos */
+  --text-1:      #b6bcc6;   /* corpo */
+  --text-2:      #6b7280;   /* muted */
+
+  /* Acento único, saturação contida — deep rose alinhado à marca (#e63946) */
+  --accent:      #f14d5d;
+  --accent-hi:   #ff6470;
+  --accent-dim:  rgba(241, 77, 93, 0.14);
+  --accent-ring: rgba(241, 77, 93, 0.35);
+
+  --danger:      #f87171;
+  --danger-dim:  rgba(248, 113, 113, 0.12);
+  --success:     #34d399;
+  --success-dim: rgba(52, 211, 153, 0.12);
+
+  --radius:      18px;
+  --radius-sm:   11px;
+  --shadow:      0 24px 60px -20px rgba(0, 0, 0, 0.7);
+  --shadow-btn:  0 8px 24px -8px var(--accent-ring);
+
+  --ease:        cubic-bezier(0.22, 1, 0.36, 1);
+  --font:        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 "Helvetica Neue", Arial, sans-serif;
+}
+
+/* ---- RESET LOCAL ---------------------------------------------------------- */
+*, *::before, *::after { box-sizing: border-box; }
+
+.login-body {
+  margin: 0;
+  min-height: 100dvh;               /* estável no iOS Safari, não h-screen */
+  font-family: var(--font);
+  color: var(--text-1);
+  background: var(--bg-0);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+/* ---- AMBIENTE (mesh + grão) ---------------------------------------------- */
+.login-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 120% at 15% 10%, #12151b 0%, var(--bg-0) 55%),
+    var(--bg-0);
+}
+.login-ambient__blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(70px);
+  opacity: 0.5;
+  will-change: transform;
+}
+.login-ambient__blob--1 {
+  width: 46vw; height: 46vw;
+  left: -10vw; top: -12vw;
+  background: radial-gradient(circle, rgba(241,77,93,0.28), transparent 66%);
+  animation: blobFloat 22s var(--ease) infinite alternate;
+}
+.login-ambient__blob--2 {
+  width: 40vw; height: 40vw;
+  right: -8vw; bottom: -14vw;
+  background: radial-gradient(circle, rgba(56,110,180,0.22), transparent 66%);
+  animation: blobFloat 26s var(--ease) infinite alternate-reverse;
+}
+.login-ambient__grain {
+  position: absolute;
+  inset: -50%;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
+  opacity: 0.025;
+  mix-blend-mode: overlay;
+}
+@keyframes blobFloat {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(4vw, 3vw, 0) scale(1.12); }
+}
+
+/* ---- SHELL (split-screen assimétrico 1.1fr / 1fr) ------------------------- */
+.login-shell {
+  position: relative;
+  z-index: 1;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+}
+
+/* ---- COLUNA A — marca ----------------------------------------------------- */
+.login-brand {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(2rem, 4vw, 4rem);
+  border-right: 1px solid var(--line);
+  background:
+    linear-gradient(155deg, rgba(241,77,93,0.05), transparent 42%),
+    rgba(12, 14, 18, 0.4);
+}
+.login-brand__top { display: flex; align-items: center; gap: 12px; }
+.login-brand__mark {
+  display: grid; place-items: center;
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  color: var(--accent);
+  background: var(--accent-dim);
+  border: 1px solid var(--line-hi);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+}
+.login-brand__wordmark {
+  font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
+  color: var(--text-0);
+}
+.login-brand__center { max-width: 30ch; }
+.login-brand__headline {
+  margin: 0;
+  font-size: clamp(2rem, 3.4vw, 3.1rem);
+  font-weight: 700;
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+  color: var(--text-0);
+}
+.login-brand__headline-accent {
+  color: transparent;
+  background: linear-gradient(92deg, var(--accent-hi), var(--accent));
+  -webkit-background-clip: text; background-clip: text;
+}
+.login-brand__desc {
+  margin: 18px 0 0;
+  font-size: 15px; line-height: 1.6;
+  color: var(--text-2);
+  max-width: 40ch;
+}
+.login-brand__foot { display: flex; align-items: center; justify-content: space-between; }
+.login-brand__pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 13px;
+  font-size: 12.5px; font-weight: 500;
+  color: var(--text-1);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.login-brand__dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 0 rgba(52,211,153,0.5);
+  animation: pulseDot 2.4s ease-out infinite;
+}
+@keyframes pulseDot {
+  0%   { box-shadow: 0 0 0 0 rgba(52,211,153,0.45); }
+  70%  { box-shadow: 0 0 0 7px rgba(52,211,153,0); }
+  100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); }
+}
+.login-brand__meta { font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+
+/* ---- COLUNA B — painel ---------------------------------------------------- */
+.login-panel {
+  display: grid;
+  place-items: center;
+  padding: clamp(1.5rem, 3vw, 3rem);
+}
+
+/* ---- CARD (glassmorphism com refração) ------------------------------------ */
+.login-card {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+  padding: clamp(1.6rem, 3vw, 2.4rem);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow:
+    var(--shadow),
+    inset 0 1px 0 rgba(255,255,255,0.06);   /* refração de borda superior */
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  animation: cardIn 0.7s var(--ease) both;
+}
+@keyframes cardIn {
+  from { opacity: 0; transform: translate3d(0, 14px, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+.login-card__head { text-align: left; margin-bottom: 22px; }
+.login-card__mark {
+  display: inline-grid; place-items: center;
+  width: 40px; height: 40px; margin-bottom: 16px;
+  color: var(--accent);
+  background: var(--accent-dim);
+  border: 1px solid var(--line-hi);
+  border-radius: 11px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.login-card__title {
+  margin: 0; font-size: 22px; font-weight: 700;
+  letter-spacing: -0.02em; color: var(--text-0);
+}
+.login-card__sub { margin: 6px 0 0; font-size: 14px; color: var(--text-2); }
+
+/* ---- ALERTAS -------------------------------------------------------------- */
+.login-alert {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 14px; margin-bottom: 18px;
+  font-size: 13.5px; line-height: 1.45;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  animation: alertIn 0.4s var(--ease) both;
+}
+.login-alert svg { flex-shrink: 0; margin-top: 1px; }
+.login-alert--error   { color: #fecaca; background: var(--danger-dim); border-color: rgba(248,113,113,0.25); }
+.login-alert--success { color: #bbf7d0; background: var(--success-dim); border-color: rgba(52,211,153,0.25); }
+@keyframes alertIn {
+  from { opacity: 0; transform: translate3d(0, -6px, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+/* ---- CAMPOS --------------------------------------------------------------- */
+.login-form { display: flex; flex-direction: column; gap: 16px; }
+.login-field { display: flex; flex-direction: column; gap: 7px; }
+.login-field__label {
+  font-size: 12.5px; font-weight: 600;
+  letter-spacing: 0.01em; color: var(--text-1);
+}
+.login-field__wrap { position: relative; display: flex; align-items: center; }
+.login-field__icon {
+  position: absolute; left: 13px;
+  color: var(--text-2); pointer-events: none;
+  transition: color 0.2s var(--ease);
+}
+.login-field__input {
+  width: 100%;
+  height: 46px;
+  padding: 0 44px 0 40px;
+  font-size: 14.5px; font-family: inherit;
+  color: var(--text-0);
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--line-hi);
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease),
+              background 0.2s var(--ease);
+}
+.login-field__input::placeholder { color: var(--text-2); opacity: 0.6; }
+.login-field__input:hover { border-color: rgba(255,255,255,0.2); }
+.login-field__input:focus {
+  border-color: var(--accent);
+  background: rgba(255,255,255,0.03);
+  box-shadow: 0 0 0 4px var(--accent-ring);
+}
+.login-field__wrap:focus-within .login-field__icon { color: var(--accent); }
+
+.login-field__toggle {
+  position: absolute; right: 8px;
+  display: grid; place-items: center;
+  width: 32px; height: 32px;
+  color: var(--text-2);
+  background: transparent; border: 0; border-radius: 8px;
+  cursor: pointer;
+  transition: color 0.2s var(--ease), background 0.2s var(--ease);
+}
+.login-field__toggle:hover { color: var(--text-1); background: rgba(255,255,255,0.05); }
+.login-field__toggle:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
+
+/* ---- SUBMIT (com estado de loading) --------------------------------------- */
+.login-submit {
+  position: relative;
+  height: 47px; margin-top: 6px;
+  display: grid; place-items: center;
+  font-size: 14.5px; font-weight: 600; font-family: inherit;
+  color: #fff; letter-spacing: 0.01em;
+  background: linear-gradient(180deg, var(--accent-hi), var(--accent));
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  box-shadow: var(--shadow-btn), inset 0 1px 0 rgba(255,255,255,0.2);
+  transition: transform 0.15s var(--ease), box-shadow 0.2s var(--ease),
+              filter 0.2s var(--ease);
+  will-change: transform;
+}
+.login-submit:hover { filter: brightness(1.06); box-shadow: 0 12px 30px -8px var(--accent-ring), inset 0 1px 0 rgba(255,255,255,0.2); }
+.login-submit:active { transform: translateY(1px) scale(0.99); }   /* feedback tátil */
+.login-submit:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.login-submit__spinner {
+  position: absolute;
+  width: 18px; height: 18px;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  opacity: 0;
+  animation: spin 0.7s linear infinite;
+}
+.login-submit.is-loading .login-submit__label { opacity: 0; }
+.login-submit.is-loading .login-submit__spinner { opacity: 1; }
+.login-submit.is-loading { pointer-events: none; filter: saturate(0.85); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- FOOT ----------------------------------------------------------------- */
+.login-card__foot { margin-top: 22px; text-align: center; }
+.login-card__back {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--text-2);
+  text-decoration: none;
+  transition: color 0.2s var(--ease);
+}
+.login-card__back:hover { color: var(--text-1); }
+.login-card__back svg { transition: transform 0.2s var(--ease); }
+.login-card__back:hover svg { transform: translateX(-3px); }
+
+/* ---- RESPONSIVO ----------------------------------------------------------- */
+@media (max-width: 860px) {
+  .login-shell { grid-template-columns: 1fr; }
+  .login-brand { display: none; }             /* mobile: só o formulário */
+  .login-panel { min-height: 100dvh; }
+}
+
+/* ---- ACESSIBILIDADE: respeita quem pediu menos movimento ------------------ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

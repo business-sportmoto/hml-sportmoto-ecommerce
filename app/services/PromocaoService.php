@@ -278,6 +278,21 @@ class PromocaoService {
             }
         }
 
+        // ── Detecção de anomalia ──────────────────────────
+        // Desconto acumulado > subtotal indica promoções mal configuradas
+        // (ou tentativa de exploit por stacking). O checkout já protege o
+        // total com max(0, ...), mas isso mascara o problema — o log
+        // estruturado permite alertar antes de virar prejuízo em escala.
+        if ($descontoAcumulado > $subtotal && $subtotal > 0) {
+            error_log(sprintf(
+                '[PROMO_ANOMALY] desconto_acumulado=%.2f > subtotal=%.2f | cliente=%s | promocoes=%s',
+                $descontoAcumulado,
+                $subtotal,
+                $clienteId ?? 'anon',
+                implode(',', array_column($resultados, 'promocao_id'))
+            ));
+        }
+
         return $resultados;
     }
 
@@ -317,11 +332,24 @@ class PromocaoService {
      */
     public function aplicar(array $resultados, int $pedidoId, ?int $clienteId): void {
         foreach ($resultados as $r) {
+            // Guard anti double-apply: retry de checkout ou chamada duplicada
+            // não pode registrar a mesma promoção duas vezes no mesmo pedido.
+            if ($this->model->jaAplicada((int)$r['promocao_id'], $pedidoId)) {
+                continue;
+            }
+
+            // Classificação do tipo de benefício.
+            // CRÍTICO: cashback tem desconto_produto=0 e desconto_frete=0 —
+            // sem esta verificação ele cairia em 'desconto' e o
+            // CashbackService (que filtra tipo_beneficio='cashback')
+            // NUNCA o encontraria para creditar.
             $tipo = 'desconto';
-            if ($r['desconto_frete'] > 0 && $r['desconto_produto'] === 0.0) {
-                $tipo = 'frete_gratis';
+            if (isset($r['cashback_valor']) && (float)$r['cashback_valor'] > 0) {
+                $tipo = 'cashback';
             } elseif (!empty($r['brindes'])) {
                 $tipo = 'brinde';
+            } elseif ($r['desconto_frete'] > 0 && $r['desconto_produto'] === 0.0) {
+                $tipo = 'frete_gratis';
             }
 
             $this->model->registrarAplicacao(

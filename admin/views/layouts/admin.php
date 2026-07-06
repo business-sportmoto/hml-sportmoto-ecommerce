@@ -179,6 +179,19 @@ function adminIsActive(string $path): string {
         </span>
         Automações
       </a>
+      <a href="<?= BASE_URL ?>/admin/carrinhos-abandonados" class="admin-nav-item<?= adminIsActive('/admin/carrinhos-abandonados/') ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('automation', 'icon icon--md') ?>
+        </span>
+        Carrinho abandonado
+      </a>
+      <a href="<?= BASE_URL ?>/admin/recuperacao-templates" class="admin-nav-item<?= adminIsActive('/admin/recuperacao-templates/') ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('automation', 'icon icon--md') ?>
+        </span>
+        Templates
+      </a>
+      
     </div>
 
     <div class="admin-nav-section">

@@ -59,6 +59,8 @@ Router::post('/carrinho/cupom/remover',   'CartController@removeCoupon');
 Router::post('/carrinho/frete',           'CartController@calcShipping');
 Router::get('/carrinho/compartilhar/{token}', 'CartController@share');
 
+Router::get ('/carrinho/recuperar/{token:[a-f0-9]{64}}',        'CarrinhoRecuperacaoController@recuperar');
+
 // Checkout
 // Router::get('/checkout',                  'CheckoutController@index');
 // Router::post('/checkout/identificacao',   'CheckoutController@identify');
