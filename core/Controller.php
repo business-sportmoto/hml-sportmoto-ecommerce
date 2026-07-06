@@ -19,6 +19,10 @@ abstract class Controller {
         exit;
     }
 
+    protected function parseError(Exception $err){
+        return 'Message:'.$err->getMessage().' File:'.$err->getFile().' Line:'.$err->getLine();
+    }
+
     // Redireciona para uma URL
     protected function redirect(string $url, bool $permanent = false): void {
         header('Location: ' . $url, true, $permanent ? 301 : 302);

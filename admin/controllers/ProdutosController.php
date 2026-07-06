@@ -80,7 +80,7 @@ class ProdutosController extends Controller {
         } elseif ($status === 'destaque') {
             $where .= " AND p.destaque = 1 AND p.ativo = 1";
         } else {
-            $where .= " AND p.ativo = 1";
+            // $where .= " AND p.ativo = 1";
         }
 
         // Busca textual

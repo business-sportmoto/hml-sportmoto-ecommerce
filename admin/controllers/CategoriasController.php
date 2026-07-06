@@ -123,7 +123,7 @@ class CategoriasController extends Controller {
                 $db->prepare(
                     "INSERT INTO categorias
                      (nome, slug, parent_id, descricao, imagem, ordem, ativo, destaque, meta_title, meta_description, meta_keywords, busca_moto)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 )->execute([
                     $nome, $slug, $parentId ?: null, $descricao,
                     $imagem, $ordem, $ativo, $destaque, $meta_title, $meta_description, $meta_keywords, $buscaMoto  
@@ -133,7 +133,7 @@ class CategoriasController extends Controller {
                 $this->json(['ok' => true, 'msg' => 'Categoria criada!', 'id' => $novoId]);
             }
         } catch (Exception $e) {
-            $this->json(['ok' => false, 'msg' => 'Erro ao salvar: ' . $e->getMessage()]);
+            $this->json(['ok' => false, 'msg' => 'Erro ao salvar: ' . $this->parseError($e)]);
         }
     }
 
