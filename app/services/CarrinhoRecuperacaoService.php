@@ -18,9 +18,9 @@ declare(strict_types=1);
 class CarrinhoRecuperacaoService {
 
     /** Horas sem atividade para considerar abandono */
-    private const JANELA_ABANDONO_H   = 3;
+    private const JANELA_ABANDONO_H   = 1;
     /** Valor mínimo do carrinho para entrar na central */
-    private const VALOR_MINIMO        = 30.0;
+    private const VALOR_MINIMO        = 0;
     /** Validade do link público de retorno */
     private const TOKEN_VALIDADE_DIAS = 7;
     /** Máximo de tentativas antes de sugerir 'perdido' */
@@ -61,7 +61,7 @@ class CarrinhoRecuperacaoService {
                           SUM(ci.quantidade)                     AS qtd
                    FROM carrinho_itens ci
                    GROUP BY ci.carrinho_id) agg ON agg.carrinho_id = ca.id
-             WHERE ca.status = 'ativo'
+             WHERE ca.status = 'aberto'
                AND ca.atualizado_em < DATE_SUB(NOW(), INTERVAL ? HOUR)
                AND agg.valor >= ?
                AND NOT EXISTS (SELECT 1 FROM carrinho_recuperacao cr
@@ -86,13 +86,14 @@ class CarrinhoRecuperacaoService {
         $this->db->exec(
             "UPDATE carrinho_recuperacao cr
              LEFT JOIN clientes c ON c.id = cr.cliente_id
+             LEFT JOIN usuarios u ON u.id = c.usuario_id
              SET cr.score = LEAST(100,
                    (CASE WHEN cr.valor_snapshot >= 500 THEN 30
                          WHEN cr.valor_snapshot >= 200 THEN 20
                          WHEN cr.valor_snapshot >= 100 THEN 10 ELSE 0 END)
                  + (CASE WHEN cr.cliente_id IS NOT NULL THEN 15 ELSE 0 END)
                  + (CASE WHEN c.telefone IS NOT NULL AND c.telefone != '' THEN 15 ELSE 0 END)
-                 + (CASE WHEN c.email    IS NOT NULL AND c.email    != '' THEN 10 ELSE 0 END)
+                 + (CASE WHEN u.email    IS NOT NULL AND u.email    != '' THEN 10 ELSE 0 END)
                  + (CASE WHEN EXISTS (SELECT 1 FROM pedidos p
                                       WHERE p.cliente_id = cr.cliente_id
                                         AND p.status_pagamento = 'aprovado')
@@ -107,7 +108,7 @@ class CarrinhoRecuperacaoService {
              cr.status = CASE
                  WHEN cr.cliente_id IS NULL
                    OR (c.telefone IS NULL OR c.telefone = '')
-                  AND (c.email    IS NULL OR c.email    = '')
+                  AND (u.email    IS NULL OR u.email    = '')
                  THEN 'sem_contato' ELSE cr.status END
              WHERE cr.score = 0 AND cr.status IN ('abandonado','sem_contato')"
         );
