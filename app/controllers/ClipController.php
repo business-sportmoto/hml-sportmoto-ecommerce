@@ -35,31 +35,29 @@ class ClipController extends Controller {
         $sessao    = $this->sessionKey();
         $clienteId = Session::isClienteLogado() ? (int)Session::get('cliente_id') : null;
 
-        $clips = array_map(function (array $c) use ($sessao, $clienteId): array {
-            $c['curtiu']     = $this->clip->jaÇurtiu((int)$c['id'], $clienteId, $sessao);
-            $c['video_url']  = UPLOAD_URL . '/clips/' . $c['arquivo_video'];
-            $c['poster_url'] = $c['arquivo_poster']
-                               ? UPLOAD_URL . '/clips/posters/' . $c['arquivo_poster']
-                               : null;
-            $c['clip_url']   = BASE_URL . '/clip/' . $c['id'];
+        $svc = new ClipService(); // instancia uma vez, fora do array_map
 
-            // Formata array de produtos
-            $c['produtos'] = array_map(function (array $p): array {
-                $p['preco_fmt']       = $p['produto_preco']
-                    ? 'R$ ' . number_format((float)$p['produto_preco'], 2, ',', '.')
-                    : null;
-                $p['preco_promo_fmt'] = $p['produto_preco_promo']
-                    ? 'R$ ' . number_format((float)$p['produto_preco_promo'], 2, ',', '.')
-                    : null;
-                $p['img_url']         = $p['produto_imagem']
-                    ? UPLOAD_URL . '/products/' . $p['produto_imagem']
-                    : null;
-                $p['produto_url']     = BASE_URL . '/produto/' . ($p['produto_slug'] ?? '');
-                return $p;
-            }, $c['produtos'] ?? []);
-
-            return $c;
-        }, $clips);
+        $clips = array_map(function (array $c) use ($sessao, $clienteId, $svc): array {
+        $c['curtiu']     = $this->clip->jaÇurtiu((int)$c['id'], $clienteId, $sessao);
+ 
+        $uid = (string)($c['arquivo_video'] ?? '');
+        $c['video_url']  = $uid !== '' ? $svc->hlsUrl($uid)    : null;  // HLS
+        $c['poster_url'] = $uid !== '' ? $svc->posterUrl($uid) : null;  // thumb CF
+        $c['clip_url']   = BASE_URL . '/clip/' . $c['id'];
+ 
+        $c['produtos'] = array_map(function (array $p): array {
+            $p['preco_fmt'] = $p['produto_preco']
+                ? 'R$ ' . number_format((float)$p['produto_preco'], 2, ',', '.') : null;
+            $p['preco_promo_fmt'] = $p['produto_preco_promo']
+                ? 'R$ ' . number_format((float)$p['produto_preco_promo'], 2, ',', '.') : null;
+            $p['img_url'] = $p['produto_imagem']
+                ? UPLOAD_URL . '/products/' . $p['produto_imagem'] : null;
+            $p['produto_url'] = BASE_URL . '/produto/' . ($p['produto_slug'] ?? '');
+            return $p;
+        }, $c['produtos'] ?? []);
+ 
+        return $c;
+    }, $clips);
 
         $this->json([
             'ok'       => true,
@@ -87,12 +85,14 @@ class ClipController extends Controller {
 
         $pageTitle       = View::e($clip['titulo']);
         $autoOpenClipId  = $id;
+        
+        $svc = new ClipService();
+        $uid = (string)($clip['arquivo_video'] ?? '');
+ 
         $autoOpenClipData = json_encode([
             'id'         => $id,
-            'video_url'  => UPLOAD_URL . '/clips/' . $clip['arquivo_video'],
-            'poster_url' => $clip['arquivo_poster']
-                            ? UPLOAD_URL . '/clips/posters/' . $clip['arquivo_poster']
-                            : null,
+            'video_url'  => $uid !== '' ? $svc->hlsUrl($uid)    : null,
+            'poster_url' => $uid !== '' ? $svc->posterUrl($uid) : null,
             'titulo'     => $clip['titulo'],
             'clip_url'   => BASE_URL . '/clip/' . $id,
             'produtos'   => $clip['produtos'],

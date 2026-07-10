@@ -873,6 +873,57 @@ class Cart extends Model {
         return $itens;
     }
 
+    public function getItensComVariacoesByCartId(int $carrinhoId): array {
+        // $carrinho = $this->getByCliente($clienteId);
+        if (!$carrinhoId) return [];
+
+        // Busca itens com dados básicos do produto + sku
+        $stmt = $this->db->prepare(
+            "SELECT
+                ci.id          AS item_id,
+                ci.quantidade,
+                ci.produto_id,
+                ci.sku_id,
+                p.id            AS pro_id,
+                p.nome,
+                p.slug,
+                pi.arquivo     AS imagem_principal,
+                COALESCE(NULLIF(s.preco_promo, 0), s.preco) AS valor_unitario,
+                p.preco AS preco_master,
+                s.id        AS sku_id_pro,
+                s.sku       AS sku_codigo,
+                s.peso_kg,
+                s.comprimento_cm,
+                s.largura_cm,
+                s.altura_cm
+             FROM carrinho_itens ci
+             JOIN produtos p             ON p.id = ci.produto_id
+             LEFT JOIN produto_skus s    ON s.id = ci.sku_id
+             LEFT JOIN produto_imagens pi ON pi.produto_id = p.id AND pi.principal = 1
+             WHERE ci.carrinho_id = ?
+               AND p.ativo = 1
+             ORDER BY ci.id ASC"
+        );
+        $stmt->execute([(int)$carrinhoId]);
+        $itens = $stmt->fetchAll();
+
+        if (empty($itens)) return [];
+
+        // Tenta buscar atributos dos SKUs (tabelas opcionais)
+        $skuIds = array_filter(array_column($itens, 'sku_id'));
+        $atributos = $this->buscarAtributosDosSkus($skuIds);
+
+        foreach ($itens as &$item) {
+            $skuId = (int)($item['sku_id'] ?? 0);
+            $item['variacao_label'] = $skuId && isset($atributos[$skuId])
+                ? $atributos[$skuId]
+                : null;
+        }
+        unset($item);
+
+        return $itens;
+    }
+
     /**
      * Retorna itens com dados de dimensão para cálculo de frete.
      * Formato esperado pelo FreteService::montarPayloadProds().

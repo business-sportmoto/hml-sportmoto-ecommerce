@@ -33,9 +33,45 @@ class CarrinhoRecuperacaoService {
     ];
 
     private PDO $db;
+     /** Cache por request da config — evita query repetida quando
+     *  detecção + reconciliação rodam na mesma execução do cron. */
+    private static ?array $configCache = null;
+    
 
     public function __construct() {
         $this->db = Database::getInstance()->getConnection();
+    }
+
+    /**
+     * Config vigente com fallback em camadas:
+     * banco → constante da classe → 0. try/catch cobre o cenário
+     * de deploy onde o código novo sobe antes da migração rodar —
+     * automação nunca para por config ausente.
+     */
+    private function config(string $chave): float {
+        if (self::$configCache === null) {
+            self::$configCache = [];
+            try {
+                $rows = $this->db->query(
+                    "SELECT chave, valor FROM recuperacao_config"
+                )->fetchAll();
+                foreach ($rows as $r) {
+                    self::$configCache[$r['chave']] = (float)$r['valor'];
+                }
+            } catch (\Throwable $e) { /* migração pendente — defaults */ }
+        }
+ 
+        $defaults = [
+            'janela_abandono_h'    => self::JANELA_ABANDONO_H,
+            'valor_minimo'         => self::VALOR_MINIMO,
+            'token_validade_dias'  => self::TOKEN_VALIDADE_DIAS,
+            'max_tentativas'       => self::MAX_TENTATIVAS,
+            'cooldown_email_h'     => 24,
+            'sugerir_whatsapp_h'   => 24,
+            'sugerir_email_h'      => 48,
+            'dias_sugerir_perdido' => 5,
+        ];
+        return self::$configCache[$chave] ?? (float)($defaults[$chave] ?? 0);
     }
 
     // ══════════════════════════════════════════════════
@@ -67,7 +103,11 @@ class CarrinhoRecuperacaoService {
                AND NOT EXISTS (SELECT 1 FROM carrinho_recuperacao cr
                                WHERE cr.carrinho_id = ca.id)"
         );
-        $stmt->execute([self::JANELA_ABANDONO_H, self::VALOR_MINIMO]);
+        // $stmt->execute([self::JANELA_ABANDONO_H, self::VALOR_MINIMO]);
+        $stmt->execute([
+            (int)$this->config('janela_abandono_h'),
+            $this->config('valor_minimo'),
+        ]);
         $novos = $stmt->rowCount();
 
         if ($novos > 0) {
@@ -183,12 +223,17 @@ class CarrinhoRecuperacaoService {
 
     /** Sugere próxima ação: carrinhos parados com tentativas esgotadas. */
     public function contarSugestaoPerdidos(): int {
-        return (int)$this->db->query(
+        $stmt = $this->db->prepare(
             "SELECT COUNT(*) FROM carrinho_recuperacao
              WHERE status IN ('msg_enviada','aguardando_resposta')
-               AND tentativas_contato >= " . self::MAX_TENTATIVAS . "
-               AND ultima_acao_em < DATE_SUB(NOW(), INTERVAL 5 DAY)"
-        )->fetchColumn();
+               AND tentativas_contato >= ?
+               AND ultima_acao_em < DATE_SUB(NOW(), INTERVAL ? DAY)"
+        );
+        $stmt->execute([
+            (int)$this->config('max_tentativas'),
+            (int)$this->config('dias_sugerir_perdido'),
+        ]);
+        return (int)$stmt->fetchColumn();
     }
 
     // ══════════════════════════════════════════════════
@@ -227,21 +272,41 @@ class CarrinhoRecuperacaoService {
         return ['ok' => true];
     }
 
-    public function atribuirResponsavel(int $id, int $responsavelId, int $adminId): array {
-        if (!$this->exigir($id)) return ['ok' => false, 'msg' => 'Registro não encontrado.'];
-
-        $stmt = $this->db->prepare("SELECT nome FROM usuarios WHERE id = ? AND ativo = 1");
-        $stmt->execute([$responsavelId]);
-        $nome = $stmt->fetchColumn();
-        if (!$nome) return ['ok' => false, 'msg' => 'Usuário inválido.'];
-
+    public function atribuirResponsavel(
+        int $id, int $responsavelId, int $adminId, bool $podeReatribuir = false
+    ): array {
+        $rec = $this->exigir($id);
+        if (!$rec) return ['ok' => false, 'msg' => 'Registro não encontrado.'];
+ 
+        // Carrinho já tem dono e o ator NÃO pode reatribuir → bloqueia.
+        // Reatribuir para o MESMO dono é no-op permitido (idempotente).
+        $donoAtual = (int)($rec['responsavel_id'] ?? 0);
+        if ($donoAtual > 0 && $donoAtual !== $responsavelId && !$podeReatribuir) {
+            return ['ok' => false,
+                    'msg' => 'Este carrinho já pertence a ' . ($rec['responsavel_nome'] ?? 'outro vendedor')
+                           . '. Apenas um super admin pode transferir.'];
+        }
+ 
+        // Valida que o alvo é atribuível (super/gerente/vendedor ativo).
+        // Reusa getResponsaveis como whitelist — fonte única de quem pode.
+        $atribuiveis = array_column((new CarrinhoAbandonado())->getResponsaveis(), 'nome', 'id');
+        if (!isset($atribuiveis[$responsavelId])) {
+            return ['ok' => false, 'msg' => 'Usuário inválido para atribuição.'];
+        }
+        $nome = $atribuiveis[$responsavelId];
+ 
         $this->db->prepare(
             "UPDATE carrinho_recuperacao
-             SET responsavel_id = ?, ultima_acao_em = NOW() WHERE id = ?"
+             SET responsavel_id = ?, capturado_em = NOW(), ultima_acao_em = NOW()
+             WHERE id = ?"
         )->execute([$responsavelId, $id]);
-
-        $this->evento($id, 'responsavel_alterado', "Responsável: {$nome}",
-            ['responsavel_id' => $responsavelId], $adminId);
+ 
+        $descricao = $donoAtual > 0
+            ? "Transferido para {$nome}"
+            : "Atribuído a {$nome}";
+        $this->evento($id, 'responsavel_alterado', $descricao,
+            ['responsavel_id' => $responsavelId, 'transferencia' => $donoAtual > 0], $adminId);
+ 
         return ['ok' => true];
     }
 
@@ -277,6 +342,100 @@ class CarrinhoRecuperacaoService {
         return ['ok' => true];
     }
 
+    /**
+     * Captura o carrinho para o operador. ATÔMICA: o UPDATE
+     * condicional garante um único vencedor quando dois operadores
+     * clicam simultaneamente — rowCount é a fonte de verdade, não
+     * o SELECT prévio (que seria TOCTOU).
+     */
+    public function capturar(int $id, int $adminId): array {
+        $rec = $this->exigir($id);
+        if (!$rec) return ['ok' => false, 'msg' => 'Registro não encontrado.'];
+ 
+        if (!empty($rec['responsavel_id']) && (int)$rec['responsavel_id'] !== $adminId) {
+            return ['ok' => false,
+                    'msg' => 'Já capturado por ' . ($rec['responsavel_nome'] ?? 'outro atendente') . '.'];
+        }
+ 
+        $stmt = $this->db->prepare(
+            "UPDATE carrinho_recuperacao
+             SET responsavel_id = ?, capturado_em = NOW(), ultima_acao_em = NOW()
+             WHERE id = ? AND (responsavel_id IS NULL OR responsavel_id = 0)"
+        );
+        $stmt->execute([$adminId, $id]);
+ 
+        if ($stmt->rowCount() === 0 && empty($rec['responsavel_id'])) {
+            // Race perdida: outro operador capturou entre o SELECT e o UPDATE
+            return ['ok' => false, 'msg' => 'Este carrinho acabou de ser capturado por outro atendente.','teste'=>$rec];
+        }
+ 
+        if (empty($rec['responsavel_id'])) {
+            $this->evento($id, 'capturado', 'Carrinho capturado', [], $adminId);
+        }
+        return ['ok' => true];
+    }
+ 
+    /**
+     * Guard de responsabilidade antes de qualquer envio:
+     *   sem dono        → captura automática para quem envia
+     *   dono = operador → segue
+     *   dono ≠ operador → bloqueia (salvo override de gerente,
+     *                     que age SEM roubar o claim — a trilha
+     *                     de eventos registra quem enviou)
+     *
+     * @return array|null null = liberado; array = resposta de erro
+     */
+    private function guardResponsavel(array $rec, int $adminId, bool $podeOverride): ?array {
+        $donoId = (int)($rec['responsavel_id'] ?? 0);
+ 
+        if ($donoId === 0) {
+            $cap = $this->capturar((int)$rec['id'], $adminId);
+            return $cap['ok'] ? null : $cap; // race perdida → repassa o erro
+        }
+        if ($donoId === $adminId || $podeOverride) return null;
+ 
+        return ['ok' => false,
+                'msg' => 'Este carrinho pertence a ' . ($rec['responsavel_nome'] ?? 'outro atendente')
+                       . '. Peça a transferência a um gerente.'];
+    }
+ 
+    /**
+     * Anti-hoarding (cron): claims sem NENHUMA interação dentro da
+     * janela voltam ao pool. Quem trabalha o carrinho (qualquer ação
+     * renova ultima_acao_em) nunca expira — a expiração pune apenas
+     * captura sem trabalho, que é receita morrendo em silêncio.
+     */
+    public function liberarCapturasExpiradas(): int {
+        $dias = max(1, (int)$this->config('captura_expira_dias'));
+ 
+        $stmt = $this->db->prepare(
+            "SELECT id FROM carrinho_recuperacao
+             WHERE responsavel_id IS NOT NULL
+               AND capturado_em   IS NOT NULL
+               AND ultima_acao_em < DATE_SUB(NOW(), INTERVAL ? DAY)
+               AND status IN ('abandonado','em_recuperacao','msg_enviada',
+                              'aguardando_resposta','respondeu','negociacao')"
+        );
+        $stmt->execute([$dias]);
+        $ids = array_map('intval', array_column($stmt->fetchAll(), 'id'));
+        if (empty($ids)) return 0;
+ 
+        $in = implode(',', $ids);
+ 
+        $this->db->exec(
+            "INSERT INTO carrinho_recuperacao_eventos (recuperacao_id, tipo, descricao)
+             SELECT id, 'captura_expirada',
+                    CONCAT('Captura expirada após {$dias} dia(s) sem interação — voltou ao pool')
+             FROM carrinho_recuperacao WHERE id IN ({$in})"
+        );
+        $this->db->exec(
+            "UPDATE carrinho_recuperacao
+             SET responsavel_id = NULL, capturado_em = NULL
+             WHERE id IN ({$in})"
+        );
+        return count($ids);
+    }
+
     // ══════════════════════════════════════════════════
     // MENSAGENS — WhatsApp (wa.me) e E-mail (Mailgun)
     // ══════════════════════════════════════════════════
@@ -287,9 +446,13 @@ class CarrinhoRecuperacaoService {
      * fora da API oficial Meta = banimento do número. O registro
      * do envio acontece aqui, no clique do operador.
      */
-    public function prepararWhatsapp(int $id, int $templateId, int $adminId): array {
+    public function prepararWhatsapp(int $id, int $templateId, int $adminId,
+                                     bool $podeOverride = false): array {
         $rec = $this->exigir($id);
         if (!$rec) return ['ok' => false, 'msg' => 'Registro não encontrado.'];
+ 
+        // Captura automática / bloqueio de carrinho alheio
+        if ($erro = $this->guardResponsavel($rec, $adminId, $podeOverride)) return $erro;
 
         $telefone = preg_replace('/\D/', '', (string)($rec['cliente_telefone'] ?? ''));
         if (strlen($telefone) < 10) {
@@ -308,9 +471,12 @@ class CarrinhoRecuperacaoService {
     }
 
     /** Envia e-mail de recuperação via MailHelper (Mailgun). */
-    public function enviarEmail(int $id, int $templateId, int $adminId): array {
+    public function enviarEmail(int $id, int $templateId, int $adminId,
+                                bool $podeOverride = false): array {
         $rec = $this->exigir($id);
         if (!$rec) return ['ok' => false, 'msg' => 'Registro não encontrado.'];
+ 
+        if ($erro = $this->guardResponsavel($rec, $adminId, $podeOverride)) return $erro;
 
         $email = trim((string)($rec['cliente_email'] ?? ''));
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -318,8 +484,13 @@ class CarrinhoRecuperacaoService {
         }
 
         // Anti-spam operacional: bloqueia reenvio do mesmo canal em < 24h
-        if ($this->envioRecente($id, 'email_enviado', 24)) {
-            return ['ok' => false, 'msg' => 'E-mail já enviado nas últimas 24h. Evite excesso de contato.'];
+        // if ($this->envioRecente($id, 'email_enviado', 24)) {
+        //     return ['ok' => false, 'msg' => 'E-mail já enviado nas últimas 24h. Evite excesso de contato.'];
+        // }
+        $cooldown = (int)$this->config('cooldown_email_h');
+        if ($this->envioRecente($id, 'email_enviado', $cooldown)) {
+            return ['ok' => false,
+                    'msg' => "E-mail já enviado nas últimas {$cooldown}h. Evite excesso de contato."];
         }
 
         $tpl = $this->getTemplate($templateId, 'email');
@@ -386,7 +557,8 @@ class CarrinhoRecuperacaoService {
              SET token_recuperacao = ?,
                  token_expira_em   = DATE_ADD(NOW(), INTERVAL ? DAY)
              WHERE id = ?"
-        )->execute([$token, self::TOKEN_VALIDADE_DIAS, $id]);
+        // )->execute([$token, self::TOKEN_VALIDADE_DIAS, $id]);
+        )->execute([$token, (int)$this->config('token_validade_dias'), $id]);
 
         return $token;
     }

@@ -108,7 +108,7 @@ $tipoMidia = $b['tipo_midia'] ?? 'imagem';
                 <div class="banner-upload-area" data-input="imagem">
                   <?php if (!empty($b['arquivo_imagem'])): ?>
                   <div class="banner-upload-preview">
-                    <img src="<?= View::upload('banners/' . $b['arquivo_imagem']) ?>"
+                    <img src="<?= View::uploadR2($b['arquivo_imagem']) ?>"
                          alt="" id="preview-imagem">
                     <button type="button" class="banner-upload-remove" data-target="imagem">
                       Trocar imagem
@@ -127,7 +127,7 @@ $tipoMidia = $b['tipo_midia'] ?? 'imagem';
                   </div>
                   <?php endif; ?>
                   <input type="file" name="imagem" accept="image/*"
-                         class="banner-upload-input">
+                         class="banner-upload-input" data-video-slot="video">
                 </div>
               </div>
 
@@ -137,8 +137,12 @@ $tipoMidia = $b['tipo_midia'] ?? 'imagem';
                 <div class="banner-upload-area" data-input="video">
                   <?php if (!empty($b['arquivo_video'])): ?>
                   <div class="banner-upload-preview">
-                    <video src="<?= View::upload('banners/' . $b['arquivo_video']) ?>"
-                           controls muted></video>
+                    <?php if (preg_match('/^[a-f0-9]{32}$/i', $b['arquivo_video'])): ?>
+                      <iframe src="https://iframe.cloudflarestream.com/<?= $b['arquivo_video'] ?>"
+                              style="border:none;width:100%;aspect-ratio:16/9;" allow="autoplay; fullscreen" class="video-in"></iframe>
+                    <?php else: ?>
+                      <video src="<?= View::uploadR2($b['arquivo_video']) ?>" controls muted></video>
+                    <?php endif; ?>
                     <button type="button" class="banner-upload-remove">Trocar vídeo</button>
                   </div>
                   <?php else: ?>
@@ -153,7 +157,7 @@ $tipoMidia = $b['tipo_midia'] ?? 'imagem';
                   </div>
                   <?php endif; ?>
                   <input type="file" name="video" accept="video/*"
-                         class="banner-upload-input">
+                         class="banner-upload-input" data-video-slot="video">
                 </div>
 
                 <!-- URL externa de vídeo -->
@@ -222,9 +226,13 @@ $tipoMidia = $b['tipo_midia'] ?? 'imagem';
                 <div class="banner-upload-area">
                   <?php if (!empty($b['arquivo_video_mobile'])): ?>
                   <div class="banner-upload-preview">
-                    <video src="<?= View::upload('banners/' . $b['arquivo_video_mobile']) ?>"
-                           controls muted></video>
-                    <button type="button" class="banner-upload-remove">Trocar</button>
+                    <?php if (preg_match('/^[a-f0-9]{32}$/i', $b['arquivo_video'])): ?>
+                      <iframe src="https://iframe.cloudflarestream.com/<?= $b['arquivo_video'] ?>"
+                              style="border:none;width:100%;aspect-ratio:16/9;" allow="autoplay; fullscreen"></iframe>
+                    <?php else: ?>
+                      <video src="<?= View::upload('banners/' . $b['arquivo_video']) ?>" controls muted></video>
+                    <?php endif; ?>
+                    <button type="button" class="banner-upload-remove">Trocar vídeo</button>
                   </div>
                   <?php else: ?>
                   <div class="banner-upload-empty">

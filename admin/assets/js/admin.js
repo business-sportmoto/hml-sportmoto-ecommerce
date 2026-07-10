@@ -4789,45 +4789,45 @@ $(document).on('change', '#pe-categoria', function () {
   // Mantém o <input type="file"> SEMPRE no DOM.
   // Nunca recria via innerHTML — isso destrói files[].
   // ══════════════════════════════════════════════════════
-  document.querySelectorAll('.banner-upload-area').forEach(area => {
-    const input = area.querySelector('.banner-upload-input');
-    if (!input) return;
+  // document.querySelectorAll('.banner-upload-area').forEach(area => {
+  //   const input = area.querySelector('.banner-upload-input');
+  //   if (!input) return;
 
-    // Clique na área abre o file picker (ignora cliques nos botões internos)
-    area.addEventListener('click', function (e) {
-      if (e.target.closest('.banner-upload-remove')) return;
-      if (e.target === input) return;
-      input.click();
-    });
+  //   // Clique na área abre o file picker (ignora cliques nos botões internos)
+  //   area.addEventListener('click', function (e) {
+  //     if (e.target.closest('.banner-upload-remove')) return;
+  //     if (e.target === input) return;
+  //     input.click();
+  //   });
 
-    // Drag & drop
-    area.addEventListener('dragover',  e => { e.preventDefault(); area.classList.add('is-dragover'); });
-    area.addEventListener('dragleave', () => area.classList.remove('is-dragover'));
-    area.addEventListener('drop', e => {
-      e.preventDefault();
-      area.classList.remove('is-dragover');
-      const file = e.dataTransfer.files[0];
-      if (file) {
-        // Injeta o arquivo no input via DataTransfer
-        const dt = new DataTransfer();
-        dt.items.add(file);
-        input.files = dt.files;
-        mostrarPreview(area, input, file);
-      }
-    });
+  //   // Drag & drop
+  //   area.addEventListener('dragover',  e => { e.preventDefault(); area.classList.add('is-dragover'); });
+  //   area.addEventListener('dragleave', () => area.classList.remove('is-dragover'));
+  //   area.addEventListener('drop', e => {
+  //     e.preventDefault();
+  //     area.classList.remove('is-dragover');
+  //     const file = e.dataTransfer.files[0];
+  //     if (file) {
+  //       // Injeta o arquivo no input via DataTransfer
+  //       const dt = new DataTransfer();
+  //       dt.items.add(file);
+  //       input.files = dt.files;
+  //       mostrarPreview(area, input, file);
+  //     }
+  //   });
 
-    // Mudança via file picker
-    input.addEventListener('change', function () {
-      if (this.files[0]) mostrarPreview(area, this, this.files[0]);
-    });
+  //   // Mudança via file picker
+  //   input.addEventListener('change', function () {
+  //     if (this.files[0]) mostrarPreview(area, this, this.files[0]);
+  //   });
 
-    // Botão "Trocar" — delegação de evento
-    area.addEventListener('click', function (e) {
-      if (!e.target.closest('.banner-upload-remove')) return;
-      e.stopPropagation();
-      limparPreview(area, input);
-    });
-  });
+  //   // Botão "Trocar" — delegação de evento
+  //   area.addEventListener('click', function (e) {
+  //     if (!e.target.closest('.banner-upload-remove')) return;
+  //     e.stopPropagation();
+  //     limparPreview(area, input);
+  //   });
+  // });
 
   /**
    * Mostra preview da mídia SEM tocar no input.
@@ -4926,7 +4926,7 @@ $(document).on('change', '#pe-categoria', function () {
 
     // Pega a mídia do painel ativo
     const imgEl  = document.querySelector('[data-panel="desktop"] .banner-upload-preview img');
-    const vidEl  = document.querySelector('[data-panel="desktop"] .banner-upload-preview video');
+    const vidEl  = document.querySelector('[data-panel="desktop"] .banner-upload-preview .video-in');
 
     const positionMap = {
       'top-left':      'flex-start;align-items:flex-start;text-align:left',
@@ -4947,8 +4947,7 @@ $(document).on('change', '#pe-categoria', function () {
 
     let mediaHtml = '';
     if (vidEl) {
-      mediaHtml = `<video src="${vidEl.src}" autoplay muted loop playsinline
-                          style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"></video>`;
+      mediaHtml = ` <iframe src="${vidEl.src}?autoplay=true&muted=true&loop=true" style="border:none;width:100%;height:100%" allowfullscreen frameborder="0" allow="autoplay; fullscreen; picture-in-picture"></iframe>`;
     } else if (imgEl) {
       mediaHtml = `<img src="${imgEl.src}" alt=""
                         style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">`;
@@ -5114,8 +5113,172 @@ $(document).on('change', '#pe-categoria', function () {
   $('#bn-data-fim').on('change input', updateCountdownPreview);
   setInterval(updateCountdownPreview, 1000);
   updateCountdownPreview();
-
+  
 })();
+
+
+(function initStreamUpload() {
+  const form = document.getElementById('form-banner');
+  if (!form) return;
+
+  console.log('tete');
+  
+
+  const csrf = () => form.querySelector('[name="_csrf_token"]')?.value || '';
+
+  // Para cada input de arquivo que seja de VÍDEO
+  document.querySelectorAll('.banner-upload-input').forEach(input => {
+    // Detecta se este input é de vídeo pelo grupo pai (data-tipo="video")
+    const group = input.closest('.banner-upload-group');
+    const isVideoSlot = group && group.dataset.tipo === 'video';
+    if (!isVideoSlot) return;
+
+    // slot: 'video' (desktop) ou 'video_mobile' — do data-attr ou do name
+    const slot = input.dataset.videoSlot
+              || (input.name && input.name.includes('mobile') ? 'video_mobile' : 'video');
+
+    // Garante o hidden que carrega o UID para o POST (reusa arquivo_video)
+    let hidden = form.querySelector(`input[type="hidden"][name="arquivo_${slot}"]`);
+    if (!hidden) {
+      hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.name = `arquivo_${slot}`;
+      form.appendChild(hidden);
+    }
+
+    input.addEventListener('change', function () {
+      const file = this.files[0];
+      if (!file) return;
+
+      // Validação client-side rápida (o backend valida de novo)
+      if (!file.type.startsWith('video/')) {
+        showToast('Selecione um arquivo de vídeo.', 'error');
+        this.value = '';
+        return;
+      }
+      const MAX_MB = 200;
+      if (file.size > MAX_MB * 1024 * 1024) {
+        showToast(`Vídeo excede ${MAX_MB}MB.`, 'error');
+        this.value = '';
+        return;
+      }
+
+      uploadVideoToStream(file, slot, input, hidden);
+    });
+  });
+
+  /**
+   * Sobe o vídeo para o Stream e preenche o hidden com o UID.
+   */
+  async function uploadVideoToStream(file, slot, fileInput, hidden) {
+    const area = fileInput.closest('.banner-upload-area');
+    const progress = ensureProgressUI(area);
+
+    try {
+      // 1. Pede a uploadURL ao backend
+      progress.setLabel('Preparando envio...');
+      const prep = await fetch(BASE_URL + '/admin/media/stream-upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `_csrf_token=${encodeURIComponent(csrf())}&slot=${encodeURIComponent(slot)}`,
+      }).then(r => r.json());
+
+      if (!prep.ok || !prep.uploadURL) {
+        throw new Error(prep.msg || 'Falha ao preparar upload.');
+      }
+
+      const uid = prep.uid;
+
+      // 2. Envia o arquivo DIRETO pro Stream com progresso (XHR)
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', prep.uploadURL, true);
+
+        const fd = new FormData();
+        fd.append('file', file);
+
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            progress.setProgress(pct);
+            progress.setLabel(`Enviando... ${pct}%`);
+          }
+        };
+        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300)
+          ? resolve()
+          : reject(new Error('Falha no envio ao Stream (HTTP ' + xhr.status + ').'));
+        xhr.onerror = () => reject(new Error('Erro de rede no envio.'));
+        xhr.send(fd);
+      });
+
+      // 3. Guarda o UID no hidden (vai no POST do salvar)
+      hidden.value = uid;
+
+      // Limpa o file input (o arquivo já está no Stream; não precisa reenviar)
+      fileInput.value = '';
+
+      // 4. Polling do status até processar
+      progress.setLabel('Processando vídeo...');
+      progress.setIndeterminate(true);
+      await pollStatus(uid, progress);
+
+      progress.setDone('Vídeo pronto ✓');
+      showToast('Vídeo enviado e processado.', 'success');
+
+    } catch (err) {
+      console.error('[stream]', err);
+      progress.setError(err.message || 'Erro no upload do vídeo.');
+      showToast(err.message || 'Erro no upload do vídeo.', 'error');
+      hidden.value = '';
+    }
+  }
+
+  /** Polling do status do vídeo até 'ready' (máx ~2 min). */
+  async function pollStatus(uid, progress) {
+    const maxTries = 40;      // 40 x 3s = 120s
+    for (let i = 0; i < maxTries; i++) {
+      await sleep(3000);
+      try {
+        const st = await fetch(
+          `${BASE_URL}/admin/media/stream-status?uid=${encodeURIComponent(uid)}`
+        ).then(r => r.json());
+        if (st.ok && st.ready) return;
+      } catch (_) { /* tenta de novo */ }
+    }
+    // Não travou o fluxo: o vídeo pode ficar pronto depois. Só avisa.
+    progress.setLabel('Processando em segundo plano...');
+  }
+
+  // ── UI de progresso (cria sob a área de upload) ──────────────────────────
+  function ensureProgressUI(area) {
+    let el = area.querySelector('.stream-progress');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'stream-progress';
+      el.innerHTML = `
+        <div class="stream-progress__bar"><span></span></div>
+        <div class="stream-progress__label"></div>`;
+      el.style.cssText = 'margin-top:10px;font-size:12px;';
+      const bar = el.querySelector('.stream-progress__bar');
+      bar.style.cssText = 'height:6px;background:rgba(255,255,255,.1);border-radius:99px;overflow:hidden;';
+      bar.firstElementChild.style.cssText = 'display:block;height:100%;width:0;background:#f14d5d;transition:width .2s;';
+      area.appendChild(el);
+    }
+    const span = el.querySelector('.stream-progress__bar span');
+    const label = el.querySelector('.stream-progress__label');
+    return {
+      setProgress: (p) => { span.style.width = p + '%'; },
+      setIndeterminate: (on) => { span.style.width = on ? '100%' : span.style.width; span.style.opacity = on ? '.5' : '1'; },
+      setLabel: (t) => { label.textContent = t; },
+      setDone: (t) => { span.style.width = '100%'; span.style.background = '#34d399'; label.textContent = t; },
+      setError: (t) => { span.style.background = '#f87171'; label.textContent = t; },
+    };
+  }
+
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+})();
+
+
 
 // ── Listagem de banners ─────────────────────────────────
 (function () {

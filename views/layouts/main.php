@@ -69,7 +69,8 @@ $categoryModel    = new Category();
 
      
   <script src="<?= PerformanceHelper::assetVersion('js/clips.js') ?>" defer></script>
-  <script src="<?= PerformanceHelper::assetVersion('js/pwa-core.js') ?>" defer></script>
+  <script src="<?= PerformanceHelper::assetVersion('js/hls.js') ?>" defer></script>
+  <!-- <script src="<?= PerformanceHelper::assetVersion('js/pwa-core.js') ?>" defer></script> -->
 
 <!-- Adicionar após os scripts principais -->
 <?php if (($page ?? '') === 'cart/shared'): ?>

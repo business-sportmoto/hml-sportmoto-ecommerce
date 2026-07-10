@@ -201,82 +201,93 @@ class ClipsController extends Controller {
     //     }
     // }
 
-    public function salvar(): void {
-    $this->verifyCsrf();
-
-    $id          = SecurityHelper::sanitizeInt($_POST['id']          ?? 0);
-    $titulo      = SecurityHelper::sanitizeString($_POST['titulo']   ?? '');
-    $descricao   = SecurityHelper::sanitizeString($_POST['descricao'] ?? '');
-    $ctaTxt      = SecurityHelper::sanitizeString($_POST['cta_texto'] ?? '');
-    $ctaLink     = SecurityHelper::sanitizeString($_POST['cta_link']  ?? '');
-    $destaque    = isset($_POST['destaque']) ? 1 : 0;
-    $ativo       = isset($_POST['ativo'])    ? 1 : 0;
-    $ordem       = SecurityHelper::sanitizeInt($_POST['ordem']       ?? 0);
-    $hashtags    = SecurityHelper::sanitizeString($_POST['hashtags'] ?? '');
-
-    // IDs dos produtos vinculados (array)
-    $produtoIds  = array_filter(
-        array_map('intval', (array)($_POST['produto_ids'] ?? []))
-    );
-
-    if (empty($titulo)) {
-        $this->json(['ok' => false, 'msg' => 'Título obrigatório.']);
-    }
-
-    $db  = Database::getInstance()->getConnection();
-    $svc = new ClipService();
-
-    $dados = [
-        'titulo'    => $titulo,
-        'descricao' => $descricao ?: null,
-        'cta_texto' => $ctaTxt    ?: null,
-        'cta_link'  => $ctaLink   ?: null,
-        'destaque'  => $destaque,
-        'ativo'     => $ativo,
-        'ordem'     => $ordem,
-        'hashtags'  => $hashtags  ?: null,
-    ];
-
-    if (!empty($_FILES['video']['tmp_name'])) {
+   public function salvar(): void
+    {
+        $this->verifyCsrf();
+    
+        $id        = SecurityHelper::sanitizeInt($_POST['id']          ?? 0);
+        $titulo    = SecurityHelper::sanitizeString($_POST['titulo']   ?? '');
+        $descricao = SecurityHelper::sanitizeString($_POST['descricao'] ?? '');
+        $ctaTxt    = SecurityHelper::sanitizeString($_POST['cta_texto'] ?? '');
+        $ctaLink   = SecurityHelper::sanitizeString($_POST['cta_link']  ?? '');
+        $destaque  = isset($_POST['destaque']) ? 1 : 0;
+        $ativo     = isset($_POST['ativo'])    ? 1 : 0;
+        $ordem     = SecurityHelper::sanitizeInt($_POST['ordem']       ?? 0);
+        $hashtags  = SecurityHelper::sanitizeString($_POST['hashtags'] ?? '');
+    
+        $produtoIds = array_filter(
+            array_map('intval', (array)($_POST['produto_ids'] ?? []))
+        );
+    
+        if (empty($titulo)) {
+            $this->json(['ok' => false, 'msg' => 'Título obrigatório.']);
+        }
+    
+        $db = Database::getInstance()->getConnection();
+    
+        $dados = [
+            'titulo'    => $titulo,
+            'descricao' => $descricao ?: null,
+            'cta_texto' => $ctaTxt    ?: null,
+            'cta_link'  => $ctaLink   ?: null,
+            'destaque'  => $destaque,
+            'ativo'     => $ativo,
+            'ordem'     => $ordem,
+            'hashtags'  => $hashtags  ?: null,
+        ];
+    
+        // VIDEO: agora vem como UID do Stream (frontend fez upload direto).
+        // O hidden 'arquivo_video' carrega o UID. Valida via trait.
         try {
-            $resultado   = $svc->processar($_FILES['video']);
-            $dados       = array_merge($dados, $resultado);
-            $dados['status'] = 'ativo';
+            $uid = $this->videoUidFromPost('arquivo_video'); // null se nao trocou
+        } catch (\RuntimeException $e) {
+            $this->json(['ok' => false, 'msg' => $e->getMessage()]);
+        }
+    
+        if ($uid !== null) {
+            // Ao trocar o video de um clip existente, guarda o antigo p/ limpar.
+            $uidAntigo = null;
+            if ($id > 0) {
+                $st = $db->prepare("SELECT arquivo_video FROM clips WHERE id=?");
+                $st->execute([$id]);
+                $uidAntigo = $st->fetchColumn() ?: null;
+            }
+    
+            $dados['arquivo_video'] = $uid;
+            $dados['status']        = 'ativo';
+            // arquivo_poster deixa de ser arquivo local; o poster vem do UID.
+            // Se a coluna existir e for NOT NULL, grave o UID ou uma string vazia.
+            $dados['arquivo_poster'] = null;
+        } elseif (!$id) {
+            $this->json(['ok' => false, 'msg' => 'Selecione um vídeo.']);
+        }
+    
+        try {
+            if ($id > 0) {
+                $sets   = implode(',', array_map(fn($k) => "{$k}=?", array_keys($dados)));
+                $params = array_values($dados);
+                $params[] = $id;
+                $db->prepare("UPDATE clips SET {$sets} WHERE id=?")->execute($params);
+            } else {
+                $cols = implode(',', array_keys($dados));
+                $vals = implode(',', array_fill(0, count($dados), '?'));
+                $db->prepare("INSERT INTO clips ({$cols}) VALUES ({$vals})")
+                ->execute(array_values($dados));
+                $id = (int)$db->lastInsertId();
+            }
+    
+            (new Clip())->sincronizarProdutos($id, $produtoIds);
+    
+            // Limpa o video antigo no Stream, se foi trocado
+            if (!empty($uidAntigo) && $uidAntigo !== ($uid ?? null)) {
+                $this->deleteVideoStream($uidAntigo);
+            }
+    
+            $this->json(['ok' => true, 'msg' => 'Clip salvo!', 'id' => $id]);
         } catch (\Exception $e) {
             $this->json(['ok' => false, 'msg' => $e->getMessage()]);
         }
-    } elseif (!$id) {
-        $this->json(['ok' => false, 'msg' => 'Selecione um vídeo.']);
     }
-
-    if (!empty($_FILES['poster']['tmp_name'])) {
-        $img    = new ImageProcessorService();
-        $result = $img->processar($_FILES['poster'], 'clips/posters');
-        $dados['arquivo_poster'] = $result['full'];
-    }
-
-    try {
-        if ($id > 0) {
-            $sets   = implode(',', array_map(fn($k) => "{$k}=?", array_keys($dados)));
-            $params = array_values($dados);
-            $params[] = $id;
-            $db->prepare("UPDATE clips SET {$sets} WHERE id=?")->execute($params);
-        } else {
-            $cols   = implode(',', array_keys($dados));
-            $vals   = implode(',', array_fill(0, count($dados), '?'));
-            $db->prepare("INSERT INTO clips ({$cols}) VALUES ({$vals})")
-               ->execute(array_values($dados));
-            $id = (int)$db->lastInsertId();
-        }
-
-        // Sincroniza produtos
-        (new Clip())->sincronizarProdutos($id, $produtoIds);
-
-        $this->json(['ok' => true, 'msg' => 'Clip salvo!', 'id' => $id]);
-    } catch (\Exception $e) {
-        $this->json(['ok' => false, 'msg' => $e->getMessage()]);
-    }
-}
 
     // ── POST /admin/clips/excluir ────────────────────────
     public function excluir(): void {
@@ -326,84 +337,7 @@ class ClipsController extends Controller {
      * Captura no segundo 1 do vídeo.
      * Se ffmpeg não estiver disponível, retorna aviso.
      */
-    public function gerarPoster(): void {
-        $this->verifyCsrf();
-        $id = SecurityHelper::sanitizeInt($_POST['id'] ?? 0);
-        if (!$id) $this->json(['ok' => false, 'msg' => 'ID inválido.']);
-
-        $db   = Database::getInstance()->getConnection();
-        $stmt = $db->prepare("SELECT arquivo_video FROM clips WHERE id=? LIMIT 1");
-        $stmt->execute([$id]);
-        $clip = $stmt->fetch();
-
-        if (!$clip || empty($clip['arquivo_video'])) {
-            $this->json(['ok' => false, 'msg' => 'Clip ou vídeo não encontrado.']);
-        }
-
-        $videoPath  = UPLOAD_PATH . '/clips/' . $clip['arquivo_video'];
-        if (!file_exists($videoPath)) {
-            $this->json(['ok' => false, 'msg' => 'Arquivo de vídeo não encontrado no servidor.']);
-        }
-
-        $ffmpegPath = SANDBOX ? 'C:/ffmpeg/bin/ffmpeg.exe' : 'ffmpeg';
-        // Verifica se ffmpeg está disponível
-        exec('which '.$ffmpegPath.' 2>&1', $out, $code);
-        if ($code !== 0) {
-            // Tenta caminho absoluto (Windows/Laragon)
-            exec(''.$ffmpegPath.' -version 2>&1', $out2, $code2);
-            if ($code2 !== 0) {
-                $this->json([
-                    'ok'  => false,
-                    'msg' => 'ffmpeg não encontrado. Instale o ffmpeg para usar esta função.',
-                ]);
-            }
-        }
-
-        $dir  = UPLOAD_PATH . '/clips/posters/';
-        if (!is_dir($dir)) mkdir($dir, 0755, true);
-
-        $hash       = bin2hex(random_bytes(6));
-        $posterFile = 'poster_auto_' . $hash . '.webp';
-        $posterPath = $dir . $posterFile;
-
-        // Captura no segundo 1 (ou no primeiro frame se o vídeo for menor que 1s)
-        $cmd = sprintf(
-            ''.$ffmpegPath.' -ss 1 -i %s -vframes 1 ' .
-            '-vf "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(720-iw)/2:(1280-ih)/2,setsar=1" ' .
-            '-y %s 2>&1',
-            escapeshellarg($videoPath),
-            escapeshellarg($posterPath)
-        );
-        exec($cmd, $cmdOut, $cmdCode);
-
-        // Se falhou com 1s, tenta no frame 0
-        if ($cmdCode !== 0 || !file_exists($posterPath)) {
-            $cmd2 = sprintf(
-                ''.$ffmpegPath.' -i %s -vframes 1 ' .
-                '-vf "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(720-iw)/2:(1280-ih)/2,setsar=1" ' .
-                '-y %s 2>&1',
-                escapeshellarg($videoPath),
-                escapeshellarg($posterPath)
-            );
-            exec($cmd2, $cmd2Out, $cmd2Code);
-        }
-
-        if (!file_exists($posterPath)) {
-            $this->json([
-                'ok'  => false,
-                'msg' => 'Falha ao gerar poster. Verifique se o vídeo não está corrompido.',
-            ]);
-        }
-
-        // Salva no banco
-        $db->prepare("UPDATE clips SET arquivo_poster=? WHERE id=?")
-           ->execute([$posterFile, $id]);
-
-        $this->json([
-            'ok'         => true,
-            'poster_url' => UPLOAD_URL . '/clips/posters/' . $posterFile,
-        ]);
-    }
+    
 
     // ── GET /admin/clips/comentarios ────────────────────
     public function comentarios(): void {

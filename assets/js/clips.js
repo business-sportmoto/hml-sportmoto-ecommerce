@@ -699,3 +699,86 @@
   document.addEventListener('DOMContentLoaded', initStories);
 
 }(window, jQuery));
+
+
+/**
+ * clips-hls-player.js — player HLS para o feed de clips (Cloudflare Stream).
+ *
+ * O <video> nativo so toca HLS no Safari. Para funcionar em todos os browsers,
+ * usamos hls.js. Este modulo cuida de anexar/destacar o HLS por clip-item,
+ * respeitando o lazy-load do feed (so carrega o video visivel).
+ *
+ * DEPENDENCIA: hls.js — adicione no layout do feed:
+ *   <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+ *   (ou baixe e sirva local para nao depender de CDN externa)
+ *
+ * INTEGRACAO no teu clips.js: onde hoje voce faz
+ *   videoEl.src = clip.video_url;
+ * troque por:
+ *   ClipsHls.attach(videoEl, clip.video_url);
+ * e ao remover/reciclar o item:
+ *   ClipsHls.detach(videoEl);
+ */
+window.ClipsHls = (function () {
+  'use strict';
+
+  const supportsNativeHls = (video) =>
+    video.canPlayType('application/vnd.apple.mpegurl') !== '';
+
+  // Guarda a instancia hls.js por elemento para poder destruir depois.
+  const instances = new WeakMap();
+
+  function attach(video, hlsUrl) {
+    if (!video || !hlsUrl) return;
+
+    // Safari/iOS: HLS nativo, sem lib.
+    if (supportsNativeHls(video)) {
+      video.src = hlsUrl;
+      return;
+    }
+
+    // Demais: hls.js
+    if (typeof Hls === 'undefined') {
+      console.error('[ClipsHls] hls.js nao carregado. Inclua o script no layout.');
+      return;
+    }
+    if (!Hls.isSupported()) {
+      console.warn('[ClipsHls] hls.js nao suportado neste browser.');
+      return;
+    }
+
+    // Se ja havia uma instancia, destroi antes (reciclagem de item).
+    detach(video);
+
+    const hls = new Hls({
+      maxBufferLength: 10,        // buffer curto: feed troca de video rapido
+      capLevelToPlayerSize: true, // nao baixa qualidade maior que o player
+      startLevel: -1,             // ABR escolhe o nivel inicial
+    });
+    hls.loadSource(hlsUrl);
+    hls.attachMedia(video);
+    instances.set(video, hls);
+
+    hls.on(Hls.Events.ERROR, (evt, data) => {
+      if (data.fatal) {
+        switch (data.type) {
+          case Hls.ErrorTypes.NETWORK_ERROR: hls.startLoad(); break;   // tenta recarregar
+          case Hls.ErrorTypes.MEDIA_ERROR:   hls.recoverMediaError(); break;
+          default: detach(video);
+        }
+      }
+    });
+  }
+
+  function detach(video) {
+    const hls = instances.get(video);
+    if (hls) {
+      hls.destroy();
+      instances.delete(video);
+    }
+    video.removeAttribute('src');
+    video.load();
+  }
+
+  return { attach, detach };
+})();

@@ -46,11 +46,13 @@ try {
  
     $novos       = $svc->detectarAbandonados();
     $recuperados = $svc->reconciliarRecuperados();
+    $liberados = $svc->liberarCapturasExpiradas();
+
     $sugestoes   = $svc->contarSugestaoPerdidos();
  
     echo (sprintf(
-        '[carrinhos-cron] ok novos=%d recuperados=%d sugerir_perdido=%d dur=%dms',
-        $novos, $recuperados, $sugestoes,
+        '[carrinhos-cron] ok liberados=%d novos=%d recuperados=%d sugerir_perdido=%d dur=%dms',
+        $liberados, $novos, $recuperados, $sugestoes,
         (int)round((microtime(true) - $inicio) * 1000)
     ));
     exit(0);

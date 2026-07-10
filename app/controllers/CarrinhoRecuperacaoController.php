@@ -36,25 +36,30 @@ class CarrinhoRecuperacaoController extends Controller {
         $clienteId   = Session::isClienteLogado() ? (int)Session::get('cliente_id') : null;
         $carrinhoAtual = $cart->getOrCreate($clienteId, session_id());
 
-        foreach ($cart->getItens((int)$rec['carrinho_id']) as $item) {
+        $cartCada = $cart->getItensComVariacoesByCartId((int)$rec['carrinho_id']);
+
+        foreach ($cartCada as $item) {
             try {
                 $cart->addItem(
                     $carrinhoAtual['id'],
                     (int)$item['produto_id'],
                     (int)$item['quantidade'],
-                    $item['sku_id'] ? (int)$item['sku_id'] : null
+                    null
                 );
             } catch (\Throwable $e) {
                 // Item pode ter saído de linha/estoque — segue os demais
                 error_log('[CartRecover] item skip: ' . $e->getMessage());
             }
         }
-
+        // var_dump(json_encode($cartCada));
         Session::flash('cart_msg', 'Bem-vindo de volta! Seu carrinho foi restaurado. 🛒');
         $this->redirect('/carrinho');
     }
 }
 
+/*
+public function addItem(int $carrinhoId, int $productId, int $qty, ?int $estoqueId, array $opcoes = []): bool {
+*/ 
 
 /* ════════════════════════════════════════════════════════
    bin/carrinhos-abandonados-processar.php  (ARQUIVO SEPARADO)

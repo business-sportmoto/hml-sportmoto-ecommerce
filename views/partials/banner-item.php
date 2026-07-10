@@ -6,8 +6,8 @@ $tipoMidia = $b['tipo_midia'] ?? 'imagem';
 $temVideo  = !empty($b['arquivo_video']) || !empty($b['video_url_externo']);
 $temImagem = !empty($b['arquivo_imagem']);
 
-$imgDesktop = !empty($b['arquivo_imagem'])         ? View::upload('banners/' . $b['arquivo_imagem'])         : null;
-$imgMobile  = !empty($b['arquivo_imagem_mobile'])  ? View::upload('banners/' . $b['arquivo_imagem_mobile'])  : $imgDesktop;
+$imgDesktop = !empty($b['arquivo_imagem'])         ? View::uploadR2($b['arquivo_imagem'])         : null;
+$imgMobile  = !empty($b['arquivo_imagem_mobile'])  ? View::uploadR2($b['arquivo_imagem_mobile'])  : $imgDesktop;
 $vidDesktop = !empty($b['arquivo_video'])          ? View::upload('banners/' . $b['arquivo_video'])          : null;
 $vidMobile  = !empty($b['arquivo_video_mobile'])   ? View::upload('banners/' . $b['arquivo_video_mobile'])   : $vidDesktop;
 

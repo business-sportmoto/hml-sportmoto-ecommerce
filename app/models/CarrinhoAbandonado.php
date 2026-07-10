@@ -12,6 +12,60 @@ class CarrinhoAbandonado {
 
     private PDO $db;
 
+    /**
+     * Schema das configurações: whitelist implícita (chave fora
+     * daqui é ignorada no save) + bounds que são PROTEÇÃO
+     * OPERACIONAL — janela_abandono_h=0 marcaria todo carrinho
+     * ativo como abandonado no próximo cron.
+     */
+    public const CONFIG_SCHEMA = [
+        'janela_abandono_h' => [
+            'label' => 'Janela de abandono (horas)',
+            'hint'  => 'Tempo sem atividade para o carrinho entrar na central',
+            'min' => 1, 'max' => 72, 'step' => 1, 'default' => 3,
+        ],
+        'valor_minimo' => [
+            'label' => 'Valor mínimo do carrinho (R$)',
+            'hint'  => 'Carrinhos abaixo deste valor são ignorados',
+            'min' => 0, 'max' => 10000, 'step' => 0.01, 'default' => 30,
+        ],
+        'sugerir_whatsapp_h' => [
+            'label' => 'Sugerir WhatsApp após (horas)',
+            'hint'  => 'Tempo do abandono até sugerir o 1º contato por WhatsApp',
+            'min' => 1, 'max' => 168, 'step' => 1, 'default' => 24,
+        ],
+        'sugerir_email_h' => [
+            'label' => 'Sugerir e-mail após (horas)',
+            'hint'  => 'Tempo do abandono até sugerir o envio de e-mail',
+            'min' => 1, 'max' => 336, 'step' => 1, 'default' => 48,
+        ],
+        'max_tentativas' => [
+            'label' => 'Máximo de tentativas de contato',
+            'hint'  => 'Após este nº sem resposta, sugere marcar como perdido',
+            'min' => 1, 'max' => 10, 'step' => 1, 'default' => 3,
+        ],
+        'dias_sugerir_perdido' => [
+            'label' => 'Dias parado para sugerir "perdido"',
+            'hint'  => 'Combinado com o máximo de tentativas',
+            'min' => 1, 'max' => 60, 'step' => 1, 'default' => 5,
+        ],
+        'cooldown_email_h' => [
+            'label' => 'Intervalo mínimo entre e-mails (horas)',
+            'hint'  => 'Anti-spam: bloqueia reenvio ao mesmo carrinho',
+            'min' => 1, 'max' => 168, 'step' => 1, 'default' => 24,
+        ],
+        'token_validade_dias' => [
+            'label' => 'Validade do link de retorno (dias)',
+            'hint'  => 'Após expirar, um novo link é gerado no próximo envio',
+            'min' => 1, 'max' => 30, 'step' => 1, 'default' => 7,
+        ],
+        'captura_expira_dias' => [
+            'label' => 'Expiração da captura (dias sem interação)',
+            'hint'  => 'Carrinho capturado sem nenhuma ação neste prazo volta ao pool geral.',
+            'min' => 1, 'max' => 30, 'step' => 1, 'default' => 3,
+        ],
+    ];
+
     /** Whitelist de ordenação — nunca interpolar input do usuário em ORDER BY */
     private const SORT_MAP = [
         'valor'      => 'cr.valor_snapshot DESC',
@@ -32,8 +86,14 @@ class CarrinhoAbandonado {
     /**
      * @return array{rows: array, total: int}
      */
-    public function listar(array $f, int $page = 1, int $porPagina = 25): array {
+    public function listar(array $f, int $page = 1, int $porPagina = 25,
+                           ?int $apenasVisiveisPara = null): array {
         [$where, $params] = $this->buildWhere($f);
+ 
+        if ($apenasVisiveisPara !== null) {
+            $where   .= ' AND (cr.responsavel_id IS NULL OR cr.responsavel_id = ?)';
+            $params[] = $apenasVisiveisPara;
+        }
 
         $orderBy = self::SORT_MAP[$f['ordenar'] ?? ''] ?? self::SORT_MAP['prioridade'];
         $offset  = max(0, ($page - 1) * $porPagina);
@@ -95,8 +155,12 @@ class CarrinhoAbandonado {
             $p[] = $f['prioridade'];
         }
         if (!empty($f['responsavel_id'])) {
-            $w[] = 'cr.responsavel_id = ?';
-            $p[] = (int)$f['responsavel_id'];
+            if ($f['responsavel_id'] === 'pool') {
+                $w[] = 'cr.responsavel_id IS NULL';
+            } else {
+                $w[] = 'cr.responsavel_id = ?';
+                $p[] = (int)$f['responsavel_id'];
+            }
         }
         if (!empty($f['data_de'])) {
             $w[] = 'cr.abandonado_em >= ?';
@@ -266,7 +330,13 @@ class CarrinhoAbandonado {
     /** Lista de admins ativos para atribuição de responsável. */
     public function getResponsaveis(): array {
         return $this->db->query(
-            "SELECT id, nome FROM usuarios WHERE ativo = 1 ORDER BY nome"
+            "SELECT u.id, u.nome, a.nivel
+             FROM admins a
+             JOIN usuarios u ON u.id = a.usuario_id
+             WHERE u.ativo = 1
+               AND a.nivel IN ('super','gerente','vendedor')
+             ORDER BY
+               FIELD(a.nivel,'vendedor','gerente','super'), u.nome"
         )->fetchAll();
     }
 
@@ -440,5 +510,135 @@ class CarrinhoAbandonado {
             "DELETE FROM recuperacao_templates WHERE id = ?"
         )->execute([$id]);
         return ['ok' => true];
+    }
+
+    /** Config vigente: defaults do schema sobrescritos pelo banco.
+     *  Resiliente a deploy order — tabela ausente = defaults. */
+    public function configListar(): array {
+        $out = [];
+        foreach (self::CONFIG_SCHEMA as $k => $def) {
+            $out[$k] = (float)$def['default'];
+        }
+        try {
+            $rows = $this->db->query(
+                "SELECT chave, valor FROM recuperacao_config"
+            )->fetchAll();
+            foreach ($rows as $r) {
+                if (isset($out[$r['chave']])) $out[$r['chave']] = (float)$r['valor'];
+            }
+        } catch (\Throwable $e) { /* migração ainda não rodou — defaults */ }
+        return $out;
+    }
+ 
+    /**
+     * Valida contra o schema (bounds) e persiste via UPSERT.
+     * Sintaxe `AS novo` — VALUES() em ODKU é deprecated no MySQL 8.4.
+     * Mudanças são logadas com admin_id: alterar automação é ação
+     * sensível (afeta detecção global de carrinhos).
+     */
+    public function configSalvar(array $post, int $adminId): array {
+        $erros    = [];
+        $mudancas = [];
+        $atuais   = $this->configListar();
+ 
+        $stmt = $this->db->prepare(
+            "INSERT INTO recuperacao_config (chave, valor, atualizado_por)
+             VALUES (?,?,?) AS novo
+             ON DUPLICATE KEY UPDATE
+                valor = novo.valor, atualizado_por = novo.atualizado_por"
+        );
+ 
+        foreach (self::CONFIG_SCHEMA as $chave => $def) {
+            if (!isset($post[$chave])) continue;
+ 
+            $valor = (float)str_replace(',', '.', (string)$post[$chave]);
+            if (!is_finite($valor) || $valor < $def['min'] || $valor > $def['max']) {
+                $erros[] = "{$def['label']}: valor entre {$def['min']} e {$def['max']}.";
+                continue;
+            }
+            if (abs($atuais[$chave] - $valor) > 0.001) {
+                $mudancas[] = "{$chave}: {$atuais[$chave]}→{$valor}";
+            }
+            $stmt->execute([$chave, $valor, $adminId]);
+        }
+ 
+        if (!empty($mudancas)) {
+            error_log('[recuperacao-config] admin#' . $adminId
+                . ' alterou automação: ' . implode(' | ', $mudancas));
+        }
+ 
+        return empty($erros)
+            ? ['ok' => true]
+            : ['ok' => false, 'msg' => implode(' ', $erros)];
+    }
+ 
+    // ══════════════════════════════════════════════════
+    // RELATÓRIO — conversão por template (last-touch)
+    // ══════════════════════════════════════════════════
+ 
+    /**
+     * Atribuição LAST-TOUCH: a conversão pertence ao ÚLTIMO template
+     * enviado antes do momento da recuperação. Evita supercontar
+     * quando o operador dispara 3 templates no mesmo carrinho.
+     * `envios`/`carrinhos` são contagem bruta (participação);
+     * `conversoes`/`valor_recuperado` são last-touch.
+     * Período aplicado sobre a data do ENVIO.
+     * CTE + ROW_NUMBER(): MySQL 8.4 nativo.
+     */
+    public function relatorioConversaoTemplates(string $de, string $ate): array {
+        $stmt = $this->db->prepare(
+            "WITH envios AS (
+                SELECT e.recuperacao_id,
+                       CAST(e.meta->>'$.template_id' AS UNSIGNED) AS template_id,
+                       e.criado_em
+                FROM carrinho_recuperacao_eventos e
+                WHERE e.tipo IN ('whatsapp_enviado','email_enviado')
+                  AND e.meta->>'$.template_id' IS NOT NULL
+                  AND e.criado_em BETWEEN ? AND ?
+            ),
+            recuperacoes AS (
+                SELECT recuperacao_id, MIN(criado_em) AS recuperado_em
+                FROM carrinho_recuperacao_eventos
+                WHERE tipo = 'recuperado'
+                GROUP BY recuperacao_id
+            ),
+            last_touch AS (
+                SELECT en.recuperacao_id, en.template_id,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY en.recuperacao_id
+                           ORDER BY en.criado_em DESC
+                       ) AS rn
+                FROM envios en
+                JOIN recuperacoes r
+                  ON r.recuperacao_id = en.recuperacao_id
+                 AND en.criado_em <= r.recuperado_em
+            )
+            SELECT t.id, t.nome, t.canal,
+                   COALESCE(ag.envios, 0)           AS envios,
+                   COALESCE(ag.carrinhos, 0)        AS carrinhos,
+                   COALESCE(cv.conversoes, 0)       AS conversoes,
+                   COALESCE(cv.valor_recuperado, 0) AS valor_recuperado
+            FROM recuperacao_templates t
+            LEFT JOIN (
+                SELECT template_id,
+                       COUNT(*)                       AS envios,
+                       COUNT(DISTINCT recuperacao_id) AS carrinhos
+                FROM envios GROUP BY template_id
+            ) ag ON ag.template_id = t.id
+            LEFT JOIN (
+                SELECT lt.template_id,
+                       COUNT(*) AS conversoes,
+                       SUM(COALESCE(cr.valor_recuperado, cr.valor_snapshot))
+                           AS valor_recuperado
+                FROM last_touch lt
+                JOIN carrinho_recuperacao cr ON cr.id = lt.recuperacao_id
+                WHERE lt.rn = 1
+                GROUP BY lt.template_id
+            ) cv ON cv.template_id = t.id
+            WHERE ag.envios IS NOT NULL OR cv.conversoes IS NOT NULL
+            ORDER BY conversoes DESC, envios DESC"
+        );
+        $stmt->execute([$de . ' 00:00:00', $ate . ' 23:59:59']);
+        return $stmt->fetchAll();
     }
 }

@@ -51,6 +51,9 @@ Router::get('/produto/{slug}',            'ProductController@detail');
 
 // Carrinho
 Router::get('/carrinho',                  'CartController@index');
+
+Router::get( '/carrinho/recuperar/{token}',        'CarrinhoRecuperacaoController@recuperar');
+
 Router::post('/carrinho/adicionar',       'CartController@add');
 Router::post('/carrinho/remover',         'CartController@remove');
 Router::post('/carrinho/atualizar',       'CartController@update');
@@ -58,8 +61,6 @@ Router::post('/carrinho/cupom',           'CartController@applyCoupon');
 Router::post('/carrinho/cupom/remover',   'CartController@removeCoupon');
 Router::post('/carrinho/frete',           'CartController@calcShipping');
 Router::get('/carrinho/compartilhar/{token}', 'CartController@share');
-
-Router::get ('/carrinho/recuperar/{token:[a-f0-9]{64}}',        'CarrinhoRecuperacaoController@recuperar');
 
 // Checkout
 // Router::get('/checkout',                  'CheckoutController@index');

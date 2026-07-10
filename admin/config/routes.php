@@ -65,6 +65,9 @@ AdminRouter::get('/api/buscar-caracteristicas', 'AdminApiController@buscarCaract
 // Admin
 AdminRouter::get ('/carrinhos-abandonados',                    'AdminCarrinhoAbandonadoController@index');
 
+AdminRouter::post('/media/stream-upload-url', 'MediaStreamController@uploadUrl');
+AdminRouter::get('/media/stream-status',      'MediaStreamController@status');
+
 // ⚠ Declarar ANTES de '/admin/carrinhos-abandonados/{id:\d+}' —
 // garante que "templates" nunca seja engolido por um router que
 // teste padrões em ordem de declaração.
@@ -75,6 +78,11 @@ AdminRouter::get ('/carrinhos-abandonados/templates/{id:\d+}',         'AdminCar
 AdminRouter::post('/carrinhos-abandonados/templates/{id:\d+}',         'AdminCarrinhoAbandonadoController@templatesAtualizar');
 AdminRouter::post('/carrinhos-abandonados/templates/{id:\d+}/toggle',  'AdminCarrinhoAbandonadoController@templatesToggle');
 AdminRouter::post('/carrinhos-abandonados/templates/{id:\d+}/excluir', 'AdminCarrinhoAbandonadoController@templatesExcluir');
+
+AdminRouter::get ('/carrinhos-abandonados/config',              'AdminCarrinhoAbandonadoController@configForm');
+AdminRouter::post('/carrinhos-abandonados/config',              'AdminCarrinhoAbandonadoController@configSalvar');
+AdminRouter::get ('/carrinhos-abandonados/relatorio-templates', 'AdminCarrinhoAbandonadoController@relatorioTemplates');
+AdminRouter::post('/carrinhos-abandonados/{id:\d+}/capturar', 'AdminCarrinhoAbandonadoController@capturar');
 
 AdminRouter::get ('/carrinhos-abandonados/dashboard',          'AdminCarrinhoAbandonadoController@dashboard');
 AdminRouter::get ('/carrinhos-abandonados/exportar',           'AdminCarrinhoAbandonadoController@exportar');
@@ -88,7 +96,21 @@ AdminRouter::post('/carrinhos-abandonados/{id:\d+}/email',       'AdminCarrinhoA
 AdminRouter::post('/carrinhos-abandonados/{id:\d+}/link',        'AdminCarrinhoAbandonadoController@gerarLink');
 // Público
 
+AdminRouter::get ('/usuarios',                 'AdminUsuarioController@index');
+AdminRouter::get ('/usuarios/novo',            'AdminUsuarioController@novo');
+AdminRouter::post('/usuarios/novo',            'AdminUsuarioController@criar');
+AdminRouter::get ('/usuarios/{id:\d+}',        'AdminUsuarioController@editar');
+AdminRouter::post('/usuarios/{id:\d+}',        'AdminUsuarioController@atualizar');
+AdminRouter::post('/usuarios/{id:\d+}/toggle', 'AdminUsuarioController@toggle');
+AdminRouter::post('/logout',                   'AdminAuthController@logout');
 
+AdminRouter::get ('/usuarios/buscar',          'AdminUsuarioController@buscar');       // Ajax
+AdminRouter::post('/usuarios/promover',        'AdminUsuarioController@promover');
+AdminRouter::get ('/usuarios/vendas',          'AdminUsuarioController@vendas');
+AdminRouter::get ('/usuarios/vendas/{id:\d+}', 'AdminUsuarioController@vendasVendedor');
+
+// as de index/editar/atualizar/toggle continuam iguais
+// ⚠ /buscar, /promover e /vendas ANTES de /{id} genérica
 
 // ── Produtos ──────────────────────────────────────────────
 // AdminRouter::get('/produtos',                      'ProductAdminController@index');
@@ -242,6 +264,9 @@ AdminRouter::get( '/banner-zonas/form',         'BannerSlotsController@form');
 AdminRouter::post('/banner-zonas/salvar',       'BannerSlotsController@salvar');
 AdminRouter::post('/banner-zonas/toggle-ativo', 'BannerSlotsController@toggleAtivo');
 AdminRouter::post('/banner-zonas/excluir',      'BannerSlotsController@excluir');
+
+AdminRouter::post('/banners/stream-upload-url', 'BannersController@streamUploadUrl');
+AdminRouter::get('/banners/stream-status',      'BannersController@streamStatus');
 
 // ── Páginas ───────────────────────────────────────────────
 AdminRouter::get('/paginas',                       'PageAdminController@index');

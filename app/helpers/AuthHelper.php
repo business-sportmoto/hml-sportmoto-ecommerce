@@ -36,15 +36,32 @@ class AuthHelper {
 
     /**
      * Exige um nível específico de admin.
+     * Ajax recebe JSON 403; navegação recebe a view de erro.
      */
     public static function requireAdminLevel(string ...$levels): void {
         self::requireAdmin();
-        $nivel = Session::get('admin_nivel');
-        if (!in_array($nivel, $levels, true) && $nivel !== 'super') {
-            http_response_code(403);
+        if (self::hasLevel(...$levels)) return;
+ 
+        http_response_code(403);
+        if (self::isAjax()) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => false, 'msg' => 'Sem permissão para esta ação.']);
+        } else {
             View::render('errors/403', [], 'minimal');
-            exit;
         }
+        exit;
+    }
+
+    /**
+     * Verificação NÃO-fatal de nível (retorna bool, não redireciona).
+     * É a base do requireAdminLevel e do ehGestor() da Central de
+     * Recuperação. 'super' passa em qualquer verificação (bypass
+     * intencional — mesmo comportamento do requireAdminLevel).
+     */
+    public static function hasLevel(string ...$levels): bool {
+        if (!Session::isAdminLogado()) return false;
+        $nivel = (string) Session::get('admin_nivel');
+        return $nivel === 'super' || in_array($nivel, $levels, true);
     }
 
     /**
@@ -94,5 +111,63 @@ class AuthHelper {
         }
     
         return BASE_URL . '/minha-conta';
+    }
+
+
+    /**
+     * Resolve o usuarios.id do admin logado (admins.usuario_id).
+     * Lazy com cache em sessão: 1 query por sessão, cobre TODOS os
+     * caminhos de autenticação (login, remember-me, futuros) — se a
+     * resolução morasse só no login, cada caminho novo que esquecesse
+     * de popular a chave reintroduziria autor=0 na auditoria.
+     * Retorna 0 se o admin não tem vínculo (chamador decide bloquear).
+     */
+    public static function usuarioId(): int {
+        $cached = (int) (Session::get('usuario_id') ?: 0);
+        if ($cached > 0) return $cached;
+
+        $adminId = (int) (Session::get('admin_id') ?: 0);
+        if ($adminId <= 0) return 0;
+
+        $stmt = Database::getInstance()->getConnection()->prepare(
+            "SELECT usuario_id FROM admins WHERE id = ? LIMIT 1"
+        );
+        $stmt->execute([$adminId]);
+        $usuarioId = (int) ($stmt->fetchColumn() ?: 0);
+
+        if ($usuarioId > 0) {
+            Session::set('usuario_id', $usuarioId); // cache pela vida da sessão
+        } else {
+            error_log('[AuthHelper] admin #' . $adminId . ' sem vínculo em admins.usuario_id');
+        }
+        return $usuarioId;
+    }
+
+    /**
+     * Nome + cargo do admin logado para exibição (topbar).
+     * Lazy com cache em sessão — mesmo padrão do usuarioId():
+     * cobre sessões abertas antes do deploy que popula no login.
+     */
+    public static function adminDisplay(): array {
+        $nivel = (string) (Session::get('admin_nivel') ?: '');
+        $nome  = (string) (Session::get('usuario_nome') ?: '');
+ 
+        if ($nome === '') {
+            $uid = self::usuarioId();
+            if ($uid > 0) {
+                $stmt = Database::getInstance()->getConnection()->prepare(
+                    "SELECT nome FROM usuarios WHERE id = ? LIMIT 1"
+                );
+                $stmt->execute([$uid]);
+                $nome = (string) ($stmt->fetchColumn() ?: '');
+                if ($nome !== '') Session::set('usuario_nome', $nome);
+            }
+        }
+ 
+        return [
+            'nome'  => $nome !== '' ? $nome : 'Admin',
+            'nivel' => $nivel,
+            'label' => Cargos::label($nivel),
+        ];
     }
 }

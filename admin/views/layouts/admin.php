@@ -181,15 +181,9 @@ function adminIsActive(string $path): string {
       </a>
       <a href="<?= BASE_URL ?>/admin/carrinhos-abandonados" class="admin-nav-item<?= adminIsActive('/admin/carrinhos-abandonados/') ?>">
         <span class="admin-nav-icon">
-          <?= IconLibrary::render('automation', 'icon icon--md') ?>
+          <?= IconLibrary::render('cart-alert', 'icon icon--md') ?>
         </span>
         Carrinho abandonado
-      </a>
-      <a href="<?= BASE_URL ?>/admin/recuperacao-templates" class="admin-nav-item<?= adminIsActive('/admin/recuperacao-templates/') ?>">
-        <span class="admin-nav-icon">
-          <?= IconLibrary::render('automation', 'icon icon--md') ?>
-        </span>
-        Templates
       </a>
       
     </div>
@@ -253,6 +247,12 @@ function adminIsActive(string $path): string {
           <?= IconLibrary::render('settings'); ?> 
         </span>
         Configurações
+      </a>
+      <a href="<?= BASE_URL ?>/admin/usuarios" class="admin-nav-item<?= adminIsActive('/admin/usuarios') ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('settings'); ?> 
+        </span>
+        Usuários
       </a>
       <a href="<?= BASE_URL ?>/admin/importar" class="admin-nav-item<?= adminIsActive('/admin/importar') ?>">
         <span class="admin-nav-icon">

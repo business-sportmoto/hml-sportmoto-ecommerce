@@ -116,16 +116,29 @@ $semOptIn = isset($rec['aceita_marketing']) && !(int)$rec['aceita_marketing'];
     </div>
 
     <div class="admin-card">
-      <h3 class="ap-card-title">Ações</h3>
+      <h3 class="ap-card-title">Ações <?= Session::get('usuario_id') ?></h3>
       <div style="padding:14px 18px;display:flex;flex-direction:column;gap:8px;">
-
+        <?php if (empty($rec['responsavel_id'])): ?>
+        <button class="btn" id="btn-capturar"
+                style="background:#0f172a;color:#fff;">⚡ Capturar este carrinho</button>
+        <?php elseif ((int)$rec['responsavel_id'] !== (int)Session::get('usuario_id')): ?>
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;
+            padding:10px 12px;font-size:12.5px;color:#92400e;">
+          🔒 Capturado por <strong><?= View::e($rec['responsavel_nome']) ?></strong>
+        </div>
+        <?php elseif ((int)$rec['responsavel_id'] == (int)Session::get('usuario_id')): ?>
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;
+            padding:10px 12px;font-size:12.5px;color:#92400e;">
+          🔒 Meu carrinho
+        </div>
+        <?php endif; ?>
         <button class="btn" id="btn-whatsapp" style="background:#16a34a;color:#fff;"
                 <?= !$rec['cliente_telefone'] ? 'disabled title="Sem telefone"' : '' ?>>
           💬 Enviar WhatsApp</button>
 
         <button class="btn" id="btn-email" style="background:#1d4ed8;color:#fff;"
                 <?= !$rec['cliente_email'] ? 'disabled title="Sem e-mail"' : '' ?>>
-          ✉ Enviar e-mail</button>
+          ✉ Enviar e-mail</button>              
 
         <button class="btn" id="btn-link">🔗 Copiar link do carrinho</button>
 
@@ -138,12 +151,38 @@ $semOptIn = isset($rec['aceita_marketing']) && !(int)$rec['aceita_marketing'];
           <?php endforeach; ?>
         </select>
 
-        <select class="form-control" id="sel-responsavel">
-          <option value="">Atribuir responsável…</option>
-          <?php foreach ($responsaveis as $r): ?>
-          <option value="<?= (int)$r['id'] ?>"><?= View::e($r['nome']) ?></option>
-          <?php endforeach; ?>
-        </select>
+        <?php
+          $temDono   = !empty($rec['responsavel_id']);
+          $podeMexer = $ehGestor && (!$temDono || $ehSuper);
+        ?>
+        <?php if ($podeMexer): ?>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label" style="font-size:12px;">
+              <?= $temDono ? '🔄 Transferir para (super admin)' : '👤 Atribuir responsável' ?>
+            </label>
+            <select class="form-control" id="sel-responsavel">
+              <option value="">
+                <?= $temDono ? 'Transferir para…' : 'Selecionar vendedor…' ?></option>
+              <?php foreach ($responsaveis as $r):
+                if ((int)$r['id'] === (int)($rec['responsavel_id'] ?? 0)) continue; // pula o dono atual
+                $tag = match($r['nivel']) {
+                  'super'   => ' (super)',
+                  'gerente' => ' (gerente)',
+                  default   => '',
+                };
+              ?>
+              <option value="<?= (int)$r['id'] ?>">
+                <?= View::e($r['nome']) . $tag ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+        <?php elseif ($temDono && $ehGestor && !$ehSuper): ?>
+          <div style="background:#f8fafc;border:1px solid var(--c-border);border-radius:8px;
+              padding:10px 12px;font-size:12px;color:var(--c-text-muted);">
+            🔒 Carrinho de <strong><?= View::e($rec['responsavel_nome'] ?? 'vendedor') ?></strong>.
+            Apenas um super admin pode transferir.
+          </div>
+        <?php endif; ?>
 
         <input type="datetime-local" class="form-control" id="inp-agendar"
                title="Agendar próximo contato">
@@ -199,6 +238,11 @@ jQuery(function ($) {
       if (!motivo.trim()) { $(this).val(''); return; }
     }
     post(BASE + '/status', { status: st, motivo: motivo })
+      .done(function (r) { r.ok ? reload() : alert(r.msg); });
+  });
+
+  $('#btn-capturar').on('click', function () {
+    post(BASE + '/capturar', {})
       .done(function (r) { r.ok ? reload() : alert(r.msg); });
   });
 

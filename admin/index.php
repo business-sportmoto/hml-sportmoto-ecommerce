@@ -10,6 +10,8 @@ require_once dirname(__DIR__) . '/config/defines.php';
 require_once dirname(__DIR__) . '/config/config.php';
 require_once dirname(__DIR__) . '/config/database.php';
 
+require dirname(__DIR__) . '/vendor/autoload.php';
+
 spl_autoload_register(function (string $class): void {
     $paths = [
         ROOT_PATH . '/core/',

@@ -63,7 +63,7 @@ $totalBanners = array_sum(array_map(fn($z) => (int)$z['total_banners'], $zonas))
       <div class="bz-banners-list" data-zona="<?= $zona['id'] ?>">
         <?php foreach ($banners as $b):
           $thumb    = !empty($b['arquivo_imagem'])
-                      ? View::upload('banners/' . $b['arquivo_imagem'])
+                      ? View::uploadR2($b['arquivo_imagem'])
                       : null;
           $isVideo  = in_array($b['tipo_midia'], ['video','video_com_imagem']);
           $agendado = !empty($b['data_inicio']) && strtotime($b['data_inicio']) > time();

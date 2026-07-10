@@ -41,6 +41,8 @@ function tempoDesde(string $dt): string {
     <a href="<?= ADMIN_URL ?>/carrinhos-abandonados/templates" class="btn">⚙ Templates</a>
     <a href="<?= ADMIN_URL ?>/carrinhos-abandonados/dashboard" class="btn">📊 Dashboard</a>
     <a href="<?= ADMIN_URL ?>/carrinhos-abandonados/exportar" class="btn">⬇ Exportar CSV</a>
+    <a href="<?= ADMIN_URL ?>/carrinhos-abandonados/relatorio-templates" class="btn">📈 Conversão</a>
+    <a href="<?= ADMIN_URL ?>/carrinhos-abandonados/config" class="btn">⚙ Automação</a>
   </div>
 </div>
 
@@ -57,6 +59,8 @@ function tempoDesde(string $dt): string {
       <label class="form-label">Status</label>
       <select name="status" class="form-control">
         <option value="">Todos</option>
+        <option value="pool" <?= $filtros['responsavel_id'] === 'pool' ? 'selected' : '' ?>>
+    🎯 Pool (sem responsável)</option>
         <?php foreach ($statusCfg as $slug => [$label]): ?>
         <option value="<?= $slug ?>" <?= $filtros['status'] === $slug ? 'selected' : '' ?>>
           <?= $label ?></option>
@@ -160,7 +164,14 @@ function tempoDesde(string $dt): string {
         <span><?= $temTel  ? '📱 ' . View::e($r['cliente_telefone']) : '📵 sem telefone' ?></span>
         <span><?= $temMail ? '✉ '  . View::e($r['cliente_email'])    : '✉ sem e-mail' ?></span>
         <?php if ($r['responsavel_nome']): ?>
-          <span>👤 <?= View::e($r['responsavel_nome']) ?></span>
+          <span><?= (int)$r['responsavel_id']   === (int)Session::get('usuario_id')
+              ? '🔒 Meu carrinho'
+              : '👤 ' . View::e($r['responsavel_nome']) ?></span>
+        <?php else: ?>
+          <button class="btn btn-capturar" data-id="<?= (int)$r['id'] ?>"
+                  onclick="event.preventDefault();event.stopPropagation();"
+                  style="font-size:11px;padding:3px 10px;background:#f0fdf4;
+                        color:#16a34a;border:1px solid #bbf7d0;">⚡ Capturar</button>
         <?php endif; ?>
       </div>
     </div>
@@ -195,3 +206,18 @@ function tempoDesde(string $dt): string {
 </div>
 <?php endif; ?>
 <?php endif; ?>
+
+<script>
+
+jQuery(function ($) {
+  var CSRF = $('meta[name="csrf-token"]').attr('content');
+  $('.btn-capturar').on('click', function () {
+    var id = $(this).data('id');
+    $.post('<?= ADMIN_URL ?>/carrinhos-abandonados/' + id + '/capturar',
+            { _csrf: CSRF }, null, 'json')
+      .done(function (r) { r.ok ? location.reload() : alert(r.msg); })
+      .fail(function () { alert('Erro de rede.'); });
+  });
+});
+
+</script>

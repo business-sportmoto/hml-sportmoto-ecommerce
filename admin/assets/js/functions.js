@@ -348,3 +348,147 @@ $(function(){
   }
 
 }())
+
+
+/**
+ * PEÇA 3 — Upload de vídeo de banner para Cloudflare Stream.
+ *
+ * Fluxo (upload AO SELECIONAR):
+ *   1. Admin escolhe vídeo -> pede uploadURL ao backend
+ *   2. Envia o arquivo DIRETO pro Stream (XHR + barra de progresso)
+ *   3. Guarda o UID num hidden (name do input file vira o UID via campo oculto)
+ *   4. Faz polling do status até 'ready'
+ *
+ * Integração: adicione este bloco DENTRO da IIFE do teu banners.js,
+ * logo após o bloco de upload existente (document.querySelectorAll('.banner-upload-area')...).
+ *
+ * REQUISITOS no HTML do form (por painel desktop/mobile de vídeo):
+ *   - o <input type="file"> de vídeo deve ter data-video-slot="video" ou "video_mobile"
+ *   - um <input type="hidden" name="arquivo_video"> (e arquivo_video_mobile) no form
+ *     para carregar o UID  ← reusa a coluna arquivo_video
+ *   - CSRF token acessível: [name="_csrf_token"]
+ */
+
+
+/**
+ * assets/js/stream-upload.js
+ *
+ * Uploader de video Cloudflare Stream REUTILIZAVEL (banners, clips, ...).
+ * Single source of truth do fluxo: pede URL -> envia direto -> polling.
+ *
+ * USO (em qualquer form):
+ *   StreamUpload.init({
+ *     fileInput: element,          // <input type="file"> de video
+ *     hiddenInput: element,        // <input type="hidden"> que recebe o UID
+ *     onProgress: (pct) => {},     // opcional
+ *     onReady: (uid) => {},        // opcional: video pronto
+ *     onError: (msg) => {},        // opcional
+ *     name: 'clip-123',            // opcional: rotulo no CF
+ *   });
+ *
+ * Requisitos globais: BASE_URL, e um [name="_csrf_token"] no documento.
+ */
+window.StreamUpload = (function () {
+  'use strict';
+
+  const ENDPOINT_URL    = () => BASE_URL + '/admin/media/stream-upload-url';
+  const ENDPOINT_STATUS = (uid) => `${BASE_URL}/admin/media/stream-status?uid=${encodeURIComponent(uid)}`;
+  const MAX_MB = 200;
+
+  function csrf() {
+    return document.querySelector('[name="_csrf_token"]')?.value || '';
+  }
+
+  function init(opts) {
+    const { fileInput, hiddenInput } = opts;
+    if (!fileInput || !hiddenInput) {
+      console.warn('[StreamUpload] fileInput e hiddenInput sao obrigatorios');
+      return;
+    }
+
+    fileInput.addEventListener('change', function () {
+      const file = this.files[0];
+      if (!file) return;
+
+      if (!file.type.startsWith('video/')) {
+        fail(opts, 'Selecione um arquivo de video.');
+        this.value = '';
+        return;
+      }
+      if (file.size > MAX_MB * 1024 * 1024) {
+        fail(opts, `Video excede ${MAX_MB}MB.`);
+        this.value = '';
+        return;
+      }
+
+      upload(file, opts);
+    });
+  }
+
+  async function upload(file, opts) {
+    const { fileInput, hiddenInput } = opts;
+    try {
+      // 1. pede uploadURL
+      const prep = await fetch(ENDPOINT_URL(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `_csrf_token=${encodeURIComponent(csrf())}&name=${encodeURIComponent(opts.name || 'media')}`,
+      }).then(r => r.json());
+
+      if (!prep.ok || !prep.uploadURL) throw new Error(prep.msg || 'Falha ao preparar upload.');
+      const uid = prep.uid;
+
+      // 2. envia direto pro Stream com progresso
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', prep.uploadURL, true);
+        const fd = new FormData();
+        fd.append('file', file);
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable && typeof opts.onProgress === 'function') {
+            opts.onProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        };
+        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300)
+          ? resolve() : reject(new Error('Falha no envio (HTTP ' + xhr.status + ').'));
+        xhr.onerror = () => reject(new Error('Erro de rede no envio.'));
+        xhr.send(fd);
+      });
+
+      // 3. guarda UID e limpa o file input
+      hiddenInput.value = uid;
+      fileInput.value = '';
+
+      // 4. polling ate ready
+      await pollStatus(uid);
+
+      if (typeof opts.onReady === 'function') opts.onReady(uid);
+
+    } catch (err) {
+      console.error('[StreamUpload]', err);
+      hiddenInput.value = '';
+      fail(opts, err.message || 'Erro no upload do video.');
+    }
+  }
+
+  async function pollStatus(uid) {
+    const maxTries = 40; // 40 x 3s = 120s
+    for (let i = 0; i < maxTries; i++) {
+      await sleep(3000);
+      try {
+        const st = await fetch(ENDPOINT_STATUS(uid)).then(r => r.json());
+        if (st.ok && st.ready) return;
+      } catch (_) { /* retry */ }
+    }
+    // nao trava: pode ficar pronto depois
+  }
+
+  function fail(opts, msg) {
+    if (typeof opts.onError === 'function') opts.onError(msg);
+    else if (typeof showToast === 'function') showToast(msg, 'error');
+  }
+
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  return { init };
+})();

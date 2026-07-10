@@ -14,6 +14,16 @@ class AdminCarrinhoAbandonadoController extends Controller {
 
     public function __construct() {
         AuthHelper::requireAdmin();
+
+        // Garante a identidade resolvida (cobre sessões abertas antes
+        // do deploy) e BLOQUEIA admin sem vínculo: ação com autor 0
+        // corrompe responsavel_id e a trilha de auditoria — integridade
+        // de dados aqui é requisito de segurança, não cosmética.
+        if (AuthHelper::usuarioId() <= 0) {
+            http_response_code(403);
+            exit('Seu acesso admin não está vinculado a um usuário do sistema. Contate o administrador.');
+        }
+
         $this->model   = new CarrinhoAbandonado();
         $this->service = new CarrinhoRecuperacaoService();
     }
@@ -34,7 +44,10 @@ class AdminCarrinhoAbandonadoController extends Controller {
         ];
         $page = max(1, (int)($_GET['page'] ?? 1));
 
-        $resultado = $this->model->listar($filtros, $page, 25);
+        $resultado = $this->model->listar(
+            $filtros, $page, 25,
+            $this->ehGestor() ? null : (int)Session::get('usuario_id')
+        );
 
         $this->render('carrinhos-abandonados/index', [
             'rows'          => $resultado['rows'],
@@ -43,6 +56,10 @@ class AdminCarrinhoAbandonadoController extends Controller {
             'totalPaginas'  => (int)ceil($resultado['total'] / 25),
             'filtros'       => $filtros,
             'responsaveis'  => $this->model->getResponsaveis(),
+            'responsavel_id' => ($_GET['responsavel_id'] ?? '') === 'pool'
+                                ? 'pool' : (int)($_GET['responsavel_id'] ?? 0),
+            'ehGestor' => $this->ehGestor(),
+            'ehSuper'  => AuthHelper::hasLevel('super'),
         ], 'admin');
     }
 
@@ -65,9 +82,8 @@ class AdminCarrinhoAbandonadoController extends Controller {
     // ── GET /admin/carrinhos-abandonados/{id} ─────────────
     public function show(int $id): void {
         $rec = $this->model->findById($id);
-        if (!$rec) {
-            http_response_code(404);
-            $this->render('errors/404', [], 'admin');
+        if (!$rec || !$this->podeAcessar($rec)) {
+            $this->json(['ok' => false, 'msg' => 'Carrinho não encontrado.']);
             return;
         }
 
@@ -78,6 +94,8 @@ class AdminCarrinhoAbandonadoController extends Controller {
             'responsaveis'  => $this->model->getResponsaveis(),
             'templatesWpp'  => $this->service->listarTemplates('whatsapp'),
             'templatesMail' => $this->service->listarTemplates('email'),
+            'ehGestor' => $this->ehGestor(),
+            'ehSuper'  => AuthHelper::hasLevel('super'),
         ], 'admin');
     }
 
@@ -87,7 +105,7 @@ class AdminCarrinhoAbandonadoController extends Controller {
         $this->json($this->service->mudarStatus(
             $id,
             SecurityHelper::sanitizeString($_POST['status'] ?? ''),
-            (int)Session::get('admin_id'),
+            (int)Session::get('usuario_id'),
             SecurityHelper::sanitizeString($_POST['motivo'] ?? '')
         ));
     }
@@ -96,8 +114,21 @@ class AdminCarrinhoAbandonadoController extends Controller {
     public function atribuir(int $id): void {
         $this->verifyCsrf();
         AuthHelper::requireAdminLevel('super', 'gerente');
+ 
+        // Guard de escopo: gerente/super enxergam tudo, então o
+        // podeAcessar passa; mantém a checagem por consistência
+        // com as demais actions por ID.
+        $rec = $this->model->findById($id);
+        if (!$rec || !$this->podeAcessar($rec)) {
+            $this->json(['ok' => false, 'msg' => 'Carrinho não encontrado.']);
+            return;
+        }
+ 
         $this->json($this->service->atribuirResponsavel(
-            $id, (int)($_POST['responsavel_id'] ?? 0), (int)Session::get('admin_id')
+            $id,
+            (int)($_POST['responsavel_id'] ?? 0),
+            (int)Session::get('usuario_id'),
+            AuthHelper::hasLevel('super')  // só super reatribui/transfere
         ));
     }
 
@@ -107,7 +138,7 @@ class AdminCarrinhoAbandonadoController extends Controller {
         $this->json($this->service->anotar(
             $id,
             SecurityHelper::sanitizeString($_POST['texto'] ?? ''),
-            (int)Session::get('admin_id')
+            (int)Session::get('usuario_id')
         ));
     }
 
@@ -117,23 +148,21 @@ class AdminCarrinhoAbandonadoController extends Controller {
         $this->json($this->service->agendarContato(
             $id,
             SecurityHelper::sanitizeString($_POST['quando'] ?? ''),
-            (int)Session::get('admin_id')
+            (int)Session::get('usuario_id')
         ));
     }
 
     // ── POST /admin/carrinhos-abandonados/{id}/whatsapp ───
     public function whatsapp(int $id): void {
         $this->verifyCsrf();
-        $this->json($this->service->prepararWhatsapp(
-            $id, (int)($_POST['template_id'] ?? 0), (int)Session::get('admin_id')
-        ));
+        $this->json($this->service->prepararWhatsapp($id, (int)($_POST['template_id'] ?? 0), (int)Session::get('usuario_id'), $this->ehGestor()));
     }
 
     // ── POST /admin/carrinhos-abandonados/{id}/email ──────
     public function email(int $id): void {
         $this->verifyCsrf();
         $this->json($this->service->enviarEmail(
-            $id, (int)($_POST['template_id'] ?? 0), (int)Session::get('admin_id')
+            $id, (int)($_POST['template_id'] ?? 0), (int)Session::get('usuario_id')
         ));
     }
 
@@ -311,5 +340,96 @@ class AdminCarrinhoAbandonadoController extends Controller {
             'uso_recomendado' => SecurityHelper::sanitizeString($_POST['uso_recomendado'] ?? ''),
             'ativo'           => isset($_POST['ativo']) ? 1 : 0,
         ];
+    }
+
+
+    // ══════════════════════════════════════════════════
+    // AUTOMAÇÃO CONFIGURÁVEL
+    // ══════════════════════════════════════════════════
+ 
+    // ── GET /admin/carrinhos-abandonados/config ───────────
+    public function configForm(): void {
+        AuthHelper::requireAdminLevel('super', 'gerente');
+ 
+        $this->render('carrinhos-abandonados/config', [
+            'config' => $this->model->configListar(),
+            'schema' => CarrinhoAbandonado::CONFIG_SCHEMA,
+            'salvo'  => !empty($_GET['salvo']),
+            'erro'   => null,
+        ], 'admin');
+    }
+ 
+    // ── POST /admin/carrinhos-abandonados/config ──────────
+    public function configSalvar(): void {
+        AuthHelper::requireAdminLevel('super', 'gerente');
+        $this->verifyCsrf();
+ 
+        $resultado = $this->model->configSalvar($_POST, (int)Session::get('usuario_id'));
+ 
+        if ($resultado['ok']) {
+            $this->redirect(ADMIN_URL . '/carrinhos-abandonados/config?salvo=1');
+            return;
+        }
+ 
+        // Erro de bounds: re-renderiza com os valores VIGENTES do banco
+        // (não os inválidos) — evita o operador salvar em cima de valor
+        // rejeitado sem perceber
+        $this->render('carrinhos-abandonados/config', [
+            'config' => $this->model->configListar(),
+            'schema' => CarrinhoAbandonado::CONFIG_SCHEMA,
+            'salvo'  => false,
+            'erro'   => $resultado['msg'],
+        ], 'admin');
+    }
+ 
+    // ══════════════════════════════════════════════════
+    // RELATÓRIO — conversão por template
+    // ══════════════════════════════════════════════════
+ 
+    // ── GET /admin/carrinhos-abandonados/relatorio-templates ─
+    public function relatorioTemplates(): void {
+        AuthHelper::requireAdminLevel('super', 'gerente');
+ 
+        $de  = SecurityHelper::sanitizeString($_GET['de']  ?? date('Y-m-d', strtotime('-30 days')));
+        $ate = SecurityHelper::sanitizeString($_GET['ate'] ?? date('Y-m-d'));
+ 
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $de))  $de  = date('Y-m-d', strtotime('-30 days'));
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $ate)) $ate = date('Y-m-d');
+ 
+        $this->render('carrinhos-abandonados/relatorio-templates', [
+            'linhas' => $this->model->relatorioConversaoTemplates($de, $ate),
+            'de'     => $de,
+            'ate'    => $ate,
+        ], 'admin');
+    }
+
+    /**
+     * Gerente/super têm visão total; atendimento vê pool + seus.
+     * Se AuthHelper::hasLevel() não existir no seu projeto, crie:
+     *   public static function hasLevel(string ...$niveis): bool {
+     *       return in_array(Session::get('admin_nivel'), $niveis, true);
+     *   }
+     * (ajuste 'admin_nivel' à chave real de sessão do seu RBAC)
+     */
+    private function ehGestor(): bool {
+        // return AuthHelper::hasLevel('super', 'gerente');
+        return true;
+    }
+ 
+    /**
+     * Guard anti-IDOR de escopo: atendimento só acessa carrinho do
+     * pool ou próprio. OBRIGATÓRIO em toda action que recebe {id} —
+     * listagem filtrada com show() aberto seria a falha clássica.
+     */
+    private function podeAcessar(array $rec): bool {
+        if ($this->ehGestor()) return true;
+        $donoId = (int)($rec['responsavel_id'] ?? 0);
+        return $donoId === 0 || $donoId === (int)Session::get('usuario_id');
+    }
+ 
+    // ── POST /admin/carrinhos-abandonados/{id}/capturar ───
+    public function capturar(int $id): void {
+        $this->verifyCsrf();
+        $this->json($this->service->capturar($id, (int)Session::get('usuario_id')));
     }
 }

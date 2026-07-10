@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 class BannersController extends Controller {
 
+    use HandlesStreamVideo;
+
     public function __construct() {
         AuthHelper::requireAdmin();
     }
@@ -96,8 +98,6 @@ class BannersController extends Controller {
         $titulo      = SecurityHelper::sanitizeString($_POST['titulo']      ?? '');
         $tipoMidia   = $_POST['tipo_midia'] ?? 'imagem';
 
-        $form = $_FILES;
-
         if (!$zonaId || empty($titulo)) {
             $this->json(['ok' => false, 'msg' => 'Zona e título são obrigatórios.']);
         }
@@ -107,13 +107,32 @@ class BannersController extends Controller {
 
         $db = Database::getInstance()->getConnection();
 
-        // ── Uploads ──────────────────────────────────────
-        $uploads = [
-            'arquivo_imagem'        => $this->uploadMidia('imagem', 'image'),
-            'arquivo_video'         => $this->uploadMidia('video',  'video'),
-            'arquivo_imagem_mobile' => $this->uploadMidia('imagem_mobile', 'image'),
-            'arquivo_video_mobile'  => $this->uploadMidia('video_mobile',  'video'),
-        ];
+        // Ao EDITAR, guarda valores antigos p/ limpeza (imagens R2 + videos Stream)
+        $antigas = [];
+        if ($id > 0) {
+            $stmt = $db->prepare(
+                "SELECT arquivo_imagem, arquivo_imagem_mobile,
+                        arquivo_video, arquivo_video_mobile
+                 FROM banners WHERE id=?"
+            );
+            $stmt->execute([$id]);
+            $antigas = $stmt->fetch() ?: [];
+        }
+ 
+        try {
+            $uploads = [
+                // IMAGENS -> R2/WebP (processa no servidor)
+                'arquivo_imagem'        => $this->uploadImagemR2('imagem'),
+                'arquivo_imagem_mobile' => $this->uploadImagemR2('imagem_mobile'),
+                // VIDEOS -> UID do Stream, ja enviado pelo frontend (hidden).
+                //          Apenas valida e persiste o UID; nao ha upload aqui.
+                'arquivo_video'         => $this->videoUidFromPost('arquivo_video'),
+                'arquivo_video_mobile'  => $this->videoUidFromPost('arquivo_video_mobile'),
+            ];
+        } catch (\RuntimeException $e) {
+            error_log('[BANNER-UPLOAD] ' . $e->getMessage());
+            $this->json(['ok' => false, 'msg' => $e->getMessage()]);
+        }
 
         // Coleta os campos
         $dados = [
@@ -156,8 +175,6 @@ class BannersController extends Controller {
             if ($valor !== null) $dados[$campo] = $valor;
         }
 
-        
-
         try {
             if ($id > 0) {
                 $sets   = implode(', ', array_map(fn($k) => "{$k}=?", array_keys($dados)));
@@ -171,7 +188,30 @@ class BannersController extends Controller {
                    ->execute(array_values($dados));
                 $id = (int)$db->lastInsertId();
             }
-            $this->json(['ok' => true, 'msg' => 'Banner salvo!', 'id' => $id, 'teste'=> $form]);
+
+            // Limpeza de imagens antigas trocadas (só quando editando e veio nova)
+            if (!empty($antigas)) {
+                // imagens (ja existente)
+                if (($uploads['arquivo_imagem'] ?? null) !== null) {
+                    $this->deleteImagemR2($antigas['arquivo_imagem'] ?? null);
+                }
+                if (($uploads['arquivo_imagem_mobile'] ?? null) !== null) {
+                    $this->deleteImagemR2($antigas['arquivo_imagem_mobile'] ?? null);
+                }
+                // videos: se o UID mudou, apaga o antigo do Stream
+                if (($uploads['arquivo_video'] ?? null) !== null
+                    && !empty($antigas['arquivo_video'])
+                    && $antigas['arquivo_video'] !== $uploads['arquivo_video']) {
+                    $this->deleteVideoStream($antigas['arquivo_video']);
+                }
+                if (($uploads['arquivo_video_mobile'] ?? null) !== null
+                    && !empty($antigas['arquivo_video_mobile'])
+                    && $antigas['arquivo_video_mobile'] !== $uploads['arquivo_video_mobile']) {
+                    $this->deleteVideoStream($antigas['arquivo_video_mobile']);
+                }
+            }
+
+            $this->json(['ok' => true, 'msg' => 'Banner salvo!', 'id' => $id]);
         } catch (\Exception $e) {
             $this->json(['ok' => false, 'msg' => $e->getMessage()]);
         }
@@ -188,11 +228,14 @@ class BannersController extends Controller {
         $stmt->execute([$id]);
         $b = $stmt->fetch();
 
-        // Remove arquivos
         if ($b) {
-            foreach ($b as $arq) {
-                if ($arq) @unlink(UPLOAD_PATH . '/banners/' . $arq);
-            }
+            // Imagens: agora vivem no R2 (URL). Vídeos: ainda no disco local.
+            $this->deleteImagemR2($b['arquivo_imagem'] ?? null);
+            $this->deleteImagemR2($b['arquivo_imagem_mobile'] ?? null);
+
+            // Videos agora sao UIDs do Stream:
+            $this->deleteVideoStream($b['arquivo_video'] ?? null);
+            $this->deleteVideoStream($b['arquivo_video_mobile'] ?? null);
         }
 
         $db->prepare("DELETE FROM banners WHERE id=?")->execute([$id]);
@@ -225,7 +268,60 @@ class BannersController extends Controller {
         $this->json(['ok' => true]);
     }
 
+    // ── Mídia: R2 (imagens) ───────────────────────────────
+
+    /** Service R2 instanciado sob demanda (credencial de escrita do .env). */
+    private function mediaService(): R2MediaService {
+        static $svc = null;
+        if ($svc === null) {
+            $svc = new R2MediaService([
+                'account_id'      => getenv('R2_ACCOUNT_ID'),
+                'access_key'      => getenv('R2_MEDIA_ACCESS_KEY'),
+                'secret_key'      => getenv('R2_MEDIA_SECRET_KEY'),
+                'bucket'          => getenv('R2_MEDIA_BUCKET'),
+                'public_base_url' => getenv('R2_MEDIA_PUBLIC_URL'),
+            ]);
+        }
+        return $svc;
+    }
+
+    /**
+     * Upload de UM slot de imagem do banner para o R2, em WebP.
+     * 'imagem' -> 1920px (desktop) | 'imagem_mobile' -> 768px.
+     * Retorna a URL pública (CDN) ou null se nada foi enviado.
+     * Lança RuntimeException (capturada no salvar) se inválido.
+     */
+    private function uploadImagemR2(string $slot): ?string {
+        $file = $_FILES[$slot] ?? null;
+        if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            return null;
+        }
+
+        $processor = new ImageProcessor();
+        $processor->validateUpload($file); // magic bytes + tamanho + dimensão
+
+        $maxWidth = ($slot === 'imagem_mobile') ? 768 : 1920;
+        $variants = $processor->toWebpVariants($file['tmp_name'], ['b' => $maxWidth]);
+
+        $key = R2MediaService::generateKey('banners', 'webp');
+        return $this->mediaService()->upload($key, $variants['b'], 'image/webp');
+    }
+
+    /**
+     * Remove uma imagem do R2 a partir da URL pública salva no banco.
+     * Idempotente; ignora valores que não são URL do nosso bucket.
+     */
+    private function deleteImagemR2(?string $publicUrl): void {
+        if (empty($publicUrl)) return;
+        $base = rtrim((string) getenv('R2_MEDIA_PUBLIC_URL'), '/') . '/';
+        if (!str_starts_with($publicUrl, $base)) return; // legado local / outro storage
+        $key = substr($publicUrl, strlen($base));
+        $this->mediaService()->delete($key);
+    }
+
     // ── Helpers ───────────────────────────────────────────
+
+    /** Upload de VÍDEO para disco local (Cloudflare Stream fica p/ depois). */
     private function uploadMidia(string $campo, string $tipo): ?string {
         if (empty($_FILES[$campo]['tmp_name'])) return null;
 
@@ -265,4 +361,11 @@ class BannersController extends Controller {
         $ts = strtotime($dt);
         return $ts ? date('Y-m-d H:i:s', $ts) : null;
     }
+
+
+    // ───────────────────────────────────────────────────────────────────────────
+ 
+    
+       
+    
 }

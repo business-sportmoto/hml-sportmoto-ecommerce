@@ -131,11 +131,17 @@ class View {
     /**
      * Gera URL de upload (imagens de produtos, banners, etc.).
      */
-    public static function upload(string $path): string {
+    public static function upload(string $path, bool $env = false): string {
         if (empty($path)) {
             return self::asset('images/placeholder.jpg');
         }
+        
         return rtrim(UPLOAD_URL, '/') . '/' . ltrim($path, '/');
+    }
+
+    public static function uploadR2(string $uri, bool $env = false): string {
+        
+        return $env ? rtrim(getenv('R2_MEDIA_PUBLIC_URL'), '/') . '/' . ltrim($uri, '/') : $uri ;
     }
 
     public static function setBasePath(string $path): void {
