@@ -5,7 +5,14 @@
 ini_set('session.cookie_httponly', 1);
 ini_set('session.cookie_samesite', 'Lax');
 ini_set('session.use_strict_mode', 1);
-ini_set('expose_php', 0);
+ini_set('expose_php', 1);
+
+
+error_reporting(E_ALL);
+
+ini_set('display_errors', '1');
+ini_set('display_startup_errors', '1');
+ini_set('log_errors', '1');
 
 
 // Remove header X-Powered-By
