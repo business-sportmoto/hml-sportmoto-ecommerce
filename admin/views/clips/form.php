@@ -7,7 +7,7 @@ $titulo  = $isEdit ? 'Editar clip' : 'Novo clip';
 $id      = $isEdit ? (int)$clip['id'] : 0;
 
 $produtosVinculados = $isEdit ? (new Clip())->getProdutosDoClip($id) : [];
-
+$svc = new ClipService();
 ?>
 
 <div class="admin-page">
@@ -59,6 +59,8 @@ $produtosVinculados = $isEdit ? (new Clip())->getProdutosDoClip($id) : [];
   <form id="form-clip" enctype="multipart/form-data">
     <input type="hidden" name="_csrf_token" value="<?= SecurityHelper::generateCsrf() ?>">
     <input type="hidden" name="id" value="<?= $id ?>">
+    <input type="hidden" name="arquivo_video" id="clip-video-uid"
+       value="<?= $isEdit ? View::e($clip['arquivo_video'] ?? '') : '' ?>">
 
     <div class="clip-form-grid">
 
@@ -74,37 +76,38 @@ $produtosVinculados = $isEdit ? (new Clip())->getProdutosDoClip($id) : [];
           </div>
           <div class="admin-card-body">
 
-            <?php if ($isEdit && $clip['arquivo_video']): ?>
+            <?php if ($isEdit && !empty($clip['arquivo_video'])): ?>
+            <?php
+              
+              $uid = $clip['arquivo_video'];
+              $isUid = preg_match('/^[a-f0-9]{32}$/i', $uid);
+            ?>
             <div class="clip-video-preview">
-              <video src="<?= View::upload('clips/' . $clip['arquivo_video']) ?>"
-                     controls preload="metadata"
-                     <?= !empty($clip['arquivo_poster']) ? 'poster="' . View::upload('clips/posters/' . $clip['arquivo_poster']) . '"' : '' ?>>
-              </video>
-              <?php if ($clip['duracao_segundos']): ?>
-              <div class="clip-video-meta">
-                <span><?= $clip['duracao_segundos'] ?>s</span>
-                <?php if ($clip['resolucao']): ?>
-                <span><?= View::e($clip['resolucao']) ?></span>
-                <?php endif; ?>
-                <?php if ($clip['tamanho_bytes']): ?>
-                <span><?= round($clip['tamanho_bytes'] / 1024 / 1024, 1) ?>MB</span>
-                <?php endif; ?>
-              </div>
+              <?php if ($isUid): ?>
+                <!-- Vídeo no Stream: player iframe (no ADMIN o iframe é suficiente) -->
+                <iframe src="https://iframe.cloudflarestream.com/<?= View::e($uid) ?>"
+                        style="border:none;width:100%;aspect-ratio:9/16;max-height:420px;"
+                        allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
+                        allowfullscreen></iframe>
+              <?php else: ?>
+                <!-- Legado local (se houver) -->
+                <video src="<?= View::upload('clips/' . $uid) ?>" controls preload="metadata"></video>
               <?php endif; ?>
             </div>
-            <?php endif; ?>
+          <?php endif; ?>
 
             <div class="clip-upload-area" id="clip-upload-video">
               <input type="file" name="video" accept="video/mp4,video/quicktime,video/x-msvideo"
-                     class="clip-upload-input" id="clip-input-video">
+                    class="clip-upload-input" id="clip-input-video">
               <div class="clip-upload-empty">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
-                     stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-                  <polygon points="23 7 16 12 23 17 23 7"/>
-                  <rect x="1" y="5" width="15" height="14" rx="2"/>
-                </svg>
-                <p><strong><?= $isEdit ? 'Trocar vídeo' : 'Selecione um vídeo' ?></strong></p>
-                <small>MP4, MOV, AVI · até 200MB · 9:16 recomendado · até 3min</small>
+                ... (mantém o SVG e textos) ...
+              </div>
+              <!-- NOVO: barra de progresso do upload ao Stream -->
+              <div class="clip-upload-progress" id="clip-video-progress" style="display:none;margin-top:10px;">
+                <div style="height:6px;background:rgba(255,255,255,.1);border-radius:99px;overflow:hidden;">
+                  <span id="clip-video-bar" style="display:block;height:100%;width:0;background:#f14d5d;transition:width .2s;"></span>
+                </div>
+                <small id="clip-video-status" style="display:block;margin-top:6px;color:var(--text-3);"></small>
               </div>
             </div>
 
@@ -118,7 +121,13 @@ $produtosVinculados = $isEdit ? (new Clip())->getProdutosDoClip($id) : [];
             </p>
           </div>
         </div>
-
+        
+        <?php
+  
+          $posterAtual = $isEdit ? $svc->posterFor($clip) : null;
+          $temPosterCustom = $isEdit && !empty($clip['arquivo_poster'])
+                            && str_starts_with((string)$clip['arquivo_poster'], 'http');
+        ?>
         <!-- Poster customizado -->
         <div class="admin-card">
           <div class="admin-card-header">
@@ -126,10 +135,14 @@ $produtosVinculados = $isEdit ? (new Clip())->getProdutosDoClip($id) : [];
             <small style="color:var(--text-3);font-size:11px;">Opcional</small>
           </div>
           <div class="admin-card-body">
-            <?php if ($isEdit && $clip['arquivo_poster']): ?>
+            <?php if ($posterAtual): ?>
             <div class="clip-poster-preview">
-              <img src="<?= View::upload('clips/posters/' . $clip['arquivo_poster']) ?>"
-                   alt="Poster atual">
+              <img src="<?= View::e($posterAtual) ?>" alt="Poster atual">
+              <small style="display:block;margin-top:6px;color:var(--text-3);font-size:11px;">
+                <?= $temPosterCustom
+                    ? 'Poster personalizado'
+                    : 'Gerado automaticamente do vídeo — envie um para personalizar' ?>
+              </small>
             </div>
             <?php endif; ?>
 

@@ -36,7 +36,11 @@ class HomeController extends Controller {
         $svc        = new PersonalizationService($clienteId, $sessionKey);
         $sections   = $svc->buildHomeSectionsPrepare();
         
-        
+        $streamSvc  = new StreamService(
+            getenv('CF_ACCOUNT_ID'),
+            getenv('CF_STREAM_TOKEN'),
+            getenv('CF_STREAM_CUSTOMER_CODE') ?? ''
+        );
 
         $this->render('home/index', [            
             'categorias'         => $categoryModelHome,
@@ -47,15 +51,16 @@ class HomeController extends Controller {
             'lancamentos'        => $sections['sectionNovidades'] ?? [], //$productModel->getRecent(15),
             
             
-            'sectionFavoritos'           => $sections['sectionFavoritos'] ?? [],    #        
-            'sectionPorFavoritos'           => $sections['sectionPorFavoritos'] ?? [], #
-            'sectionPorHistorico'           => $sections['sectionPorHistorico'] ?? [], #
-            'sectionPorCategorias'           => $sections['sectionPorCategorias'] ?? [],
-            'sectionPorBuscas'           => $sections['sectionPorBuscas'] ?? [], #
+            'sectionFavoritos'          => $sections['sectionFavoritos'] ?? [],    #        
+            'sectionPorFavoritos'       => $sections['sectionPorFavoritos'] ?? [], #
+            'sectionPorHistorico'       => $sections['sectionPorHistorico'] ?? [], #
+            'sectionPorCategorias'      => $sections['sectionPorCategorias'] ?? [],
+            'sectionPorBuscas'          => $sections['sectionPorBuscas'] ?? [], #
             'sectionPorClips'           => $sections['sectionPorClips'] ?? [], #
-            'sectionPorMarcas'           => $sections['sectionPorMarcas'] ?? [],
-            'sectionPorCarrinho'           => $sections['sectionPorCarrinho'] ?? [], #
+            'sectionPorMarcas'          => $sections['sectionPorMarcas'] ?? [],
+            'sectionPorCarrinho'        => $sections['sectionPorCarrinho'] ?? [], #
 
+            // 'streamSvc'                 =>$streamSvc
         ]);
     }
 

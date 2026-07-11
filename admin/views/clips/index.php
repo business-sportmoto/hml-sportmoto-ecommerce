@@ -114,7 +114,7 @@ $busca       = $busca ?? '';
   <!-- ── Grade de clips ───────────────────────────────── -->
   <div class="clips-admin-grid" id="clips-admin-grid">
     <?php foreach ($clips as $c): ?>
-      <?= View::partial('clips/_card', ['c' => $c], false) ?>
+      <?= View::partial('clips/_card', ['c' => $c]) ?>
     <?php endforeach; ?>
   </div>
 

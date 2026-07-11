@@ -6,14 +6,6 @@ ini_set('session.cookie_samesite', 'Strict'); // mais restrito no admin
 ini_set('session.use_strict_mode', 1);
 
 
-
-error_reporting(E_ALL);
-
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-ini_set('log_errors', 1);
-
-
 require_once dirname(__DIR__) . '/config/defines.php';
 require_once dirname(__DIR__) . '/config/config.php';
 require_once dirname(__DIR__) . '/config/database.php';

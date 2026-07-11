@@ -8,6 +8,8 @@ declare(strict_types=1);
 // ════════════════════════════════════════════════════════
 class ClipsController extends Controller {
 
+    use HandlesStreamVideo;
+
     public function __construct() {
         AuthHelper::requireAdmin();
     }
@@ -24,6 +26,8 @@ class ClipsController extends Controller {
         $status = SecurityHelper::sanitizeString($_GET['status'] ?? '');
         $ordem  = SecurityHelper::sanitizeString($_GET['ordem']  ?? 'recentes');
 
+        $svc = new ClipService();
+
         // WHERE dinâmico
         $where  = "1=1";
         $params = [];
@@ -37,7 +41,7 @@ class ClipsController extends Controller {
             case 'ativo':      $where .= " AND c.ativo = 1"; break;
             case 'inativo':    $where .= " AND c.ativo = 0"; break;
             case 'destaque':   $where .= " AND c.destaque = 1"; break;
-            case 'sem_poster': $where .= " AND (c.arquivo_poster IS NULL OR c.arquivo_poster = '')"; break;
+            case 'sem_poster_custom': $where .= " AND (c.arquivo_poster IS NULL OR c.arquivo_poster = '')"; break;
         }
 
         // ORDER BY
@@ -72,6 +76,26 @@ class ClipsController extends Controller {
         $execParams[] = $offset;
         $stmtClips->execute($execParams);
         $clips = $stmtClips->fetchAll();
+
+        $clips = array_map(function (array $c) use ($svc): array {
+            $uid = (string)($c['arquivo_video'] ?? '');
+            $isUid = preg_match('/^[a-f0-9]{32}$/i', $uid);
+
+            // Poster para o card da listagem (custom OU thumbnail do vídeo)
+            $c['poster_url'] = $svc->posterFor($c);
+
+            // Flag útil para a view: o poster é personalizado ou automático?
+            $c['poster_custom'] = !empty($c['arquivo_poster'])
+                && str_starts_with((string)$c['arquivo_poster'], 'http');
+
+            // Preview animado (GIF) para hover no card do admin — opcional
+            $c['preview_url'] = $isUid ? $svc->previewUrl($uid) : null;
+
+            // Indica se o vídeo está no Stream (vs legado/ausente)
+            $c['tem_video'] = (bool)$isUid;
+
+            return $c;
+        }, $clips);
 
         $hasMore = ($page * $perPage) < $total;
 
@@ -261,6 +285,36 @@ class ClipsController extends Controller {
         } elseif (!$id) {
             $this->json(['ok' => false, 'msg' => 'Selecione um vídeo.']);
         }
+
+        // Poster customizado (opcional). Se não vier, arquivo_poster fica como está
+        // (ou null), e o feed usa o thumbnail do Stream.
+        try {
+            $posterUrl = $this->uploadPosterR2();
+        } catch (\RuntimeException $e) {
+            $this->json(['ok' => false, 'msg' => $e->getMessage()]);
+        }
+
+        // Guarda o poster antigo p/ limpar se foi trocado
+        $posterAntigo = null;
+        if ($id > 0 && $posterUrl !== null) {
+            $st = $db->prepare("SELECT arquivo_poster FROM clips WHERE id=?");
+            $st->execute([$id]);
+            $posterAntigo = $st->fetchColumn() ?: null;
+        }
+
+        if ($posterUrl !== null) {
+            $dados['arquivo_poster'] = $posterUrl;
+        }
+        // NOTA: se o vídeo foi trocado e NÃO há poster custom, zere o poster antigo
+        // para o fallback pegar o thumbnail do vídeo NOVO:
+        if ($uid !== null && $posterUrl === null) {
+            $dados['arquivo_poster'] = null;
+        }
+
+        // ... após o UPDATE/INSERT bem-sucedido, limpe o antigo:
+        if (!empty($posterAntigo) && $posterAntigo !== $posterUrl) {
+            $this->deletePosterR2($posterAntigo);
+        }
     
         try {
             if ($id > 0) {
@@ -303,6 +357,8 @@ class ClipsController extends Controller {
         if ($clip) {
             (new ClipService())->deletar($clip);
             $db->prepare("DELETE FROM clips WHERE id=?")->execute([$id]);
+
+            $this->deletePosterR2($clip['arquivo_poster'] ?? null);
         }
         $this->json(['ok' => true]);
     }
@@ -410,5 +466,53 @@ class ClipsController extends Controller {
 
         $db->prepare("UPDATE clip_comentarios SET status=? WHERE id=?")->execute([$status, $id]);
         $this->json(['ok' => true]);
+    }
+
+
+    /** Service R2 para o poster customizado (imagem). */
+    private function mediaService(): R2MediaService
+    {
+        static $svc = null;
+        if ($svc === null) {
+            $svc = new R2MediaService([
+                'account_id'      => getenv('R2_ACCOUNT_ID'),
+                'access_key'      => getenv('R2_MEDIA_ACCESS_KEY'),
+                'secret_key'      => getenv('R2_MEDIA_SECRET_KEY'),
+                'bucket'          => getenv('R2_MEDIA_BUCKET'),
+                'public_base_url' => getenv('R2_MEDIA_PUBLIC_URL'),
+            ]);
+        }
+        return $svc;
+    }
+
+    /**
+     * Upload do poster customizado (opcional) para o R2, em WebP 9:16.
+     * Retorna a URL pública, ou null se nenhum arquivo foi enviado.
+     * @throws \RuntimeException se o arquivo for inválido.
+     */
+    private function uploadPosterR2(): ?string
+    {
+        $file = $_FILES['poster'] ?? null;
+        if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            return null; // sem poster custom -> fallback pro thumbnail do Stream
+        }
+
+        $processor = new ImageProcessor();
+        $processor->validateUpload($file);   // magic bytes + tamanho + dimensão
+
+        // Formato vertical do feed (9:16). Largura 720 -> altura proporcional.
+        $variants = $processor->toWebpVariants($file['tmp_name'], ['p' => 720]);
+
+        $key = R2MediaService::generateKey('clips/posters', 'webp');
+        return $this->mediaService()->upload($key, $variants['p'], 'image/webp');
+    }
+
+    /** Remove um poster do R2 (ao trocar/excluir). Idempotente. */
+    private function deletePosterR2(?string $publicUrl): void
+    {
+        if (empty($publicUrl)) return;
+        $base = rtrim((string) getenv('R2_MEDIA_PUBLIC_URL'), '/') . '/';
+        if (!str_starts_with($publicUrl, $base)) return; // legado local
+        $this->mediaService()->delete(substr($publicUrl, strlen($base)));
     }
 }

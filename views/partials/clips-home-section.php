@@ -45,9 +45,7 @@ if (empty($clipsFeed)) return;
       <div class="clips-carousel" id="clips-carousel">
         <?php foreach ($clipsFeed as $i => $c): ?>
         <?php
-          $poster    = $c['arquivo_poster']
-                     ? UPLOAD_URL . '/clips/posters/' . $c['arquivo_poster']
-                     : null;
+          $poster    = $c['arquivo_poster'];
           $views_fmt = $c['total_views'] >= 1000
                      ? round($c['total_views'] / 1000, 1) . 'k'
                      : (string)$c['total_views'];

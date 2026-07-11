@@ -1216,6 +1216,40 @@
 
   }(jQuery, window, document));
 
+  (function initBannerVideos() {
+    if (typeof ClipsHls === 'undefined') return;
+
+    const vids = document.querySelectorAll('.bn-item-video[data-hls]');
+    if (!vids.length) return;
+
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        const v = entry.target;
+
+        if (entry.isIntersecting) {
+          if (!v.dataset.hlsAttached) {
+            // Garante mudo ANTES de anexar (browser checa no play)
+            v.muted = true;
+            v.playsInline = true;
+            ClipsHls.attach(v, v.dataset.hls);
+            v.dataset.hlsAttached = '1';
+          }
+          // Chama play() explicitamente — o autoplay do HTML sozinho
+          // não basta com hls.js (a mídia é anexada via JS).
+          v.muted = true;                    // reforça: autoplay exige muted
+          v.play().catch(err => {
+            // Se ainda assim o browser bloquear, o poster fica visível.
+            console.debug('[banner] autoplay bloqueado:', err.name);
+          });
+        } else {
+          v.pause();  // economiza banda/CPU fora da viewport
+        }
+      });
+    }, { threshold: 0.25 });
+
+    vids.forEach(v => io.observe(v));
+  })();
+
   /**
    * personalization-tracking.js
    * Registra sinais de navegação via sendBeacon.

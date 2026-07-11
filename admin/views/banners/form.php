@@ -202,7 +202,7 @@ $tipoMidia = $b['tipo_midia'] ?? 'imagem';
                 <div class="banner-upload-area">
                   <?php if (!empty($b['arquivo_imagem_mobile'])): ?>
                   <div class="banner-upload-preview">
-                    <img src="<?= View::upload('banners/' . $b['arquivo_imagem_mobile']) ?>" alt="">
+                    <img src="<?= View::uploadR2('banners/' . $b['arquivo_imagem_mobile']) ?>" alt="">
                     <button type="button" class="banner-upload-remove">Trocar</button>
                   </div>
                   <?php else: ?>
@@ -230,7 +230,7 @@ $tipoMidia = $b['tipo_midia'] ?? 'imagem';
                       <iframe src="https://iframe.cloudflarestream.com/<?= $b['arquivo_video'] ?>"
                               style="border:none;width:100%;aspect-ratio:16/9;" allow="autoplay; fullscreen"></iframe>
                     <?php else: ?>
-                      <video src="<?= View::upload('banners/' . $b['arquivo_video']) ?>" controls muted></video>
+                      <video src="<?= View::uploadR2('banners/' . $b['arquivo_video']) ?>" controls muted></video>
                     <?php endif; ?>
                     <button type="button" class="banner-upload-remove">Trocar vídeo</button>
                   </div>

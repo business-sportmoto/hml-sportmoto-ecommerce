@@ -11,6 +11,17 @@ class ClipController extends Controller {
         $this->clip = new Clip();
     }
 
+    private function clientIp(): string
+    {
+        // Pos-Fase 8, o Nginx reescreve REMOTE_ADDR a partir do CF-Connecting-IP
+        // (validado a prova de spoofing XFF). Fallback direto ao header da CF.
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        if ($ip === '' && !empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
+            $ip = $_SERVER['HTTP_CF_CONNECTING_IP'];
+        }
+        return filter_var($ip, FILTER_VALIDATE_IP) ? $ip : '0.0.0.0';
+    }
+
     private function sessionKey(): string {
         if (empty($_SESSION['clip_session'])) {
             $_SESSION['clip_session'] = bin2hex(random_bytes(16));
@@ -40,9 +51,9 @@ class ClipController extends Controller {
         $clips = array_map(function (array $c) use ($sessao, $clienteId, $svc): array {
         $c['curtiu']     = $this->clip->jaÇurtiu((int)$c['id'], $clienteId, $sessao);
  
-        $uid = (string)($c['arquivo_video'] ?? '');
-        $c['video_url']  = $uid !== '' ? $svc->hlsUrl($uid)    : null;  // HLS
-        $c['poster_url'] = $uid !== '' ? $svc->posterUrl($uid) : null;  // thumb CF
+       $uid = (string)($c['arquivo_video'] ?? '');
+        $c['video_url']  = $uid !== '' ? $svc->hlsUrl($uid) : null;
+        $c['poster_url'] = $svc->posterFor($c);
         $c['clip_url']   = BASE_URL . '/clip/' . $c['id'];
  
         $c['produtos'] = array_map(function (array $p): array {
@@ -80,19 +91,19 @@ class ClipController extends Controller {
         $this->clip->registrarView(
             $id,
             $this->sessionKey(),
-            $_SERVER['REMOTE_ADDR'] ?? ''
+            $this->clientIp() ?? ''
         );
 
         $pageTitle       = View::e($clip['titulo']);
         $autoOpenClipId  = $id;
-        
+
         $svc = new ClipService();
         $uid = (string)($clip['arquivo_video'] ?? '');
  
         $autoOpenClipData = json_encode([
             'id'         => $id,
             'video_url'  => $uid !== '' ? $svc->hlsUrl($uid)    : null,
-            'poster_url' => $uid !== '' ? $svc->posterUrl($uid) : null,
+            'poster_url' => $svc->posterFor($clip),
             'titulo'     => $clip['titulo'],
             'clip_url'   => BASE_URL . '/clip/' . $id,
             'produtos'   => $clip['produtos'],
@@ -114,7 +125,7 @@ class ClipController extends Controller {
         $this->clip->registrarView(
             $id,
             $this->sessionKey(),
-            $_SERVER['REMOTE_ADDR'] ?? ''
+            $this->clientIp() ?? ''
         );
 
         // Registra no histórico de navegação (só quando logado).
@@ -136,7 +147,7 @@ class ClipController extends Controller {
         $id = SecurityHelper::sanitizeInt($_POST['id'] ?? 0);
         if (!$id) $this->json(['ok' => false]);
 
-        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        $ip = $this->clientIp() ?? '';
         if (!$this->clip->checarRateLimit($ip, 'like', 30)) {
             $this->json(['ok' => false, 'msg' => 'Muitas ações. Aguarde.']);
         }
@@ -186,7 +197,7 @@ class ClipController extends Controller {
             $this->json(['ok' => false, 'msg' => 'Comentário muito longo.']);
         }
 
-        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        $ip = $this->clientIp() ?? '';
         if (!$this->clip->checarRateLimit($ip, 'comentario', 5)) {
             $this->json(['ok' => false, 'msg' => 'Muitos comentários. Aguarde.']);
         }

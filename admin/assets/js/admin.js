@@ -4789,45 +4789,45 @@ $(document).on('change', '#pe-categoria', function () {
   // Mantém o <input type="file"> SEMPRE no DOM.
   // Nunca recria via innerHTML — isso destrói files[].
   // ══════════════════════════════════════════════════════
-  // document.querySelectorAll('.banner-upload-area').forEach(area => {
-  //   const input = area.querySelector('.banner-upload-input');
-  //   if (!input) return;
+  document.querySelectorAll('.banner-upload-area').forEach(area => {
+    const input = area.querySelector('.banner-upload-input');
+    if (!input) return;
 
-  //   // Clique na área abre o file picker (ignora cliques nos botões internos)
-  //   area.addEventListener('click', function (e) {
-  //     if (e.target.closest('.banner-upload-remove')) return;
-  //     if (e.target === input) return;
-  //     input.click();
-  //   });
+    // Clique na área abre o file picker (ignora cliques nos botões internos)
+    area.addEventListener('click', function (e) {
+      if (e.target.closest('.banner-upload-remove')) return;
+      if (e.target === input) return;
+      input.click();
+    });
 
-  //   // Drag & drop
-  //   area.addEventListener('dragover',  e => { e.preventDefault(); area.classList.add('is-dragover'); });
-  //   area.addEventListener('dragleave', () => area.classList.remove('is-dragover'));
-  //   area.addEventListener('drop', e => {
-  //     e.preventDefault();
-  //     area.classList.remove('is-dragover');
-  //     const file = e.dataTransfer.files[0];
-  //     if (file) {
-  //       // Injeta o arquivo no input via DataTransfer
-  //       const dt = new DataTransfer();
-  //       dt.items.add(file);
-  //       input.files = dt.files;
-  //       mostrarPreview(area, input, file);
-  //     }
-  //   });
+    // Drag & drop
+    area.addEventListener('dragover',  e => { e.preventDefault(); area.classList.add('is-dragover'); });
+    area.addEventListener('dragleave', () => area.classList.remove('is-dragover'));
+    area.addEventListener('drop', e => {
+      e.preventDefault();
+      area.classList.remove('is-dragover');
+      const file = e.dataTransfer.files[0];
+      if (file) {
+        // Injeta o arquivo no input via DataTransfer
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+        mostrarPreview(area, input, file);
+      }
+    });
 
-  //   // Mudança via file picker
-  //   input.addEventListener('change', function () {
-  //     if (this.files[0]) mostrarPreview(area, this, this.files[0]);
-  //   });
+    // Mudança via file picker
+    input.addEventListener('change', function () {
+      if (this.files[0]) mostrarPreview(area, this, this.files[0]);
+    });
 
-  //   // Botão "Trocar" — delegação de evento
-  //   area.addEventListener('click', function (e) {
-  //     if (!e.target.closest('.banner-upload-remove')) return;
-  //     e.stopPropagation();
-  //     limparPreview(area, input);
-  //   });
-  // });
+    // Botão "Trocar" — delegação de evento
+    area.addEventListener('click', function (e) {
+      if (!e.target.closest('.banner-upload-remove')) return;
+      e.stopPropagation();
+      limparPreview(area, input);
+    });
+  });
 
   /**
    * Mostra preview da mídia SEM tocar no input.
@@ -6460,17 +6460,55 @@ $(document).on('change', '#pe-categoria', function () {
 })();
 
 (function () {
-  // ── Upload de arquivos: preview e label ─────────────
-  $('.clip-upload-input').on('change', function () {
-    if (!this.files[0]) return;
-    const file = this.files[0];
-    const $area = $(this).closest('.clip-upload-area');
-    const $empty = $area.find('.clip-upload-empty');
+    // ── Upload de vídeo → Cloudflare Stream (direto do browser) ──────────
+    const $inputVideo = $('#clip-input-video');
+    const $hiddenUid  = $('#clip-video-uid');
 
-    const sizeMB = (file.size / 1024 / 1024).toFixed(1);
-    $empty.find('p').html(`<strong>✓ ${file.name}</strong>`);
-    $empty.find('small').text(`${sizeMB}MB selecionado`);
-  });
+    if ($inputVideo.length && typeof StreamUpload !== 'undefined') {
+      StreamUpload.init({
+        fileInput:   $inputVideo[0],
+        hiddenInput: $hiddenUid[0],
+        name:        'clip-' + ($('[name="id"]').val() || 'novo'),
+
+        onProgress: (pct) => {
+          $('#clip-video-progress').show();
+          $('#clip-video-bar').css('width', pct + '%');
+          $('#clip-video-status').text(`Enviando… ${pct}%`);
+        },
+        onReady: (uid) => {
+          $('#clip-video-bar').css({width:'100%', background:'#34d399'});
+          $('#clip-video-status').text('Vídeo pronto ✓');
+          showToast('Vídeo enviado e processado.', 'success');
+        },
+        onError: (msg) => {
+          $('#clip-video-bar').css('background', '#f87171');
+          $('#clip-video-status').text(msg);
+          showToast(msg, 'error');
+        },
+      });
+    }
+
+    // ── Preview/label dos OUTROS uploads (poster, se mantido) ────────────
+    $('.clip-upload-input').not('#clip-input-video').on('change', function () {
+      if (!this.files[0]) return;
+      const file  = this.files[0];
+      const $area = $(this).closest('.clip-upload-area');
+      const $empty = $area.find('.clip-upload-empty');
+      const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+      $empty.find('p').html(`<strong>✓ ${file.name}</strong>`);
+      $empty.find('small').text(`${sizeMB}MB selecionado`);
+    });
+  // ── Upload de arquivos: preview e label ─────────────
+  // $('.clip-upload-input').on('change', function () {
+  //   if (!this.files[0]) return;
+  //   const file = this.files[0];
+  //   const $area = $(this).closest('.clip-upload-area');
+  //   const $empty = $area.find('.clip-upload-empty');
+
+  //   const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+  //   $empty.find('p').html(`<strong>✓ ${file.name}</strong>`);
+  //   $empty.find('small').text(`${sizeMB}MB selecionado`);
+  // });
 
   // Drag & drop
   $('.clip-upload-area').on('dragover', function (e) {
@@ -6511,12 +6549,17 @@ $(document).on('change', '#pe-categoria', function () {
     }
 
     // Sem vídeo no cadastro: bloqueia
+    // const isEdit = !!$form.find('[name="id"]').val();
+    // if (!isEdit && !$('#clip-input-video')[0].files[0]) {
+    //   showToast('Selecione um vídeo.', 'error');
+    //   return;
+    // }
     const isEdit = !!$form.find('[name="id"]').val();
-    if (!isEdit && !$('#clip-input-video')[0].files[0]) {
-      showToast('Selecione um vídeo.', 'error');
+    // Com upload direto, o vídeo já está no Stream e o UID está no hidden.
+    if (!isEdit && !$('#clip-video-uid').val()) {
+      showToast('Envie um vídeo antes de salvar.', 'error');
       return;
     }
-
     $btn.prop('disabled', true).text('Salvando...');
 
     const fd = new FormData($form[0]);
@@ -6993,7 +7036,7 @@ $(document).on('change', '#pe-categoria', function () {
 
   // ── Construir HTML do card (para carregamento AJAX) ─
   function buildCard(c) {
-    const poster    = c.arquivo_poster ? `${BASE}/uploads/clips/posters/${c.arquivo_poster}` : null;
+    const poster    = c.poster_url;
     const semPoster = !poster;
     const inativo   = !parseInt(c.ativo);
     const destaque  = parseInt(c.destaque);

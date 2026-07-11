@@ -177,7 +177,7 @@ $(function () {
       // ── Auto-gera chave ao digitar o nome ────────────────
       const $nome  = $('#zona-nome');
       const $chave = $('#zona-chave');
-      const isEdit = false;
+      let isEdit = false;
 
       if (typeof isEditZonaBanner !== 'undefined' && isEditZonaBanner) {
           isEdit = isEditZonaBanner;

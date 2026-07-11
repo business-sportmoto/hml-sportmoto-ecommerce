@@ -2,14 +2,36 @@
 // /views/partials/banner-item.php
 /** Renderiza um único banner. Espera $b com todos os campos. */
 
+$streamSvc  = new StreamService(
+    getenv('CF_ACCOUNT_ID'),
+    getenv('CF_STREAM_TOKEN'),
+    getenv('CF_STREAM_CUSTOMER_CODE') ?? ''
+);
+
+$isUid = fn($v) => is_string($v) && preg_match('/^[a-f0-9]{32}$/i', $v);
+$uidDesktop = $isUid($b['arquivo_video'] ?? '')        ? $b['arquivo_video']        : null;
+$uidMobile  = $isUid($b['arquivo_video_mobile'] ?? '') ? $b['arquivo_video_mobile'] : null;
+
+
 $tipoMidia = $b['tipo_midia'] ?? 'imagem';
 $temVideo  = !empty($b['arquivo_video']) || !empty($b['video_url_externo']);
 $temImagem = !empty($b['arquivo_imagem']);
 
 $imgDesktop = !empty($b['arquivo_imagem'])         ? View::uploadR2($b['arquivo_imagem'])         : null;
 $imgMobile  = !empty($b['arquivo_imagem_mobile'])  ? View::uploadR2($b['arquivo_imagem_mobile'])  : $imgDesktop;
-$vidDesktop = !empty($b['arquivo_video'])          ? View::upload('banners/' . $b['arquivo_video'])          : null;
-$vidMobile  = !empty($b['arquivo_video_mobile'])   ? View::upload('banners/' . $b['arquivo_video_mobile'])   : $vidDesktop;
+// $vidDesktop = !empty($b['arquivo_video'])          ? View::upload('banners/' . $b['arquivo_video'])          : null;
+// $vidMobile  = !empty($b['arquivo_video_mobile'])   ? View::upload('banners/' . $b['arquivo_video_mobile'])   : $vidDesktop;
+
+$vidDesktop = $uidDesktop ? $streamSvc->hlsUrl($uidDesktop) : null;
+$vidMobile  = $uidMobile  ? $streamSvc->hlsUrl($uidMobile)  : $vidDesktop;
+
+// var_dump($vidDesktop);
+
+// Poster: usa a imagem do banner se houver; senão, o thumbnail do próprio vídeo.
+$posterDesktop = $imgDesktop
+    ?: ($uidDesktop ? $streamSvc->thumbnailUrl($uidDesktop, ['width'=>1920]) : null);
+$posterMobile  = $imgMobile
+    ?: ($uidMobile ? $streamSvc->thumbnailUrl($uidMobile, ['width'=>768]) : $posterDesktop);
 
 $posStyle = [
     'top-left'      => 'justify-content:flex-start;align-items:flex-start;text-align:left',
@@ -54,26 +76,24 @@ $cdUid        = 'bn_cd_' . (int)$b['id'];
               allowfullscreen loading="lazy"></iframe>
     </div>
 
-    <?php elseif ($vidDesktop): ?>
+     <?php elseif ($vidDesktop): ?>
+    <!-- HLS via ClipsHls (hls.js). O src vai em data-hls; o JS anexa. -->
     <video class="bn-item-video bn-item-video--desktop"
-           <?= $b['video_autoplay'] ? 'autoplay' : '' ?>
-           <?= $b['video_loop']     ? 'loop'     : '' ?>
-           <?= $b['video_mute']     ? 'muted'    : '' ?>
-           playsinline preload="metadata"
-           <?php if ($tipoMidia === 'video_com_imagem' && $imgDesktop): ?>
-           poster="<?= $imgDesktop ?>"
-           <?php endif; ?>>
-      <source src="<?= $vidDesktop ?>" type="video/mp4">
-    </video>
+           data-hls="<?= View::e($vidDesktop) ?>"
+           <?= !empty($b['video_autoplay']) ? 'autoplay' : '' ?>
+           <?= !empty($b['video_loop'])     ? 'loop'     : '' ?>
+           muted
+           playsinline preload="none"
+           <?php if ($posterDesktop): ?>poster="<?= View::e($posterDesktop) ?>"<?php endif; ?>></video>
 
       <?php if ($vidMobile && $vidMobile !== $vidDesktop): ?>
       <video class="bn-item-video bn-item-video--mobile"
-             <?= $b['video_autoplay'] ? 'autoplay' : '' ?>
-             <?= $b['video_loop']     ? 'loop'     : '' ?>
-             <?= $b['video_mute']     ? 'muted'    : '' ?>
-             playsinline preload="metadata">
-        <source src="<?= $vidMobile ?>" type="video/mp4">
-      </video>
+             data-hls="<?= View::e($vidMobile) ?>"
+             <?= !empty($b['video_autoplay']) ? 'autoplay' : '' ?>
+             <?= !empty($b['video_loop'])     ? 'loop'     : '' ?>
+             muted
+             playsinline preload="none"
+             <?php if ($posterMobile): ?>poster="<?= View::e($posterMobile) ?>"<?php endif; ?>></video>
       <?php endif; ?>
 
     <?php endif; ?>

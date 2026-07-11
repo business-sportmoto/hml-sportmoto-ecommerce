@@ -452,7 +452,12 @@
     },
 
     fechar() {
-      document.querySelectorAll('#clips-feed-container video').forEach(v=>{v.pause();v.src='';});
+      // document.querySelectorAll('#clips-feed-container video').forEach(v=>{v.pause();v.src='';});
+      document.querySelectorAll('#clips-feed-container video').forEach(v => {
+        v.pause();
+        ClipsHls.detach(v);          // destrói a instância hls.js
+        delete v.dataset.hlsAttached;
+      });
       document.getElementById('clips-feed-overlay').hidden=true;
       document.body.style.overflow='';
     },
@@ -549,9 +554,17 @@
       const clipId = parseInt($item.data('clip-id'));
       const video  = item.querySelector('.clip-item-video');
       if (!video) return;
+      // const src = video.dataset.src||'';
+      // if (src && !video.src.includes(src.split('/').pop())) {
+      //   video.preload='auto'; video.src=src; video.muted=this._isMuted; video.load();
+      // }
       const src = video.dataset.src||'';
-      if (src && !video.src.includes(src.split('/').pop())) {
-        video.preload='auto'; video.src=src; video.muted=this._isMuted; video.load();
+      // HLS via ClipsHls (hls.js). Só anexa se ainda não foi anexado a este src.
+      if (src && video.dataset.hlsAttached !== src) {
+        video.preload = 'auto';
+        ClipsHls.attach(video, src);
+        video.dataset.hlsAttached = src;
+        video.muted = this._isMuted;
       }
       video.muted = this._isMuted;
       video.play().then(()=>{
@@ -574,8 +587,14 @@
       if (!next) return;
       const v = next.querySelector('.clip-item-video');
       if (!v||v.readyState>0) return;
+      // const src = v.dataset.src||'';
+      // if (src) { v.preload='metadata'; v.src=src; }
       const src = v.dataset.src||'';
-      if (src) { v.preload='metadata'; v.src=src; }
+      if (src && v.dataset.hlsAttached !== src) {
+        v.preload = 'metadata';
+        ClipsHls.attach(v, src);
+        v.dataset.hlsAttached = src;
+      }
     },
 
     _progress(video, item) {
