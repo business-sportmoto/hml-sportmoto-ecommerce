@@ -255,30 +255,7 @@ class SecurityHelper {
 
             header("Cross-Origin-Opener-Policy: same-origin-allow-popups");
 
-            header(
-                "Content-Security-Policy: " .
-                "default-src 'self'; " .
-
-                "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com/gsi/client; " .
-                "script-src-elem 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com/gsi/client; " .                
-                
-                "worker-src 'self' blob:;".
-                "media-src 'self' blob: {$stream};".
-
-                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; " .                
-                "font-src 'self' https://fonts.gstatic.com data:;" .
-                
-                "img-src 'self' data: https:" . $baseImgSrc . " https://media.sportmoto.com.br {$stream}; " .
-                "connect-src 'self' https://accounts.google.com/gsi/ https://sandbox-api.malga.io https://api.malga.io {$stream};; " .
-                "frame-src 'self' https://accounts.google.com/gsi/ https://hosted-fields-sandbox.malga.io https://hosted-fields.malga.io https://iframe.cloudflarestream.com;" .
-
-                // --- HARDENING (faltavam) ------------------------------------------
-                "object-src 'none';".        // sem plugins/Flash como vetor
-                "base-uri 'self';".          // impede <base> injetado sequestrar URLs
-                "form-action 'self';".       // impede form injetado POSTar p/ atacante
-                "frame-ancestors 'none';".   // anti-clickjacking (já tinha, mantido)
-                "upgrade-insecure-requests;"
-            );
+            
         }
 
         // HSTS (apenas em HTTPS)
