@@ -7,7 +7,7 @@ $categoryModel    = new Category();
 <html lang="pt-BR">
 <head>  
   <?php View::partial('partials/seo-tags') ?>
-  <?php View::partial('partials/pwa-meta'); ?>
+  <?php //View::partial('partials/pwa-meta'); ?>
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/main.css') ?>">
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/mototv-busca.css') ?>">
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/clips.css') ?>">
@@ -58,17 +58,17 @@ $categoryModel    = new Category();
   </script>
 
   <!-- Scripts carregados de forma assíncrona para melhor performance -->
-  <script src="<?= PerformanceHelper::assetVersion('js/jquery.min.js') ?>" defer></script>
-  <script src="<?= PerformanceHelper::assetVersion('js/mask.js') ?>" defer></script>
-  <script src="<?= PerformanceHelper::assetVersion('js/main.js') ?>" defer></script>
-  <script src="<?= PerformanceHelper::assetVersion('js/checkout.js') ?>" defer></script>
-  <script src="<?= PerformanceHelper::assetVersion('js/master.js') ?>" defer></script>
-  <script src="<?= PerformanceHelper::assetVersion('js/cart.js') ?>" defer></script>
-  <script src="<?= PerformanceHelper::assetVersion('js/search.js') ?>" defer></script>
-  <script src="<?= PerformanceHelper::assetVersion('js/lightbox.js') ?>" defer></script>
+  <script nonce="<?= SecurityHelper::cspNonce() ?>" src="<?= PerformanceHelper::assetVersion('js/jquery.min.js') ?>" defer></script>
+  <script nonce="<?= SecurityHelper::cspNonce() ?>" src="<?= PerformanceHelper::assetVersion('js/mask.js') ?>" defer></script>
+  <script nonce="<?= SecurityHelper::cspNonce() ?>" src="<?= PerformanceHelper::assetVersion('js/main.js') ?>" defer></script>
+  <script nonce="<?= SecurityHelper::cspNonce() ?>" src="<?= PerformanceHelper::assetVersion('js/checkout.js') ?>" defer></script>
+  <script nonce="<?= SecurityHelper::cspNonce() ?>" src="<?= PerformanceHelper::assetVersion('js/master.js') ?>" defer></script>
+  <script nonce="<?= SecurityHelper::cspNonce() ?>" src="<?= PerformanceHelper::assetVersion('js/cart.js') ?>" defer></script>
+  <script nonce="<?= SecurityHelper::cspNonce() ?>" src="<?= PerformanceHelper::assetVersion('js/search.js') ?>" defer></script>
+  <script nonce="<?= SecurityHelper::cspNonce() ?>" src="<?= PerformanceHelper::assetVersion('js/lightbox.js') ?>" defer></script>
 
-  <script src="<?= PerformanceHelper::assetVersion('js/hls.js') ?>" defer></script>   
-  <script src="<?= PerformanceHelper::assetVersion('js/clips.js') ?>" defer></script>
+  <script nonce="<?= SecurityHelper::cspNonce() ?>" src="<?= PerformanceHelper::assetVersion('js/hls.js') ?>" defer></script>   
+  <script nonce="<?= SecurityHelper::cspNonce() ?>" src="<?= PerformanceHelper::assetVersion('js/clips.js') ?>" defer></script>
   
   <!-- <script src="<?= PerformanceHelper::assetVersion('js/pwa-core.js') ?>" defer></script> -->
 
