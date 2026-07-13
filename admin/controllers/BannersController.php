@@ -98,9 +98,7 @@ class BannersController extends Controller {
         $titulo      = SecurityHelper::sanitizeString($_POST['titulo']      ?? '');
         $tipoMidia   = $_POST['tipo_midia'] ?? 'imagem';
 
-        $this->json(['ok' => false, 'msg' => 'Zona e título são obrigatórios.']);
-        exit();
-
+        
         if (!$zonaId || empty($titulo)) {
             $this->json(['ok' => false, 'msg' => 'Zona e título são obrigatórios.']);
         }
@@ -121,6 +119,10 @@ class BannersController extends Controller {
             $stmt->execute([$id]);
             $antigas = $stmt->fetch() ?: [];
         }
+
+        $this->json(['ok' => false, 'msg' => 'Zona e título são obrigatórios.']);
+        exit();
+
  
         try {
             $uploads = [
