@@ -273,7 +273,7 @@ class SecurityHelper {
             //     "frame-ancestors 'none';"
             // );
 
-            self::sendCsp();
+            self::sendCspStrict('');
         }
 
         // HSTS (apenas em HTTPS)
@@ -393,74 +393,7 @@ class SecurityHelper {
      * @param string $baseImgSrc Domínios extras de imagem já usados no projeto
      *                           (mantém o que você tinha). Passe '' se vazio.
      */
-    public static function sendCsp(string $baseImgSrc = ''): void
-    {
-        $isProd = (defined('APP_ENV') ? APP_ENV : 'production') !== 'development';
     
-        // Malga: o SANDBOX não tem razão de existir em produção. Menos um
-        // domínio de terceiro confiável no ambiente que processa pagamento.
-        $malgaConnect = $isProd
-            ? 'https://api.malga.io'
-            : 'https://api.malga.io https://sandbox-api.malga.io';
-        $malgaFrame = $isProd
-            ? 'https://hosted-fields.malga.io'
-            : 'https://hosted-fields.malga.io https://hosted-fields-sandbox.malga.io';
-    
-        // Cloudflare Stream: HLS (m3u8 + segmentos .ts), thumbnails e player.
-        $stream = 'https://*.cloudflarestream.com';
-    
-        $extraImg = trim($baseImgSrc) !== '' ? ' ' . trim($baseImgSrc) : '';
-    
-        $csp = implode(' ', [
-            // Base restritiva: tudo que não for explicitamente liberado, bloqueia.
-            "default-src 'self';",
-    
-            // --- SCRIPTS -------------------------------------------------------
-            // ATENÇÃO: 'unsafe-inline' MANTIDO aqui só para não quebrar o site
-            // agora. Ele DESLIGA a proteção anti-XSS do CSP. Ver VERSÃO B.
-            // TODO(pré-produção): trocar por nonce antes do checkout ir ao ar.
-            "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com;",
-            "script-src-elem 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com;",
-    
-            // hls.js roda o demuxer num Web Worker criado de um blob: URL.
-            // Sem worker-src, o player degrada ou é bloqueado.
-            "worker-src 'self' blob:;",
-    
-            // --- MÍDIA (Cloudflare Stream) -------------------------------------
-            // blob: é OBRIGATÓRIO: o hls.js usa MediaSource Extensions e o
-            // <video> recebe um blob: URL, não a URL do .m3u8 diretamente.
-            "media-src 'self' blob: {$stream};",
-    
-            // --- ESTILOS -------------------------------------------------------
-            // 'unsafe-inline' em style é MUITO menos perigoso que em script
-            // (não executa código). Mantido: o projeto usa style="" nas views.
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com;",
-            "font-src 'self' data: https://fonts.gstatic.com;",
-    
-            // --- IMAGENS -------------------------------------------------------
-            // [CORRIGIDO] Removido o "https:" solto que liberava a internet
-            // inteira e transformava o resto da lista em decoração.
-            "img-src 'self' data:{$extraImg} https://media.sportmoto.com.br {$stream};",
-    
-            // --- CONEXÕES (XHR/fetch) ------------------------------------------
-            // O hls.js busca manifesto e segmentos via XHR -> precisa do Stream.
-            "connect-src 'self' https://accounts.google.com {$malgaConnect} {$stream};",
-    
-            // --- FRAMES --------------------------------------------------------
-            // iframe.cloudflarestream.com só é necessário se você usar o player
-            // iframe (ex.: preview no admin). Remova se for só HLS custom.
-            "frame-src 'self' https://accounts.google.com {$malgaFrame} https://iframe.cloudflarestream.com;",
-    
-            // --- HARDENING (faltavam) ------------------------------------------
-            "object-src 'none';",        // sem plugins/Flash como vetor
-            "base-uri 'self';",          // impede <base> injetado sequestrar URLs
-            "form-action 'self';",       // impede form injetado POSTar p/ atacante
-            "frame-ancestors 'none';",   // anti-clickjacking (já tinha, mantido)
-            "upgrade-insecure-requests;",
-        ]);
-    
-        header('Content-Security-Policy: ' . $csp);
-    }
 
     
     /**
@@ -483,7 +416,7 @@ class SecurityHelper {
      */
     public static function sendCspStrict(string $baseImgSrc = ''): void
     {
-        $isProd = (defined('APP_ENV') ? APP_ENV : 'production') === 'production';
+        $isProd = (defined('APP_ENV') ? APP_ENV : 'production') !== 'development';
         $nonce  = self::cspNonce();
     
         $malgaConnect = $isProd
