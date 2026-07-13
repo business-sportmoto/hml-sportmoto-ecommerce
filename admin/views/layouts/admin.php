@@ -250,13 +250,19 @@ function adminIsActive(string $path): string {
       </a>
       <a href="<?= BASE_URL ?>/admin/usuarios" class="admin-nav-item<?= adminIsActive('/admin/usuarios') ?>">
         <span class="admin-nav-icon">
-          <?= IconLibrary::render('settings'); ?> 
+          <?= IconLibrary::render('user_admin'); ?> 
         </span>
         Usuários
       </a>
       <a href="<?= BASE_URL ?>/admin/importar" class="admin-nav-item<?= adminIsActive('/admin/importar') ?>">
         <span class="admin-nav-icon">
           <?= IconLibrary::render('cloud-download'); ?> 
+        </span>
+        Importações
+      </a>
+      <a href="<?= BASE_URL ?>/admin/logs" class="admin-nav-item<?= adminIsActive('/admin/logs') ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('history-toggle-off'); ?> 
         </span>
         Importações
       </a>
