@@ -251,38 +251,26 @@ class SecurityHelper {
             $baseHost = parse_url(BASE_URL, PHP_URL_HOST);
             $baseImgSrc = $baseHost ? " https://{$baseHost}" : "";
 
-            $stream   = 'https://*.cloudflarestream.com';
-            $extraImg = trim($baseImgSrc) !== '' ? ' ' . trim($baseImgSrc) : '';
-
             header("Cross-Origin-Opener-Policy: same-origin-allow-popups");
 
             header(
                 "Content-Security-Policy: " .
                 "default-src 'self'; " .
 
-                "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com/; " .
-                "script-src-elem 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com/gsi/client; " .                
-                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com;".
+                "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com/gsi/client; " .
+                "script-src-elem 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com/gsi/client; " .
 
-                "media-src 'self' https://*.cloudflarestream.com; " .
-                "worker-src 'self' blob:;",
-                "media-src 'self' blob: {$stream};",
+                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; " .
 
-                "img-src 'self' data: https:" . $baseImgSrc . " https://media.sportmoto.com.br https://*.cloudflarestream.com; " .
+                "img-src 'self' data: https:" . $baseImgSrc . "; " .
 
                 "font-src 'self' https://fonts.gstatic.com; " .
 
-                "connect-src 'self' https://accounts.google.com/gsi/ https://sandbox-api.malga.io https://api.malga.io https://*.cloudflarestream.com; " .
+                "connect-src 'self' https://accounts.google.com/gsi/ https://sandbox-api.malga.io https://api.malga.io; " .
 
                 "frame-src 'self' https://accounts.google.com/gsi/ https://hosted-fields-sandbox.malga.io https://hosted-fields.malga.io; " .
 
-                "frame-ancestors 'none';".
-
-                "object-src 'none';".
-                "base-uri 'self';".
-                "form-action 'self';".
-                "frame-ancestors 'none';".
-                "upgrade-insecure-requests;"
+                "frame-ancestors 'none';"
             );
         }
 
@@ -291,9 +279,6 @@ class SecurityHelper {
             header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
         }
     }
-
-
-    
 
     // ── Sanitização de output ─────────────────────────────────────
 
@@ -395,143 +380,5 @@ class SecurityHelper {
 
         return (int)$cnpj[12] === $calc($cnpj, 12)
             && (int)$cnpj[13] === $calc($cnpj, 13);
-    }
-
-    /**
-     * Envia o Content-Security-Policy.
-     *
-     * @param string $baseImgSrc Domínios extras de imagem já usados no projeto
-     *                           (mantém o que você tinha). Passe '' se vazio.
-     */
-    public static function sendCsp(string $baseImgSrc = ''): void
-    {
-        $isProd = (defined('APP_ENV') ? APP_ENV : 'production') === 'production';
-    
-        // Malga: o SANDBOX não tem razão de existir em produção. Menos um
-        // domínio de terceiro confiável no ambiente que processa pagamento.
-        $malgaConnect = $isProd
-            ? 'https://api.malga.io'
-            : 'https://api.malga.io https://sandbox-api.malga.io';
-        $malgaFrame = $isProd
-            ? 'https://hosted-fields.malga.io'
-            : 'https://hosted-fields.malga.io https://hosted-fields-sandbox.malga.io';
-    
-        // Cloudflare Stream: HLS (m3u8 + segmentos .ts), thumbnails e player.
-        $stream = 'https://*.cloudflarestream.com';
-    
-        $extraImg = trim($baseImgSrc) !== '' ? ' ' . trim($baseImgSrc) : '';
-    
-        $csp = implode(' ', [
-            // Base restritiva: tudo que não for explicitamente liberado, bloqueia.
-            "default-src 'self';",
-    
-            // --- SCRIPTS -------------------------------------------------------
-            // ATENÇÃO: 'unsafe-inline' MANTIDO aqui só para não quebrar o site
-            // agora. Ele DESLIGA a proteção anti-XSS do CSP. Ver VERSÃO B.
-            // TODO(pré-produção): trocar por nonce antes do checkout ir ao ar.
-            "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com;",
-            "script-src-elem 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com;",
-    
-            // hls.js roda o demuxer num Web Worker criado de um blob: URL.
-            // Sem worker-src, o player degrada ou é bloqueado.
-            "worker-src 'self' blob:;",
-    
-            // --- MÍDIA (Cloudflare Stream) -------------------------------------
-            // blob: é OBRIGATÓRIO: o hls.js usa MediaSource Extensions e o
-            // <video> recebe um blob: URL, não a URL do .m3u8 diretamente.
-            "media-src 'self' blob: {$stream};",
-    
-            // --- ESTILOS -------------------------------------------------------
-            // 'unsafe-inline' em style é MUITO menos perigoso que em script
-            // (não executa código). Mantido: o projeto usa style="" nas views.
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com;",
-            "font-src 'self' data: https://fonts.gstatic.com;",
-    
-            // --- IMAGENS -------------------------------------------------------
-            // [CORRIGIDO] Removido o "https:" solto que liberava a internet
-            // inteira e transformava o resto da lista em decoração.
-            "img-src 'self' data:{$extraImg} https://media.sportmoto.com.br {$stream};",
-    
-            // --- CONEXÕES (XHR/fetch) ------------------------------------------
-            // O hls.js busca manifesto e segmentos via XHR -> precisa do Stream.
-            "connect-src 'self' https://accounts.google.com {$malgaConnect} {$stream};",
-    
-            // --- FRAMES --------------------------------------------------------
-            // iframe.cloudflarestream.com só é necessário se você usar o player
-            // iframe (ex.: preview no admin). Remova se for só HLS custom.
-            "frame-src 'self' https://accounts.google.com {$malgaFrame} https://iframe.cloudflarestream.com;",
-    
-            // --- HARDENING (faltavam) ------------------------------------------
-            "object-src 'none';",        // sem plugins/Flash como vetor
-            "base-uri 'self';",          // impede <base> injetado sequestrar URLs
-            "form-action 'self';",       // impede form injetado POSTar p/ atacante
-            "frame-ancestors 'none';",   // anti-clickjacking (já tinha, mantido)
-            "upgrade-insecure-requests;",
-        ]);
-    
-        header('Content-Security-Policy: ' . $csp);
-    }
-
-    
-    /**
-     * Nonce único por request. Memoizado: a MESMA string tem que ir no header
-     * e em todos os <script> inline da mesma resposta.
-     */
-    public static function cspNonce(): string
-    {
-        static $nonce = null;
-        if ($nonce === null) {
-            $nonce = base64_encode(random_bytes(16));
-        }
-        return $nonce;
-    }
-    
-    /**
-     * CSP com nonce — a versão que realmente protege contra XSS.
-     * Um <script> injetado por um atacante não conhece o nonce daquela
-     * request, então NÃO executa. É isso que 'unsafe-inline' anula hoje.
-     */
-    public static function sendCspStrict(string $baseImgSrc = ''): void
-    {
-        $isProd = (defined('APP_ENV') ? APP_ENV : 'production') === 'production';
-        $nonce  = self::cspNonce();
-    
-        $malgaConnect = $isProd
-            ? 'https://api.malga.io'
-            : 'https://api.malga.io https://sandbox-api.malga.io';
-        $malgaFrame = $isProd
-            ? 'https://hosted-fields.malga.io'
-            : 'https://hosted-fields.malga.io https://hosted-fields-sandbox.malga.io';
-    
-        $stream   = 'https://*.cloudflarestream.com';
-        $extraImg = trim($baseImgSrc) !== '' ? ' ' . trim($baseImgSrc) : '';
-    
-        $csp = implode(' ', [
-            "default-src 'self';",
-    
-            // 'strict-dynamic' deixa um script com nonce carregar outros scripts
-            // (útil p/ libs que injetam <script>). Remova se não precisar.
-            "script-src 'self' 'nonce-{$nonce}' https://accounts.google.com;",
-            "script-src-elem 'self' 'nonce-{$nonce}' https://accounts.google.com;",
-    
-            "worker-src 'self' blob:;",
-            "media-src 'self' blob: {$stream};",
-    
-            // style mantém unsafe-inline (as views usam style=""). Baixo risco.
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com;",
-            "font-src 'self' data: https://fonts.gstatic.com;",
-    
-            "img-src 'self' data:{$extraImg} https://media.sportmoto.com.br {$stream};",
-            "connect-src 'self' https://accounts.google.com {$malgaConnect} {$stream};",
-            "frame-src 'self' https://accounts.google.com {$malgaFrame} https://iframe.cloudflarestream.com;",
-    
-            "object-src 'none';",
-            "base-uri 'self';",
-            "form-action 'self';",
-            "frame-ancestors 'none';",
-            "upgrade-insecure-requests;",
-        ]);
-    
-        header('Content-Security-Policy: ' . $csp);
     }
 }
