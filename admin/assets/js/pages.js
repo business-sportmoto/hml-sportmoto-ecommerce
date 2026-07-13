@@ -2146,3 +2146,197 @@ function fecharModal(id) {
     });
   }
 })();
+
+/**
+ * admin-logs.js — Dashboard de logs.
+ * Salvar em: admin/assets/js/admin-logs.js
+ *
+ * SEGURANÇA: o conteúdo dos logs (mensagem, URL, user-agent, trace) pode ter
+ * sido injetado por um atacante — um scanner põe payload na URL e isso vira
+ * uma linha aqui. TUDO é inserido com textContent ou escapado, NUNCA com
+ * innerHTML cru. Renderizar cru seria stored XSS no próprio painel.
+ */
+(function () {
+  'use strict';
+
+  const drawer = document.getElementById('lg-drawer');
+  const body   = document.getElementById('lg-drawer-body');
+  const csrf   = document.getElementById('lg-csrf')?.value || '';
+  if (!drawer || !body) return;
+
+  const base = (typeof ADMIN_URL !== 'undefined')
+    ? ADMIN_URL
+    : (window.BASE_URL || '') + '/admin';
+
+  /** Escapa qualquer string vinda do banco antes de ir pro HTML. */
+  const esc = (v) => {
+    const d = document.createElement('div');
+    d.textContent = v == null ? '' : String(v);
+    return d.innerHTML;
+  };
+
+  // ── Abrir detalhe ─────────────────────────────────────────────────────
+  document.querySelectorAll('.lg-row').forEach((row) => {
+    const abrir = () => open(row.dataset.logId);
+    row.addEventListener('click', abrir);
+    row.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrir(); }
+    });
+  });
+
+  async function open(id) {
+    if (!id) return;
+    drawer.hidden = false;
+    document.body.style.overflow = 'hidden';
+    body.innerHTML = '<div class="lg-loading">Carregando…</div>';
+
+    try {
+      const res = await fetch(`${base}/logs/detalhe?id=${encodeURIComponent(id)}`);
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.msg || 'Não foi possível carregar.');
+      render(data.log, data.irmaos || []);
+    } catch (err) {
+      body.innerHTML = `<div class="lg-loading">${esc(err.message)}</div>`;
+    }
+  }
+
+  function render(log, irmaos) {
+    const campos = [
+      ['Nível',       log.nivel],
+      ['Canal',       log.canal],
+      ['Ocorrências', log.ocorrencias + '×'],
+      ['Classe',      log.tipo || '—'],
+      ['Arquivo',     log.arquivo || '—'],
+      ['Linha',       log.linha || '—'],
+      ['Método',      log.metodo || '—'],
+      ['URL',         log.url || '—'],
+      ['IP',          log.ip || '—'],
+      ['Usuário',     log.usuario_id || 'anônimo'],
+      ['Request ID',  log.request_id || '—'],
+      ['Primeira',    log.criado_em],
+      ['Última',      log.visto_em || log.criado_em],
+    ];
+
+    const cells = campos.map(([k, v]) => `
+      <div class="lg-d-cell">
+        <span class="lg-d-k">${esc(k)}</span>
+        <span class="lg-d-v">${esc(v)}</span>
+      </div>`).join('');
+
+    const trace = log.trace
+      ? `<div class="lg-d-sec">
+           <h3>Stack trace</h3>
+           <pre class="lg-d-pre">${esc(log.trace)}</pre>
+         </div>` : '';
+
+    const ctx = log.contexto
+      ? `<div class="lg-d-sec">
+           <h3>Contexto</h3>
+           <pre class="lg-d-pre">${esc(JSON.stringify(log.contexto, null, 2))}</pre>
+         </div>` : '';
+
+    const ua = log.user_agent
+      ? `<div class="lg-d-sec">
+           <h3>User agent</h3>
+           <pre class="lg-d-pre">${esc(log.user_agent)}</pre>
+         </div>` : '';
+
+    const sibs = irmaos.length
+      ? `<div class="lg-d-sec">
+           <h3>Outros logs da mesma requisição (${irmaos.length})</h3>
+           <div>${irmaos.map((s) => `
+             <div class="lg-d-sib">
+               <span class="lg-dot lg-dot--${esc(s.nivel)}"></span>
+               <span>${esc(s.mensagem)}</span>
+             </div>`).join('')}</div>
+         </div>` : '';
+
+    const resolvido = Number(log.resolvido) === 1;
+
+    body.innerHTML = `
+      <p class="lg-d-msg">${esc(log.mensagem)}</p>
+      <div class="lg-d-grid">${cells}</div>
+      ${trace}${ctx}${ua}${sibs}
+      <div class="lg-d-actions">
+        <button type="button" class="lg-btn ${resolvido ? 'lg-btn--ghost' : 'lg-btn--primary'}"
+                id="lg-toggle" data-id="${esc(log.id)}" data-resolvido="${resolvido ? 1 : 0}">
+          ${resolvido ? 'Reabrir' : 'Marcar como resolvido'}
+        </button>
+      </div>`;
+
+    document.getElementById('lg-toggle')?.addEventListener('click', toggleResolve);
+  }
+
+  // ── Resolver / reabrir ────────────────────────────────────────────────
+  async function toggleResolve(e) {
+    const btn   = e.currentTarget;
+    const id    = btn.dataset.id;
+    const novo  = btn.dataset.resolvido === '1' ? 0 : 1;
+
+    btn.disabled = true;
+    try {
+      const res = await fetch(`${base}/logs/resolver`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `_csrf_token=${encodeURIComponent(csrf)}&id=${encodeURIComponent(id)}&resolvido=${novo}`,
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error('Não foi possível atualizar.');
+
+      if (typeof showToast === 'function') {
+        showToast(novo ? 'Marcado como resolvido.' : 'Reaberto.', 'success');
+      }
+      close();
+      location.reload();
+    } catch (err) {
+      btn.disabled = false;
+      if (typeof showToast === 'function') showToast(err.message, 'error');
+    }
+  }
+
+  // ── Limpeza ───────────────────────────────────────────────────────────
+  document.querySelectorAll('[data-limpar]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const escopo = btn.dataset.limpar;
+      const texto = escopo === 'resolvidos'
+        ? 'Apagar todos os logs já marcados como resolvidos?'
+        : 'Apagar logs de debug e info com mais de 7 dias?';
+
+      const ok = window.adminConfirm
+        ? await window.adminConfirm({ titulo: 'Limpar logs', mensagem: texto, tipo: 'danger', confirmar: 'Apagar' })
+        : confirm(texto);
+      if (!ok) return;
+
+      try {
+        const res = await fetch(`${base}/logs/limpar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `_csrf_token=${encodeURIComponent(csrf)}&escopo=${encodeURIComponent(escopo)}`,
+        });
+        const data = await res.json();
+        if (typeof showToast === 'function') {
+          showToast(`${data.removidos || 0} registros apagados.`, 'success');
+        }
+        location.reload();
+      } catch (_) {
+        if (typeof showToast === 'function') showToast('Falha ao limpar.', 'error');
+      }
+    });
+  });
+
+  // ── Fechar drawer ─────────────────────────────────────────────────────
+  function close() {
+    drawer.hidden = true;
+    document.body.style.overflow = '';
+  }
+  drawer.querySelectorAll('[data-close]').forEach((el) => el.addEventListener('click', close));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !drawer.hidden) close();
+  });
+
+  // ── Filtros: submeter ao mudar (menos cliques) ────────────────────────
+  document.querySelectorAll('#lg-filters .lg-select, #lg-filters input[name="nivel"]')
+    .forEach((el) => el.addEventListener('change', () => {
+      document.getElementById('lg-filters').submit();
+    }));
+})();

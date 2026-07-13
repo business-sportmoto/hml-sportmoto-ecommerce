@@ -312,6 +312,11 @@ AdminRouter::get ('/configuracoes/bling/status-map',               'AdminBlingCo
 AdminRouter::post('/configuracoes/bling/status-map',               'AdminBlingController@salvarStatusMap');
 AdminRouter::get ('/configuracoes/bling/situacoes',                'AdminBlingController@getSituacoesBling');
 
+AdminRouter::get('/logs',          'AdminLogsController@index');
+AdminRouter::get('/logs/detalhe',  'AdminLogsController@detalhe');
+AdminRouter::post('/logs/resolver','AdminLogsController@resolver');
+AdminRouter::post('/logs/limpar',  'AdminLogsController@limpar');
+
 // ── Avaliações ────────────────────────────────────────────
 // AdminRouter::get('/avaliacoes',                    'ReviewAdminController@index');
 // AdminRouter::post('/avaliacoes/aprovar',           'ReviewAdminController@approve');
