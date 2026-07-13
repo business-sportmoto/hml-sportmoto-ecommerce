@@ -251,7 +251,7 @@ class SecurityHelper {
             $baseHost = parse_url(BASE_URL, PHP_URL_HOST);
             $baseImgSrc = $baseHost ? " https://{$baseHost}" : "";
 
-            $stream = '';
+            $stream = 'https://*.cloudflarestream.com';
 
             header("Cross-Origin-Opener-Policy: same-origin-allow-popups");
 
