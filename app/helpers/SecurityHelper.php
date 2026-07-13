@@ -266,7 +266,7 @@ class SecurityHelper {
                 "media-src 'self' blob: {$stream};".
 
                 "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; " .                
-                "font-src 'self' https://fonts.gstatic.com; " .
+                "font-src 'self' https://fonts.gstatic.com https://fonts.googleapis.com; " .
                 
                 "img-src 'self' data: https:" . $baseImgSrc . " https://media.sportmoto.com.br {$stream}; " .
                 "connect-src 'self' https://accounts.google.com/gsi/ https://sandbox-api.malga.io https://api.malga.io {$stream};; " .
