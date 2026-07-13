@@ -259,14 +259,14 @@ class SecurityHelper {
 
                 "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com/gsi/client; " .
                 "script-src-elem 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com/gsi/client; " .
-
+                "media-src 'self' https://*.cloudflarestream.com; " .
                 "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; " .
 
-                "img-src 'self' data: https:" . $baseImgSrc . "; " .
+                "img-src 'self' data: https:" . $baseImgSrc . " https://media.sportmoto.com.br https://*.cloudflarestream.com; " .
 
                 "font-src 'self' https://fonts.gstatic.com; " .
 
-                "connect-src 'self' https://accounts.google.com/gsi/ https://sandbox-api.malga.io https://api.malga.io; " .
+                "connect-src 'self' https://accounts.google.com/gsi/ https://sandbox-api.malga.io https://api.malga.io https://*.cloudflarestream.com; " .
 
                 "frame-src 'self' https://accounts.google.com/gsi/ https://hosted-fields-sandbox.malga.io https://hosted-fields.malga.io; " .
 
