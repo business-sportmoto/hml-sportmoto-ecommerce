@@ -119,19 +119,6 @@ class BannersController extends Controller {
             $stmt->execute([$id]);
             $antigas = $stmt->fetch() ?: [];
         }
-
-        $teste = [
-                'account_id'      => getenv('R2_ACCOUNT_ID'),
-                'access_key'      => getenv('R2_MEDIA_ACCESS_KEY'),
-                'secret_key'      => getenv('R2_MEDIA_SECRET_KEY'),
-                'bucket'          => getenv('R2_MEDIA_BUCKET'),
-                'public_base_url' => getenv('R2_MEDIA_PUBLIC_URL'),
-            ];
-        $teste = json_encode($teste);
-
-        $this->json(['ok' => false, 'msg' => 'Zona e título são obrigatórios. (stage 3)', 'teste'=> $teste]);
-        exit();
-
         
         try {
             $uploads = [
