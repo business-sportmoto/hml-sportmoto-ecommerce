@@ -4025,7 +4025,7 @@
     'use strict';
 
     // window.Toast('teste')
-    console.log(window);
+    // console.log(window);
     
 
     // Reaproveita BASE_URL já exposto por outros scripts do projeto.

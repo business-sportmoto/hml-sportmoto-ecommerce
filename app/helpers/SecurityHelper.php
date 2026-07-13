@@ -395,7 +395,7 @@ class SecurityHelper {
      */
     public static function sendCsp(string $baseImgSrc = ''): void
     {
-        $isProd = (defined('APP_ENV') ? APP_ENV : 'production') === 'production';
+        $isProd = (defined('APP_ENV') ? APP_ENV : 'production') !== 'development';
     
         // Malga: o SANDBOX não tem razão de existir em produção. Menos um
         // domínio de terceiro confiável no ambiente que processa pagamento.
