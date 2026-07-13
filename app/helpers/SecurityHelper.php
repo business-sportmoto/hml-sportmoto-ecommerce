@@ -257,7 +257,7 @@ class SecurityHelper {
 
             header(
                 "Content-Security-Policy: " .
-                "default-src 'self'; " .
+                "default-src 'self'; " 
             );
         }
 
