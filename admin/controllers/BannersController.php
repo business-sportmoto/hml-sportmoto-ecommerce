@@ -120,10 +120,7 @@ class BannersController extends Controller {
             $antigas = $stmt->fetch() ?: [];
         }
 
-        $this->json(['ok' => false, 'msg' => 'Zona e título são obrigatórios.']);
-        exit();
-
- 
+        
         try {
             $uploads = [
                 // IMAGENS -> R2/WebP (processa no servidor)
@@ -138,6 +135,9 @@ class BannersController extends Controller {
             error_log('[BANNER-UPLOAD] ' . $e->getMessage());
             $this->json(['ok' => false, 'msg' => $e->getMessage()]);
         }
+
+        $this->json(['ok' => false, 'msg' => 'Zona e título são obrigatórios. (stage 3)']);
+        exit();
 
         // Coleta os campos
         $dados = [
