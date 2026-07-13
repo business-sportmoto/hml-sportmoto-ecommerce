@@ -801,3 +801,55 @@ window.ClipsHls = (function () {
 
   return { attach, detach };
 })();
+
+/**
+ * clips-hover-preview.js
+ * GIF animado no hover dos cards de clip (home).
+ *
+ * PROTEÇÕES DE PERFORMANCE — a home é a página mais crítica do site
+ * (Core Web Vitals afeta SEO e conversão). O GIF do Stream pode ter
+ * centenas de KB, então:
+ *   - Delay de 400ms: não carrega ao passar o mouse de raspão
+ *   - Pré-carrega em Image() antes de trocar o src (sem flash/card vazio)
+ *   - Cache: uma vez baixado, troca instantâneo
+ *   - Só desktop com mouse: mobile não tem hover -> zero desperdício de dados
+ */
+(function initClipHoverPreview() {
+  'use strict';
+ 
+  // Sem hover real (touch/mobile) -> não faz nada.
+  if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+ 
+  const HOVER_DELAY = 400;   // ms
+  const cache = new Set();
+ 
+  document.querySelectorAll('.clip-card[data-clip-preview]').forEach(card => {
+    const img = card.querySelector('.clip-card-poster');
+    if (!img || img.tagName !== 'IMG') return;
+ 
+    const gifUrl    = card.dataset.clipPreview;
+    const staticSrc = img.src;
+    let timer = null;
+ 
+    card.addEventListener('mouseenter', () => {
+      timer = setTimeout(() => {
+        if (cache.has(gifUrl)) {
+          img.src = gifUrl;
+          return;
+        }
+        const pre = new Image();
+        pre.onload = () => {
+          cache.add(gifUrl);
+          if (card.matches(':hover')) img.src = gifUrl; // só se ainda está no hover
+        };
+        pre.onerror = () => console.debug('[clips] preview falhou:', gifUrl);
+        pre.src = gifUrl;
+      }, HOVER_DELAY);
+    });
+ 
+    card.addEventListener('mouseleave', () => {
+      clearTimeout(timer);
+      img.src = staticSrc;
+    });
+  });
+})();

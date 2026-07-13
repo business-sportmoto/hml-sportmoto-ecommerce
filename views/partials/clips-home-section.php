@@ -1,22 +1,36 @@
 <?php
 // ════════════════════════════════════════════════════════
 // views/partials/clips-home-section.php
-// Vitrine horizontal "Clips em alta" para a home
+// Vitrine horizontal "Clips em alta" — Cloudflare Stream
+//
+// CORREÇÕES APLICADAS:
+//  1. Poster com FALLBACK (custom do R2 -> thumbnail do Stream).
+//     Antes lia c.arquivo_poster cru: sem poster custom, o card ficava vazio.
+//  2. N+1 ELIMINADO: contagem de produtos em UMA query agregada, não uma
+//     query por clip dentro do loop (12 clips = 12 queries na HOME).
+//  3. GIF de preview no hover (data-clip-preview), com carga sob demanda.
 // ════════════════════════════════════════════════════════
 
-$db       = Database::getInstance()->getConnection();
+$db = Database::getInstance()->getConnection();
+
+// Uma única query: clips + contagem de produtos agregada (sem N+1)
 $stmtClips = $db->query(
     "SELECT c.id, c.titulo, c.arquivo_poster, c.arquivo_video,
             c.total_views, c.total_likes, c.total_comentarios,
-            c.produto_id
-     FROM clips c 
-     WHERE c.ativo=1 AND c.status='ativo' AND c.destaque=1
+            COUNT(cp.produto_id) AS total_produtos
+     FROM clips c
+     LEFT JOIN clip_produtos cp ON cp.clip_id = c.id
+     WHERE c.ativo = 1 AND c.status = 'ativo' AND c.destaque = 1
+     GROUP BY c.id
      ORDER BY c.total_views DESC, c.ordem ASC
      LIMIT 12"
 );
 $clipsFeed = $stmtClips->fetchAll();
 
 if (empty($clipsFeed)) return;
+
+// Service para montar as URLs do Stream (0 chamadas de API — usa customer code)
+$clipSvc = new ClipService();
 ?>
 
 <section class="clips-home" id="clips-home-section">
@@ -45,19 +59,23 @@ if (empty($clipsFeed)) return;
       <div class="clips-carousel" id="clips-carousel">
         <?php foreach ($clipsFeed as $i => $c): ?>
         <?php
-          $poster    = $c['arquivo_poster'];
+          // ── Poster: custom (R2) OU thumbnail automático do vídeo (Stream) ──
+          $poster = $clipSvc->posterFor($c);
+
+          // ── GIF de preview para o hover (só se houver vídeo no Stream) ──
+          $uid     = (string)($c['arquivo_video'] ?? '');
+          $temUid  = (bool) preg_match('/^[a-f0-9]{32}$/i', $uid);
+          $preview = $temUid ? $clipSvc->previewUrl($uid) : null;
+
+          $proClip   = (int)($c['total_produtos'] ?? 0);
           $views_fmt = $c['total_views'] >= 1000
                      ? round($c['total_views'] / 1000, 1) . 'k'
                      : (string)$c['total_views'];
-
-          $clip = new Clip($c['id']);
-          $pro_clip = count($clip->getProdutosDoClip($c['id']));
-
-          // var_dump(count($pro_clip));
         ?>
         <div class="clip-card"
-             data-clip-id="<?= $c['id'] ?>"
+             data-clip-id="<?= (int)$c['id'] ?>"
              data-index="<?= $i ?>"
+             <?php if ($preview): ?>data-clip-preview="<?= View::e($preview) ?>"<?php endif; ?>
              tabindex="0"
              role="button"
              aria-label="Ver clip: <?= View::e($c['titulo']) ?>">
@@ -65,7 +83,7 @@ if (empty($clipsFeed)) return;
           <!-- Thumbnail 9:16 -->
           <div class="clip-card-media">
             <?php if ($poster): ?>
-            <img src="<?= $poster ?>"
+            <img src="<?= View::e($poster) ?>"
                  alt="<?= View::e($c['titulo']) ?>"
                  loading="lazy"
                  class="clip-card-poster">
@@ -75,22 +93,22 @@ if (empty($clipsFeed)) return;
 
             <!-- Play button overlay -->
             <div class="clip-card-play">
-              <svg width="24" height="24" viewBox="0 0 24 24"
-                   fill="white">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
                 <polygon points="5 3 19 12 5 21 5 3"/>
               </svg>
             </div>
 
             <!-- Badge de produtos vinculados ao clip -->
-            <?php if ((int)$pro_clip > 0): ?>
-            <div class="clip-card-produtos-badge" title="<?= (int)$pro_clip === 1 ? '1 produto neste clip' : $pro_clip . ' produtos neste clip' ?>">
+            <?php if ($proClip > 0): ?>
+            <div class="clip-card-produtos-badge"
+                 title="<?= $proClip === 1 ? '1 produto neste clip' : $proClip . ' produtos neste clip' ?>">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
                    stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
                 <line x1="3" y1="6" x2="21" y2="6"/>
                 <path d="M16 10a4 4 0 01-8 0"/>
               </svg>
-              <span><?= (int)$pro_clip ?></span>
+              <span><?= $proClip ?></span>
             </div>
             <?php endif; ?>
 
@@ -114,14 +132,14 @@ if (empty($clipsFeed)) return;
                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                   <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
                 </svg>
-                <?= number_format($c['total_likes']) ?>
+                <?= number_format((int)$c['total_likes']) ?>
               </span>
               <span>
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                   <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
                 </svg>
-                <?= number_format($c['total_comentarios']) ?>
+                <?= number_format((int)$c['total_comentarios']) ?>
               </span>
             </div>
           </div>
@@ -145,4 +163,3 @@ if (empty($clipsFeed)) return;
     </div>
   </div>
 </section>
-
