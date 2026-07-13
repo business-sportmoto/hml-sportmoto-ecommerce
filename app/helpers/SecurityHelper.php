@@ -255,7 +255,10 @@ class SecurityHelper {
 
             header("Cross-Origin-Opener-Policy: same-origin-allow-popups");
 
-            
+            header(
+                "Content-Security-Policy: " .
+                "default-src 'self'; " .
+            );
         }
 
         // HSTS (apenas em HTTPS)
