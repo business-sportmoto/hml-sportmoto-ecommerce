@@ -230,6 +230,10 @@ class SecurityHelper {
      * Define cabeçalhos de segurança recomendados.
      * Chamar no bootstrap (index.php) antes de qualquer output.
      */
+    /**
+     * Define cabeçalhos de segurança recomendados.
+     * Chamar no bootstrap (index.php) antes de qualquer output.
+     */
     public static function setSecurityHeaders(): void {
         // Previne clickjacking
         header('X-Frame-Options: SAMEORIGIN');
@@ -251,26 +255,38 @@ class SecurityHelper {
             $baseHost = parse_url(BASE_URL, PHP_URL_HOST);
             $baseImgSrc = $baseHost ? " https://{$baseHost}" : "";
 
+            $stream   = 'https://*.cloudflarestream.com';
+            $extraImg = trim($baseImgSrc) !== '' ? ' ' . trim($baseImgSrc) : '';
+
             header("Cross-Origin-Opener-Policy: same-origin-allow-popups");
 
             header(
                 "Content-Security-Policy: " .
                 "default-src 'self'; " .
 
-                "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com/gsi/client; " .
-                "script-src-elem 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com/gsi/client; " .
+                "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com/; " .
+                "script-src-elem 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com/gsi/client; " .                
+                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com;".
 
-                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; " .
+                "media-src 'self' https://*.cloudflarestream.com; " .
+                "worker-src 'self' blob:;",
+                "media-src 'self' blob: {$stream};",
 
-                "img-src 'self' data: https:" . $baseImgSrc . "; " .
+                "img-src 'self' data: https:" . $baseImgSrc . " https://media.sportmoto.com.br https://*.cloudflarestream.com; " .
 
                 "font-src 'self' https://fonts.gstatic.com; " .
 
-                "connect-src 'self' https://accounts.google.com/gsi/ https://sandbox-api.malga.io https://api.malga.io; " .
+                "connect-src 'self' https://accounts.google.com/gsi/ https://sandbox-api.malga.io https://api.malga.io https://*.cloudflarestream.com; " .
 
                 "frame-src 'self' https://accounts.google.com/gsi/ https://hosted-fields-sandbox.malga.io https://hosted-fields.malga.io; " .
 
-                "frame-ancestors 'none';"
+                "frame-ancestors 'none';".
+
+                "object-src 'none';".
+                "base-uri 'self';".
+                "form-action 'self';".
+                "frame-ancestors 'none';".
+                "upgrade-insecure-requests;"
             );
         }
 
@@ -279,7 +295,6 @@ class SecurityHelper {
             header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
         }
     }
-
     // ── Sanitização de output ─────────────────────────────────────
 
     /**
