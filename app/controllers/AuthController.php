@@ -894,6 +894,8 @@ class AuthController extends Controller {
         $svc = new VeiculoService();
         $svc->carregarDoCliente((int)$cliente['id']);
 
+        TrackingService::vincularCliente((int)$user['id']);
+
         $this->json([
             'ok'       => true,
             'redirect' => $redirectUrl,
@@ -1223,7 +1225,7 @@ class AuthController extends Controller {
             $db->commit();
 
             // Envia e-mail de verificação
-            MailHelper::sendEmailVerification($email, $nome, $code);
+            MailHelper::sendVerificationEmail($email, $nome, $code);
 
             $stmt_c = $db->prepare("SELECT id FROM clientes WHERE usuario_id = ? LIMIT 1");
             $stmt_c->execute([$userId]);
@@ -1378,7 +1380,7 @@ class AuthController extends Controller {
              VALUES (?, ?, 'email_verify', ?)"
         )->execute([$user['id'], $code, $expiraEm]);
 
-        MailHelper::sendEmailVerification($user['email'], $user['nome'], $code);
+        MailHelper::sendVerificationEmail($user['email'], $user['nome'], $code);
 
         $this->json(['ok' => true, 'msg' => 'Novo código enviado para ' . $this->maskEmail($user['email'])]);
 

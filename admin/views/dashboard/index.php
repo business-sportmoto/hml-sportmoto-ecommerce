@@ -16,7 +16,9 @@ $statusLabels = [
     'cancelado'            => ['label' => 'Cancelado',   'color' => 'danger'],
     'reembolsado'          => ['label' => 'Reembolsado', 'color' => 'muted'],
 ];
+
 ?>
+
 
 <div class="admin-page">
 

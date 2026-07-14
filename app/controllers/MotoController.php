@@ -151,6 +151,16 @@ class MotoController extends Controller {
             $anos = $stmt->fetchAll();
         }
 
+        TrackingService::registrar(
+            'catalogo_moto_visto',
+            'modelo_moto',
+            $modelo ? (int)$modelo['id'] : null,
+            [
+                'montadora_id' => (int)$montadora['id'],
+                'ano'          => $ano,
+            ]
+        );
+
         $this->render('moto/catalogo', [
             'montadora'   => $montadora,
             'modelo'      => $modelo,

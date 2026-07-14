@@ -62,7 +62,7 @@ $temCountdown = !empty($b['data_fim']) && strtotime($b['data_fim']) > time();
 $cdUid        = 'bn_cd_' . (int)$b['id'];
 ?>
 
-<<?= $tag ?> class="bn-item" style="<?= $wrapStyle ?>"
+<<?= $tag ?> class="bn-item trk-banner" style="<?= $wrapStyle ?>"
    data-banner-id="<?= (int)$b['id'] ?>"
    <?= $tagAttrs ?>>
 
@@ -150,10 +150,10 @@ $cdUid        = 'bn_cd_' . (int)$b['id'];
       <div class="bn-item-ctas">
 
         <?php if (!empty($b['cta1_texto']) && !empty($b['cta1_link'])): ?>
-        <a href="<?= View::e($b['cta1_link']) ?>"
+        <a href="<?= View::e($b['cta1_link']) ?>" 
            target="<?= View::e($b['cta1_target'] ?? '_self') ?>"
-           class="bn-cta bn-cta--<?= View::e($b['cta1_estilo'] ?? 'primary') ?>"
-           data-banner-click="<?= (int)$b['id'] ?>"
+           class="bn-cta bn-cta--<?= View::e($b['cta1_estilo'] ?? 'primary') ?> trk-banner"
+           data-banner-click="<?= (int)$b['id'] ?>" data-banner-id="<?= (int)$b['id'] ?>"
            <?= $linkGeral ? 'onclick="event.stopPropagation();"' : '' ?>>
           <?= View::e($b['cta1_texto']) ?>
           <!-- ② SETA — ícone no botão primário -->
@@ -169,8 +169,8 @@ $cdUid        = 'bn_cd_' . (int)$b['id'];
         <?php if (!empty($b['cta2_texto']) && !empty($b['cta2_link'])): ?>
         <a href="<?= View::e($b['cta2_link']) ?>"
            target="<?= View::e($b['cta2_target'] ?? '_self') ?>"
-           class="bn-cta bn-cta--<?= View::e($b['cta2_estilo'] ?? 'outline') ?>"
-           data-banner-click="<?= (int)$b['id'] ?>"
+           class="bn-cta bn-cta--<?= View::e($b['cta2_estilo'] ?? 'outline') ?> trk-banner"
+           data-banner-click="<?= (int)$b['id'] ?>" data-banner-id="<?= (int)$b['id'] ?>"
            <?= $linkGeral ? 'onclick="event.stopPropagation();"' : '' ?>>
           <?= View::e($b['cta2_texto']) ?>
           <!-- ② SETA — ícone no botão secundário -->

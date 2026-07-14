@@ -58,7 +58,7 @@ $categoryModel    = new Category();
   </script>
 
   <!-- Scripts carregados de forma assíncrona para melhor performance -->
-  <script src="<?= PerformanceHelper::assetVersion('js/jquery.min.js') ?>" defer></script>
+  <script src="<?= PerformanceHelper::assetVersion('js/jquery.min.js') ?>"></script>
   <script src="<?= PerformanceHelper::assetVersion('js/mask.js') ?>" defer></script>
   <script src="<?= PerformanceHelper::assetVersion('js/main.js') ?>" defer></script>
   <script src="<?= PerformanceHelper::assetVersion('js/checkout.js') ?>" defer></script>
@@ -103,5 +103,54 @@ $categoryModel    = new Category();
   }
   
   ?>
+  <script defer>
+  (function ($) {
+    function track(tipo, bannerId, ctx) {
+      // sendBeacon sobrevive à navegação do clique; fallback $.post
+      var dados = new FormData();
+      dados.append('tipo', tipo);
+      dados.append('entidade_tipo', 'banner');
+      dados.append('entidade_id', bannerId);
+      if (ctx) {
+        Object.keys(ctx).forEach(function (k) {
+          dados.append('ctx[' + k + ']', ctx[k]);
+        });
+      }
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(BASE_URL + '/track', dados);
+      } else {
+        $.ajax({ url: BASE_URL + '/track', method: 'POST', data: dados,
+                processData: false, contentType: false, async: true });
+      }
+
+      
+    }
+
+    // ── banner_click ──────────────────────────────────────────────────────────
+    $(document).on('click', '.trk-banner', function () {
+      var $b = $(this);
+      track('banner_click', $b.data('banner-id') || 0, { pos: $b.data('pos') || '' });
+      // não previne o default — navegação segue normal
+    });
+
+    // ── banner_visto (IntersectionObserver; ignora se não suportado) ─────────
+    if ('IntersectionObserver' in window) {
+      var vistos = {};
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (!e.isIntersecting) return;
+          var $b  = $(e.target);
+          var id  = $b.data('banner-id') || 0;
+          if (vistos[id]) return;
+          vistos[id] = true;
+          track('banner_visto', id, { pos: $b.data('pos') || '' });
+          io.unobserve(e.target);
+        });
+      }, { threshold: 0.5 });
+
+      $('.trk-banner').each(function () { io.observe(this); });
+    }
+  })(jQuery);
+  </script>
 </body>
 </html>

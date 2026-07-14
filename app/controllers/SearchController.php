@@ -127,6 +127,11 @@ class SearchController extends Controller {
         SeoHelper::setDescription("Resultados para \"{$q}\" na " . ConfigHelper::get('site_nome', ''));
         SeoHelper::setRobots('noindex, follow');
 
+        TrackingService::registrar('busca', null, null, [
+            'q'          => mb_substr($q, 0, 120),
+            'resultados' => (int)$total,
+        ]);
+
         $this->render('products/catalog', array_merge($pag->toArray(), [
             'products'    => $products,
             'filters'     => $filters,

@@ -155,6 +155,11 @@ class ProductController extends Controller {
         $svc        = new PersonalizationService($clienteId, $sessionKey);
         $sections   = $svc->buildHomeSectionsPrepare();
 
+        TrackingService::registrar('produto_visto', 'produto', (int)$product['id'], [
+            'categoria_id' => (int)($product['categoria_id'] ?? 0),
+            'preco'        => (float)($product['preco'] ?? 0),
+        ]);
+
         $this->render('products/detail', [
             'product'         => $product,
             'images'          => $images,

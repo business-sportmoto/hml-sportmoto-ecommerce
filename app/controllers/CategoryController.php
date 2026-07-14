@@ -168,6 +168,8 @@ class CategoryController extends Controller {
         }
         unset($p);
 
+        TrackingService::registrar('categoria_vista', 'categoria', (int)$category['id']);
+
         // ── Render ────────────────────────────────────────────
         $this->render('products/catalog', array_merge($pag->toArray(), [
             'category'        => $category,

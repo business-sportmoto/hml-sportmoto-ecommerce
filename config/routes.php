@@ -27,6 +27,10 @@ Router::get ('/notificacoes/listar',       'NotificacaoController@listar');
 Router::post('/notificacoes/marcar-lida',  'NotificacaoController@marcarLida');
 Router::post('/notificacoes/marcar-todas', 'NotificacaoController@marcarTodas');
 
+
+// ROTA — config/routes.php (área pública)   
+Router::post('/track', 'TrackController@registrar');
+
 // Banner
 Router::post('/banner/impressao', 'BannerController@impressao');
 Router::get('/banner/click/{id}', 'BannerController@click');
