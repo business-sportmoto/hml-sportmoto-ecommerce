@@ -99,7 +99,8 @@ $f = $filtros;
 
       <!-- Período -->
       <select name="periodo" class="lg-select" aria-label="Período">
-        <?php foreach (['1h'=>'Última hora','24h'=>'24 horas','7d'=>'7 dias','30d'=>'30 dias','tudo'=>'Tudo'] as $v=>$l): ?>
+        <?php foreach (['1h'=>'Última hora','2h'=>'2 horas','24h'=>'24 horas',
+                        '7d'=>'7 dias','30d'=>'30 dias','tudo'=>'Tudo'] as $v=>$l): ?>
         <option value="<?= $v ?>" <?= $f['periodo'] === $v ? 'selected' : '' ?>><?= $l ?></option>
         <?php endforeach; ?>
       </select>
@@ -110,6 +111,12 @@ $f = $filtros;
         <option value="<?= $v ?>" <?= $f['status'] === $v ? 'selected' : '' ?>><?= $l ?></option>
         <?php endforeach; ?>
       </select>
+
+      <!-- Filtro por usuário (aceita o ID de usuarios.id) -->
+      <input type="number" name="usuario_id" class="lg-select lg-uid"
+             value="<?= $f['usuario_id'] ?: '' ?>"
+             placeholder="ID do usuário" min="1"
+             aria-label="Filtrar por ID de usuário" style="width:130px;">
 
       <!-- Ordem -->
       <select name="ordem" class="lg-select" aria-label="Ordenar">
@@ -127,6 +134,31 @@ $f = $filtros;
     <?= number_format((int) $total, 0, ',', '.') ?>
     <?= (int) $total === 1 ? 'registro' : 'registros' ?>
   </div>
+
+  <?php if (!empty($usuarioFiltrado)): $u = $usuarioFiltrado; ?>
+  <div class="lg-userbar">
+    <div class="lg-userbar-info">
+      <span class="lg-userbar-label">Logs de</span>
+      <strong><?= View::e($u['nome']) ?></strong>
+      <code><?= View::e($u['email']) ?></code>
+      <span class="lg-chip"><?= View::e($u['tipo']) ?></span>
+    </div>
+
+    <div class="lg-userbar-actions">
+      <?php if (!empty($u['cliente_id'])): ?>
+        <a href="<?= ADMIN_URL ?>/clientes/<?= (int) $u['cliente_id'] ?>"
+           class="lg-btn lg-btn--ghost">Abrir perfil</a>
+      <?php endif; ?>
+      <a href="<?= ADMIN_URL ?>/logs" class="lg-btn lg-btn--ghost">Remover filtro</a>
+    </div>
+  </div>
+
+  <p class="lg-warn">
+    Registros anteriores à v2 do log podem ter atribuição de usuário incorreta
+    (gravavam <code>admin_id</code>/<code>cliente_id</code> na coluna
+    <code>usuario_id</code>). Trate logs antigos com ressalva.
+  </p>
+  <?php endif; ?>
 
   <?php if (empty($logs)): ?>
     <div class="lg-empty">
@@ -216,3 +248,35 @@ $f = $filtros;
 </div>
 
 <input type="hidden" id="lg-csrf" value="<?= View::e(SecurityHelper::generateCsrf()) ?>">
+
+
+<style>
+  /* Barra do usuário filtrado */
+.lg-userbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  padding: 12px 16px; margin-bottom: 10px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--r);
+}
+.lg-userbar-info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.lg-userbar-label { font-size: 12px; color: var(--text-2); }
+.lg-userbar-info strong { font-size: 13.5px; color: var(--text-0); }
+.lg-userbar-info code {
+  font-family: var(--mono); font-size: 11.5px; color: var(--text-1);
+  padding: 2px 6px; border-radius: 4px;
+  background: #fff; border: 1px solid #bfdbfe;
+}
+.lg-userbar-actions { display: flex; gap: 6px; }
+
+.lg-warn {
+  margin: 0 0 12px; padding: 9px 12px;
+  font-size: 11.5px; line-height: 1.5; color: #92400e;
+  background: #fffbeb; border: 1px solid #fde68a;
+  border-radius: var(--r-sm);
+}
+.lg-warn code { font-family: var(--mono); font-size: 11px; }
+
+.lg-uid { font-family: var(--mono); }
+</style>

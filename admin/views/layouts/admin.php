@@ -264,7 +264,7 @@ function adminIsActive(string $path): string {
         <span class="admin-nav-icon">
           <?= IconLibrary::render('history-toggle-off'); ?> 
         </span>
-        Importações
+        Logs Controller
       </a>
       <a href="<?= BASE_URL ?>/admin/logout" class="admin-nav-item">
         <span class="admin-nav-icon">

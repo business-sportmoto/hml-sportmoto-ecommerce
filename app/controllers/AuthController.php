@@ -26,6 +26,17 @@ class AuthController extends Controller {
     }
 
     /**
+     * Hash do identificador de login para uso em LOG.
+     * O e-mail/CPF em claro é PII: não vai para o log. O hash permite
+     * correlacionar tentativas do mesmo alvo sem expor o dado.
+     * Consistente com login_attempts.email_hash.
+     */
+    private function logId(string $login): string
+    {
+        return hash('sha256', mb_strtolower(trim($login)));
+    }
+
+    /**
      * Gate de 2FA. Chamado após senha/código validados mas ANTES de
      * finalizar o login. Se o usuário tem 2FA ativo: guarda estado
      * pendente, envia código e sinaliza ao frontend para ir à tela 2FA.
@@ -137,6 +148,11 @@ class AuthController extends Controller {
         $ipKey = md5($_SERVER['REMOTE_ADDR'] ?? '');
         if (SecurityHelper::rateLimitExceeded('check_identity_'   . $ipKey, 10, 300) ||
             SecurityHelper::rateLimitExceeded('check_identity_h_' . $ipKey, 30, 3600)) {
+            // [LOG] Rate limit no endpoint que revela existência de conta:
+            // assinatura clássica de enumeração de usuários.
+            LogService::warning('Rate limit em checkIdentity (possível enumeração)', [
+                'login_hash' => $this->logId($valor),
+            ], 'auth');
             usleep(random_int(150000, 400000));
             $this->json(['ok' => false, 'msg' => 'Muitas tentativas. Aguarde alguns minutos.']);
         }
@@ -324,9 +340,16 @@ class AuthController extends Controller {
         $rl             = $rateLimit->check($ip, $login, $recaptchaToken);
 
         if ($rl['status'] === 'blocked') {
+            LogService::warning('Login bloqueado por rate limit', [
+                'login_hash' => $this->logId($login),
+                'motivo'     => $rl['msg'] ?? null,
+            ], 'auth');
             $this->json(['ok' => false, 'msg' => $rl['msg']]);
         }
         if ($rl['status'] === 'captcha') {
+            LogService::info('Login exigiu CAPTCHA', [
+                'login_hash' => $this->logId($login),
+            ], 'auth');
             // Token ausente ou score insuficiente — front precisa gerar
             // (ou regerar) o token do reCAPTCHA v3 e reenviar o login.
             $this->json([
@@ -357,6 +380,11 @@ class AuthController extends Controller {
         }
 
         if (!$user['ativo']) {
+            // [LOG] Alguém com credencial de conta DESATIVADA tentando entrar.
+            // Merece warning: pode ser ex-funcionário ou conta banida.
+            LogService::warning('Tentativa de login em conta desativada', [
+                'usuario_id' => (int) $user['id'],
+            ], 'auth');
             $this->json(['ok' => false, 'msg' => 'Conta desativada.']);
         }
 
@@ -402,12 +430,15 @@ class AuthController extends Controller {
         if (!password_verify($senha, $user['senha_hash'])) {
             $rateLimit->register($ip, $login, false, 'senha');
 
-            if (class_exists('AuthLogService')) {
-                AuthLogService::registrar((int)$user['id'], 'login_fail', 'failed', 'local');
-            }
+            // [LOG] Senha incorreta em conta EXISTENTE. Sinal forte de ataque
+            // quando repetido: o dashboard agrupa por fingerprint e o contador
+            // de ocorrências mostra o volume.
+            LogService::warning('Falha de login: senha incorreta', [
+                'usuario_id' => (int) $user['id'],
+            ], 'auth');
 
-            $this->json(['ok' => false, 'msg' => 'E-mail ou senha incorretos.']);
-        }
+                $this->json(['ok' => false, 'msg' => 'E-mail ou senha incorretos.']);
+            }
 
         if (!$user['email_verificado']) {
             $this->json([
@@ -421,9 +452,11 @@ class AuthController extends Controller {
         $rateLimit->register($ip, $login, true, 'senha');
         $rateLimit->clearAccount($login);
 
-        if (class_exists('AuthLogService')) {
-            AuthLogService::registrar((int)$user['id'], 'login_ok', 'success', 'local');
-        }
+        // [LOG] audit: trilha de acesso (LGPD). Canal 'audit'.
+        LogService::audit('Login bem-sucedido (senha)', [
+            'usuario_id' => (int) $user['id'],
+            'lembrar'    => $lembrar,
+        ]);
 
         // ── Gate de 2FA ───────────────────────────────────
         // Senha OK, mas se o usuário tem 2FA ativo, NÃO loga ainda:
@@ -476,8 +509,24 @@ class AuthController extends Controller {
         )->execute([$user['id'], $code, $expiraEm]);
 
         // Envia e-mail
-        MailHelper::sendLoginCode($user['email'], $user['nome'], $code);
+        // Envia e-mail
+        try {
+            MailHelper::sendLoginCode($user['email'], $user['nome'], $code);
 
+            // [LOG] NUNCA inclua $code no contexto — é o segredo de acesso.
+            LogService::info('Código de login enviado por e-mail', [
+                'usuario_id' => (int) $user['id'],
+            ], 'auth');
+
+        } catch (\Throwable $e) {
+            // [LOG] error: o cliente legítimo NÃO consegue entrar.
+            LogService::exception($e, 'error', 'auth', [
+                'usuario_id' => (int) $user['id'],
+                'acao'       => 'envio_codigo_login',
+            ]);
+            $this->json(['ok' => false, 'msg' => 'Não foi possível enviar o código. Tente novamente.']);
+        }
+        
         $this->json([
             'ok'         => true,
             'email_mask' => $this->maskEmail($user['email']),
@@ -531,6 +580,13 @@ class AuthController extends Controller {
 
         if (!$tokenRow) {
             $rateLimit->register($ip, $login, false, 'codigo_email');
+
+            // [LOG] Código de login errado/expirado. Repetido = brute-force
+            // de OTP de 6 dígitos (espaço de busca pequeno — merece atenção).
+            LogService::warning('Código de login inválido ou expirado', [
+                'usuario_id' => (int) $user['id'],
+            ], 'auth');
+
             $this->json(['ok' => false, 'msg' => 'Código incorreto ou expirado.']);
         }
 
@@ -627,11 +683,25 @@ class AuthController extends Controller {
                     break;
             }
         } catch (\Throwable $e) {
-            error_log('[AuthController] envio 2FA (' . $canal . '): ' . $e->getMessage());
+            // ANTES: error_log('[AuthController] envio 2FA (' . $canal . '): ' . ...)
+            // [LOG] error: o segundo fator não chegou — o cliente legítimo
+            // fica travado fora da própria conta.
+            LogService::exception($e, 'error', 'auth', [
+                'usuario_id' => $userId,
+                'canal'      => $canal,       // 'email' | 'whatsapp' | 'sms'
+                'acao'       => 'envio_2fa',
+            ]);
+
             $this->json(['ok' => false, 'msg' => 'Não foi possível enviar o código. Tente outro canal.']);
         }
 
         Session::set('_2fa_canal_usado', $canal);
+
+        // [LOG] NUNCA o $code aqui.
+        LogService::info('Código 2FA enviado', [
+            'usuario_id' => $userId,
+            'canal'      => $canal,
+        ], 'auth');
 
         $this->json([
             'ok'      => true,
@@ -660,6 +730,13 @@ class AuthController extends Controller {
 
         $rlCode = $rateLimit->checkCode($ip, $emailRL);
         if ($rlCode['status'] === 'blocked') {
+            // [LOG] CRÍTICO: alguém passou da senha e está martelando o 2FA.
+            // Ou o atacante TEM a senha correta (credencial vazada) e só falta
+            // o segundo fator — este é o sinal mais alarmante do fluxo de auth.
+            LogService::critical('2FA bloqueado por rate limit (senha já validada)', [
+                'usuario_id' => (int) $userId,
+            ], 'auth');
+
             // Invalida a sessão 2FA pendente — força recomeçar o login
             Session::remove('_2fa_pending_user');
             Session::remove('_2fa_pending_cliente');
@@ -694,6 +771,12 @@ class AuthController extends Controller {
 
         if (!$codigoValido) {
             $rateLimit->register($ip, $emailRL, false, '2fa');
+            // [LOG] Código 2FA errado.
+            LogService::warning('Código 2FA inválido', [
+                'usuario_id' => (int) $userId,
+                'canal'      => $canalUsado,
+            ], 'auth');
+
             if (AuthHelper::isAjax()) {
                 $this->json(['ok' => false, 'msg' => 'Código inválido ou expirado.']);
             }
@@ -704,6 +787,12 @@ class AuthController extends Controller {
 
         $rateLimit->register($ip, $emailRL, true, '2fa');
         $rateLimit->clearAccount($emailRL);
+
+        // [LOG] audit: segundo fator validado.
+        LogService::audit('2FA validado', [
+            'usuario_id' => (int) $userId,
+            'canal'      => $canalUsado,
+        ]);
 
         $lembrar = Session::get('_2fa_lembrar', false);
 
@@ -746,6 +835,14 @@ class AuthController extends Controller {
         if ($lembrar) {
             // Cria sessão persistente com cookie (30 dias)
             $this->tokenService->createRememberToken($user['id']);
+
+
+            // [LOG] audit: sessão de 30 dias criada. Se a conta for
+            // comprometida depois, esta linha explica por que o acesso
+            // persistiu.
+            LogService::audit('Sessão persistente criada (lembrar-me)', [
+                'usuario_id' => (int) $user['id'],
+            ]);
         } else {
             // Registra sessão de auditoria sem cookie (24h)
             $this->registerAuditSession($user['id'], $db);
@@ -768,7 +865,12 @@ class AuthController extends Controller {
                 }
             } catch (\Throwable $e) {
                 // Nunca bloqueia o login por falha nesta heurística.
-                error_log('[AuthController] DeviceRecognitionService: ' . $e->getMessage());
+                // ANTES: error_log('[AuthController] DeviceRecognitionService: ' ...)
+                // [LOG] warning (não error): é heurística de UX, não bloqueia o login.
+                LogService::exception($e, 'warning', 'auth', [
+                    'usuario_id' => (int) $user['id'],
+                    'acao'       => 'device_recognition',
+                ]);
             }
         }
 
@@ -777,7 +879,14 @@ class AuthController extends Controller {
         try {
             $this->alertNewDevice($db, $user);
         } catch (\Throwable $e) {
-            error_log('[AuthController] alertNewDevice: ' . $e->getMessage());
+            // ANTES: error_log('[AuthController] alertNewDevice: ' ...)
+            // [LOG] error: o alerta de novo dispositivo é um CONTROLE DE
+            // SEGURANÇA. Se ele falha em silêncio, um acesso indevido deixa
+            // de ser comunicado ao titular. Não é cosmético.
+            LogService::exception($e, 'error', 'auth', [
+                'usuario_id' => (int) $user['id'],
+                'acao'       => 'alerta_novo_dispositivo',
+            ]);
         }
 
         $redirectUrl = AuthHelper::getRedirectAfterLogin();
@@ -909,6 +1018,12 @@ class AuthController extends Controller {
         $hash = $stmt->fetchColumn();
 
         if (!$hash || !password_verify($senha, $hash)) {
+            // [LOG] Alguém COM a sessão aberta erra a senha ao tentar criar
+            // sessão persistente. Cheira a acesso oportunista (máquina
+            // deixada logada). Warning merecido.
+            LogService::warning('Senha incorreta ao confirmar sessão persistente', [
+                'usuario_id' => $userId,
+            ], 'auth');
             $this->json(['ok' => false, 'msg' => 'Senha incorreta.']);
         }
 
@@ -923,6 +1038,10 @@ class AuthController extends Controller {
         // já dispara no login — reaproveita o método existente para não
         // duplicar a lógica de cookie/token/família.
         $this->tokenService->createRememberToken($userId);
+
+        LogService::audit('Sessão persistente confirmada via modal', [
+            'usuario_id' => $userId,
+        ]);
 
         // Remove a sessão de auditoria de 24h criada no login (sem
         // lembrar-me) — senão ela fica órfã no banco, duplicando a
@@ -992,6 +1111,11 @@ class AuthController extends Controller {
                     )->execute([$userId, $auditToken]);
                 }
             }
+
+            LogService::audit('Logout', [
+                'usuario_id' => (int) $userId,
+                'persistente'=> !empty($_COOKIE['ec_remember']),
+            ]);
         }
 
         $svc = new VeiculoService();
@@ -1112,6 +1236,12 @@ class AuthController extends Controller {
                 )->execute([$c_id]);
             }
             
+            // [LOG] audit: nascimento da conta. Base para investigar fraude de
+            // cadastro em massa (o dashboard agrupa e conta ocorrências).
+            LogService::audit('Conta criada', [
+                'usuario_id' => (int) $userId,
+                'com_cpf'    => !empty($cpf),
+            ]);
 
             $this->json([
                 'ok'         => true,
@@ -1273,6 +1403,12 @@ class AuthController extends Controller {
 
         // Rate limit: evita spam de e-mails de recuperação
         if (SecurityHelper::rateLimitExceeded('forgot_' . md5($email), 3, 900)) {
+            // [LOG] Flood de e-mails de recuperação = tentativa de assédio ao
+            // titular ou de descoberta de contas.
+            LogService::warning('Rate limit em recuperação de senha', [
+                'login_hash' => $this->logId($email),
+            ], 'auth');
+
             if (AuthHelper::isAjax()) {
                 $this->json(['ok' => true, 'msg' => 'Se o e-mail existir, você receberá as instruções.']);
             }
@@ -1294,8 +1430,22 @@ class AuthController extends Controller {
 
         // Resposta genérica independente de existir ou não (evita user enumeration)
         if ($user && $user['tipo'] === 'cliente' && $user['ativo']) {
-            $token = $this->tokenService->createPasswordResetToken($user['id']);
-            MailHelper::sendPasswordReset($user['email'], $user['nome'], $token);
+            try {
+                $token = $this->tokenService->createPasswordResetToken($user['id']);
+                MailHelper::sendPasswordReset($user['email'], $user['nome'], $token);
+
+                // [LOG] NUNCA logue o $token — quem lê o log redefine a senha.
+                LogService::audit('Recuperação de senha solicitada', [
+                    'usuario_id' => (int) $user['id'],
+                ]);
+
+            } catch (\Throwable $e) {
+                // [LOG] error: o cliente não recebe o link e fica sem acesso.
+                LogService::exception($e, 'error', 'auth', [
+                    'usuario_id' => (int) $user['id'],
+                    'acao'       => 'envio_reset_senha',
+                ]);
+            }
         }
 
         $msg = 'Se o e-mail estiver cadastrado, você receberá as instruções em breve.';
@@ -1329,6 +1479,10 @@ class AuthController extends Controller {
         $userId = $this->tokenService->consumePasswordResetToken($token);
 
         if (!$userId) {
+            // [LOG] Token de reset inválido/expirado/já usado. Repetido =
+            // alguém tentando adivinhar ou reusar link de recuperação.
+            LogService::warning('Token de reset de senha inválido ou expirado', [], 'auth');
+            
             if (AuthHelper::isAjax()) {
                 $this->json(['ok' => false, 'msg' => 'Link inválido ou expirado.']);
             }
@@ -1364,6 +1518,12 @@ class AuthController extends Controller {
         $this->tokenService->revokeAllSessions($userId);
 
         SecurityHelper::regenerateCsrf();
+
+        // [LOG] audit — evento de alto valor forense.
+        LogService::audit('Senha redefinida via link de recuperação', [
+            'usuario_id'        => (int) $userId,
+            'sessoes_revogadas' => true,
+        ]);
 
         if (AuthHelper::isAjax()) {
             $this->json(['ok' => true, 'redirect' => BASE_URL . '/login']);

@@ -49,7 +49,9 @@ declare(strict_types=1);
  * ─────────────────────────────────────────────────────────────────────────
  */
 final class LogService
-{
+{   
+    /** Cache curto: o admin não precisa de precisão ao segundo. */
+    private const TTL = 60;
     /** Máximo de escritas no BANCO por requisição (anti-flood). */
     private const MAX_POR_REQUEST = 25;
 
@@ -429,5 +431,74 @@ final class LogService
             self::$db = Database::getInstance()->getConnection();
         }
         return self::$db;
+    }
+
+    /**
+     * Contadores das últimas 24h, apenas de logs ABERTOS (não resolvidos).
+     * Resolvido não é problema — é problema já triado.
+     *
+     * @return array{criticos:int,erros:int,avisos:int,total:int,pior:?array}
+     */
+    public static function resumo(): array
+    {
+        $chave = 'log_widget_resumo';
+ 
+        if (class_exists('CacheHelper')) {
+            $cache = CacheHelper::get($chave);
+            if ($cache !== null) {
+                return $cache;
+            }
+        }
+ 
+        $dados = self::consultar();
+ 
+        if (class_exists('CacheHelper')) {
+            CacheHelper::set($chave, $dados, self::TTL);
+        }
+        return $dados;
+    }
+ 
+    private static function consultar(): array
+    {
+        try {
+            $db = Database::getInstance()->getConnection();
+ 
+            // Query ÚNICA — agregação condicional em vez de 3 SELECTs.
+            $row = $db->query(
+                "SELECT
+                    COALESCE(SUM(nivel = 'critical'), 0) AS criticos,
+                    COALESCE(SUM(nivel = 'error'),    0) AS erros,
+                    COALESCE(SUM(nivel = 'warning'),  0) AS avisos,
+                    COALESCE(SUM(ocorrencias), 0)        AS total
+                 FROM logs
+                 WHERE resolvido = 0
+                   AND nivel IN ('warning','error','critical')
+                   AND visto_em >= (UTC_TIMESTAMP() - INTERVAL 24 HOUR)"
+            )->fetch();
+ 
+            // O problema mais recorrente — dá contexto imediato ao número.
+            $pior = $db->query(
+                "SELECT id, nivel, mensagem, ocorrencias
+                   FROM logs
+                  WHERE resolvido = 0
+                    AND nivel IN ('error','critical')
+                    AND visto_em >= (UTC_TIMESTAMP() - INTERVAL 24 HOUR)
+                  ORDER BY ocorrencias DESC, visto_em DESC
+                  LIMIT 1"
+            )->fetch() ?: null;
+ 
+            return [
+                'criticos' => (int) ($row['criticos'] ?? 0),
+                'erros'    => (int) ($row['erros']    ?? 0),
+                'avisos'   => (int) ($row['avisos']   ?? 0),
+                'total'    => (int) ($row['total']    ?? 0),
+                'pior'     => $pior ?: null,
+            ];
+ 
+        } catch (Throwable $e) {
+            // O widget NUNCA derruba o dashboard. Falhou, mostra zeros.
+            error_log('[LOG-WIDGET] ' . $e->getMessage());
+            return ['criticos' => 0, 'erros' => 0, 'avisos' => 0, 'total' => 0, 'pior' => null];
+        }
     }
 }

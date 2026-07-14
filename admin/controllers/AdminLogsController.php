@@ -35,6 +35,18 @@ final class AdminLogsController extends Controller
     {
         $f = $this->filtros();
 
+         // Contexto do usuário filtrado (nome/e-mail para o cabeçalho da tela)
+        $usuarioFiltrado = null;
+        if ($f['usuario_id'] > 0) {
+            $usuarioFiltrado = $this->resolverUsuario($f['usuario_id']);
+
+            // [LOG] audit: consultar o histórico de um usuário é acesso a dado
+            // pessoal (LGPD). Registra QUEM olhou o log de QUEM.
+            LogService::audit('Consulta de logs de um usuário específico', [
+                'usuario_alvo_id' => $f['usuario_id'],
+            ]);
+        }
+
         [$where, $params] = $this->montarWhere($f);
 
         $db = Database::getInstance()->getConnection();
@@ -74,13 +86,30 @@ final class AdminLogsController extends Controller
         }
 
         $this->render('logs/index', [
-            'logs'    => $logs,
-            'total'   => $total,
-            'filtros' => $f,
-            'stats'   => $this->stats(),
-            'canais'  => $this->canaisDisponiveis(),
-            'páginas' => (int) ceil($total / self::POR_PAGINA),
+            'logs'            => $logs,
+            'total'           => $total,
+            'filtros'         => $f,
+            'stats'           => $this->stats(),
+            'canais'          => $this->canaisDisponiveis(),
+            'páginas'         => (int) ceil($total / self::POR_PAGINA),
+            'usuarioFiltrado' => $usuarioFiltrado,   // ← NOVO
         ], 'admin');
+    }
+    
+    /**
+     * Dados básicos do usuário para o cabeçalho da tela filtrada.
+     * Traz também o cliente_id (se houver) para o link de volta ao perfil.
+     */
+    private function resolverUsuario(int $usuarioId): ?array
+    {
+        $stmt = Database::getInstance()->getConnection()->prepare(
+            "SELECT u.id, u.nome, u.email, u.tipo, c.id AS cliente_id
+               FROM usuarios u
+               LEFT JOIN clientes c ON c.usuario_id = u.id
+              WHERE u.id = ? LIMIT 1"
+        );
+        $stmt->execute([$usuarioId]);
+        return $stmt->fetch() ?: null;
     }
 
     // ── Detalhe (JSON, para o painel lateral) ────────────────────────────
@@ -188,7 +217,7 @@ final class AdminLogsController extends Controller
         }
 
         $periodo = (string) ($_GET['periodo'] ?? '7d');
-        if (!in_array($periodo, ['1h', '24h', '7d', '30d', 'tudo'], true)) {
+        if (!in_array($periodo, ['1h', '2h', '24h', '7d', '30d', 'tudo'], true)) {
             $periodo = '7d';
         }
 
@@ -197,14 +226,17 @@ final class AdminLogsController extends Controller
             $ordem = 'recentes';
         }
 
+        
+
         return [
-            'nivel'   => $nivel,
-            'canal'   => SecurityHelper::sanitizeString($_GET['canal'] ?? ''),
-            'q'       => SecurityHelper::sanitizeString($_GET['q'] ?? ''),
-            'periodo' => $periodo,
-            'status'  => $status,
-            'ordem'   => $ordem,
-            'page'    => max(1, (int) ($_GET['page'] ?? 1)),
+            'nivel'      => $nivel,
+            'canal'      => SecurityHelper::sanitizeString($_GET['canal'] ?? ''),
+            'q'          => SecurityHelper::sanitizeString($_GET['q'] ?? ''),
+            'usuario_id' => max(0, (int) ($_GET['usuario_id'] ?? 0)),   // ← NOVO
+            'periodo'    => $periodo,
+            'status'     => $status,
+            'ordem'      => $ordem,
+            'page'       => max(1, (int) ($_GET['page'] ?? 1)),
         ];
     }
 
@@ -222,12 +254,17 @@ final class AdminLogsController extends Controller
             $where[]          = 'canal = :canal';
             $params[':canal'] = mb_substr($f['canal'], 0, 50);
         }
+        if ($f['usuario_id'] > 0) {
+            $where[]               = 'usuario_id = :uid';
+            $params[':uid']        = $f['usuario_id'];
+        }
         if ($f['q'] !== '') {
             // Busca em mensagem, arquivo e URL — os três campos que você usa
             // para achar um erro. Prepared statement: sem risco de injeção.
             $where[]      = '(mensagem LIKE :q OR arquivo LIKE :q OR url LIKE :q OR tipo LIKE :q)';
             $params[':q'] = '%' . $f['q'] . '%';
         }
+        
 
         $status = match ($f['status']) {
             'abertos'    => 'resolvido = 0',
@@ -240,6 +277,7 @@ final class AdminLogsController extends Controller
 
         $intervalo = match ($f['periodo']) {
             '1h'    => 'INTERVAL 1 HOUR',
+            '2h'    => 'INTERVAL 2 HOUR',   // ← NOVO
             '24h'   => 'INTERVAL 24 HOUR',
             '7d'    => 'INTERVAL 7 DAY',
             '30d'   => 'INTERVAL 30 DAY',

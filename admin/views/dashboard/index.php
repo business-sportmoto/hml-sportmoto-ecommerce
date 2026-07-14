@@ -66,6 +66,8 @@ $statusLabels = [
     </div>
   </div>
 
+  <?php include ADMIN_PATH . '/views/dashboard/log-widget.php'; ?>
+
   <!-- ── Stats cards ──────────────────────────────────────── -->
   <div class="admin-stats-grid">
 

@@ -83,6 +83,38 @@ $statusPedMap=['aguardando_pagamento'=>['cor'=>'warning','label'=>'Aguardando pg
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           Editar tags
         </button>
+
+        <?php
+        /**
+         * Botão "Ver logs" para o perfil do cliente.
+         *
+         * USO (no perfil, onde $cliente está disponível):
+         *     <?php $clienteId = (int) $cliente['id'];
+         *           include ADMIN_PATH . '/views/partials/btn-logs-cliente.php'; ?>
+         *
+         * PONTE CRÍTICA: logs.usuario_id guarda usuarios.id, NÃO clientes.id.
+         * Resolve aqui, uma vez, em vez de espalhar a conversão pelas views.
+         *
+         * Só aparece para 'super' — o dashboard de logs é super-only; oferecer um
+         * botão que leva a um 403 é UX ruim, e mostrar o histórico de um cliente a
+         * qualquer papel é exposição de dado pessoal.
+         */
+
+        if (Session::get('admin_nivel') == 'super') {            
+       ?>
+        <a href="<?= ADMIN_URL ?>/logs?usuario_id=<?= $usuarioId ?>&status=todos&periodo=tudo"
+          class="admin-btn admin-btn--ghost btn btn-ghost btn-xs"
+          title="Ver atividade registrada deste cliente">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="8" y1="13" x2="16" y2="13"/>
+            <line x1="8" y1="17" x2="13" y2="17"/>
+          </svg>
+          Ver logs
+        </a>
+        <?php } ?>
       </div>
     </div>
   </div>
