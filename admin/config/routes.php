@@ -52,6 +52,11 @@ AdminRouter::post('/icons/update',                 'IconAdminController@update')
 // admin/config/routes.php
 AdminRouter::post('/seo-ia/gerar', 'SeoIaController@gerar');
 
+AdminRouter::get ('/notificacoes',                       'NotificacaoAdminController@index');
+AdminRouter::post('/notificacoes/enviar',                'NotificacaoAdminController@enviar');
+AdminRouter::post('/notificacoes/upload-img',            'NotificacaoAdminController@uploadImg');
+AdminRouter::get ('/notificacoes/buscar-destinatarios',  'NotificacaoAdminController@buscarDestinatarios');
+
 
 AdminRouter::get('/api/buscar-marcas',          'AdminApiController@buscarMarcas');
 AdminRouter::get('/api/buscar-categorias',      'AdminApiController@buscarCategorias');

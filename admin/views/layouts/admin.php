@@ -333,14 +333,46 @@ function adminIsActive(string $path): string {
           <line x1="10" y1="14" x2="21" y2="3"/>
         </svg>
       </a>
-      <button class="admin-topbar-btn" title="Notificações">
+      <!-- <button class="admin-topbar-btn" title="Notificações">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
              stroke="currentColor" stroke-width="2" stroke-linecap="round">
           <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
           <path d="M13.73 21a2 2 0 01-3.46 0"/>
         </svg>
         <span class="admin-topbar-btn-dot"></span>
-      </button>
+      </button> -->
+
+      <div class="ntf-bell-wrap">
+        <button type="button" id="ntf-bell" class="ntf-bell" aria-label="Notificações">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 01-3.46 0"/>
+          </svg>
+          <span id="ntf-badge" class="ntf-badge" style="display:none;">0</span>
+        </button>
+
+        <!-- Modal/dropdown -->
+        <div id="ntf-modal" class="ntf-modal" style="display:none;">
+          <div class="ntf-modal-head">
+            <span class="ntf-modal-title">Notificações</span>
+            <button type="button" id="ntf-marcar-todas" class="ntf-link-btn">Marcar todas como lidas</button>
+          </div>
+
+          <div class="ntf-filtros" id="ntf-filtros">
+            <button type="button" class="ntf-chip ntf-chip-ativa" data-cat="">Todas</button>
+            <!-- chips de categoria são injetados via JS -->
+          </div>
+
+          <div id="ntf-lista" class="ntf-lista">
+            <div class="ntf-vazio">Carregando…</div>
+          </div>
+
+          <div class="ntf-modal-foot">
+            <button type="button" id="ntf-carregar-mais" class="ntf-link-btn" style="display:none;">Carregar mais</button>
+          </div>
+        </div>
+      </div>
     </div>
   </header>
 

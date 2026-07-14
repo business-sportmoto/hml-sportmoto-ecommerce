@@ -322,6 +322,202 @@ $(function () {
     $(this).closest('form').submit();
   });
 
+  (function ($) {
+    var BASE = BASE_URL || '';
+    var CSRF = CSRF_TOKEN || '';
+
+    // ── Estado ────────────────────────────────────────────────────────────────
+    var modalAberto   = false;
+    var abaAtiva      = !document.hidden;
+    var categoriaAtual = '';
+    var pagina        = 1;
+    var timer         = null;
+    var chipsCarregados = false;
+
+    // Intervalos (ms) — 3 velocidades
+    var IV_MODAL_ABERTO = 10000;   // 10s
+    var IV_ABA_ATIVA    = 30000;   // 30s
+
+    // ── Polling adaptativo ────────────────────────────────────────────────────
+    function agendar() {
+      clearTimeout(timer);
+      if (!abaAtiva) return;                    // background: pausado
+      var iv = modalAberto ? IV_MODAL_ABERTO : IV_ABA_ATIVA;
+      timer = setTimeout(tick, iv);
+    }
+
+    function tick() {
+      atualizarBadge();
+      if (modalAberto) carregarLista(true);     // refresh silencioso da lista
+      agendar();
+    }
+
+    function atualizarBadge() {
+      $.get(BASE + '/notificacoes/contador', function (r) {
+        if (!r || !r.ok) return;
+        var $b = $('#ntf-badge');
+        if (r.total > 0) {
+          $b.text(r.total > 99 ? '99+' : r.total).show();
+        } else {
+          $b.hide();
+        }
+      }, 'json');
+    }
+
+    // ── Visibilidade da aba ───────────────────────────────────────────────────
+    document.addEventListener('visibilitychange', function () {
+      abaAtiva = !document.hidden;
+      if (abaAtiva) {
+        atualizarBadge();                        // refresh imediato ao voltar
+        if (modalAberto) carregarLista(true);
+        agendar();
+      } else {
+        clearTimeout(timer);                     // pausa em background
+      }
+    });
+
+    // ── Modal ─────────────────────────────────────────────────────────────────
+    $('#ntf-bell').on('click', function (e) {
+      e.stopPropagation();
+      modalAberto = !modalAberto;
+      $('#ntf-modal').toggle(modalAberto);
+      if (modalAberto) {
+        pagina = 1;
+        carregarLista(false);                    // refresh imediato ao abrir
+        atualizarBadge();
+      }
+      agendar();                                 // reagenda com o intervalo certo
+    });
+
+    $(document).on('click', function (e) {
+      if (modalAberto && !$(e.target).closest('.ntf-bell-wrap').length) {
+        modalAberto = false;
+        $('#ntf-modal').hide();
+        agendar();
+      }
+    });
+
+    // ── Lista ─────────────────────────────────────────────────────────────────
+    function carregarLista(silencioso) {
+      if (!silencioso) {
+        $('#ntf-lista').html('<div class="ntf-vazio">Carregando…</div>');
+      }
+      $.get(BASE + '/notificacoes/listar', {
+        categoria: categoriaAtual,
+        pagina: 1                                 // refresh sempre volta à página 1
+      }, function (r) {
+        if (!r || !r.ok) return;
+        pagina = 1;
+        renderChips(r.categorias);
+        renderLista(r.itens, false);
+        $('#ntf-carregar-mais').toggle(!!r.tem_mais);
+      }, 'json');
+    }
+
+    $('#ntf-carregar-mais').on('click', function () {
+      pagina++;
+      $.get(BASE + '/notificacoes/listar', {
+        categoria: categoriaAtual,
+        pagina: pagina
+      }, function (r) {
+        if (!r || !r.ok) return;
+        renderLista(r.itens, true);
+        $('#ntf-carregar-mais').toggle(!!r.tem_mais);
+      }, 'json');
+    });
+
+    function renderChips(categorias) {
+      if (chipsCarregados || !categorias) return;
+      chipsCarregados = true;
+      var $f = $('#ntf-filtros');
+      $.each(categorias, function (slug, label) {
+        $f.append(
+          $('<button type="button" class="ntf-chip"></button>')
+            .attr('data-cat', slug).text(label)
+        );
+      });
+    }
+
+    $(document).on('click', '.ntf-chip', function () {
+      $('.ntf-chip').removeClass('ntf-chip-ativa');
+      $(this).addClass('ntf-chip-ativa');
+      categoriaAtual = $(this).data('cat') || '';
+      pagina = 1;
+      carregarLista(false);
+    });
+
+    function esc(s) {
+      return $('<span>').text(s == null ? '' : String(s)).html();
+    }
+
+    function renderLista(itens, append) {
+      var $l = $('#ntf-lista');
+      if (!append) $l.empty();
+
+      if ((!itens || !itens.length) && !append) {
+        $l.html('<div class="ntf-vazio">Nenhuma notificação por aqui.</div>');
+        return;
+      }
+
+      itens.forEach(function (it) {
+        var $item = $('<div class="ntf-item"></div>')
+          .toggleClass('ntf-item-naolida', !Number(it.lida))
+          .attr('data-nu', it.nu_id)
+          .attr('data-url', it.url || '');
+
+        var $ic = $('<div class="ntf-item-icone"></div>')
+          .css({ background: it.cor + '18', color: it.cor })
+          .append($('<i>').addClass('bi ' + it.icone));
+
+        var $corpo = $('<div class="ntf-item-corpo"></div>')
+          .append($('<p class="ntf-item-titulo">').text(it.titulo));
+
+        if (it.mensagem) {
+          $corpo.append($('<p class="ntf-item-msg">').text(it.mensagem));
+        }
+        if (it.imagem_url) {
+          $corpo.append($('<img class="ntf-item-img" alt="">').attr('src', it.imagem_url));
+        }
+
+        var $tempo = $('<span class="ntf-item-tempo">').text(it.tempo || '');
+
+        $item.append($ic, $corpo, $tempo);
+        if (!Number(it.lida)) $item.append('<span class="ntf-dot"></span>');
+
+        $l.append($item);
+      });
+    }
+
+    // Clique num item: marca lida + navega se tiver URL
+    $(document).on('click', '.ntf-item', function () {
+      var $it  = $(this);
+      var nuId = $it.data('nu');
+      var url  = $it.data('url');
+
+      if ($it.hasClass('ntf-item-naolida')) {
+        $.post(BASE + '/notificacoes/marcar-lida', {
+          nu_id: nuId, csrf_token: CSRF
+        }, function () { atualizarBadge(); }, 'json');
+        $it.removeClass('ntf-item-naolida').find('.ntf-dot').remove();
+      }
+      if (url) window.location.href = url;
+    });
+
+    $('#ntf-marcar-todas').on('click', function () {
+      $.post(BASE + '/notificacoes/marcar-todas', { csrf_token: CSRF }, function (r) {
+        if (r && r.ok) {
+          $('.ntf-item').removeClass('ntf-item-naolida');
+          $('.ntf-dot').remove();
+          atualizarBadge();
+        }
+      }, 'json');
+    });
+
+    // ── Início ────────────────────────────────────────────────────────────────
+    atualizarBadge();
+    agendar();
+  })(jQuery);
+
 
   // ── Admin: Categorias ────────────────────────────────────
   (function () {

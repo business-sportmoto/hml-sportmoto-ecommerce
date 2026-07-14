@@ -21,6 +21,12 @@ Router::get('/ajuda',                     'HelpCenterController@index');
 Router::get('/ajuda/busca',               'HelpCenterController@busca');
 Router::get('/ajuda/categoria/{slug}',    'HelpCenterController@categoria');
 
+// Comuns (cliente e admin — o controller resolve pela sessão)
+Router::get ('/notificacoes/contador',     'NotificacaoController@contador');
+Router::get ('/notificacoes/listar',       'NotificacaoController@listar');
+Router::post('/notificacoes/marcar-lida',  'NotificacaoController@marcarLida');
+Router::post('/notificacoes/marcar-todas', 'NotificacaoController@marcarTodas');
+
 // Banner
 Router::post('/banner/impressao', 'BannerController@impressao');
 Router::get('/banner/click/{id}', 'BannerController@click');
