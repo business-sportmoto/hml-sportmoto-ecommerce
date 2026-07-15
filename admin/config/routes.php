@@ -507,5 +507,15 @@ AdminRouter::post('/importar/chunk',              'TrayImportController@chunk');
 AdminRouter::get ('/importar/status',             'TrayImportController@status');
 AdminRouter::post('/importar/processar-imagens',  'TrayImportController@processarImagens');
 
+# Motor de Automação v2 (grafo) — Fase 1
+AdminRouter::get('/fluxos',                'FluxoAdminController@index');
+AdminRouter::get('/fluxos/{id}',           'FluxoAdminController@editor');
+AdminRouter::post('/fluxos/criar',          'FluxoAdminController@criar');
+AdminRouter::post('/fluxos/{id}/salvar',    'FluxoAdminController@salvar');
+AdminRouter::post('/fluxos/{id}/publicar',  'FluxoAdminController@publicar');
+AdminRouter::post('/fluxos/{id}/status',    'FluxoAdminController@status');
+
 require __DIR__ . '/routes.email-marketing.php';
 require __DIR__ . '/routes.ia.php';
+
+

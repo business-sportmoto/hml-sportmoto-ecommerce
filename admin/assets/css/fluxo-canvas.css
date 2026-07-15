@@ -1,0 +1,303 @@
+/**
+ * public/css/fluxo-canvas.css
+ * Tema do canvas de automação — sobrepõe o estilo padrão do Drawflow.
+ * Segue o padrão visual do admin (iOS × SaaS, dark mode automático).
+ */
+
+/* ── Layout geral do editor ─────────────────────────────────────────────── */
+.fx-wrap {
+  display: flex;
+  gap: 0;
+  height: calc(100vh - 150px);
+  min-height: 560px;
+  border: 0.5px solid var(--em-border, #e5e7eb);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--em-bg-card, #fff);
+}
+
+/* ── Toolbar ────────────────────────────────────────────────────────────── */
+.fx-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.fx-toolbar .fx-titulo {
+  font-size: 17px;
+  font-weight: 600;
+  margin-right: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.fx-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: var(--em-bg, #f4f4f5);
+  color: var(--em-text-muted, #71717a);
+}
+.fx-btn {
+  border: 0.5px solid var(--em-border, #e5e7eb);
+  background: var(--em-bg-card, #fff);
+  color: inherit;
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background .15s;
+}
+.fx-btn:hover { background: var(--em-bg, #f4f4f5); }
+.fx-btn-pri {
+  background: #0a66c2;
+  border-color: #0a66c2;
+  color: #fff;
+  font-weight: 600;
+}
+.fx-btn-pri:hover { background: #0857a6; }
+.fx-btn-icon { padding: 8px 10px; }
+
+/* ── Paleta lateral ─────────────────────────────────────────────────────── */
+#fx-paleta {
+  width: 210px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 0.5px solid var(--em-border, #e5e7eb);
+  background: var(--em-bg, #fafafa);
+  padding: 10px 0 20px;
+}
+.fx-pal-grupo { margin-bottom: 6px; }
+.fx-pal-titulo {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--em-text-muted, #a1a1aa);
+  padding: 10px 14px 5px;
+}
+.fx-pal-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 14px;
+  font-size: 12.5px;
+  cursor: grab;
+  user-select: none;
+  transition: background .12s;
+}
+.fx-pal-item:hover { background: rgba(0,0,0,.05); }
+.fx-pal-item:active { cursor: grabbing; }
+.fx-pal-item i { font-size: 14px; width: 18px; text-align: center; }
+
+/* ── Canvas ─────────────────────────────────────────────────────────────── */
+#fx-canvas {
+  flex: 1;
+  position: relative;
+  background:
+    radial-gradient(circle, var(--em-border, #e5e7eb) 1px, transparent 1px);
+  background-size: 22px 22px;
+  background-color: var(--em-bg-card, #fff);
+}
+#fx-canvas .drawflow { height: 100%; width: 100%; }
+
+/* ── Nós ────────────────────────────────────────────────────────────────── */
+#fx-canvas .drawflow .drawflow-node {
+  background: var(--em-bg-card, #fff);
+  border: 0.5px solid var(--em-border, #e5e7eb);
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0,0,0,.07);
+  padding: 0;
+  min-width: 168px;
+  width: auto;
+  font-family: inherit;
+}
+#fx-canvas .drawflow .drawflow-node.selected {
+  border-color: #0a66c2;
+  box-shadow: 0 0 0 3px rgba(10,102,194,.18), 0 4px 14px rgba(0,0,0,.1);
+}
+.fx-no-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px 7px;
+  border-radius: 12px 12px 0 0;
+}
+.fx-no-head i { font-size: 14px; }
+.fx-no-titulo { font-size: 12.5px; font-weight: 600; }
+.fx-no-resumo {
+  padding: 0 12px 9px 15px;
+  font-size: 11px;
+  color: var(--em-text-muted, #71717a);
+  font-family: 'DM Mono', monospace;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Bolinhas de conexão */
+#fx-canvas .drawflow .drawflow-node .input,
+#fx-canvas .drawflow .drawflow-node .output {
+  width: 13px;
+  height: 13px;
+  border: 2.5px solid var(--em-bg-card, #fff);
+  background: #94a3b8;
+  box-shadow: 0 0 0 1px var(--em-border, #d4d4d8);
+}
+#fx-canvas .drawflow .drawflow-node .input:hover,
+#fx-canvas .drawflow .drawflow-node .output:hover { background: #0a66c2; }
+
+/* Linhas */
+#fx-canvas .drawflow .connection .main-path {
+  stroke: #94a3b8;
+  stroke-width: 2.5px;
+}
+#fx-canvas .drawflow .connection .main-path:hover,
+#fx-canvas .drawflow .connection.selected .main-path { stroke: #0a66c2; }
+
+/* Ponto de reroute */
+#fx-canvas .drawflow .connection .point {
+  fill: var(--em-bg-card, #fff);
+  stroke: #0a66c2;
+  stroke-width: 2;
+}
+
+/* ── Painel de configuração (direita) ───────────────────────────────────── */
+#fx-painel {
+  width: 0;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-left: 0.5px solid transparent;
+  background: var(--em-bg, #fafafa);
+  transition: width .18s ease;
+  display: flex;
+  flex-direction: column;
+}
+#fx-painel.aberto {
+  width: 290px;
+  border-left-color: var(--em-border, #e5e7eb);
+}
+.fx-painel-head {
+  padding: 14px 16px 10px;
+  border-bottom: 0.5px solid var(--em-border, #e5e7eb);
+}
+#fx-painel-titulo { font-size: 14px; font-weight: 600; }
+#fx-painel-chave {
+  font-size: 10.5px;
+  font-family: 'DM Mono', monospace;
+  color: var(--em-text-muted, #a1a1aa);
+}
+#fx-painel-campos { padding: 14px 16px; overflow-y: auto; flex: 1; }
+.fx-campo { margin-bottom: 13px; }
+.fx-label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+.fx-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  border: 0.5px solid var(--em-border, #e5e7eb);
+  border-radius: 9px;
+  background: var(--em-bg-card, #fff);
+  color: inherit;
+  outline: none;
+}
+.fx-input:focus {
+  border-color: #0a66c2;
+  box-shadow: 0 0 0 3px rgba(10,102,194,.1);
+}
+.fx-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.fx-sem-cfg { font-size: 12px; color: var(--em-text-muted, #a1a1aa); }
+.fx-painel-foot { padding: 12px 16px; border-top: 0.5px solid var(--em-border, #e5e7eb); }
+.fx-btn-del {
+  width: 100%;
+  background: #fee2e2;
+  color: #991b1b;
+  border: none;
+  border-radius: 9px;
+  padding: 9px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.fx-btn-del:hover { background: #fecaca; }
+
+/* ── Config do fluxo (guard-rails) + mensagens ──────────────────────────── */
+#fx-cfg-box {
+  display: none;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 0.5px solid var(--em-border, #e5e7eb);
+  border-radius: 12px;
+  background: var(--em-bg, #fafafa);
+}
+#fx-cfg-json {
+  width: 100%;
+  box-sizing: border-box;
+  height: 90px;
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  border: 0.5px solid var(--em-border, #e5e7eb);
+  border-radius: 9px;
+  padding: 10px;
+  background: var(--em-bg-card, #fff);
+  color: inherit;
+  resize: vertical;
+}
+#fx-msg {
+  display: none;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  white-space: pre-wrap;
+}
+
+/* ── Dark mode ──────────────────────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  /* .fx-wrap { background: #1c1c1e; border-color: #2c2c2e; }
+  #fx-paleta { background: #161618; border-color: #2c2c2e; }
+  .fx-pal-item:hover { background: rgba(255,255,255,.06); }
+  #fx-canvas {
+    background-color: #1c1c1e;
+    background-image: radial-gradient(circle, #2c2c2e 1px, transparent 1px);
+  }
+  #fx-canvas .drawflow .drawflow-node {
+    background: #232326;
+    border-color: #3a3a3d;
+    box-shadow: 0 2px 12px rgba(0,0,0,.4);
+  }
+  #fx-canvas .drawflow .drawflow-node .input,
+  #fx-canvas .drawflow .drawflow-node .output {
+    border-color: #232326;
+    box-shadow: 0 0 0 1px #3a3a3d;
+  }
+  #fx-painel { background: #161618; }
+  #fx-painel.aberto { border-color: #2c2c2e; }
+  .fx-painel-head, .fx-painel-foot { border-color: #2c2c2e; }
+  .fx-input, #fx-cfg-json { background: #232326; border-color: #3a3a3d; }
+  #fx-cfg-box { background: #161618; border-color: #2c2c2e; }
+  .fx-btn { background: #232326; border-color: #3a3a3d; }
+  .fx-btn:hover { background: #2c2c2e; }
+  .fx-btn-pri { background: #0a66c2; border-color: #0a66c2; }
+  .fx-btn-pri:hover { background: #0857a6; }
+  .fx-badge { background: #2c2c2e; }
+  .fx-btn-del { background: #3f1d1d; color: #fca5a5; }
+  .fx-btn-del:hover { background: #4c2222; } */
+}

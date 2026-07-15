@@ -141,7 +141,7 @@ if (!function_exists('ia_usd')) {
   color:var(--ia-txt);
 }
 @media (prefers-color-scheme:dark){
-  /* .ia_wrap{
+  .ia_wrap{
     --ia-azul-suave:rgba(88,166,255,.12);
     --ia-borda:var(--em-border,#2a2f36);
     --ia-card:var(--em-card,#15181d);
@@ -149,7 +149,7 @@ if (!function_exists('ia_usd')) {
     --ia-txt:var(--em-text,#e8eaed);
     --ia-txt2:var(--em-text-soft,#98a2b3);
     --ia-sombra:0 1px 2px rgba(0,0,0,.45);
-  } */
+  }
 }
 
 /* ==== cabeçalho ==== */
@@ -291,15 +291,9 @@ textarea.ia_input{resize:vertical;min-height:74px}
 
   /* ---------- drawer (usa adminDrawer do projeto; fallback interno) ---------- */
   function drawerAbrir(titulo, html) {
-    
-    
     if (typeof window.adminDrawer === 'function') {
       // AJUSTE: adapte a chamada à assinatura do seu adminDrawer, se diferente.
-      adminDrawer({
-        titulo  : titulo,
-        tamanho : 'lg',
-        conteudo: html,
-      });
+      window.adminDrawer(titulo, html);
       return;
     }
     var $veu = $('#ia_drawer_veu'), $dr = $('#ia_drawer');

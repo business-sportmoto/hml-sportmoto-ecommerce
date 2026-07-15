@@ -213,11 +213,7 @@ jQuery(function ($) {
   function drawerAbrir(titulo, html) {
     if (typeof window.adminDrawer === 'function') {
       // AJUSTE: alinhe com a assinatura do helper adminDrawer do projeto.
-      adminDrawer({
-        titulo  : titulo,
-        tamanho : 'lg',
-        conteudo: html,
-      });
+      window.adminDrawer(titulo, html);
       return;
     }
     $('#ia_drawer_titulo').text(titulo);

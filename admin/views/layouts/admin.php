@@ -23,6 +23,8 @@ function adminIsActive(string $path): string {
   <link rel="stylesheet" href="<?= ASSET_URL ?>/css/icon-finder.css">
   <link rel="stylesheet" href="<?= ASSET_URL ?>/css/toast.css">
 
+  <link rel="stylesheet" href="<?= View::asset('css/fluxo-canvas.css') ?>">
+
   <script src="<?= BASE_URL ?>/assets/js/jquery.min.js"></script>
 </head>
 <body class="admin-body">
@@ -245,6 +247,13 @@ function adminIsActive(string $path): string {
         </span>
         Central de IA
       </a>
+
+      <a href="<?= BASE_URL ?>/admin/fluxos" class="admin-nav-item<?= adminIsActive('/admin/fluxos') ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('automation-02', 'icon icon--md') ?>
+        </span>
+        Central de Automações
+      </a>
     </div>
 
     <div class="admin-nav-section">
@@ -449,5 +458,7 @@ function adminIsActive(string $path): string {
   <?php endforeach; ?>
 <?php endif; ?>
 <script src="<?= BASE_URL ?>/assets/js/email-marketing.js"></script>
+
+<script src="<?= View::asset('js/fluxo-canvas.js') ?>"></script>
 </body>
 </html>
