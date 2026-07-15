@@ -16,6 +16,7 @@ define('GEMINI_MODEL',   'gemini-3-flash-preview');
 define('GEMINI_FALLBACK_MODEL', 'gemini-2.5-flash');
 
 define('META_WABA_ID', getenv('META_WABA_ID'));
+define('IA_CRYPTO_KEY', getenv('IA_CRYPTO_KEY')); 
 
 // ─── Modelos disponíveis ─────────────────────────────────────
 // gemini-2.0-flash: Recomendado — rápido, gratuito no AI Studio

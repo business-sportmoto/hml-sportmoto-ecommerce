@@ -1307,16 +1307,34 @@ class AuthController extends Controller {
         $row = $stmt->fetch();
 
         if (!$row) {
+            // Token não existe OU já foi usado. Distinguir importa:
+            // scanners de link (Outlook Safe Links, antivírus) consomem
+            // o link antes do usuário — mostrar "inválido" para quem já
+            // está verificado gera pânico e ticket de suporte.
+            $usado = $db->prepare(
+                "SELECT 1 FROM tokens_verificacao
+                 WHERE token = ? AND tipo = 'email_verify' AND usado = 1
+                 LIMIT 1"
+            );
+            $usado->execute([$token]);
+
+            if ($usado->fetchColumn()) {
+                SeoHelper::setTitle('E-mail já verificado');
+                $this->render('auth/verify-invalid', ['jaUsado' => true], 'minimal');
+                return;
+            }
+
             SeoHelper::setTitle('Link inválido');
-            $this->render('auth/verify-invalid', [], 'minimal');
+            $this->render('auth/verify-invalid', ['jaUsado' => false], 'minimal');
             return;
         }
 
         if (strtotime($row['expira_em']) < time()) {
             SeoHelper::setTitle('Link expirado');
-            $this->render('auth/verify-expired', [
-                'usuario_id' => $row['usuario_id'],
-            ], 'minimal');
+            // NÃO passa usuario_id: a view não o usa (o reenvio é por
+            // e-mail digitado) e expor ID interno numa página acessível
+            // por token de URL é vazamento desnecessário.
+            $this->render('auth/verify-expired', [], 'minimal');
             return;
         }
 

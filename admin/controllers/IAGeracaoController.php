@@ -1,0 +1,350 @@
+<?php
+/**
+ * IAGeracaoController — Central de Marketing IA · Geração e Histórico (Fase 1).
+ *
+ * Rotas sugeridas:
+ *   GET  /admin/ia/gerar                        -> gerar            (?produto_id=)
+ *   GET  /admin/ia/gerar/produto-busca          -> produtoBusca     (?q=)
+ *   GET  /admin/ia/gerar/produto-painel         -> produtoPainel    (?produto_id=)
+ *   POST /admin/ia/gerar/preview                -> preview
+ *   POST /admin/ia/gerar/enfileirar             -> enfileirar
+ *   GET  /admin/ia/gerar/status                 -> status           (?uuids=a,b,c)
+ *   GET  /admin/ia/historico                    -> historico
+ *   GET  /admin/ia/historico/linhas             -> historicoLinhas  (filtros + ?pagina=)
+ *   GET  /admin/ia/historico/detalhe            -> historicoDetalhe (?id=)
+ *   POST /admin/ia/historico/aprovacao          -> aprovacao        (id + acao)
+ *   POST /admin/ia/historico/refazer            -> refazer          (id [+ prompt])
+ *
+ * Permissões: marketing_ia (módulo); marketing_ia_aprovar (curadoria).
+ */
+class IAGeracaoController extends Controller
+{
+    /* ------------------------------------------------------------------ */
+    /* Tela de geração                                                     */
+    /* ------------------------------------------------------------------ */
+
+    public function gerar()
+    {
+        AuthHelper::requirePermission('marketing_ia');
+
+        $produtoId = (int) ($_GET['produto_id'] ?? 0);
+
+        $this->render('ia/gerar/index', [
+            'produto_id_inicial' => $produtoId,
+            'csrf'               => $this->tokenCsrf(),
+        ], 'admin');
+    }
+
+    /** Autocomplete de produtos (nome ou id). */
+    public function produtoBusca()
+    {
+        AuthHelper::requirePermission('marketing_ia');
+
+        $q = trim((string) ($_GET['q'] ?? ''));
+        if (mb_strlen($q) < 2) {
+            $this->json(['ok' => true, 'itens' => []]);
+            return;
+        }
+
+        try {
+            $db = Database::getInstance()->getConnection();
+            $stmt = $db->prepare(
+                'SELECT p.id, p.nome, p.preco, p.preco_promo, p.estoque_total, m.nome AS marca
+                   FROM produtos p
+              LEFT JOIN marcas m ON m.id = p.marca_id
+                  WHERE p.deleted_at IS NULL AND p.ativo = 1
+                    AND (p.nome LIKE :q OR p.id = :qid)
+               ORDER BY p.vendidos DESC, p.nome ASC
+                  LIMIT 8'
+            );
+            $stmt->execute([':q' => '%' . $q . '%', ':qid' => (int) $q]);
+            $itens = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (Throwable $e) {
+            LogService::error('ia_busca_produto_erro', ['erro' => $e->getMessage()]);
+            $itens = [];
+        }
+
+        $this->json(['ok' => true, 'itens' => $itens]);
+    }
+
+    /** Painel do produto + formulário de geração (partial via AJAX). */
+    public function produtoPainel()
+    {
+        AuthHelper::requirePermission('marketing_ia');
+
+        $produtoId = (int) ($_GET['produto_id'] ?? 0);
+        $contexto  = ($produtoId > 0) ? (new IAPromptBuilder())->montarContexto($produtoId) : null;
+
+        if ($contexto === null) {
+            $this->json(['ok' => false, 'msg' => 'Produto não encontrado ou removido.']);
+            return;
+        }
+
+        $html = $this->partial('gerar/_produto_painel', [
+            'ctx'     => $contexto,
+            'tipos'   => (new IATipoConteudo())->listarAtivos(),
+            'angulos' => (new IAPromptTemplate())->listarAngulos(),
+            'csrf'    => $this->tokenCsrf(),
+        ]);
+
+        $this->json(['ok' => true, 'html' => $html]);
+    }
+
+    /** Pré-visualização do prompt (para o usuário editar antes de enviar). */
+    public function preview()
+    {
+        AuthHelper::requirePermission('marketing_ia');
+        if (!$this->exigirPost()) {
+            return;
+        }
+        $this->verifyCsrf();
+
+        $produtoId = (int) ($_POST['produto_id'] ?? 0);
+        $tipoId    = (int) ($_POST['tipo_conteudo_id'] ?? 0);
+        $angulo    = trim((string) ($_POST['angulo'] ?? ''));
+
+        $tipo = (new IATipoConteudo())->buscar($tipoId);
+        if ($tipo === null) {
+            $this->json(['ok' => false, 'msg' => 'Selecione um tipo de conteúdo.']);
+            return;
+        }
+
+        $builder  = new IAPromptBuilder();
+        $contexto = $builder->montarContexto($produtoId);
+        if ($contexto === null) {
+            $this->json(['ok' => false, 'msg' => 'Produto não encontrado.']);
+            return;
+        }
+
+        $template = ($angulo !== '') ? (new IAPromptTemplate())->buscarPorAngulo($angulo, $tipoId) : null;
+        $briefing = $this->lerBriefing();
+
+        $this->json(['ok' => true, 'prompt' => $builder->montarPrompt($contexto, $tipo, $template, $briefing)]);
+    }
+
+    /** Enfileira 1/3/5 gerações. */
+    public function enfileirar()
+    {
+        AuthHelper::requirePermission('marketing_ia');
+        if (!$this->exigirPost()) {
+            return;
+        }
+        $this->verifyCsrf();
+
+        $usuarioId = $this->usuarioAtualId();
+        if ($usuarioId <= 0) {
+            $this->json(['ok' => false, 'msg' => 'Sessão expirada — faça login novamente.']);
+            return;
+        }
+
+        $resultado = (new IAGeracaoService())->enfileirar([
+            'usuario_id'       => $usuarioId,
+            'produto_id'       => (int) ($_POST['produto_id'] ?? 0),
+            'tipo_conteudo_id' => (int) ($_POST['tipo_conteudo_id'] ?? 0),
+            'angulo'           => trim((string) ($_POST['angulo'] ?? '')),
+            'briefing'         => $this->lerBriefing(),
+            'prompt_custom'    => trim((string) ($_POST['prompt_custom'] ?? '')),
+            'variacoes'        => (int) ($_POST['variacoes'] ?? 1),
+        ]);
+
+        $this->json($resultado);
+    }
+
+    /** Polling de status em lote. */
+    public function status()
+    {
+        AuthHelper::requirePermission('marketing_ia');
+
+        $uuids = explode(',', (string) ($_GET['uuids'] ?? ''));
+        $itens = (new IAGeracaoService())->statusLote($uuids);
+
+        $this->json(['ok' => true, 'itens' => $itens]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Histórico                                                           */
+    /* ------------------------------------------------------------------ */
+
+    public function historico()
+    {
+        AuthHelper::requirePermission('marketing_ia');
+
+        $modelo   = new IAGeracao();
+        $filtros  = $this->lerFiltros();
+        $pagina   = max(1, (int) ($_GET['pagina'] ?? 1));
+        $lista    = $modelo->listar($filtros, $pagina);
+
+        $this->render('ia/historico/index', [
+            'linhas'      => $lista['linhas'],
+            'total'       => $lista['total'],
+            'pagina'      => $pagina,
+            'por_pagina'  => 25,
+            'filtros'     => $filtros,
+            'tipos'       => (new IATipoConteudo())->listarAtivos(),
+            'kpis'        => $modelo->kpis(),
+            'gasto_hoje'  => (new IACustoService())->gastoGlobalHoje(),
+            'pct_diario'  => (new IACustoService())->percentualDiarioGlobal(),
+            'csrf'        => $this->tokenCsrf(),
+        ], 'admin');
+    }
+
+    public function historicoLinhas()
+    {
+        AuthHelper::requirePermission('marketing_ia');
+
+        $modelo  = new IAGeracao();
+        $filtros = $this->lerFiltros();
+        $pagina  = max(1, (int) ($_GET['pagina'] ?? 1));
+        $lista   = $modelo->listar($filtros, $pagina);
+
+        $html = $this->partial('historico/_linhas', ['linhas' => $lista['linhas']]);
+
+        $this->json([
+            'ok'      => true,
+            'html'    => $html,
+            'total'   => $lista['total'],
+            'pagina'  => $pagina,
+            'paginas' => max(1, (int) ceil($lista['total'] / 25)),
+        ]);
+    }
+
+    public function historicoDetalhe()
+    {
+        AuthHelper::requirePermission('marketing_ia');
+
+        $id = (int) ($_GET['id'] ?? 0);
+        $g  = ($id > 0) ? (new IAGeracao())->buscarPorId($id) : null;
+
+        if ($g === null) {
+            $this->json(['ok' => false, 'msg' => 'Geração não encontrada.']);
+            return;
+        }
+
+        $html = $this->partial('historico/_detalhe', [
+            'g'          => $g,
+            'roteamento' => (new IAGeracao())->roteamentoDe($id),
+            'csrf'       => $this->tokenCsrf(),
+        ]);
+
+        $this->json(['ok' => true, 'titulo' => 'Geração #' . $id, 'html' => $html]);
+    }
+
+    /** Curadoria: aprovado | reprovado | arquivado | pendente. */
+    public function aprovacao()
+    {
+        AuthHelper::requirePermission('marketing_ia_aprovar');
+        if (!$this->exigirPost()) {
+            return;
+        }
+        $this->verifyCsrf();
+
+        $id   = (int) ($_POST['id'] ?? 0);
+        $acao = (string) ($_POST['acao'] ?? '');
+
+        if ($id <= 0 || !in_array($acao, ['aprovado', 'reprovado', 'arquivado', 'pendente'], true)) {
+            $this->json(['ok' => false, 'msg' => 'Ação inválida.']);
+            return;
+        }
+
+        if (!(new IAGeracao())->definirAprovacao($id, $acao)) {
+            $this->json(['ok' => false, 'msg' => 'Erro ao atualizar a curadoria.']);
+            return;
+        }
+
+        LogService::audit('ia_geracao_aprovacao', ['geracao_id' => $id, 'aprovacao' => $acao]);
+        $this->json(['ok' => true, 'msg' => 'Curadoria atualizada.', 'aprovacao' => $acao]);
+    }
+
+    /** Refazer com ajustes (nova geração ligada pela origem). */
+    public function refazer()
+    {
+        AuthHelper::requirePermission('marketing_ia');
+        if (!$this->exigirPost()) {
+            return;
+        }
+        $this->verifyCsrf();
+
+        $usuarioId = $this->usuarioAtualId();
+        if ($usuarioId <= 0) {
+            $this->json(['ok' => false, 'msg' => 'Sessão expirada — faça login novamente.']);
+            return;
+        }
+
+        $id     = (int) ($_POST['id'] ?? 0);
+        $prompt = isset($_POST['prompt_custom']) ? (string) $_POST['prompt_custom'] : null;
+
+        $this->json((new IAGeracaoService())->refazer($id, $usuarioId, $prompt));
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Auxiliares                                                          */
+    /* ------------------------------------------------------------------ */
+
+    private function lerBriefing(): array
+    {
+        return [
+            'objetivo' => trim((string) ($_POST['briefing_objetivo'] ?? '')),
+            'publico'  => trim((string) ($_POST['briefing_publico'] ?? '')),
+            'tom'      => trim((string) ($_POST['briefing_tom'] ?? '')),
+            'condicao' => trim((string) ($_POST['briefing_condicao'] ?? '')),
+        ];
+    }
+
+    private function lerFiltros(): array
+    {
+        $data = fn(string $chave) => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($_GET[$chave] ?? '')) ? $_GET[$chave] : '';
+
+        return [
+            'status'           => in_array($_GET['status'] ?? '', ['na_fila', 'processando', 'aguardando_provedor', 'concluida', 'falhou', 'cancelada'], true) ? $_GET['status'] : '',
+            'aprovacao'        => in_array($_GET['aprovacao'] ?? '', ['pendente', 'aprovado', 'reprovado', 'arquivado'], true) ? $_GET['aprovacao'] : '',
+            'tipo_conteudo_id' => (int) ($_GET['tipo_conteudo_id'] ?? 0),
+            'busca'            => trim((string) ($_GET['busca'] ?? '')),
+            'data_ini'         => $data('data_ini'),
+            'data_fim'         => $data('data_fim'),
+        ];
+    }
+
+    /** Renderiza partial de app/views/ia/ (subpastas permitidas, sem traversal). */
+    private function partial(string $caminho, array $dados = []): string
+    {
+        $caminho  = str_replace(['..', "\0"], '', $caminho);
+        $completo = __DIR__ . '/../views/ia/' . $caminho . '.php';
+
+        if (!is_file($completo)) {
+            LogService::error('ia_partial_inexistente', ['arquivo' => $caminho]);
+            return '';
+        }
+
+        extract($dados, EXTR_SKIP);
+        ob_start();
+        include $completo;
+        return (string) ob_get_clean();
+    }
+
+    private function exigirPost(): bool
+    {
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+            $this->json(['ok' => false, 'msg' => 'Método não permitido.']);
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * ID do usuário logado para ia_geracoes.usuario_id.
+     * AJUSTE: alinhe com a chave de sessão/AuthHelper do projeto.
+     */
+    private function usuarioAtualId(): int
+    {
+        return (int) ($_SESSION['usuario_id'] ?? ($_SESSION['user_id'] ?? 0));
+    }
+
+    /**
+     * Token CSRF para os formulários.
+     * AJUSTE: se o Controller base já expõe um helper próprio, use-o aqui.
+     */
+    private function tokenCsrf(): string
+    {
+        return (string) ($_SESSION['csrf_token'] ?? ($_SESSION['csrf'] ?? ''));
+    }
+}

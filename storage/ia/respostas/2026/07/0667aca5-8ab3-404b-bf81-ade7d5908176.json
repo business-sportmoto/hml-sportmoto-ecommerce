@@ -1,0 +1,35 @@
+{
+  "id": "chatcmpl-E1v607qSGui8qLePSjbWkN2hbg4ha",
+  "object": "chat.completion",
+  "created": 1784126512,
+  "model": "gpt-5.4-mini-2026-03-17",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "**Assunto**  \nCapacete Norisk em lançamento por R$ 499,90\n\n**Preheader**  \n1 unidade disponível. Nota 4,5/5. Garanta já o seu!\n\n**Corpo**  \nLançamento na área: **Capacete Norisk FF802 Razor Black Edition Fosco** por **R$ 499,90**.\n\nProduto com avaliação média **4,5 de 5** e ótima recepção inicial.\n\nMas atenção: temos **apenas 1 unidade disponível**.\n\n**Garanta já o seu capacete agora.**",
+        "refusal": null,
+        "annotations": []
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 331,
+    "completion_tokens": 123,
+    "total_tokens": 454,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "audio_tokens": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "audio_tokens": 0,
+      "accepted_prediction_tokens": 0,
+      "rejected_prediction_tokens": 0
+    }
+  },
+  "service_tier": "default",
+  "system_fingerprint": null
+}

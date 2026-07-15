@@ -508,4 +508,4 @@ AdminRouter::get ('/importar/status',             'TrayImportController@status')
 AdminRouter::post('/importar/processar-imagens',  'TrayImportController@processarImagens');
 
 require __DIR__ . '/routes.email-marketing.php';
-
+require __DIR__ . '/routes.ia.php';

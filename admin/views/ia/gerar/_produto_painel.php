@@ -1,0 +1,158 @@
+<?php
+/**
+ * Painel do produto + formulário de geração (retornado via AJAX).
+ * Variáveis: $ctx (contexto do IAPromptBuilder), $tipos, $angulos, $csrf
+ */
+if (!function_exists('ia_e')) {
+    function ia_e($v): string { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); }
+}
+if (!function_exists('ia_brl')) {
+    function ia_brl($v): string { return 'R$ ' . number_format((float) $v, 2, ',', '.'); }
+}
+
+$av = $ctx['avaliacoes'] ?? null;
+
+$grupos = [];
+foreach ($tipos as $t) {
+    $grupos[$t['grupo'] ?: 'outros'][] = $t;
+}
+$rotuloGrupo = [
+    'social'   => 'Redes sociais',
+    'anuncio'  => 'Anúncios',
+    'seo'      => 'SEO',
+    'produto'  => 'Página do produto',
+    'mensagem' => 'Mensagens',
+    'email'    => 'E-mail',
+    'video'    => 'Vídeo',
+    'outros'   => 'Outros',
+];
+?>
+<div class="ia_card">
+  <div class="ia_produto">
+    <div class="ia_produto_thumb"><i class="bi bi-box-seam"></i></div>
+    <div class="ia_produto_info">
+      <p class="ia_produto_nome"><?= ia_e($ctx['nome']) ?> <span class="ia_celula_sub" style="display:inline">#<?= (int) $ctx['produto_id'] ?></span></p>
+      <div class="ia_resultado_meta">
+        <?php if (!empty($ctx['marca'])): ?><span><i class="bi bi-tag"></i> <?= ia_e($ctx['marca']) ?></span><?php endif; ?>
+        <?php if (!empty($ctx['categoria'])): ?><span><i class="bi bi-diagram-3"></i> <?= ia_e($ctx['categoria']) ?></span><?php endif; ?>
+        <span class="ia_preco">
+          <?php if ($ctx['preco_promo'] !== null): ?>
+            <span class="ia_preco_de"><?= ia_e(ia_brl($ctx['preco'])) ?></span><?= ia_e(ia_brl($ctx['preco_promo'])) ?>
+          <?php else: ?>
+            <?= ia_e(ia_brl($ctx['preco'])) ?>
+          <?php endif; ?>
+        </span>
+        <span><i class="bi bi-boxes"></i> <?= (int) $ctx['estoque_total'] ?> em estoque</span>
+      </div>
+      <div class="ia_produto_meta">
+        <?php if (!empty($ctx['lancamento'])): ?><span class="ia_pill ia_pill_azul"><i class="bi bi-rocket-takeoff"></i> Lançamento</span><?php endif; ?>
+        <?php if ($ctx['preco_promo'] !== null): ?>
+          <span class="ia_pill ia_pill_aviso"><i class="bi bi-lightning"></i> Promoção<?= !empty($ctx['promo_fim']) ? ' até ' . ia_e(date('d/m', strtotime($ctx['promo_fim']))) : '' ?></span>
+        <?php endif; ?>
+        <?php if (is_array($av) && !empty($av['total'])): ?>
+          <span class="ia_pill ia_pill_ok"><i class="bi bi-star-fill"></i> <?= number_format((float) $av['media'], 1, ',', '') ?> (<?= (int) $av['total'] ?>)</span>
+        <?php endif; ?>
+        <?php if (!empty($ctx['compatibilidade'])): ?>
+          <span class="ia_pill ia_pill_off" title="<?= ia_e(implode('; ', $ctx['compatibilidade'])) ?>">
+            <i class="bi bi-check2-circle"></i> <?= count($ctx['compatibilidade']) ?> compatibilidade(s)
+          </span>
+        <?php endif; ?>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="ia_card">
+  <p class="ia_card_titulo"><i class="bi bi-magic"></i> Nova geração</p>
+
+  <form id="ia_form_gerar" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="<?= ia_e($csrf ?? '') ?>">
+    <input type="hidden" name="produto_id" value="<?= (int) $ctx['produto_id'] ?>">
+
+    <div class="ia_form_linha">
+      <div class="ia_form_grupo">
+        <label for="ia_g_tipo">Tipo de conteúdo</label>
+        <select id="ia_g_tipo" name="tipo_conteudo_id" class="ia_input" required>
+          <option value="">Selecione…</option>
+          <?php foreach ($grupos as $grupo => $itens): ?>
+            <optgroup label="<?= ia_e($rotuloGrupo[$grupo] ?? ucfirst($grupo)) ?>">
+              <?php foreach ($itens as $t): ?>
+                <?php $mida = ($t['capacidade'] !== 'texto'); ?>
+                <option value="<?= (int) $t['id'] ?>" <?= $mida ? 'disabled' : '' ?>>
+                  <?= ia_e($t['nome']) ?><?= $mida ? ' (Fase 2)' : '' ?>
+                </option>
+              <?php endforeach; ?>
+            </optgroup>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <div class="ia_form_grupo">
+        <label for="ia_g_angulo">Ângulo criativo</label>
+        <select id="ia_g_angulo" name="angulo" class="ia_input">
+          <option value="">Automático (sem ângulo específico)</option>
+          <?php foreach ($angulos as $a): ?>
+            <option value="<?= ia_e($a['angulo']) ?>"><?= ia_e($a['nome']) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+    </div>
+
+    <div class="ia_form_linha">
+      <div class="ia_form_grupo">
+        <label for="ia_g_objetivo">Objetivo</label>
+        <input type="text" id="ia_g_objetivo" name="briefing_objetivo" class="ia_input" maxlength="200"
+               placeholder="ex.: girar estoque antes do fim da promoção">
+      </div>
+      <div class="ia_form_grupo">
+        <label for="ia_g_publico">Público-alvo</label>
+        <input type="text" id="ia_g_publico" name="briefing_publico" class="ia_input" maxlength="200"
+               placeholder="ex.: motociclistas urbanos, CG/Fan 160">
+      </div>
+    </div>
+
+    <div class="ia_form_linha">
+      <div class="ia_form_grupo">
+        <label for="ia_g_tom">Tom de comunicação</label>
+        <input type="text" id="ia_g_tom" name="briefing_tom" class="ia_input" maxlength="120"
+               placeholder="ex.: direto e técnico / descontraído" list="ia_tons">
+        <datalist id="ia_tons">
+          <option value="Direto e técnico"></option>
+          <option value="Descontraído"></option>
+          <option value="Urgente"></option>
+          <option value="Institucional"></option>
+        </datalist>
+      </div>
+      <div class="ia_form_grupo">
+        <label for="ia_g_condicao">Condição especial</label>
+        <input type="text" id="ia_g_condicao" name="briefing_condicao" class="ia_input" maxlength="200"
+               placeholder="ex.: frete grátis Sul, cupom MOTO10">
+      </div>
+    </div>
+
+    <div class="ia_form_grupo">
+      <label for="ia_g_prompt">Prompt <span style="font-weight:400;color:var(--em-texto-sub)">(opcional — em branco, montamos automaticamente)</span></label>
+      <textarea id="ia_g_prompt" name="prompt_custom" class="ia_input ia_input_mono" rows="5" spellcheck="false"
+                placeholder="Clique em &quot;Montar prompt&quot; para pré-visualizar e editar, ou deixe em branco."></textarea>
+      <p class="ia_ajuda">
+        Aceita <span class="ia_mono">{{produto_nome}}</span>, <span class="ia_mono">{{marca}}</span>,
+        <span class="ia_mono">{{categoria}}</span>, <span class="ia_mono">{{preco}}</span>,
+        <span class="ia_mono">{{preco_promo}}</span> e <span class="ia_mono">{{estoque}}</span>.
+      </p>
+    </div>
+
+    <div class="ia_form_rodape" style="justify-content:space-between;align-items:center">
+      <div class="ia_form_grupo" style="margin:0;display:flex;align-items:center;gap:10px">
+        <label for="ia_g_variacoes" style="margin:0">Variações</label>
+        <select id="ia_g_variacoes" name="variacoes" class="ia_input" style="width:auto">
+          <option value="1" selected>1</option>
+          <option value="3">3</option>
+          <option value="5">5</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button type="button" id="ia_btn_preview" class="ia_btn"><i class="bi bi-eye"></i> Montar prompt</button>
+        <button type="submit" class="ia_btn ia_btn_primario"><i class="bi bi-stars"></i> Gerar</button>
+      </div>
+    </div>
+  </form>
+</div>

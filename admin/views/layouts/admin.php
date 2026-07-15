@@ -238,6 +238,13 @@ function adminIsActive(string $path): string {
         </span>
         Clips
       </a>
+
+      <a href="<?= BASE_URL ?>/admin/ia/gerar" class="admin-nav-item<?= adminIsActive('/admin/ia') ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('wand-stars', 'icon icon--md') ?>
+        </span>
+        Central de IA
+      </a>
     </div>
 
     <div class="admin-nav-section">

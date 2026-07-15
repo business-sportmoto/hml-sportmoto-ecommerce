@@ -11,6 +11,8 @@ define('UPLOAD_PATH',  ROOT_PATH . '/uploads');
 define('STORAGE_PATH', ROOT_PATH . '/storage');
 define('VENDOR_PATH',  ROOT_PATH . '/vendor');
 
+define('IA_STORAGE_PATH', ROOT_PATH.'/storage/ia');
+
 
 // Token opcional — aumenta rate limit do fipe.parallelum
 // Obtenha em: https://fipe.online/pricing

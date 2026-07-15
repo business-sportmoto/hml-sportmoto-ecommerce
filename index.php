@@ -22,12 +22,9 @@ spl_autoload_register(function (string $class): void {
     $paths = [
         ROOT_PATH . '/core/',
         ROOT_PATH . '/app/controllers/',
-        ROOT_PATH . '/app/models/',
-        ROOT_PATH . '/app/helpers/',
-        ROOT_PATH . '/app/services/',
-        ROOT_PATH . '/app/services/payment/',
-        ROOT_PATH . '/app/services/email/',
-        ROOT_PATH . '/app/services/email/providers/',        
+        ROOT_PATH . '/app/models/',       
+        ROOT_PATH . '/app/services/ia/',
+        ROOT_PATH . '/app/services/ia/providers/',        
     ];
     foreach ($paths as $path) {
         $file = $path . $class . '.php';

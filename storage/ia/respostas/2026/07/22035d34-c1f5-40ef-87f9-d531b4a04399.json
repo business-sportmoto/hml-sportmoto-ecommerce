@@ -1,0 +1,35 @@
+{
+  "id": "chatcmpl-E1vCAkrhHrC1Mzu651x7agL7AaC20",
+  "object": "chat.completion",
+  "created": 1784126894,
+  "model": "gpt-5.4-mini-2026-03-17",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "**Variação 1**  \n**Texto:** Lançamento Norisk Rock: capacete fechado com óculos solar, agora por R$ 769,90 e frete grátis.  \n**Título:** Novo Norisk Rock  \n**Descrição:** Lançamento com frete grátis\n\n**Variação 2**  \n**Texto:** Chegou o Norisk Rock Monocolor Preto Fosco: adulto, fechado e com viseira solar. Estoque baixo.  \n**Título:** Novidade Norisk  \n**Descrição:** Frete grátis para todo Brasil\n\n**Variação 3**  \n**Texto:** Em primeira mão: Norisk Rock em preto fosco, lançamento com desconto e compatível com modelos selecionados.  \n**Título:** Lançamento em destaque  \n**Descrição:** De R$ 899,90 por R$ 769,90",
+        "refusal": null,
+        "annotations": []
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 419,
+    "completion_tokens": 180,
+    "total_tokens": 599,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "audio_tokens": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "audio_tokens": 0,
+      "accepted_prediction_tokens": 0,
+      "rejected_prediction_tokens": 0
+    }
+  },
+  "service_tier": "default",
+  "system_fingerprint": null
+}
