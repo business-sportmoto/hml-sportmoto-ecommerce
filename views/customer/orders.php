@@ -99,10 +99,10 @@ $filtroStatus = SecurityHelper::sanitizeString($_GET['status'] ?? '');
   <div class="orders-list">
     <?php foreach ($pedidos as $p):
       $st     = $statusMap[$p['status_pedido']] ?? ['cor'=>'info','label'=>$p['status_pedido']];
-      $imgUrl = ImageHelper::getCartItemImage($p['primeiro_produto_id']);
+      $imgUrl = $p['primeiro_produto_id'] ? ImageHelper::getCartItemImage($p['primeiro_produto_id']) : View::asset('images/placeholder.jpg');
       $totalItens = (int)($p['total_itens'] ?? 0);
     ?>
-    <a href="<?= BASE_URL ?>/minha-conta/pedido/<?= (int)$p['id'] ?>"
+    <a href="<?= BASE_URL ?>/minha-conta/pedido/<?= (int)$p['id'] ?>" data-teste="<?= $p['primeiro_produto_id']; ?>"
        class="order-card">
 
       <!-- Thumbnail + contagem -->

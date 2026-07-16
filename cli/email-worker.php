@@ -11,7 +11,7 @@
  *   php cli/email-worker.php --verbose
  *
  * Cron sugerido (1x por minuto, com flock externo de defesa em profundidade):
- *   * * * * * flock -n /tmp/sm-email-worker.lock php /caminho/cli/email-worker.php >> /caminho/storage/logs/email-worker.log 2>&1
+ *   * * * * * flock -n /home/ploi/hml.sportmoto.com.br/tmp/sm-email-worker.lock php /home/ploi/hml.sportmoto.com.br/cli/email-worker.php >> /home/ploi/hml.sportmoto.com.br/storage/logs/email-worker.log 2>&1
  */
 
 if (PHP_SAPI !== 'cli') {

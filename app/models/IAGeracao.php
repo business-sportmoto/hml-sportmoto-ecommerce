@@ -23,12 +23,12 @@ class IAGeracao
             $stmt = $this->db->prepare(
                 'INSERT INTO ia_geracoes
                     (uuid, usuario_id, produto_id, campanha_id, geracao_origem_id,
-                     tipo_conteudo_id, capacidade, angulo, prompt_template_id,
+                     tipo_conteudo_id, capacidade, formato, angulo, prompt_template_id,
                      prompt_template_snapshot, prompt_final, contexto,
                      chave_dedup, custo_estimado_usd, status, aprovacao)
                  VALUES
                     (:uuid, :usuario_id, :produto_id, :campanha_id, :origem,
-                     :tipo_id, :capacidade, :angulo, :template_id,
+                     :tipo_id, :capacidade, :formato, :angulo, :template_id,
                      :template_snapshot, :prompt_final, :contexto,
                      :dedup, :custo_estimado, \'na_fila\', \'pendente\')'
             );
@@ -40,6 +40,7 @@ class IAGeracao
                 ':origem'            => $d['geracao_origem_id'],
                 ':tipo_id'           => $d['tipo_conteudo_id'],
                 ':capacidade'        => $d['capacidade'],
+                ':formato'           => $d['formato'] ?? null,
                 ':angulo'            => $d['angulo'],
                 ':template_id'       => $d['prompt_template_id'],
                 ':template_snapshot' => $d['prompt_template_snapshot'],
@@ -122,8 +123,119 @@ class IAGeracao
                     AND iniciado_em < DATE_SUB(NOW(), INTERVAL {$minutos} MINUTE)
                     AND tentativas >= 3"
             )->execute();
+
+            // Assíncronas paradas há tempo demais no provedor: encerra com falha.
+            $this->db->prepare(
+                "UPDATE ia_geracoes
+                    SET status = 'falhou', erro = '[watchdog] provedor não respondeu em 15 minutos', concluido_em = NOW()
+                  WHERE status = 'aguardando_provedor'
+                    AND iniciado_em < DATE_SUB(NOW(), INTERVAL 15 MINUTE)"
+            )->execute();
         } catch (Throwable $e) {
             LogService::error('ia_watchdog_erro', ['erro' => $e->getMessage()]);
+        }
+    }
+
+    /** Assíncrono aceito pelo provedor: guarda a referência e o modelo escolhido. */
+    public function marcarAguardando(int $id, string $externalId, ?int $modeloId, ?string $provedorCodigo, ?string $modeloCodigo): bool
+    {
+        try {
+            $stmt = $this->db->prepare(
+                "UPDATE ia_geracoes SET
+                    status = 'aguardando_provedor',
+                    external_id = :ref,
+                    modelo_id = :modelo_id,
+                    provedor_codigo = :prov,
+                    modelo_codigo = :mod
+                  WHERE id = :id LIMIT 1"
+            );
+            return $stmt->execute([
+                ':ref'       => mb_substr($externalId, 0, 191),
+                ':modelo_id' => $modeloId,
+                ':prov'      => $provedorCodigo,
+                ':mod'       => $modeloCodigo,
+                ':id'        => $id,
+            ]);
+        } catch (Throwable $e) {
+            LogService::error('ia_aguardando_erro', ['id' => $id, 'erro' => $e->getMessage()]);
+            return false;
+        }
+    }
+
+    /** Gerações aguardando o provedor há pelo menos N segundos (varredura do worker). */
+    public function listarAguardando(int $limite = 5, int $idadeMinSegundos = 20): array
+    {
+        try {
+            $limite = max(1, min(20, $limite));
+            $idade  = max(0, $idadeMinSegundos);
+            $stmt = $this->db->query(
+                "SELECT id, uuid, usuario_id, capacidade, formato, external_id,
+                        modelo_id, provedor_codigo, modelo_codigo,
+                        custo_estimado_usd, status, iniciado_em
+                   FROM ia_geracoes
+                  WHERE status = 'aguardando_provedor'
+                    AND external_id IS NOT NULL
+                    AND iniciado_em <= DATE_SUB(NOW(), INTERVAL {$idade} SECOND)
+               ORDER BY iniciado_em ASC
+                  LIMIT {$limite}"
+            );
+            return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (Throwable $e) {
+            LogService::error('ia_listar_aguardando_erro', ['erro' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /** Localiza a geração pela referência do provedor (webhook). */
+    public function buscarPorExternalId(string $externalId): ?array
+    {
+        try {
+            $stmt = $this->db->prepare(
+                'SELECT id, uuid, usuario_id, capacidade, formato, external_id,
+                        modelo_id, provedor_codigo, modelo_codigo,
+                        custo_estimado_usd, status
+                   FROM ia_geracoes
+                  WHERE external_id = :ref
+                  LIMIT 1'
+            );
+            $stmt->execute([':ref' => $externalId]);
+            $linha = $stmt->fetch(PDO::FETCH_ASSOC);
+            return $linha ?: null;
+        } catch (Throwable $e) {
+            LogService::error('ia_buscar_external_erro', ['erro' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /** Metadados de um arquivo gerado (para o endpoint autenticado de imagem). */
+    public function arquivoPorId(int $arquivoId): ?array
+    {
+        try {
+            $stmt = $this->db->prepare(
+                'SELECT id, geracao_id, tipo, caminho, mime, tamanho_bytes
+                   FROM ia_arquivos WHERE id = :id LIMIT 1'
+            );
+            $stmt->execute([':id' => $arquivoId]);
+            $linha = $stmt->fetch(PDO::FETCH_ASSOC);
+            return $linha ?: null;
+        } catch (Throwable $e) {
+            LogService::error('ia_arquivo_buscar_erro', ['erro' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /** Primeiro arquivo de imagem de uma geração (detalhe do histórico). */
+    public function arquivoPrincipalDe(int $geracaoId): ?int
+    {
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT MIN(id) FROM ia_arquivos WHERE geracao_id = :g AND tipo = 'imagem'"
+            );
+            $stmt->execute([':g' => $geracaoId]);
+            $id = $stmt->fetchColumn();
+            return ($id !== false && $id !== null) ? (int) $id : null;
+        } catch (Throwable $e) {
+            return null;
         }
     }
 
@@ -250,7 +362,10 @@ class IAGeracao
             $stmt = $this->db->prepare(
                 "SELECT g.uuid, g.id, g.status, g.aprovacao, g.resultado_texto, g.erro,
                         g.custo_real_usd, g.custo_estimado_usd, g.modelo_codigo, g.provedor_codigo,
-                        g.tempo_ms, g.angulo, g.criado_em, t.nome AS tipo_nome
+                        g.tempo_ms, g.angulo, g.criado_em, g.capacidade, g.formato,
+                        (SELECT MIN(a.id) FROM ia_arquivos a
+                          WHERE a.geracao_id = g.id AND a.tipo = 'imagem') AS arquivo_id,
+                        t.nome AS tipo_nome
                    FROM ia_geracoes g
              INNER JOIN ia_tipos_conteudo t ON t.id = g.tipo_conteudo_id
                   WHERE g.uuid IN ({$marcadores})

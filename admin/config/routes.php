@@ -352,6 +352,7 @@ AdminRouter::post('/produtos/excluir',            'ProdutosController@excluir');
 AdminRouter::post('/produtos/toggle-ativo',       'ProdutosController@toggleAtivo');
 
 
+
 // admin/config/routes.php
 AdminRouter::get( '/familias/buscar',     'FamiliasController@buscar');
 AdminRouter::post('/familias/criar',      'FamiliasController@criar');

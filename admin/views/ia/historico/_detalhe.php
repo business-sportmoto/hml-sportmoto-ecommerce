@@ -37,7 +37,20 @@ $contexto = json_decode((string) ($g['contexto'] ?? ''), true);
   <div class="ia_detalhe_item"><b>Tentativas</b><?= (int) $g['tentativas'] ?></div>
 </div>
 
-<?php if ($g['status'] === 'concluida' && $g['resultado_texto'] !== null): ?>
+<?php if ($g['status'] === 'concluida' && ($g['capacidade'] ?? 'texto') === 'imagem' && !empty($arquivo_id)): ?>
+  <p class="ia_card_titulo" style="margin-top:4px"><i class="bi bi-image"></i> Imagem gerada</p>
+  <div class="ia_resultado_img" style="margin-bottom:10px">
+    <img src="/admin/ia/arquivo?id=<?= (int) $arquivo_id ?>" alt="Imagem gerada" loading="lazy">
+  </div>
+  <div class="ia_resultado_acoes" style="margin-bottom:16px">
+    <a class="ia_btn" href="/admin/ia/arquivo?id=<?= (int) $arquivo_id ?>&download=1" target="_blank" rel="noopener">
+      <i class="bi bi-download"></i> Baixar
+    </a>
+  </div>
+  <?php if (!empty($g['resultado_texto'])): ?>
+    <p class="ia_ajuda" style="margin:-8px 0 16px">Prompt refinado pelo provedor: <?= ia_e(mb_strimwidth((string) $g['resultado_texto'], 0, 220, '…')) ?></p>
+  <?php endif; ?>
+<?php elseif ($g['status'] === 'concluida' && $g['resultado_texto'] !== null): ?>
   <p class="ia_card_titulo" style="margin-top:4px"><i class="bi bi-chat-square-text"></i> Resultado</p>
   <div class="ia_resultado_texto" id="ia_det_texto" style="margin-bottom:10px"><?= ia_e($g['resultado_texto']) ?></div>
   <div class="ia_resultado_acoes" style="margin-bottom:16px">

@@ -14,7 +14,7 @@ class NotificacaoAdminController extends Controller
 {
     public function __construct()
     {
-        parent::__construct();
+        // parent::__construct();
         $this->requirePermission();
     }
 
@@ -45,7 +45,7 @@ class NotificacaoAdminController extends Controller
         );
         $historico = $st->fetchAll(PDO::FETCH_ASSOC);
 
-        $this->render('admin/notificacoes/index', [
+        $this->render('notificacoes/index', [
             'historico'  => $historico,
             'categorias' => NotificacaoService::LABELS_CATEGORIA,
             'estilos'    => NotificacaoService::ESTILO_CATEGORIA,

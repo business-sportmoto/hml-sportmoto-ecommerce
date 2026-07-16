@@ -270,7 +270,7 @@ $totalFiltros = count($filtrosAtivos);
             <!-- Thumb -->
             <td>
               <?php if (!empty($p['imagem'])): ?>
-              <img src="<?= View::upload('products/' . $p['imagem']) ?>"
+              <img src="<?= View::e($p['imagem']) ?>"
                    alt="" loading="lazy" class="prod-thumb">
               <?php else: ?>
               <div class="prod-thumb-empty">

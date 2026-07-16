@@ -29,12 +29,45 @@ class IAResultado
     /** JSON bruto da resposta do provedor (auditoria — vai para storage). */
     public ?string $respostaBruta = null;
 
+    /** Assíncrono: provedor aceitou o job e processa em background (Replicate). */
+    public bool $aguardando = false;
+
+    /** Referência do job no provedor (id da prediction) — vai para ia_geracoes.external_id. */
+    public ?string $externalId = null;
+
+    /**
+     * Imagens já baixadas (capacidade imagem).
+     * Cada item: ['binario' => string, 'mime' => string, 'extensao' => string]
+     */
+    public array $imagens = [];
+
     public static function sucesso(string $texto): self
     {
         $r = new self();
         $r->ok = true;
         $r->texto = $texto;
         $r->retryable = false;
+        return $r;
+    }
+
+    /** Sucesso de imagem síncrona (binários já em mãos). */
+    public static function sucessoImagem(array $imagens): self
+    {
+        $r = new self();
+        $r->ok = true;
+        $r->imagens = $imagens;
+        $r->retryable = false;
+        return $r;
+    }
+
+    /** Provedor assíncrono aceitou — a conclusão virá por webhook ou varredura. */
+    public static function pendente(string $externalId): self
+    {
+        $r = new self();
+        $r->ok = false;
+        $r->aguardando = true;
+        $r->retryable = false;
+        $r->externalId = $externalId;
         return $r;
     }
 

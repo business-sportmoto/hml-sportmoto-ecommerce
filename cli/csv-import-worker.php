@@ -10,7 +10,7 @@
  *   php cli/csv-import-worker.php --verbose
  *
  * Cron sugerido (a cada minuto):
- *   * * * * * flock -n /tmp/sm-csv-worker.lock php /caminho/cli/csv-import-worker.php >> /caminho/storage/logs/csv-worker.log 2>&1
+ *   * * * * * flock -n /home/ploi/hml.sportmoto.com.br/tmp/sm-csv-worker.lock php /home/ploi/hml.sportmoto.com.br/cli/csv-import-worker.php >> /home/ploi/hml.sportmoto.com.br/storage/logs/csv-worker.log 2>&1
  */
 
 if (PHP_SAPI !== 'cli') {

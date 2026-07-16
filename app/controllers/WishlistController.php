@@ -92,7 +92,7 @@ class WishlistController extends Controller {
             $preco = (float)($item['preco_promo'] ?: $item['preco']);
             $item['preco_fmt']  = PriceHelper::format($preco);
             $item['imagem_url'] = $item['imagem']
-                ? UPLOAD_URL . '/products/' . $item['imagem']
+                ? $item['imagem']
                 : BASE_URL . '/assets/images/placeholder.jpg';
         }
         unset($item);

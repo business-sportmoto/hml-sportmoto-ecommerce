@@ -77,16 +77,20 @@ $rotuloGrupo = [
           <?php foreach ($grupos as $grupo => $itens): ?>
             <optgroup label="<?= ia_e($rotuloGrupo[$grupo] ?? ucfirst($grupo)) ?>">
               <?php foreach ($itens as $t): ?>
-                <?php $mida = ($t['capacidade'] !== 'texto'); ?>
-                <option value="<?= (int) $t['id'] ?>" <?= $mida ? 'disabled' : '' ?>>
-                  <?= ia_e($t['nome']) ?><?= $mida ? ' (Fase 2)' : '' ?>
+                <?php
+                  $cap        = (string) $t['capacidade'];
+                  $habilitado = in_array($cap, ['texto', 'imagem'], true);
+                  $sufixo     = $habilitado ? '' : (($cap === 'video') ? ' (Fase 4)' : ' (em breve)');
+                ?>
+                <option value="<?= (int) $t['id'] ?>" data-cap="<?= ia_e($cap) ?>" <?= $habilitado ? '' : 'disabled' ?>>
+                  <?= ia_e($t['nome']) ?><?= $sufixo ?>
                 </option>
               <?php endforeach; ?>
             </optgroup>
           <?php endforeach; ?>
         </select>
       </div>
-      <div class="ia_form_grupo">
+      <div class="ia_form_grupo" id="ia_g_angulo_wrap">
         <label for="ia_g_angulo">Ângulo criativo</label>
         <select id="ia_g_angulo" name="angulo" class="ia_input">
           <option value="">Automático (sem ângulo específico)</option>
@@ -94,6 +98,15 @@ $rotuloGrupo = [
             <option value="<?= ia_e($a['angulo']) ?>"><?= ia_e($a['nome']) ?></option>
           <?php endforeach; ?>
         </select>
+      </div>
+      <div class="ia_form_grupo" id="ia_g_proporcao_wrap" style="display:none">
+        <label for="ia_g_proporcao">Proporção</label>
+        <select id="ia_g_proporcao" name="proporcao" class="ia_input">
+          <option value="1:1" selected>Quadrado (1:1) — feed</option>
+          <option value="3:2">Paisagem (3:2) — banner/site</option>
+          <option value="2:3">Retrato (2:3) — story base</option>
+        </select>
+        <p class="ia_ajuda">Formatos exatos (1920×800 etc.) saem do compositor na Fase 2C.</p>
       </div>
     </div>
 

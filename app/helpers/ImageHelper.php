@@ -83,7 +83,7 @@ class ImageHelper {
             return $fallback ?: (BASE_URL . '/assets/images/placeholder.jpg');
         }
 
-        return UPLOAD_URL . '/products/' . $arquivo;
+        return $arquivo;
     }
 
     /**
@@ -117,7 +117,7 @@ class ImageHelper {
 
         return array_map(fn($r) => [
             'arquivo'   => $r['arquivo'],
-            'url'       => UPLOAD_URL . '/products/' . $r['arquivo'],
+            'url'       => $r['arquivo'],
             'principal' => (bool)$r['principal'],
             'sku_id'    => $r['sku_id'],
         ], $rows);
@@ -150,7 +150,8 @@ class ImageHelper {
 
         $result = [];
         foreach ($rows as $row) {
-            $result[$row['produto_id']] = UPLOAD_URL . '/products/' . $row['arquivo'];
+            $result[$row['produto_id']] = $row['arquivo'];
+            // $result[$row['produto_id']] = UPLOAD_URL . '/products/' . $row['arquivo'];
         }
 
         // Garante que todos os IDs têm uma entrada (mesmo que seja placeholder)

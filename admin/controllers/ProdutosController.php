@@ -3,8 +3,12 @@
 
 class ProdutosController extends Controller {
 
+    private ImageUploadService $img;
+
     public function __construct() {
         AuthHelper::requireAdmin();
+
+        $this->img = ImageUploadService::fromEnv();
     }
 
     // ── Listagem ──────────────────────────────────────────
@@ -704,56 +708,138 @@ class ProdutosController extends Controller {
     }
 
     // ── Upload de imagem ──────────────────────────────────
-    public function uploadImagem(): void {
+    // public function uploadImagem(): void {
+    //     $this->verifyCsrf();
+    //     $produtoId = SecurityHelper::sanitizeInt($_POST['produto_id'] ?? 0);
+    //     if (!$produtoId) $this->json(['ok' => false, 'msg' => 'Produto inválido.']);
+
+    //     if (empty($_FILES['imagem']['tmp_name'])) {
+    //         $this->json(['ok' => false, 'msg' => 'Nenhuma imagem enviada.']);
+    //     }
+
+    //     $ext     = strtolower(pathinfo($_FILES['imagem']['name'], PATHINFO_EXTENSION));
+    //     $allowed = ['jpg','jpeg','png','webp'];
+    //     if (!in_array($ext, $allowed)) {
+    //         $this->json(['ok' => false, 'msg' => 'Formato inválido.']);
+    //     }
+    //     if ($_FILES['imagem']['size'] > 5 * 1024 * 1024) {
+    //         $this->json(['ok' => false, 'msg' => 'Máximo 5MB por imagem.']);
+    //     }
+
+    //     $dir  = UPLOAD_PATH . '/products/';
+    //     if (!is_dir($dir)) mkdir($dir, 0755, true);
+
+    //     $arquivo = 'prod_' . $produtoId . '_' . uniqid() . '.' . $ext;
+    //     if (!move_uploaded_file($_FILES['imagem']['tmp_name'], $dir . $arquivo)) {
+    //         $this->json(['ok' => false, 'msg' => 'Erro ao salvar imagem.']);
+    //     }
+
+    //     $db = Database::getInstance()->getConnection();
+
+    //     // Verifica se é a primeira imagem (principal)
+    //     $stmt = $db->prepare("SELECT COUNT(*) FROM produto_imagens WHERE produto_id = ?");
+    //     $stmt->execute([$produtoId]);
+    //     $isPrincipal = (int)$stmt->fetchColumn() === 0 ? 1 : 0;
+
+    //     // Ordem
+    //     $stmt = $db->prepare("SELECT COALESCE(MAX(ordem),0)+1 FROM produto_imagens WHERE produto_id = ?");
+    //     $stmt->execute([$produtoId]);
+    //     $ordem = (int)$stmt->fetchColumn();
+
+    //     $db->prepare(
+    //         "INSERT INTO produto_imagens (produto_id, arquivo, principal, ordem)
+    //          VALUES (?, ?, ?, ?)"
+    //     )->execute([$produtoId, $arquivo, $isPrincipal, $ordem]);
+
+    //     $imgId = (int)$db->lastInsertId();
+
+    //     $this->json([
+    //         'ok'        => true,
+    //         'id'        => $imgId,
+    //         'arquivo'   => $arquivo,
+    //         'url'       => UPLOAD_URL . '/products/' . $arquivo,
+    //         'principal' => $isPrincipal,
+    //     ]);
+    // }
+    public function uploadImagem(): void
+    {
         $this->verifyCsrf();
+
         $produtoId = SecurityHelper::sanitizeInt($_POST['produto_id'] ?? 0);
-        if (!$produtoId) $this->json(['ok' => false, 'msg' => 'Produto inválido.']);
-
-        if (empty($_FILES['imagem']['tmp_name'])) {
-            $this->json(['ok' => false, 'msg' => 'Nenhuma imagem enviada.']);
-        }
-
-        $ext     = strtolower(pathinfo($_FILES['imagem']['name'], PATHINFO_EXTENSION));
-        $allowed = ['jpg','jpeg','png','webp'];
-        if (!in_array($ext, $allowed)) {
-            $this->json(['ok' => false, 'msg' => 'Formato inválido.']);
-        }
-        if ($_FILES['imagem']['size'] > 5 * 1024 * 1024) {
-            $this->json(['ok' => false, 'msg' => 'Máximo 5MB por imagem.']);
-        }
-
-        $dir  = UPLOAD_PATH . '/products/';
-        if (!is_dir($dir)) mkdir($dir, 0755, true);
-
-        $arquivo = 'prod_' . $produtoId . '_' . uniqid() . '.' . $ext;
-        if (!move_uploaded_file($_FILES['imagem']['tmp_name'], $dir . $arquivo)) {
-            $this->json(['ok' => false, 'msg' => 'Erro ao salvar imagem.']);
+        if (!$produtoId) {
+            $this->json(['ok' => false, 'msg' => 'Produto inválido.']);
         }
 
         $db = Database::getInstance()->getConnection();
 
-        // Verifica se é a primeira imagem (principal)
+        // [NOVO] Confirma que o produto EXISTE antes de aceitar imagem.
+        // Sem isto, um produto_id forjado gera imagem órfã no R2 (lixo + custo).
+        $st = $db->prepare("SELECT 1 FROM produtos WHERE id = ? LIMIT 1");
+        $st->execute([$produtoId]);
+        if (!$st->fetchColumn()) {
+            LogService::warning('Upload de imagem para produto inexistente', [
+                'produto_id' => $produtoId,
+            ], 'media');
+            $this->json(['ok' => false, 'msg' => 'Produto não encontrado.']);
+        }
+
+        try {
+            // Valida (magic bytes, não extensão), reprocessa (destrói payload),
+            // gera WebP em 2 tamanhos, sobe pro R2, devolve as URLs.
+            $urls = $this->img->upload(
+                $_FILES['imagem'] ?? [],
+                'produtos',
+                ['full' => 1200, 'thumb' => 400]   // presets do contexto produto
+            );
+
+            if ($urls === null) {
+                $this->json(['ok' => false, 'msg' => 'Nenhuma imagem enviada.']);
+            }
+
+        } catch (\RuntimeException $e) {
+            // Arquivo inválido (formato, tamanho, dimensão, ou não-imagem real)
+            LogService::warning('Falha na validação de imagem de produto', [
+                'produto_id' => $produtoId,
+                'motivo'     => $e->getMessage(),
+            ], 'media');
+            $this->json(['ok' => false, 'msg' => $e->getMessage()]);
+
+        } catch (\Throwable $e) {
+            // Falha inesperada (R2 fora, GD, etc.) -> log completo, resposta genérica
+            LogService::exception($e, 'error', 'media', ['produto_id' => $produtoId]);
+            $this->json(['ok' => false, 'msg' => 'Erro ao processar a imagem.']);
+        }
+
+        // ── Persistência (lógica de principal/ordem PRESERVADA) ──────────
+        // Primeira imagem do produto vira a principal.
         $stmt = $db->prepare("SELECT COUNT(*) FROM produto_imagens WHERE produto_id = ?");
         $stmt->execute([$produtoId]);
-        $isPrincipal = (int)$stmt->fetchColumn() === 0 ? 1 : 0;
+        $isPrincipal = (int) $stmt->fetchColumn() === 0 ? 1 : 0;
 
-        // Ordem
         $stmt = $db->prepare("SELECT COALESCE(MAX(ordem),0)+1 FROM produto_imagens WHERE produto_id = ?");
         $stmt->execute([$produtoId]);
-        $ordem = (int)$stmt->fetchColumn();
+        $ordem = (int) $stmt->fetchColumn();
 
+        // A coluna `arquivo` agora guarda a URL COMPLETA do R2 (full).
+        // Guardamos também a thumb. (Ver nota de schema abaixo.)
         $db->prepare(
-            "INSERT INTO produto_imagens (produto_id, arquivo, principal, ordem)
-             VALUES (?, ?, ?, ?)"
-        )->execute([$produtoId, $arquivo, $isPrincipal, $ordem]);
+            "INSERT INTO produto_imagens (produto_id, arquivo, arquivo_thumb, principal, ordem)
+             VALUES (?, ?, ?, ?, ?)"
+        )->execute([$produtoId, $urls['full'], $urls['thumb'], $isPrincipal, $ordem]);
 
-        $imgId = (int)$db->lastInsertId();
+        $imgId = (int) $db->lastInsertId();
+
+        LogService::audit('Imagem de produto enviada', [
+            'produto_id' => $produtoId,
+            'imagem_id'  => $imgId,
+            'principal'  => $isPrincipal,
+        ]);
 
         $this->json([
             'ok'        => true,
             'id'        => $imgId,
-            'arquivo'   => $arquivo,
-            'url'       => UPLOAD_URL . '/products/' . $arquivo,
+            'url'       => $urls['full'],   // URL do R2 direto (não mais UPLOAD_URL)
+            'thumb'     => $urls['thumb'],
             'principal' => $isPrincipal,
         ]);
     }

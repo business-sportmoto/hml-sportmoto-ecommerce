@@ -28,6 +28,7 @@ AdminRouter::get ('/ia/gerar/produto-painel',       'IAGeracaoController@produto
 AdminRouter::post('/ia/gerar/preview',              'IAGeracaoController@preview');
 AdminRouter::post('/ia/gerar/enfileirar',           'IAGeracaoController@enfileirar');
 AdminRouter::get ('/ia/gerar/status',               'IAGeracaoController@status');
+AdminRouter::get ('/ia/arquivo',                    'IAGeracaoController@arquivo');
 
 // ── IA · Histórico e curadoria (Fase 1) ───────────────────
 AdminRouter::get ('/ia/historico',                  'IAGeracaoController@historico');

@@ -1,44 +1,44 @@
-/**
- * Toast.js — Plugin universal de notificações
- * Versão: 1.0.0
- *
- * Zero dependências. Funciona com ou sem jQuery.
- * Incluir globalmente no layout principal.
- *
- * ── USO BÁSICO ──────────────────────────────────────────
- *   Toast.success('Pedido criado com sucesso!');
- *   Toast.error('Erro ao salvar. Tente novamente.');
- *   Toast.warning('Estoque baixo para este produto.');
- *   Toast.info('Frete grátis acima de R$ 299.');
- *   Toast.loading('Processando pagamento...');
- *
- * ── USO COMPLETO ────────────────────────────────────────
- *   Toast.show({
- *     type:     'success',        // success | error | warning | info | loading | neutral
- *     message:  'Salvo!',
- *     title:    'Sucesso',        // opcional
- *     duration:  4000,            // ms (0 = não fecha sozinho)
- *     position: 'top-right',      // top-right | top-left | top-center
- *                                 // bottom-right | bottom-left | bottom-center
- *     closable:  true,            // mostra botão X
- *     progress:  true,            // barra de progresso
- *     icon:     '<svg>...</svg>', // ícone customizado
- *     actions: [                  // botões de ação
- *       { label: 'Desfazer', primary: false, action: () => desfazer() },
- *       { label: 'OK',       primary: true,  action: () => {} },
- *     ],
- *     onClose: () => {},          // callback ao fechar
- *   });
- *
- * ── ATUALIZAR TOAST EXISTENTE ───────────────────────────
- *   const id = Toast.loading('Enviando...');
- *   Toast.update(id, { type: 'success', message: 'Enviado!', duration: 3000 });
- *
- * ── FECHAR PROGRAMATICAMENTE ────────────────────────────
- *   const id = Toast.show({ ... });
- *   Toast.dismiss(id);
- *   Toast.dismissAll();
- */
+
+// Toast.js — Plugin universal de notificações
+// Versão: 1.0.0
+
+// Zero dependências. Funciona com ou sem jQuery.
+// Incluir globalmente no layout principal.
+
+// ── USO BÁSICO ──────────────────────────────────────────
+// Toast.success('Pedido criado com sucesso!');
+// Toast.error('Erro ao salvar. Tente novamente.');
+// Toast.warning('Estoque baixo para este produto.');
+// Toast.info('Frete grátis acima de R$ 299.');
+// Toast.loading('Processando pagamento...');
+
+// ── USO COMPLETO ────────────────────────────────────────
+// Toast.show({
+//   type:     'success',        // success | error | warning | info | loading | neutral
+//   message:  'Salvo!',
+//   title:    'Sucesso',        // opcional
+//   duration:  4000,            // ms (0 = não fecha sozinho)
+//   position: 'top-right',      // top-right | top-left | top-center
+//                               // bottom-right | bottom-left | bottom-center
+//   closable:  true,            // mostra botão X
+//   progress:  true,            // barra de progresso
+//   icon:     '<svg>...</svg>', // ícone customizado
+//   actions: [                  // botões de ação
+//     { label: 'Desfazer', primary: false, action: () => desfazer() },
+//     { label: 'OK',       primary: true,  action: () => {} },
+//   ],
+//   onClose: () => {},          // callback ao fechar
+// });
+
+// ── ATUALIZAR TOAST EXISTENTE ───────────────────────────
+// const id = Toast.loading('Enviando...');
+// Toast.update(id, { type: 'success', message: 'Enviado!', duration: 3000 });
+
+// ── FECHAR PROGRAMATICAMENTE ────────────────────────────
+// const id = Toast.show({ ... });
+// Toast.dismiss(id);
+// Toast.dismissAll();
+ 
 
 (function (window) {
   'use strict';

@@ -1,107 +1,1206 @@
 $(function(){
     
   // ── Drawer universal ──────────────────────────────────────
-  (function () {
+  /**
+ * Admin Drawer
+ *
+ * Componente universal de drawer lateral.
+ *
+ * Recursos:
+ * - múltiplos drawers empilhados;
+ * - controle individual pela instância retornada;
+ * - atualização de título, conteúdo, tamanho e ações;
+ * - fechamento por botão, overlay, ESC ou API;
+ * - proteção contra fechamento duplicado;
+ * - beforeClose síncrono ou assíncrono;
+ * - bloqueio de scroll;
+ * - focus trap;
+ * - restauração de foco;
+ * - eventos delegados;
+ * - AbortSignal para fetch/AJAX;
+ * - suporte a string, Node, DocumentFragment e jQuery.
+ */
 
-    let drawerStack = []; // suporta múltiplos drawers empilhados
+(function (window, document) {
+    'use strict';
 
-    /**
-     * Abre um drawer lateral.
-     * @param {object} opts
-     * @param {string} opts.titulo    — Título do drawer
-     * @param {string} opts.conteudo  — HTML do corpo
-     * @param {string} opts.tamanho   — 'sm' (420px) | 'md' (560px) | 'lg' (720px) | 'xl' (900px)
-     * @param {Function} opts.onClose — Callback ao fechar
-     * @returns {object} { close, setConteudo, setTitulo }
-     */
-    window.adminDrawer = function ({
-      titulo   = '',
-      conteudo = '',
-      tamanho  = 'md',
-      onClose  = null,
-    } = {}) {
+    const TAMANHOS = new Set(['sm', 'md', 'lg', 'xl']);
 
-      // Overlay (só cria uma vez)
-      let overlay = document.getElementById('admin-drawer-overlay');
-      if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.id = 'admin-drawer-overlay';
-        overlay.addEventListener('click', () => fecharTopo());
-        document.body.appendChild(overlay);
-      }
-      overlay.classList.add('visible');
+    const SELETOR_FOCAVEL = [
+        'a[href]',
+        'button:not([disabled])',
+        'input:not([disabled]):not([type="hidden"])',
+        'select:not([disabled])',
+        'textarea:not([disabled])',
+        '[contenteditable="true"]',
+        '[tabindex]:not([tabindex="-1"])',
+    ].join(',');
 
-      // Cria o drawer
-      const drawer = document.createElement('div');
-      drawer.className = `admin-drawer admin-drawer--${tamanho}`;
-      drawer.innerHTML = `
-        <div class="admin-drawer-header">
-          <h3 class="admin-drawer-titulo"></h3>
-          <div class="admin-drawer-header-actions">
-            <button type="button" class="admin-drawer-close" aria-label="Fechar">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                <line x1="18" y1="6" x2="6"  y2="18"/>
-                <line x1="6"  y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-        <div class="admin-drawer-body"></div>`;
-
-      drawer.querySelector('.admin-drawer-titulo').textContent = titulo;
-      drawer.querySelector('.admin-drawer-body').innerHTML     = conteudo;
-      drawer.querySelector('.admin-drawer-close')
-            .addEventListener('click', () => fechar(drawer, onClose));
-
-      document.body.appendChild(drawer);
-      drawerStack.push({ drawer, onClose });
-
-      // Anima entrada
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => drawer.classList.add('open'));
-      });
-
-      // Keyboard ESC
-      const onKey = e => {
-        if (e.key === 'Escape') { fechar(drawer, onClose); document.removeEventListener('keydown', onKey); }
-      };
-      document.addEventListener('keydown', onKey);
-      drawer._removeKeyListener = () => document.removeEventListener('keydown', onKey);
-
-      // API pública
-      return {
-        close: () => fechar(drawer, onClose),
-        setConteudo: (html) => { drawer.querySelector('.admin-drawer-body').innerHTML = html; },
-        setTitulo:   (txt)  => { drawer.querySelector('.admin-drawer-titulo').textContent = txt; },
-        body: () => drawer.querySelector('.admin-drawer-body'),
-      };
+    const manager = {
+        stack: [],
+        overlay: null,
+        contador: 0,
+        bodyStyleOriginal: null,
     };
 
-    function fecharTopo() {
-      if (!drawerStack.length) return;
-      const { drawer, onClose } = drawerStack[drawerStack.length - 1];
-      fechar(drawer, onClose);
-    }
+    class AdminDrawerInstance {
+        constructor(options = {}) {
+            this.options = normalizarOpcoes(options);
 
-    function fechar(drawer, onClose) {
-      drawer.classList.remove('open');
-      drawer._removeKeyListener?.();
+            this.id = `admin-drawer-${++manager.contador}`;
+            this.estado = 'abrindo';
+            this.closePromise = null;
 
-      setTimeout(() => {
-        drawer.remove();
-        drawerStack = drawerStack.filter(d => d.drawer !== drawer);
+            this.elementoAnterior =
+                document.activeElement instanceof HTMLElement
+                    ? document.activeElement
+                    : null;
 
-        // Remove overlay se não tiver mais drawers
-        if (!drawerStack.length) {
-          document.getElementById('admin-drawer-overlay')?.classList.remove('visible');
+            this.ultimoElementoFocado = null;
+            this.abortController = new AbortController();
+
+            this.criarElementos();
+            this.api = this.criarApi();
+
+            this.setTitulo(this.options.titulo);
+            this.setConteudo(this.options.conteudo);
+            this.setAcoes(this.options.acoes);
+
+            document.body.appendChild(this.element);
+            manager.stack.push(this);
+
+            bloquearScroll();
+            sincronizarPilha();
+
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    if (
+                        this.estado !== 'abrindo' ||
+                        !this.element.isConnected
+                    ) {
+                        return;
+                    }
+
+                    this.estado = 'aberto';
+                    this.element.classList.add('is-open');
+
+                    this.focarElementoInicial();
+
+                    executarCallback(
+                        this.options.onOpen,
+                        {
+                            drawer: this.api,
+                        }
+                    );
+                });
+            });
         }
 
-        onClose?.();
-      }, 320);
+        criarElementos() {
+            const tituloId = `${this.id}-titulo`;
+
+            this.element = document.createElement('aside');
+            this.element.id = this.id;
+            this.element.className =
+                `admin-drawer admin-drawer--${this.options.tamanho}`;
+
+            this.element.tabIndex = -1;
+            this.element.setAttribute('role', 'dialog');
+            this.element.setAttribute('aria-modal', 'true');
+            this.element.setAttribute('aria-labelledby', tituloId);
+            this.element.setAttribute('aria-hidden', 'true');
+
+            if (this.options.classe) {
+                this.element.classList.add(
+                    ...String(this.options.classe)
+                        .split(/\s+/)
+                        .filter(Boolean)
+                );
+            }
+
+            this.element.innerHTML = `
+                <header class="admin-drawer-header">
+                    <div class="admin-drawer-heading">
+                        <h3
+                            id="${tituloId}"
+                            class="admin-drawer-titulo"
+                        ></h3>
+
+                        <p
+                            class="admin-drawer-subtitulo"
+                            hidden
+                        ></p>
+                    </div>
+
+                    <div class="admin-drawer-header-actions">
+                        <div class="admin-drawer-custom-actions"></div>
+
+                        <button
+                            type="button"
+                            class="admin-drawer-close"
+                            aria-label="Fechar"
+                        >
+                            <svg
+                                width="20"
+                                height="20"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.25"
+                                stroke-linecap="round"
+                                aria-hidden="true"
+                                focusable="false"
+                            >
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    </div>
+                </header>
+
+                <div class="admin-drawer-body"></div>
+            `;
+
+            this.titleElement = this.element.querySelector(
+                '.admin-drawer-titulo'
+            );
+
+            this.subtitleElement = this.element.querySelector(
+                '.admin-drawer-subtitulo'
+            );
+
+            this.actionsElement = this.element.querySelector(
+                '.admin-drawer-custom-actions'
+            );
+
+            this.bodyElement = this.element.querySelector(
+                '.admin-drawer-body'
+            );
+
+            this.closeButton = this.element.querySelector(
+                '.admin-drawer-close'
+            );
+
+            this.closeButton.addEventListener(
+                'click',
+                () => this.fechar('botao'),
+                {
+                    signal: this.abortController.signal,
+                }
+            );
+        }
+
+        criarApi() {
+            return {
+                id: this.id,
+
+                fechar: (motivo = 'api', options = {}) =>
+                    this.fechar(motivo, options),
+
+                close: (motivo = 'api', options = {}) =>
+                    this.fechar(motivo, options),
+
+                setTitulo: titulo => {
+                    this.setTitulo(titulo);
+                    return this.api;
+                },
+
+                setSubtitulo: subtitulo => {
+                    this.setSubtitulo(subtitulo);
+                    return this.api;
+                },
+
+                setConteudo: conteudo => {
+                    this.setConteudo(conteudo);
+                    return this.api;
+                },
+
+                setTexto: texto => {
+                    this.setTexto(texto);
+                    return this.api;
+                },
+
+                appendConteudo: conteudo => {
+                    this.appendConteudo(conteudo);
+                    return this.api;
+                },
+
+                prependConteudo: conteudo => {
+                    this.prependConteudo(conteudo);
+                    return this.api;
+                },
+
+                limparConteudo: () => {
+                    this.bodyElement.replaceChildren();
+                    return this.api;
+                },
+
+                setAcoes: acoes => {
+                    this.setAcoes(acoes);
+                    return this.api;
+                },
+
+                setTamanho: tamanho => {
+                    this.setTamanho(tamanho);
+                    return this.api;
+                },
+
+                setCarregando: mensagem => {
+                    this.setCarregando(mensagem);
+                    return this.api;
+                },
+
+                atualizar: dados => {
+                    this.atualizar(dados);
+                    return this.api;
+                },
+
+                escutar: (
+                    evento,
+                    seletor,
+                    handler,
+                    options = {}
+                ) => {
+                    this.escutar(
+                        evento,
+                        seletor,
+                        handler,
+                        options
+                    );
+
+                    return this.api;
+                },
+
+                focar: alvo => {
+                    this.focar(alvo);
+                    return this.api;
+                },
+
+                corpo: () => this.bodyElement,
+                body: () => this.bodyElement,
+
+                elemento: () => this.element,
+                element: () => this.element,
+
+                sinal: () => this.abortController.signal,
+                signal: () => this.abortController.signal,
+
+                estaAberto: () =>
+                    this.estado === 'abrindo' ||
+                    this.estado === 'aberto',
+
+                estaNoTopo: () =>
+                    obterDrawerTopo() === this,
+            };
+        }
+
+        setTitulo(titulo = '') {
+            this.titleElement.textContent = String(titulo ?? '');
+        }
+
+        setSubtitulo(subtitulo = '') {
+            const texto = String(subtitulo ?? '').trim();
+
+            this.subtitleElement.textContent = texto;
+            this.subtitleElement.hidden = texto === '';
+        }
+
+        setConteudo(conteudo = '') {
+            renderizarConteudo(
+                this.bodyElement,
+                conteudo,
+                'replace'
+            );
+        }
+
+        setTexto(texto = '') {
+            this.bodyElement.textContent = String(texto ?? '');
+        }
+
+        appendConteudo(conteudo = '') {
+            renderizarConteudo(
+                this.bodyElement,
+                conteudo,
+                'append'
+            );
+        }
+
+        prependConteudo(conteudo = '') {
+            renderizarConteudo(
+                this.bodyElement,
+                conteudo,
+                'prepend'
+            );
+        }
+
+        setAcoes(acoes = '') {
+            renderizarConteudo(
+                this.actionsElement,
+                acoes,
+                'replace'
+            );
+
+            this.actionsElement.hidden =
+                this.actionsElement.childNodes.length === 0;
+        }
+
+        setTamanho(tamanho = 'md') {
+            const tamanhoFinal = TAMANHOS.has(tamanho)
+                ? tamanho
+                : 'md';
+
+            TAMANHOS.forEach(item => {
+                this.element.classList.remove(
+                    `admin-drawer--${item}`
+                );
+            });
+
+            this.element.classList.add(
+                `admin-drawer--${tamanhoFinal}`
+            );
+
+            this.options.tamanho = tamanhoFinal;
+        }
+
+        setCarregando(mensagem = 'Carregando...') {
+            const container = document.createElement('div');
+            container.className = 'admin-drawer-loading';
+            container.setAttribute('role', 'status');
+            container.setAttribute('aria-live', 'polite');
+
+            const spinner = document.createElement('span');
+            spinner.className = 'admin-drawer-spinner';
+            spinner.setAttribute('aria-hidden', 'true');
+
+            const texto = document.createElement('span');
+            texto.textContent = String(mensagem ?? 'Carregando...');
+
+            container.append(spinner, texto);
+            this.bodyElement.replaceChildren(container);
+        }
+
+        atualizar(dados = {}) {
+            if (
+                Object.prototype.hasOwnProperty.call(
+                    dados,
+                    'titulo'
+                )
+            ) {
+                this.setTitulo(dados.titulo);
+            }
+
+            if (
+                Object.prototype.hasOwnProperty.call(
+                    dados,
+                    'subtitulo'
+                )
+            ) {
+                this.setSubtitulo(dados.subtitulo);
+            }
+
+            if (
+                Object.prototype.hasOwnProperty.call(
+                    dados,
+                    'conteudo'
+                )
+            ) {
+                this.setConteudo(dados.conteudo);
+            }
+
+            if (
+                Object.prototype.hasOwnProperty.call(
+                    dados,
+                    'acoes'
+                )
+            ) {
+                this.setAcoes(dados.acoes);
+            }
+
+            if (
+                Object.prototype.hasOwnProperty.call(
+                    dados,
+                    'tamanho'
+                )
+            ) {
+                this.setTamanho(dados.tamanho);
+            }
+        }
+
+        escutar(
+            evento,
+            seletor,
+            handler,
+            options = {}
+        ) {
+            if (typeof seletor === 'function') {
+                options = handler ?? {};
+                handler = seletor;
+                seletor = null;
+            }
+
+            if (typeof handler !== 'function') {
+                throw new TypeError(
+                    'O handler do evento deve ser uma função.'
+                );
+            }
+
+            const listener = event => {
+                if (!seletor) {
+                    handler.call(
+                        this.bodyElement,
+                        event,
+                        this.api
+                    );
+
+                    return;
+                }
+
+                if (!(event.target instanceof Element)) {
+                    return;
+                }
+
+                const alvo = event.target.closest(seletor);
+
+                if (
+                    !alvo ||
+                    !this.bodyElement.contains(alvo)
+                ) {
+                    return;
+                }
+
+                handler.call(alvo, event, this.api);
+            };
+
+            const eventOptions =
+                typeof options === 'boolean'
+                    ? { capture: options }
+                    : { ...options };
+
+            delete eventOptions.signal;
+
+            eventOptions.signal =
+                this.abortController.signal;
+
+            this.bodyElement.addEventListener(
+                evento,
+                listener,
+                eventOptions
+            );
+        }
+
+        focar(alvo = null) {
+            const elemento = resolverElemento(
+                alvo,
+                this.element
+            );
+
+            if (elemento instanceof HTMLElement) {
+                elemento.focus({
+                    preventScroll: true,
+                });
+            }
+        }
+
+        focarElementoInicial() {
+            const elementoInicial =
+                resolverElemento(
+                    this.options.focoInicial,
+                    this.element
+                ) ||
+                this.element.querySelector('[autofocus]') ||
+                obterElementosFocaveis(this.element)[0] ||
+                this.closeButton ||
+                this.element;
+
+            elementoInicial.focus({
+                preventScroll: true,
+            });
+        }
+
+        async fechar(
+            motivo = 'api',
+            { force = false } = {}
+        ) {
+            if (this.estado === 'fechado') {
+                return true;
+            }
+
+            if (this.closePromise) {
+                return this.closePromise;
+            }
+
+            this.closePromise = this.executarFechamento(
+                motivo,
+                force
+            );
+
+            try {
+                return await this.closePromise;
+            } finally {
+                if (this.estado !== 'fechado') {
+                    this.closePromise = null;
+                }
+            }
+        }
+
+        async executarFechamento(motivo, force) {
+            if (
+                !force &&
+                typeof this.options.beforeClose === 'function'
+            ) {
+                const permitido =
+                    await this.options.beforeClose({
+                        motivo,
+                        drawer: this.api,
+                    });
+
+                if (permitido === false) {
+                    return false;
+                }
+            }
+
+            this.estado = 'fechando';
+
+            /*
+             * Cancela automaticamente:
+             * - eventos registrados pelo drawer;
+             * - fetch usando drawer.sinal();
+             */
+            this.abortController.abort();
+
+            this.element.classList.remove('is-open');
+            this.element.setAttribute(
+                'aria-hidden',
+                'true'
+            );
+
+            await aguardarTransicao(this.element);
+
+            this.element.remove();
+
+            const index = manager.stack.indexOf(this);
+
+            if (index !== -1) {
+                manager.stack.splice(index, 1);
+            }
+
+            this.estado = 'fechado';
+
+            sincronizarPilha();
+
+            if (manager.stack.length === 0) {
+                desbloquearScroll();
+            }
+
+            restaurarFoco(this);
+
+            executarCallback(
+                this.options.onClose,
+                {
+                    motivo,
+                    drawer: this.api,
+                }
+            );
+
+            return true;
+        }
     }
 
-  })();
+    function normalizarOpcoes(options) {
+        const tamanho = TAMANHOS.has(options.tamanho)
+            ? options.tamanho
+            : 'md';
+
+        return {
+            titulo: options.titulo ?? '',
+            subtitulo: options.subtitulo ?? '',
+            conteudo: options.conteudo ?? '',
+            acoes: options.acoes ?? '',
+            tamanho,
+            classe: options.classe ?? '',
+            fecharNoEsc:
+                options.fecharNoEsc !== false,
+            fecharNoOverlay:
+                options.fecharNoOverlay !== false,
+            focoInicial:
+                options.focoInicial ?? null,
+            beforeClose:
+                options.beforeClose ?? null,
+            onOpen:
+                options.onOpen ?? null,
+            onClose:
+                options.onClose ?? null,
+        };
+    }
+
+    function renderizarConteudo(
+        container,
+        conteudo,
+        modo = 'replace'
+    ) {
+        const fragment = criarFragmento(conteudo);
+
+        if (modo === 'append') {
+            container.append(fragment);
+            return;
+        }
+
+        if (modo === 'prepend') {
+            container.prepend(fragment);
+            return;
+        }
+
+        container.replaceChildren(fragment);
+    }
+
+    function criarFragmento(conteudo) {
+        const fragment = document.createDocumentFragment();
+
+        if (
+            conteudo === null ||
+            conteudo === undefined
+        ) {
+            return fragment;
+        }
+
+        if (typeof conteudo === 'string') {
+            const template = document.createElement('template');
+            template.innerHTML = conteudo;
+
+            fragment.append(
+                template.content.cloneNode(true)
+            );
+
+            return fragment;
+        }
+
+        if (conteudo instanceof Node) {
+            fragment.append(conteudo);
+            return fragment;
+        }
+
+        /*
+         * Suporte a objetos jQuery sem tornar
+         * o componente dependente de jQuery.
+         */
+        if (
+            conteudo &&
+            typeof conteudo === 'object' &&
+            conteudo.jquery &&
+            typeof conteudo.toArray === 'function'
+        ) {
+            conteudo.toArray().forEach(node => {
+                if (node instanceof Node) {
+                    fragment.append(node);
+                }
+            });
+
+            return fragment;
+        }
+
+        fragment.append(
+            document.createTextNode(String(conteudo))
+        );
+
+        return fragment;
+    }
+
+    function garantirOverlay() {
+        if (
+            manager.overlay &&
+            manager.overlay.isConnected
+        ) {
+            return manager.overlay;
+        }
+
+        manager.overlay =
+            document.getElementById(
+                'admin-drawer-overlay'
+            );
+
+        if (!manager.overlay) {
+            manager.overlay =
+                document.createElement('div');
+
+            manager.overlay.id =
+                'admin-drawer-overlay';
+
+            manager.overlay.setAttribute(
+                'aria-hidden',
+                'true'
+            );
+
+            document.body.appendChild(
+                manager.overlay
+            );
+        }
+
+        if (
+            !manager.overlay.dataset
+                .adminDrawerInitialized
+        ) {
+            manager.overlay.addEventListener(
+                'click',
+                () => {
+                    const topo = obterDrawerTopo();
+
+                    if (
+                        topo &&
+                        topo.options.fecharNoOverlay
+                    ) {
+                        topo.fechar('overlay');
+                    }
+                }
+            );
+
+            manager.overlay.dataset
+                .adminDrawerInitialized = 'true';
+        }
+
+        return manager.overlay;
+    }
+
+    function obterDrawerTopo() {
+        return manager.stack.at(-1) ?? null;
+    }
+
+    function sincronizarPilha() {
+        const overlay = garantirOverlay();
+        const quantidade = manager.stack.length;
+        const possuiDrawer = quantidade > 0;
+
+        overlay.classList.toggle(
+            'is-visible',
+            possuiDrawer
+        );
+
+        overlay.setAttribute(
+            'aria-hidden',
+            possuiDrawer ? 'false' : 'true'
+        );
+
+        manager.stack.forEach((drawer, index) => {
+            const estaNoTopo =
+                index === quantidade - 1;
+
+            const zIndex = 1010 + index * 20;
+
+            drawer.element.style.zIndex =
+                String(zIndex);
+
+            drawer.element.setAttribute(
+                'aria-hidden',
+                estaNoTopo ? 'false' : 'true'
+            );
+
+            drawer.element.classList.toggle(
+                'is-behind',
+                !estaNoTopo
+            );
+
+            if ('inert' in drawer.element) {
+                drawer.element.inert =
+                    !estaNoTopo;
+            } else {
+                drawer.element.toggleAttribute(
+                    'data-inert',
+                    !estaNoTopo
+                );
+            }
+        });
+
+        if (possuiDrawer) {
+            const topo = obterDrawerTopo();
+            const zIndexTopo = Number(
+                topo.element.style.zIndex
+            );
+
+            /*
+             * O overlay fica:
+             * - acima dos drawers anteriores;
+             * - abaixo do drawer atual.
+             */
+            overlay.style.zIndex =
+                String(zIndexTopo - 1);
+        }
+    }
+
+    function bloquearScroll() {
+        if (manager.bodyStyleOriginal) {
+            return;
+        }
+
+        const body = document.body;
+        const style = window.getComputedStyle(body);
+
+        const larguraScrollbar =
+            window.innerWidth -
+            document.documentElement.clientWidth;
+
+        manager.bodyStyleOriginal = {
+            overflow: body.style.overflow,
+            paddingRight: body.style.paddingRight,
+        };
+
+        body.style.overflow = 'hidden';
+
+        if (larguraScrollbar > 0) {
+            const paddingAtual =
+                parseFloat(style.paddingRight) || 0;
+
+            body.style.paddingRight =
+                `${paddingAtual + larguraScrollbar}px`;
+        }
+
+        body.classList.add(
+            'admin-drawer-open'
+        );
+    }
+
+    function desbloquearScroll() {
+        if (!manager.bodyStyleOriginal) {
+            return;
+        }
+
+        const body = document.body;
+
+        body.style.overflow =
+            manager.bodyStyleOriginal.overflow;
+
+        body.style.paddingRight =
+            manager.bodyStyleOriginal.paddingRight;
+
+        body.classList.remove(
+            'admin-drawer-open'
+        );
+
+        manager.bodyStyleOriginal = null;
+    }
+
+    function obterElementosFocaveis(container) {
+        return Array.from(
+            container.querySelectorAll(
+                SELETOR_FOCAVEL
+            )
+        ).filter(elemento => {
+            return (
+                elemento instanceof HTMLElement &&
+                !elemento.hidden &&
+                elemento.getClientRects().length > 0
+            );
+        });
+    }
+
+    function resolverElemento(alvo, contexto) {
+        if (!alvo) {
+            return null;
+        }
+
+        if (typeof alvo === 'function') {
+            return resolverElemento(
+                alvo(),
+                contexto
+            );
+        }
+
+        if (typeof alvo === 'string') {
+            return contexto.querySelector(alvo);
+        }
+
+        if (alvo instanceof HTMLElement) {
+            return alvo;
+        }
+
+        return null;
+    }
+
+    function restaurarFoco(drawerFechado) {
+        const topo = obterDrawerTopo();
+
+        if (topo) {
+            const elemento =
+                topo.ultimoElementoFocado;
+
+            if (
+                elemento instanceof HTMLElement &&
+                elemento.isConnected
+            ) {
+                elemento.focus({
+                    preventScroll: true,
+                });
+
+                return;
+            }
+
+            topo.focarElementoInicial();
+            return;
+        }
+
+        if (
+            drawerFechado.elementoAnterior instanceof
+                HTMLElement &&
+            drawerFechado.elementoAnterior.isConnected
+        ) {
+            drawerFechado.elementoAnterior.focus({
+                preventScroll: true,
+            });
+        }
+    }
+
+    function executarCallback(callback, payload) {
+        if (typeof callback !== 'function') {
+            return;
+        }
+
+        try {
+            callback(payload);
+        } catch (error) {
+            console.error(
+                '[AdminDrawer] Erro no callback:',
+                error
+            );
+        }
+    }
+
+    function aguardarTransicao(elemento) {
+        const duracao = obterDuracaoTransicao(
+            elemento
+        );
+
+        if (duracao <= 0) {
+            return Promise.resolve();
+        }
+
+        return new Promise(resolve => {
+            let finalizado = false;
+
+            const finalizar = () => {
+                if (finalizado) {
+                    return;
+                }
+
+                finalizado = true;
+
+                elemento.removeEventListener(
+                    'transitionend',
+                    aoFinalizar
+                );
+
+                resolve();
+            };
+
+            const aoFinalizar = event => {
+                if (event.target !== elemento) {
+                    return;
+                }
+
+                finalizar();
+            };
+
+            elemento.addEventListener(
+                'transitionend',
+                aoFinalizar
+            );
+
+            window.setTimeout(
+                finalizar,
+                duracao + 80
+            );
+        });
+    }
+
+    function obterDuracaoTransicao(elemento) {
+        const style =
+            window.getComputedStyle(elemento);
+
+        const durations =
+            style.transitionDuration
+                .split(',')
+                .map(converterTempoMs);
+
+        const delays =
+            style.transitionDelay
+                .split(',')
+                .map(converterTempoMs);
+
+        const quantidade = Math.max(
+            durations.length,
+            delays.length
+        );
+
+        let maiorTempo = 0;
+
+        for (let index = 0; index < quantidade; index++) {
+            const duration =
+                durations[index % durations.length] || 0;
+
+            const delay =
+                delays[index % delays.length] || 0;
+
+            maiorTempo = Math.max(
+                maiorTempo,
+                duration + delay
+            );
+        }
+
+        return maiorTempo;
+    }
+
+    function converterTempoMs(valor) {
+        const tempo = String(valor).trim();
+
+        if (tempo.endsWith('ms')) {
+            return parseFloat(tempo) || 0;
+        }
+
+        if (tempo.endsWith('s')) {
+            return (parseFloat(tempo) || 0) * 1000;
+        }
+
+        return 0;
+    }
+
+    document.addEventListener(
+        'keydown',
+        event => {
+            const topo = obterDrawerTopo();
+
+            if (!topo) {
+                return;
+            }
+
+            if (
+                event.key === 'Escape' &&
+                topo.options.fecharNoEsc
+            ) {
+                event.preventDefault();
+                topo.fechar('escape');
+                return;
+            }
+
+            if (event.key !== 'Tab') {
+                return;
+            }
+
+            const focaveis =
+                obterElementosFocaveis(
+                    topo.element
+                );
+
+            if (focaveis.length === 0) {
+                event.preventDefault();
+                topo.element.focus();
+                return;
+            }
+
+            const primeiro = focaveis[0];
+            const ultimo =
+                focaveis[focaveis.length - 1];
+
+            const focoAtual =
+                document.activeElement;
+
+            if (
+                event.shiftKey &&
+                (
+                    focoAtual === primeiro ||
+                    !topo.element.contains(focoAtual)
+                )
+            ) {
+                event.preventDefault();
+                ultimo.focus();
+                return;
+            }
+
+            if (
+                !event.shiftKey &&
+                (
+                    focoAtual === ultimo ||
+                    !topo.element.contains(focoAtual)
+                )
+            ) {
+                event.preventDefault();
+                primeiro.focus();
+            }
+        },
+        true
+    );
+
+    document.addEventListener(
+        'focusin',
+        event => {
+            const topo = obterDrawerTopo();
+
+            if (!topo) {
+                return;
+            }
+
+            if (topo.element.contains(event.target)) {
+                topo.ultimoElementoFocado =
+                    event.target;
+
+                return;
+            }
+
+            /*
+             * Impede o foco de escapar para a página
+             * enquanto existe um drawer aberto.
+             */
+            topo.focarElementoInicial();
+        }
+    );
+
+    function adminDrawer(options = {}) {
+        return new AdminDrawerInstance(options).api;
+    }
+
+    adminDrawer.fecharTopo = function (
+        motivo = 'api-global',
+        options = {}
+    ) {
+        const topo = obterDrawerTopo();
+
+        return topo
+            ? topo.fechar(motivo, options)
+            : Promise.resolve(true);
+    };
+
+    adminDrawer.fecharTodos = async function ({
+        force = false,
+    } = {}) {
+        let quantidadeFechada = 0;
+
+        while (manager.stack.length > 0) {
+            const topo = obterDrawerTopo();
+
+            const fechado = await topo.fechar(
+                'fechar-todos',
+                { force }
+            );
+
+            if (!fechado) {
+                break;
+            }
+
+            quantidadeFechada++;
+        }
+
+        return quantidadeFechada;
+    };
+
+    adminDrawer.quantidade = function () {
+        return manager.stack.length;
+    };
+
+    adminDrawer.topo = function () {
+        return obterDrawerTopo()?.api ?? null;
+    };
+
+    adminDrawer.versao = '2.0.0';
+
+    window.adminDrawer = adminDrawer;
+
+})(window, document);
 
   // ── SEO IA — gerador plugável ─────────────────────────────
   /**

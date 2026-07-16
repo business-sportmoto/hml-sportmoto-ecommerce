@@ -116,10 +116,16 @@ class IAGeracaoController extends Controller
             return;
         }
 
-        $template = ($angulo !== '') ? (new IAPromptTemplate())->buscarPorAngulo($angulo, $tipoId) : null;
+        $template = ($angulo !== '' && $tipo['capacidade'] === 'texto')
+            ? (new IAPromptTemplate())->buscarPorAngulo($angulo, $tipoId)
+            : null;
         $briefing = $this->lerBriefing();
 
-        $this->json(['ok' => true, 'prompt' => $builder->montarPrompt($contexto, $tipo, $template, $briefing)]);
+        $prompt = ($tipo['capacidade'] === 'imagem')
+            ? $builder->montarPromptImagem($contexto, $tipo, $briefing)
+            : $builder->montarPrompt($contexto, $tipo, $template, $briefing);
+
+        $this->json(['ok' => true, 'prompt' => $prompt]);
     }
 
     /** Enfileira 1/3/5 gerações. */
@@ -145,6 +151,7 @@ class IAGeracaoController extends Controller
             'briefing'         => $this->lerBriefing(),
             'prompt_custom'    => trim((string) ($_POST['prompt_custom'] ?? '')),
             'variacoes'        => (int) ($_POST['variacoes'] ?? 1),
+            'proporcao'        => trim((string) ($_POST['proporcao'] ?? '1:1')),
         ]);
 
         $this->json($resultado);
@@ -159,6 +166,45 @@ class IAGeracaoController extends Controller
         $itens = (new IAGeracaoService())->statusLote($uuids);
 
         $this->json(['ok' => true, 'itens' => $itens]);
+    }
+
+    /**
+     * Serve um arquivo gerado (imagem) SOMENTE autenticado — o storage é
+     * negado ao público. ?id=  (+ &download=1 para forçar download).
+     */
+    public function arquivo()
+    {
+        AuthHelper::requirePermission('marketing_ia');
+
+        $id  = (int) ($_GET['id'] ?? 0);
+        $arq = ($id > 0) ? (new IAGeracao())->arquivoPorId($id) : null;
+
+        if ($arq === null || $arq['tipo'] !== 'imagem') {
+            http_response_code(404);
+            exit('Arquivo não encontrado.');
+        }
+
+        // Trava de path: o caminho gravado precisa viver dentro do storage do módulo.
+        $base = defined('IA_STORAGE_PATH')
+            ? rtrim(IA_STORAGE_PATH, '/')
+            : rtrim(dirname(__DIR__, 2), '/') . '/storage/ia'; // AJUSTE: mesmo base do config
+        $realBase = realpath($base);
+        $real     = realpath((string) $arq['caminho']);
+
+        if ($real === false || $realBase === false || strpos($real, $realBase) !== 0 || !is_file($real)) {
+            LogService::warning('ia_arquivo_fora_do_storage', ['arquivo_id' => $id]);
+            http_response_code(404);
+            exit('Arquivo não encontrado.');
+        }
+
+        header('Content-Type: ' . ($arq['mime'] ?: 'application/octet-stream'));
+        header('Content-Length: ' . (string) filesize($real));
+        header('Cache-Control: private, max-age=86400');
+        if (!empty($_GET['download'])) {
+            header('Content-Disposition: attachment; filename="' . basename($real) . '"');
+        }
+        readfile($real);
+        exit;
     }
 
     /* ------------------------------------------------------------------ */
@@ -223,6 +269,7 @@ class IAGeracaoController extends Controller
         $html = $this->partial('historico/_detalhe', [
             'g'          => $g,
             'roteamento' => (new IAGeracao())->roteamentoDe($id),
+            'arquivo_id' => (new IAGeracao())->arquivoPrincipalDe($id),
             'csrf'       => $this->tokenCsrf(),
         ]);
 
@@ -307,10 +354,21 @@ class IAGeracaoController extends Controller
     /** Renderiza partial de app/views/ia/ (subpastas permitidas, sem traversal). */
     private function partial(string $caminho, array $dados = []): string
     {
-        $caminho  = str_replace(['..', "\0"], '', $caminho);
-        $completo = __DIR__ . '/../views/ia/' . $caminho . '.php';
+        $caminho = str_replace(['..', "\0"], '', $caminho);
 
-        if (!is_file($completo)) {
+        // Controller pode viver em admin/controllers/ (árvore do admin) ou
+        // app/controllers/ — tenta as views ao lado e, depois, em app/views.
+        $candidatos = [
+            __DIR__ . '/../views/ia/' . $caminho . '.php',
+            dirname(__DIR__, 2) . '/app/views/ia/' . $caminho . '.php',
+        ];
+
+        $completo = null;
+        foreach ($candidatos as $c) {
+            if (is_file($c)) { $completo = $c; break; }
+        }
+
+        if ($completo === null) {
             LogService::error('ia_partial_inexistente', ['arquivo' => $caminho]);
             return '';
         }

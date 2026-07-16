@@ -164,7 +164,7 @@ class NotificacaoService
                         "UPDATE notificacoes
                          SET fanout_status='erro', fanout_erro = :e
                          WHERE id = :id"
-                    )->execute([':e' => mb_substr($e->getMessage(), 0, 500), ':id' => $notif['id']]);
+                    )->execute([':e' => mb_substr($e->getLine().' - '.$e->getFile().' - '.$e->getMessage(), 0, 500), ':id' => $notif['id']]);
                     $stats['erros']++;
                 }
             }
@@ -192,7 +192,7 @@ class NotificacaoService
         }
         if ($alvo === 'todos_admins' || $alvo === 'todos') {
             // AJUSTE: adapte à sua tabela real de admins
-            $fontes[] = ['tipo' => 'admin', 'sql' => "SELECT id FROM usuarios WHERE nivel IN ('admin','super') AND deleted_at IS NULL"];
+            $fontes[] = ['tipo' => 'admin', 'sql' => "SELECT u.id FROM usuarios u JOIN admins a ON a.usuario_id = u.id WHERE a.nivel IN ('super','gerente')"];
         }
 
         foreach ($fontes as $fonte) {
@@ -207,8 +207,8 @@ class NotificacaoService
 
                 // Adiciona a condição de paginação por id (com ou sem WHERE prévio)
                 $sqlFinal = (stripos($fonte['sql'], 'WHERE') !== false)
-                    ? $fonte['sql'] . " AND id > :ultimo ORDER BY id ASC LIMIT " . self::FANOUT_BATCH
-                    : $fonte['sql'] . " WHERE id > :ultimo ORDER BY id ASC LIMIT " . self::FANOUT_BATCH;
+                    ? $fonte['sql'] . " AND u.id > :ultimo ORDER BY u.id ASC LIMIT " . self::FANOUT_BATCH
+                    : $fonte['sql'] . " WHERE u.id > :ultimo ORDER BY u.id ASC LIMIT " . self::FANOUT_BATCH;
                 $st = $db->prepare($sqlFinal);
                 $st->execute([':ultimo' => $ultimoId]);
                 $ids = $st->fetchAll(PDO::FETCH_COLUMN);
@@ -425,4 +425,6 @@ class NotificacaoService
             try { LogService::error("NotificacaoService::$onde: " . $e->getMessage()); } catch (Throwable $x) {}
         }
     }
+
+    
 }

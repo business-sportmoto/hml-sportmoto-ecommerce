@@ -114,7 +114,7 @@ function swatchTipo(array $membro, string $atributoSlug): string {
         <div class="gallery-main">
           <div class="gallery-zoom-wrapper" id="zoom-wrapper">
             <img id="gallery-main-img"
-                 src="<?= $mainImage ? View::upload('products/' . $mainImage['arquivo']) : View::asset('images/placeholder.jpg') ?>"
+                 src="<?= $mainImage ? View::e($mainImage['arquivo']) : View::asset('images/placeholder.jpg') ?>"
                  alt="<?= View::e($product['nome']) ?>"
                  class="gallery-main-img"
                  fetchpriority="high">
@@ -152,10 +152,10 @@ function swatchTipo(array $membro, string $atributoSlug): string {
         <div class="gallery-thumbs" id="gallery-thumbs">
           <?php foreach ($images as $i => $img): ?>
           <button class="gallery-thumb <?= $i === 0 ? 'active' : '' ?>"
-                  data-src="<?= View::upload('products/' . $img['arquivo']) ?>"
+                  data-src="<?= View::e($img['arquivo']) ?>"
                   data-index="<?= $i ?>"
                   aria-label="Imagem <?= $i + 1 ?>">
-            <img src="<?= View::upload('products/' . $img['arquivo']) ?>"
+            <img src="<?= View::e($img['arquivo']) ?>"
                  alt="<?= View::e($img['alt_text'] ?? $product['nome']) ?>"
                  loading="lazy" width="72" height="72">
           </button>

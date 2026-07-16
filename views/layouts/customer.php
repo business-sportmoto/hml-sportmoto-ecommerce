@@ -37,7 +37,7 @@ $icons = [
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <?php View::partial('partials/seo-tags') ?>
-  <?php View::partial('partials/pwa-meta'); ?>
+  
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/main.css') ?>">
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/customer.css') ?>">
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/clips.css') ?>">
@@ -137,9 +137,9 @@ $icons = [
 
   <div id="toast-container" aria-live="polite"></div>
   
-  <script src="<?= PerformanceHelper::assetVersion('js/jquery.min.js') ?>" defer></script>
+  <script src="<?= PerformanceHelper::assetVersion('js/jquery.min.js') ?>"></script>
   <script src="<?= PerformanceHelper::assetVersion('js/toast.js') ?>" defer></script>
-  <script src="<?= PerformanceHelper::assetVersion('js/mask.js') ?>" defer></script>
+  
   <script src="<?= PerformanceHelper::assetVersion('js/main.js') ?>" defer></script>
   <script src="<?= PerformanceHelper::assetVersion('js/checkout.js') ?>" defer></script>
   <script src="<?= PerformanceHelper::assetVersion('js/master.js') ?>" defer></script>

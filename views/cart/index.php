@@ -76,7 +76,7 @@ $cepInfo       = CepController::getCepAtivo();
         <div class="cart-items-list" id="cart-items-list">
           <?php foreach ($items as $item):
             $imgUrl = !empty($item['imagem'])
-                      ? View::upload('products/' . $item['imagem'])
+                      ? View::e($item['imagem'])
                       : View::asset('images/placeholder.jpg');
             $opcoes = $item['opcoes'] ?? [];
 

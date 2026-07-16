@@ -55,8 +55,21 @@ class IAGeracaoService
         if ($tipo === null || (int) $tipo['ativo'] !== 1) {
             return ['ok' => false, 'msg' => 'Tipo de conteúdo inválido ou inativo.'];
         }
-        if ($tipo['capacidade'] !== 'texto') {
-            return ['ok' => false, 'msg' => 'Este tipo usa geração de mídia — disponível na Fase 2.'];
+        $capacidade = (string) $tipo['capacidade'];
+        if (!in_array($capacidade, ['texto', 'imagem'], true)) {
+            return ['ok' => false, 'msg' => 'Esta capacidade de mídia chega nas próximas fases.'];
+        }
+
+        // Proporção (só imagem): 1:1, 3:2 ou 2:3 — vai para ia_geracoes.formato
+        $proporcao = null;
+        if ($capacidade === 'imagem') {
+            $proporcao = (string) ($entrada['proporcao'] ?? '1:1');
+            if (!in_array($proporcao, ['1:1', '3:2', '2:3'], true)) {
+                $proporcao = '1:1';
+            }
+            if ($variacoes > 3) {
+                return ['ok' => false, 'msg' => 'Para imagem, gere no máximo 3 variações por vez.'];
+            }
         }
 
         $contexto = $this->builder->montarContexto($produtoId);
@@ -65,7 +78,7 @@ class IAGeracaoService
         }
 
         $template = null;
-        if ($angulo !== '') {
+        if ($angulo !== '' && $capacidade === 'texto') {
             $template = (new IAPromptTemplate())->buscarPorAngulo($angulo, $tipoId);
             if ($template === null) {
                 return ['ok' => false, 'msg' => 'Ângulo criativo inválido.'];
@@ -75,6 +88,8 @@ class IAGeracaoService
         // Prompt final: custom do usuário (com placeholders resolvidos) ou montagem automática
         if ($custom !== '') {
             $promptFinal = $this->builder->substituirPlaceholders($custom, $contexto);
+        } elseif ($capacidade === 'imagem') {
+            $promptFinal = $this->builder->montarPromptImagem($contexto, $tipo, $briefing);
         } else {
             $promptFinal = $this->builder->montarPrompt($contexto, $tipo, $template, $briefing);
         }
@@ -87,12 +102,16 @@ class IAGeracaoService
             return ['ok' => false, 'msg' => 'Prompt longo demais (máximo ' . self::MAX_PROMPT_CHARS . ' caracteres).'];
         }
 
-        // Custo estimado (modelo primário) e limites — barra ANTES de gastar
-        $custoUnitario = $this->custo->estimarTexto(
-            $this->custo->custoConfigPrimarioTexto(),
-            mb_strlen($promptFinal) + mb_strlen((string) ($tipo['instrucoes_sistema'] ?? '')),
-            isset($tipo['max_tokens']) ? (int) $tipo['max_tokens'] : null
-        );
+        // Custo estimado (modelo primário da capacidade) e limites — barra ANTES de gastar
+        if ($capacidade === 'imagem') {
+            $custoUnitario = $this->custo->estimarImagem($this->custo->custoConfigPrimario('imagem'));
+        } else {
+            $custoUnitario = $this->custo->estimarTexto(
+                $this->custo->custoConfigPrimarioTexto(),
+                mb_strlen($promptFinal) + mb_strlen((string) ($tipo['instrucoes_sistema'] ?? '')),
+                isset($tipo['max_tokens']) ? (int) $tipo['max_tokens'] : null
+            );
+        }
 
         $chk = $this->custo->podeGerar($usuarioId, $custoUnitario * $variacoes, $variacoes);
         if (!$chk['ok']) {
@@ -112,7 +131,9 @@ class IAGeracaoService
         for ($i = 1; $i <= $variacoes; $i++) {
             $prompt = $promptFinal;
             if ($variacoes > 1) {
-                $prompt .= "\n\nVARIACAO: esta é a variação {$i} de {$variacoes} — entregue uma versão distinta das demais em abertura, estrutura e chamada.";
+                $prompt .= ($capacidade === 'imagem')
+                    ? "\nVariação {$i} de {$variacoes}: mude ângulo de câmera, enquadramento e ambientação."
+                    : "\n\nVARIACAO: esta é a variação {$i} de {$variacoes} — entregue uma versão distinta das demais em abertura, estrutura e chamada.";
             }
 
             $dedup = hash('sha256', implode('|', [
@@ -126,7 +147,8 @@ class IAGeracaoService
                 'campanha_id'              => null,
                 'geracao_origem_id'        => $origemId > 0 ? $origemId : null,
                 'tipo_conteudo_id'         => $tipoId,
-                'capacidade'               => 'texto',
+                'capacidade'               => $capacidade,
+                'formato'                  => $proporcao,
                 'angulo'                   => $angulo !== '' ? $angulo : null,
                 'prompt_template_id'       => $template !== null ? (int) $template['id'] : null,
                 'prompt_template_snapshot' => $template !== null ? (string) $template['corpo'] : null,
@@ -197,8 +219,16 @@ class IAGeracaoService
 
     public function concluir(array $geracao, IAResultado $r): void
     {
+        // IMAGEM: persiste os binários ANTES de marcar concluída — sem arquivo não há conclusão.
+        if (($geracao['capacidade'] ?? 'texto') === 'imagem') {
+            if (empty($r->imagens) || !$this->salvarImagens($geracao, $r->imagens)) {
+                $this->falhar($geracao, IAResultado::falha('salvar_arquivo', 'Imagem gerada, mas falhou ao gravar no storage.', false));
+                return;
+            }
+        }
+
         $this->modelo->marcarConcluida((int) $geracao['id'], [
-            'resultado_texto' => (string) $r->texto,
+            'resultado_texto' => ($r->texto !== null && $r->texto !== '') ? (string) $r->texto : null,
             'modelo_id'       => $r->modeloId,
             'provedor_codigo' => $r->provedorCodigo,
             'modelo_codigo'   => $r->modeloCodigo,
@@ -217,6 +247,80 @@ class IAGeracaoService
         );
 
         $this->salvarRespostaBruta($geracao, $r);
+    }
+
+    /** Provedor assíncrono aceitou o job — a geração espera webhook/varredura. */
+    public function aguardar(array $geracao, IAResultado $r): void
+    {
+        $this->modelo->marcarAguardando(
+            (int) $geracao['id'],
+            (string) $r->externalId,
+            $r->modeloId,
+            $r->provedorCodigo,
+            $r->modeloCodigo
+        );
+    }
+
+    /**
+     * Caminho ÚNICO de conclusão assíncrona — chamado pelo webhook E pela
+     * varredura do worker. Idempotente: só age se a geração ainda estiver
+     * em aguardando_provedor (releituras/duplicatas viram no-op).
+     *
+     * Retorna: 'concluida' | 'falhou' | 'pendente' | 'ignorado'
+     */
+    public function processarRetornoProvedor(array $geracao, array $remoto, ReplicateAdapter $adapter): string
+    {
+        if (($geracao['status'] ?? '') !== 'aguardando_provedor') {
+            return 'ignorado'; // já resolvida por outro caminho
+        }
+
+        $statusRemoto = (string) ($remoto['status'] ?? '');
+
+        if (in_array($statusRemoto, ['starting', 'processing', 'consulta_falhou', ''], true)) {
+            return 'pendente'; // ainda rodando (ou consulta instável) — próxima varredura tenta de novo
+        }
+
+        if (in_array($statusRemoto, ['failed', 'canceled'], true)) {
+            $erro = is_string($remoto['error'] ?? null) ? $remoto['error'] : 'Prediction falhou no provedor.';
+            $rf = IAResultado::falha('provedor_' . $statusRemoto, $erro, false);
+            $rf->provedorCodigo = (string) ($geracao['provedor_codigo'] ?? 'replicate');
+            $this->falhar($geracao, $rf);
+            return 'falhou';
+        }
+
+        // succeeded — baixar IMEDIATAMENTE (URLs de entrega expiram em ~1h)
+        $urls = $adapter->extrairUrlsSaida($remoto['output'] ?? null);
+        if (empty($urls)) {
+            $rf = IAResultado::falha('sem_saida', 'Prediction concluída sem output.', false);
+            $rf->provedorCodigo = (string) ($geracao['provedor_codigo'] ?? 'replicate');
+            $this->falhar($geracao, $rf);
+            return 'falhou';
+        }
+
+        $imagens = [];
+        foreach (array_slice($urls, 0, 4) as $url) {
+            $dl = $adapter->baixarSaida($url);
+            if (!$dl['ok']) {
+                LogService::warning('ia_download_saida_falhou', [
+                    'geracao_id' => (int) $geracao['id'],
+                    'erro'       => $dl['erro'],
+                ]);
+                return 'pendente'; // não marca nada — a varredura refaz o download
+            }
+            $imagens[] = ['binario' => $dl['binario'], 'mime' => $dl['mime'], 'extensao' => $dl['extensao']];
+        }
+
+        $r = IAResultado::sucessoImagem($imagens);
+        $r->modeloId       = isset($geracao['modelo_id']) ? (int) $geracao['modelo_id'] : null;
+        $r->provedorCodigo = (string) ($geracao['provedor_codigo'] ?? 'replicate');
+        $r->modeloCodigo   = (string) ($geracao['modelo_codigo'] ?? '');
+        $r->custoRealUsd   = $this->custo->custoRealImagemPorModelo($r->modeloId);
+        $r->tempoMs        = isset($remoto['metrics']['predict_time'])
+            ? (int) round(((float) $remoto['metrics']['predict_time']) * 1000)
+            : 0;
+
+        $this->concluir($geracao, $r);
+        return 'concluida';
     }
 
     public function falhar(array $geracao, IAResultado $r): void
@@ -253,6 +357,51 @@ class IAGeracaoService
     /* ------------------------------------------------------------------ */
     /* Internos                                                            */
     /* ------------------------------------------------------------------ */
+
+    /** Grava binários em IA_STORAGE_PATH/imagens/AAAA/MM e indexa em ia_arquivos. */
+    private function salvarImagens(array $geracao, array $imagens): bool
+    {
+        try {
+            $base = defined('IA_STORAGE_PATH')
+                ? rtrim(IA_STORAGE_PATH, '/')
+                : rtrim(dirname(__DIR__, 3), '/') . '/storage/ia';
+
+            $dir = $base . '/imagens/' . date('Y/m');
+            if (!is_dir($dir) && !mkdir($dir, 0750, true) && !is_dir($dir)) {
+                LogService::error('ia_storage_imagens_indisponivel', ['dir' => $dir]);
+                return false;
+            }
+
+            $gravadas = 0;
+            foreach (array_values($imagens) as $i => $img) {
+                if (empty($img['binario'])) {
+                    continue;
+                }
+                $sufixo  = (count($imagens) > 1) ? '-' . ($i + 1) : '';
+                $caminho = $dir . '/' . $geracao['uuid'] . $sufixo . '.' . ($img['extensao'] ?? 'png');
+
+                if (file_put_contents($caminho, $img['binario'], LOCK_EX) === false) {
+                    LogService::error('ia_gravar_imagem_falhou', ['caminho' => $caminho]);
+                    continue;
+                }
+
+                $this->modelo->registrarArquivo(
+                    (int) $geracao['id'],
+                    'imagem',
+                    $caminho,
+                    (string) ($img['mime'] ?? 'image/png'),
+                    strlen($img['binario']),
+                    hash('sha256', $img['binario'])
+                );
+                $gravadas++;
+            }
+
+            return $gravadas > 0;
+        } catch (Throwable $e) {
+            LogService::error('ia_salvar_imagens_erro', ['geracao_id' => (int) $geracao['id'], 'erro' => $e->getMessage()]);
+            return false;
+        }
+    }
 
     /** Resposta bruta do provedor vai para storage (fora do webroot) + ia_arquivos. */
     private function salvarRespostaBruta(array $geracao, IAResultado $r): void

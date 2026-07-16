@@ -21,6 +21,7 @@ if (php_sapi_name() !== 'cli') {
     exit('Somente CLI.');
 }
 
+
 /* ------------------------------------------------------------------ */
 /* Bootstrap                                                            */
 /* AJUSTE: espelhe exatamente o cabeçalho de includes do email-worker.php */
@@ -106,6 +107,29 @@ try {
     $log("Ciclo iniciado (loop={$loopSegundos}s, lote={$tamanhoLote}).");
 
     while ((time() - $inicio) < $loopSegundos) {
+        // Varredura assíncrona: consulta predictions aguardando o provedor
+        // (cobre webhook perdido e é O caminho em dev, sem URL pública).
+        $pendentes = $geracoes->listarAguardando(5, 20);
+        foreach ($pendentes as $p) {
+            try {
+                $adapter = $orq->adapterPorCodigo((string) $p['provedor_codigo']);
+                if (!$adapter instanceof ReplicateAdapter) {
+                    continue;
+                }
+                $remoto    = $adapter->consultarPrediction((string) $p['external_id']);
+                $desfecho  = $servico->processarRetornoProvedor($p, $remoto, $adapter);
+                if ($desfecho !== 'pendente') {
+                    $log("Varredura: geração #{$p['id']} → {$desfecho}.");
+                    $processadas++;
+                }
+            } catch (Throwable $e) {
+                LogService::error('ia_worker_varredura_erro', [
+                    'geracao_id' => (int) $p['id'],
+                    'erro'       => $e->getMessage(),
+                ]);
+            }
+        }
+
         $lote = $geracoes->reivindicarLote($tamanhoLote);
 
         if (empty($lote)) {
@@ -124,18 +148,23 @@ try {
                     'nome'               => $g['tipo_nome'] ?? '',
                 ];
 
-                $r = $orq->executarTexto($g, $tipo);
+                $r = (($g['capacidade'] ?? 'texto') === 'imagem')
+                    ? $orq->executarImagem($g, $tipo)
+                    : $orq->executarTexto($g, $tipo);
 
-                if ($r->ok) {
+                if ($r->aguardando) {
+                    $servico->aguardar($g, $r);
+                    $log("Geração #{$g['id']} aceita pelo provedor ({$r->modeloCodigo}) — ref {$r->externalId}.");
+                } elseif ($r->ok) {
                     $servico->concluir($g, $r);
                     $log("Geração #{$g['id']} concluída via {$r->modeloCodigo} em {$r->tempoMs}ms" .
                          ($r->custoRealUsd !== null ? ' (US$ ' . number_format($r->custoRealUsd, 6, '.', '') . ')' : '') . '.');
+                    $processadas++;
                 } else {
                     $servico->falhar($g, $r);
                     $log("Geração #{$g['id']} FALHOU: [{$r->erroCodigo}] {$r->erro}");
+                    $processadas++;
                 }
-
-                $processadas++;
             } catch (Throwable $e) {
                 LogService::error('ia_worker_excecao_job', [
                     'geracao_id' => (int) $g['id'],

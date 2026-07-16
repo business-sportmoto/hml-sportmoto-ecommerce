@@ -23,9 +23,9 @@ declare(strict_types=1);
 // ---------------------------------------------------------------------
 // Bootstrap — caminho relativo pra funcionar tanto local quanto no servidor
 // ---------------------------------------------------------------------
-$basePath = realpath(__DIR__ . '/..');
+$basePath = realpath(__DIR__ . '/config');
 if (!$basePath) {
-    fwrite(STDERR, "ERRO: não consegui resolver basePath\n");
+    fwrite(STDERR, "ERRO: não consegui resolver \n".$basePath);
     exit(2);
 }
 

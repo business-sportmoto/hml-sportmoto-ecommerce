@@ -28,4 +28,86 @@ class ReplicateAdapter extends IAProviderBase
         [$codigo, $msg] = $this->extrairErro($resp['corpo'], $resp['status']);
         return IAResultado::falha($codigo, $msg, false);
     }
+
+    /**
+     * Imagem ASSÍNCRONA: cria a prediction e devolve pendente(id).
+     * A conclusão chega por webhook (se IA_WEBHOOK_BASE definida) e/ou
+     * pela varredura do worker — os dois caminhos são idempotentes.
+     */
+    public function gerarImagem(array $job): IAResultado
+    {
+        $input = [
+            'prompt'       => (string) $job['prompt'],
+            'aspect_ratio' => in_array($job['proporcao'] ?? '1:1', ['1:1', '3:2', '2:3'], true)
+                                  ? $job['proporcao'] : '1:1',
+        ];
+
+        $params = is_array($job['params'] ?? null) ? $job['params'] : [];
+        foreach ($params as $chave => $valor) {
+            if (!array_key_exists($chave, $input)) {
+                $input[$chave] = $valor;
+            }
+        }
+
+        $payload = ['input' => $input];
+
+        // Webhook é otimização de latência; sem a constante, a varredura resolve (dev/Laragon).
+        if (defined('IA_WEBHOOK_BASE') && IA_WEBHOOK_BASE !== '') {
+            $payload['webhook']               = rtrim((string) IA_WEBHOOK_BASE, '/') . '/webhooks/ia/replicate';
+            $payload['webhook_events_filter'] = ['completed'];
+        }
+
+        // Modelos oficiais: POST /models/{owner}/{name}/predictions
+        $resp = $this->httpJson('POST', '/models/' . $job['modelo_codigo'] . '/predictions', $payload, 30);
+
+        if ($resp['status'] === 0) {
+            $r = IAResultado::falha('rede', 'Sem resposta do provedor: ' . ($resp['erro'] ?? 'falha de rede'));
+            $r->tempoMs = $resp['tempo_ms'];
+            return $r;
+        }
+
+        if (!in_array($resp['status'], [200, 201], true) || !is_array($resp['corpo']) || empty($resp['corpo']['id'])) {
+            [$codigo, $msg] = $this->extrairErro($resp['corpo'], $resp['status']);
+            $r = IAResultado::falha($codigo, $msg, true);
+            $r->tempoMs = $resp['tempo_ms'];
+            $r->respostaBruta = $resp['corpo_bruto'];
+            return $r;
+        }
+
+        $r = IAResultado::pendente((string) $resp['corpo']['id']);
+        $r->tempoMs = $resp['tempo_ms'];
+        return $r;
+    }
+
+    /**
+     * Consulta o estado atual de uma prediction (varredura do worker).
+     * Retorna o corpo cru do provedor: status, output, error, metrics…
+     */
+    public function consultarPrediction(string $externalId): array
+    {
+        $resp = $this->httpJson('GET', '/predictions/' . rawurlencode($externalId), null, 20);
+
+        if ($resp['status'] !== 200 || !is_array($resp['corpo'])) {
+            return ['status' => 'consulta_falhou', 'error' => $resp['erro'] ?? ('HTTP ' . $resp['status'])];
+        }
+        return $resp['corpo'];
+    }
+
+    /** Normaliza o output (string ou array de URLs) numa lista de URLs. */
+    public function extrairUrlsSaida($output): array
+    {
+        if (is_string($output) && $output !== '') {
+            return [$output];
+        }
+        if (is_array($output)) {
+            return array_values(array_filter($output, fn($u) => is_string($u) && $u !== ''));
+        }
+        return [];
+    }
+
+    /** Baixa uma URL de entrega (expira em ~1h — chamar IMEDIATAMENTE). */
+    public function baixarSaida(string $url): array
+    {
+        return $this->httpBinario($url, 90);
+    }
 }

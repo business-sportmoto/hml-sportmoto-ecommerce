@@ -14,6 +14,14 @@
  */
 class NotificacaoController extends Controller
 {
+
+    private PDO $db;
+
+    public function __construct() {
+        AuthHelper::requireAdmin(); // bloqueia se não for admin
+        $this->db = Database::getInstance()->getConnection();
+    }
+
     /**
      * Resolve o destinatário logado (admin tem prioridade se ambos na sessão).
      * @return array{0:string,1:int}|null  [tipo, id] ou null se não logado
@@ -22,7 +30,22 @@ class NotificacaoController extends Controller
     {
         // AJUSTE conforme suas chaves de sessão reais
         $adminId = (int)(Session::get('admin_id') ?? 0);
-        if ($adminId > 0) return ['admin', $adminId];
+        if ($adminId > 0){
+
+        $stmt = $this->db->prepare(
+            "SELECT 
+                u.id                          
+             FROM admins a
+             LEFT JOIN usuarios u ON u.id = a.usuario_id
+             LEFT JOIN clientes c ON c.usuario_id = a.usuario_id
+             WHERE a.id = ?"
+        );
+        $stmt->execute([$adminId]);
+
+        $obj = $stmt->fetch();
+
+            return ['admin', $obj['id']];
+        }
 
         $clienteId = (int)(Session::get('cliente_id') ?? 0);
         if ($clienteId > 0) return ['cliente', $clienteId];
@@ -40,6 +63,7 @@ class NotificacaoController extends Controller
         $this->json([
             'ok'    => true,
             'total' => NotificacaoService::contarNaoLidas($tipo, $id),
+            // 'teste'=>$dest
         ]);
     }
 

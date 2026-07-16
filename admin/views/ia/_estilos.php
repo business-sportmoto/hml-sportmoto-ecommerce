@@ -113,6 +113,8 @@ textarea.ia_input { resize: vertical; min-height: 88px; line-height: 1.5; }
 .ia_resultado_meta { font-size: 12px; color: var(--em-texto-sub); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .ia_resultado_texto { white-space: pre-wrap; font-size: 13.5px; line-height: 1.6; background: var(--em-bg); border: 1px solid var(--em-border); border-radius: 12px; padding: 14px; }
 .ia_resultado_erro { color: var(--em-erro); font-size: 13px; background: var(--em-erro-bg); border-radius: 12px; padding: 12px 14px; }
+.ia_resultado_img { background: var(--em-bg); border: 1px solid var(--em-border); border-radius: 12px; padding: 8px; text-align: center; }
+.ia_resultado_img img { max-width: 100%; max-height: 480px; border-radius: 8px; display: inline-block; }
 .ia_resultado_acoes { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 
 .ia_spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--em-border); border-top-color: var(--em-blue); border-radius: 50%; animation: ia_girar .8s linear infinite; vertical-align: -2px; }

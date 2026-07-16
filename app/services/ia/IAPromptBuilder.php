@@ -116,6 +116,45 @@ class IAPromptBuilder
         return $this->substituirPlaceholders($prompt, $contexto);
     }
 
+    /**
+     * Prompt de IMAGEM: curto e visual — modelos de imagem rendem melhor com
+     * descrição direta do que com os blocos TAREFA/DADOS do prompt de texto.
+     * As diretrizes visuais vivem em instrucoes_sistema do tipo (não há
+     * papel "system" em geração de imagem).
+     */
+    public function montarPromptImagem(array $contexto, array $tipo, array $briefing): string
+    {
+        $partes = [];
+
+        if (!empty($tipo['instrucoes_sistema'])) {
+            $partes[] = trim((string) $tipo['instrucoes_sistema']);
+        }
+
+        $identidade = 'Produto: ' . $contexto['nome'];
+        if (!empty($contexto['marca'])) {
+            $identidade .= ' — marca ' . $contexto['marca'];
+        }
+        if (!empty($contexto['categoria'])) {
+            $identidade .= ' (' . $contexto['categoria'] . ')';
+        }
+        $partes[] = $identidade . '.';
+
+        $direcao = [];
+        foreach (['objetivo' => 'Objetivo', 'tom' => 'Clima/estilo'] as $chave => $rotulo) {
+            $valor = trim((string) ($briefing[$chave] ?? ''));
+            if ($valor !== '') {
+                $direcao[] = $rotulo . ': ' . $valor;
+            }
+        }
+        if (!empty($direcao)) {
+            $partes[] = implode('. ', $direcao) . '.';
+        }
+
+        $partes[] = 'Sem nenhum texto, letras, logotipos ou marca d\'água na imagem.';
+
+        return implode("\n", $partes);
+    }
+
     /** Suporte a {{placeholders}} em templates editados pelo usuário. */
     public function substituirPlaceholders(string $texto, array $contexto): string
     {

@@ -13,6 +13,8 @@ Router::get( '/webhooks/malga/diagnose', 'WebhookController@diagnose');
 // Webhook público (sem auth) — ANTES das rotas admin
 Router::post('/webhook/bling', 'BlingWebhookController@receive');
 
+Router::post('/webhooks/ia/replicate', 'IAWebhookController@replicate');
+
 // Catálogo
 Router::get('/categoria/{slug}',          'CategoryController@show');
 Router::get('/busca',                     'SearchController@results');

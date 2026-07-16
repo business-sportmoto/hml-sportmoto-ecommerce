@@ -114,6 +114,123 @@ class IAOrchestrator
         return $ultimo ?? IAResultado::falha('todos_falharam', 'Todos os modelos da capacidade falharam.', false);
     }
 
+    /**
+     * Executa uma geração de IMAGEM (Fase 2 · Bloco A).
+     * Síncrono (OpenAI): devolve ok com binários. Assíncrono (Replicate):
+     * devolve aguardando + externalId — a tentativa PARA aqui de propósito
+     * (o job vive no provedor; fallback entre tentativas assíncronas é Fase 2C).
+     */
+    public function executarImagem(array $geracao, array $tipo): IAResultado
+    {
+        $candidatos = $this->modelosDaCapacidade('imagem', isset($tipo['modelo_id']) ? (int) $tipo['modelo_id'] : null);
+
+        if (empty($candidatos)) {
+            return IAResultado::falha('sem_modelos', 'Nenhum modelo de imagem ativo com provedor configurado.', false);
+        }
+
+        $ultimo = null;
+
+        foreach ($candidatos as $m) {
+            $limiteProv = ($m['prov_limite'] !== null) ? (float) $m['prov_limite'] : null;
+            if ($limiteProv !== null && $this->custo->gastoProvedorHoje($m['prov_codigo']) >= $limiteProv) {
+                $this->logRoteamento((int) $geracao['id'], $m, 'pulado', 'limite_provedor', 'Teto diário do provedor atingido.', 0);
+                continue;
+            }
+
+            $adapter = $this->fabricarAdapter($m);
+            if ($adapter === null) {
+                $this->logRoteamento((int) $geracao['id'], $m, 'pulado', 'sem_adapter', 'Adapter indisponível ou chave não decifrável.', 0);
+                continue;
+            }
+
+            $job = [
+                'prompt'        => (string) $geracao['prompt_final'],
+                'proporcao'     => !empty($geracao['formato']) ? (string) $geracao['formato'] : '1:1',
+                'modelo_codigo' => (string) $m['codigo_modelo'],
+                'timeout_s'     => (int) $m['timeout_s'],
+                'params'        => $this->decodificarJson($m['params_padrao']),
+            ];
+
+            $resultado = $adapter->gerarImagem($job);
+
+            if ($resultado->aguardando) {
+                // Provedor aceitou: registra a tentativa e encerra — webhook/varredura concluem.
+                $this->logRoteamento((int) $geracao['id'], $m, 'aguardando', null, null, $resultado->tempoMs);
+                $resultado->modeloId       = (int) $m['id'];
+                $resultado->provedorCodigo = (string) $m['prov_codigo'];
+                $resultado->modeloCodigo   = (string) $m['codigo_modelo'];
+                return $resultado;
+            }
+
+            $this->atualizarEstatisticas((int) $m['id'], $resultado->ok, $resultado->tempoMs);
+            $this->logRoteamento(
+                (int) $geracao['id'],
+                $m,
+                $resultado->ok ? 'ok' : (($resultado->erroCodigo === 'rede') ? 'timeout' : 'falha'),
+                $resultado->erroCodigo,
+                $resultado->erro,
+                $resultado->tempoMs
+            );
+
+            if ($resultado->ok) {
+                $resultado->modeloId       = (int) $m['id'];
+                $resultado->provedorCodigo = (string) $m['prov_codigo'];
+                $resultado->modeloCodigo   = (string) $m['codigo_modelo'];
+                $resultado->custoRealUsd   = $this->custo->custoRealImagemPorModelo((int) $m['id']);
+                return $resultado;
+            }
+
+            $ultimo = $resultado;
+
+            if (!$resultado->retryable) {
+                LogService::warning('ia_fallback_interrompido', [
+                    'geracao_id' => (int) $geracao['id'],
+                    'modelo'     => $m['codigo_modelo'],
+                    'erro'       => $resultado->erroCodigo,
+                ]);
+                return $resultado;
+            }
+
+            LogService::warning('ia_fallback_proximo_modelo', [
+                'geracao_id' => (int) $geracao['id'],
+                'falhou'     => $m['codigo_modelo'],
+                'erro'       => $resultado->erroCodigo,
+            ]);
+        }
+
+        return $ultimo ?? IAResultado::falha('todos_falharam', 'Todos os modelos da capacidade falharam.', false);
+    }
+
+    /**
+     * Adapter pronto (com chave decifrada) a partir do CÓDIGO do provedor —
+     * usado pela varredura do worker e pelo webhook para consultar predictions.
+     */
+    public function adapterPorCodigo(string $codigo): ?IAProviderBase
+    {
+        try {
+            $stmt = $this->db->prepare(
+                'SELECT id, codigo, base_url, config_extra FROM ia_provedores
+                  WHERE codigo = :c AND api_key_enc IS NOT NULL LIMIT 1'
+            );
+            $stmt->execute([':c' => $codigo]);
+            $p = $stmt->fetch(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            LogService::error('ia_adapter_codigo_erro', ['codigo' => $codigo, 'erro' => $e->getMessage()]);
+            return null;
+        }
+
+        if (!$p) {
+            return null;
+        }
+
+        return $this->fabricarAdapterDireto(
+            (string) $p['codigo'],
+            (int) $p['id'],
+            (string) $p['base_url'],
+            $this->decodificarJson($p['config_extra'] ?? null)
+        );
+    }
+
     /** Teste de conexão de um provedor (botão da tela de config). */
     public function testarProvedor(array $provedor): IAResultado
     {

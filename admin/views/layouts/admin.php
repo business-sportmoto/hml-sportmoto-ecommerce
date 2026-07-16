@@ -22,6 +22,7 @@ function adminIsActive(string $path): string {
   <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/email-marketing.css">
   <link rel="stylesheet" href="<?= ASSET_URL ?>/css/icon-finder.css">
   <link rel="stylesheet" href="<?= ASSET_URL ?>/css/toast.css">
+  <link rel="stylesheet" href="<?= ASSET_URL ?>/css/lightbox.css">
 
   <link rel="stylesheet" href="<?= View::asset('css/fluxo-canvas.css') ?>">
 
@@ -48,7 +49,7 @@ function adminIsActive(string $path): string {
 
   <!-- Nav -->
   <nav class="admin-nav">
-
+    
     <div class="admin-nav-section">
       <span class="admin-nav-section-title">Visão geral</span>
       <a href="<?= BASE_URL ?>/admin" class="admin-nav-item<?= adminIsActive('/admin') && !adminIsActive('/admin/') ? ' active' : (str_replace(BASE_URL, '', $currentUri) === '/admin' ? ' active' : '') ?>">
@@ -447,6 +448,7 @@ function adminIsActive(string $path): string {
 </script>
 
 <script src="<?= ASSET_URL ?>/js/toast.js"></script>
+<script src="<?= ASSET_URL ?>/js/lightbox.js"></script>
 <script src="<?= View::asset('js/admin-core.js') ?>"></script>
 <script src="<?= View::asset('js/admin.js') ?>"></script>
 <script src="<?= View::asset('js/functions.js') ?>"></script>

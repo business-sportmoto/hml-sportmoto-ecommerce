@@ -8,7 +8,7 @@
  *   Fase 2 — Despacho: processa itens prontos na fila
  *
  * Cron sugerido (a cada 5 minutos):
- *   *\/5 * * * * /usr/local/lsws/lsphp82/bin/php /home/homo-v2.sportmoto.com.br/public_html/cli/automacao-worker.php >> /home/homo-v2.sportmoto.com.br/public_html/storage/logs/automacao-worker.log 2>&1
+ *   *\/5 * * * * php /home/ploi/hml.sportmoto.com.br/cli/automacao-worker.php >> /home/ploi/hml.sportmoto.com.br/storage/logs/automacao-worker.log 2>&1
  * crontab -u www-data -e
  * /usr/local/lsws/lsphp82/bin/php /home/homo-v2.sportmoto.com.br/public_html/cli/automacao-worker.php --verbose 2>&1
  * Uso manual:

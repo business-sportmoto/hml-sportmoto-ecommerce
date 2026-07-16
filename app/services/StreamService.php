@@ -187,4 +187,45 @@ final class StreamService
         }
         return $data;
     }
+
+
+    /**
+     * Valida e retorna um UID de vídeo vindo do POST (hidden preenchido pelo
+     * frontend após upload direto ao Stream). Retorna null se nada enviado.
+     * UID do Stream = 32 hex.
+     *
+     * (Antes vivia no trait HandlesStreamVideo; movido para cá — o controller
+     *  injeta o StreamService e chama $this->stream->uidFromPost('campo').)
+     *
+     * @throws \RuntimeException se o valor existir mas não for um UID válido.
+     */
+    public function uidFromPost(string $campo): ?string
+    {
+        $uid = $_POST[$campo] ?? '';
+        $uid = is_string($uid) ? trim($uid) : '';
+        if ($uid === '') {
+            return null;
+        }
+        if (!$this->isUid($uid)) {
+            throw new \RuntimeException('UID de vídeo inválido.');
+        }
+        return $uid;
+    }
+
+    /** True se a string tem o formato de UID do Stream (32 hex). */
+    public function isUid(string $v): bool
+    {
+        return (bool) preg_match('/^[a-f0-9]{32}$/i', $v);
+    }
+
+    /**
+     * Remove um vídeo do Stream SE o valor for um UID válido (ignora nomes de
+     * arquivo legados). Idempotente. Wrapper seguro sobre deleteVideo().
+     */
+    public function deleteIfUid(?string $uid): void
+    {
+        if (!empty($uid) && is_string($uid) && $this->isUid($uid)) {
+            $this->deleteVideo($uid);
+        }
+    }
 }

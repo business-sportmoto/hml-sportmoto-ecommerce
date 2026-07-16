@@ -111,6 +111,14 @@ class VeiculoFotoService {
         $sql = "UPDATE cliente_veiculo_fotos SET " . implode(', ', $sets)
              . " WHERE id = ? AND cliente_id = ?";
         $this->db->prepare($sql)->execute($params);
+        
+        NotificacaoService::criarBroadcast([
+            'categoria' => 'sistema',
+            'tipo'      => 'nova_foto_publica',
+            'titulo'    => "Um cliente acabou de tornar sua foto publica",
+            'url'       => "/admin/moderacao/fotos",
+        ], 'todos_admins');
+
         return true;
     }
 

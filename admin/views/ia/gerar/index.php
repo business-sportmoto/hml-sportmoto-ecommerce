@@ -124,6 +124,16 @@ jQuery(function ($) {
     carregarPainel(id);
   });
 
+  // Capacidade do tipo escolhido comanda o formulário: imagem troca
+  // ângulo por proporção (delegado — o painel chega via AJAX).
+  $(document).on('change', '#ia_g_tipo', function () {
+    var cap = $(this).find('option:selected').data('cap') || 'texto';
+    var ehImagem = (cap === 'imagem');
+    $('#ia_g_angulo_wrap').toggle(!ehImagem);
+    $('#ia_g_proporcao_wrap').toggle(ehImagem);
+    if (ehImagem) { $('#ia_g_angulo').val(''); }
+  });
+
   $(document).on('click', function (e) {
     if (!$(e.target).closest('.ia_busca_wrap').length) { $('#ia_busca_lista').hide(); }
   });
@@ -233,16 +243,30 @@ jQuery(function ($) {
     } else if (g.status === 'concluida') {
       $pill.attr('class', 'ia_pill ia_pill_ok').html('<i class="bi bi-check-circle"></i> Concluída');
       if (!$corpo.data('pronto')) {
-        $corpo.data('pronto', 1).html(
-          '<div class="ia_resultado_texto"></div>' +
-          '<div class="ia_resultado_acoes">' +
-            '<button type="button" class="ia_btn ia_ac_copiar"><i class="bi bi-clipboard"></i> Copiar</button>' +
-            '<button type="button" class="ia_btn ia_ac_aprovar"><i class="bi bi-hand-thumbs-up"></i> Aprovar</button>' +
-            '<button type="button" class="ia_btn ia_ac_reprovar"><i class="bi bi-hand-thumbs-down"></i> Reprovar</button>' +
-            '<button type="button" class="ia_btn ia_ac_refazer"><i class="bi bi-arrow-repeat"></i> Refazer</button>' +
-          '</div>'
-        );
-        $corpo.find('.ia_resultado_texto').text(g.resultado_texto || '');
+        if (g.capacidade === 'imagem' && g.arquivo_id) {
+          $corpo.data('pronto', 1).html(
+            '<div class="ia_resultado_img"><img alt="Imagem gerada" loading="lazy"></div>' +
+            '<div class="ia_resultado_acoes">' +
+              '<a class="ia_btn ia_ac_baixar" target="_blank" rel="noopener"><i class="bi bi-download"></i> Baixar</a>' +
+              '<button type="button" class="ia_btn ia_ac_aprovar"><i class="bi bi-hand-thumbs-up"></i> Aprovar</button>' +
+              '<button type="button" class="ia_btn ia_ac_reprovar"><i class="bi bi-hand-thumbs-down"></i> Reprovar</button>' +
+              '<button type="button" class="ia_btn ia_ac_refazer"><i class="bi bi-arrow-repeat"></i> Refazer</button>' +
+            '</div>'
+          );
+          $corpo.find('img').attr('src', '/admin/ia/arquivo?id=' + g.arquivo_id);
+          $corpo.find('.ia_ac_baixar').attr('href', '/admin/ia/arquivo?id=' + g.arquivo_id + '&download=1');
+        } else {
+          $corpo.data('pronto', 1).html(
+            '<div class="ia_resultado_texto"></div>' +
+            '<div class="ia_resultado_acoes">' +
+              '<button type="button" class="ia_btn ia_ac_copiar"><i class="bi bi-clipboard"></i> Copiar</button>' +
+              '<button type="button" class="ia_btn ia_ac_aprovar"><i class="bi bi-hand-thumbs-up"></i> Aprovar</button>' +
+              '<button type="button" class="ia_btn ia_ac_reprovar"><i class="bi bi-hand-thumbs-down"></i> Reprovar</button>' +
+              '<button type="button" class="ia_btn ia_ac_refazer"><i class="bi bi-arrow-repeat"></i> Refazer</button>' +
+            '</div>'
+          );
+          $corpo.find('.ia_resultado_texto').text(g.resultado_texto || '');
+        }
       }
       removerPendente(g.uuid);
     } else if (g.status === 'falhou' || g.status === 'cancelada') {

@@ -2,7 +2,7 @@
 // admin/views/produtos/form.php
 $p      = $produto ?? null;
 $isEdit = !empty($p);
-$imgUrl = fn($f) => View::upload('products/' . $f);
+$imgUrl = fn($f) => View::e($f);
 
 $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inativo'];
 

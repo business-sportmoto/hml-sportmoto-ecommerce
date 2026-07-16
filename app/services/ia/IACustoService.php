@@ -58,24 +58,68 @@ class IACustoService
     }
 
     /** Custo do primeiro modelo ativo da capacidade (para estimativa no enfileiramento). */
-    public function custoConfigPrimarioTexto(): ?array
+    public function custoConfigPrimario(string $capacidade): ?array
     {
         try {
             $sql = "SELECT m.custo_config
                       FROM ia_modelos m
                 INNER JOIN ia_provedores p ON p.id = m.provedor_id AND p.ativo = 1 AND p.api_key_enc IS NOT NULL
-                     WHERE m.capacidade = 'texto' AND m.ativo = 1
+                     WHERE m.capacidade = :cap AND m.ativo = 1
                   ORDER BY m.prioridade ASC LIMIT 1";
-            $json = $this->db->query($sql)->fetchColumn();
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([':cap' => $capacidade]);
+            $json = $stmt->fetchColumn();
             if ($json === false || $json === null) {
                 return null;
             }
             $dec = json_decode((string) $json, true);
             return is_array($dec) ? $dec : null;
         } catch (Throwable $e) {
-            LogService::error('ia_custo_primario_erro', ['erro' => $e->getMessage()]);
+            LogService::error('ia_custo_primario_erro', ['capacidade' => $capacidade, 'erro' => $e->getMessage()]);
             return null;
         }
+    }
+
+    public function custoConfigPrimarioTexto(): ?array
+    {
+        return $this->custoConfigPrimario('texto');
+    }
+
+    /** Estimativa para IMAGEM: custo fixo por execução/imagem do config. */
+    public function estimarImagem(?array $custoConfig): float
+    {
+        return $this->custoFixo($custoConfig) ?? 0.0;
+    }
+
+    /** Custo real de imagem do modelo que executou (flat por imagem/execução). */
+    public function custoRealImagemPorModelo(?int $modeloId): ?float
+    {
+        if ($modeloId === null || $modeloId <= 0) {
+            return null;
+        }
+        try {
+            $stmt = $this->db->prepare('SELECT custo_config FROM ia_modelos WHERE id = :id LIMIT 1');
+            $stmt->execute([':id' => $modeloId]);
+            $json = $stmt->fetchColumn();
+            $cfg  = is_string($json) ? json_decode($json, true) : null;
+            return $this->custoFixo(is_array($cfg) ? $cfg : null);
+        } catch (Throwable $e) {
+            LogService::error('ia_custo_modelo_erro', ['modelo_id' => $modeloId, 'erro' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /** por_imagem / por_execucao → valor fixo; outros formatos → null. */
+    private function custoFixo(?array $cfg): ?float
+    {
+        if (empty($cfg)) {
+            return null;
+        }
+        return match ($cfg['tipo'] ?? '') {
+            'por_imagem'   => round((float) ($cfg['usd_imagem'] ?? 0), 6),
+            'por_execucao' => round((float) ($cfg['usd_execucao'] ?? 0), 6),
+            default        => null,
+        };
     }
 
     /* ------------------------------------------------------------------ */

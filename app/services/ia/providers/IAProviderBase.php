@@ -39,6 +39,59 @@ abstract class IAProviderBase
         return IAResultado::falha('nao_suportado', 'Capacidade texto não suportada por ' . $this->codigo() . '.', true);
     }
 
+    /**
+     * Geração de imagem. $job:
+     *  prompt (string), proporcao ('1:1'|'3:2'|'2:3'), modelo_codigo (string),
+     *  timeout_s (int), params (array)
+     * Pode devolver sucessoImagem() (síncrono) ou pendente() (assíncrono).
+     */
+    public function gerarImagem(array $job): IAResultado
+    {
+        return IAResultado::falha('nao_suportado', 'Capacidade imagem não suportada por ' . $this->codigo() . '.', true);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Download binário (URLs de entrega — expiram; baixar IMEDIATAMENTE)  */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * GET binário sem cabeçalhos de auth (URLs de entrega são assinadas).
+     * Retorna ['ok'=>bool, 'binario'=>?string, 'mime'=>?string, 'extensao'=>?string, 'erro'=>?string]
+     */
+    protected function httpBinario(string $url, int $timeoutS = 60): array
+    {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS      => 3,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_TIMEOUT        => max(10, $timeoutS),
+        ]);
+
+        $binario = curl_exec($ch);
+        $status  = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $mime    = (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+        $erro    = curl_error($ch);
+        curl_close($ch);
+
+        if ($binario === false || $status !== 200 || $binario === '') {
+            return ['ok' => false, 'binario' => null, 'mime' => null, 'extensao' => null,
+                    'erro' => $erro !== '' ? $erro : ('HTTP ' . $status)];
+        }
+
+        $mime = strtolower(trim(explode(';', $mime)[0] ?? ''));
+        $mapa = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp', 'image/gif' => 'gif'];
+
+        return [
+            'ok'       => true,
+            'binario'  => $binario,
+            'mime'     => $mime !== '' ? $mime : 'image/png',
+            'extensao' => $mapa[$mime] ?? 'png',
+            'erro'     => null,
+        ];
+    }
+
     /* ------------------------------------------------------------------ */
     /* HTTP                                                                */
     /* ------------------------------------------------------------------ */

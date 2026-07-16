@@ -4,7 +4,7 @@ $preco      = (float)($product['preco_promo'] ?: $product['preco']);
 $precoOrig  = (float)$product['preco'];
 $temPromo   = !empty($product['preco_promo']) && $product['preco_promo'] < $precoOrig;
 $imgUrl     = !empty($product['imagem_principal'])
-              ? View::upload('products/' . $product['imagem_principal'])
+              ? View::e($product['imagem_principal'])
               : View::asset('images/placeholder.jpg');
 
 // Range de preços (vindo do model/controller junto com o produto)
