@@ -72,3 +72,13 @@ composer.phar
 #   git check-ignore assets/images/logo.svg -> deve retornar VAZIO (vai pro Git)
 #   git check-ignore vendor/              -> deve retornar match (ignorado)
 # ============================================================================
+
+
+# Obsidian: estado local da interface
+docs/sportmoto-os/.obsidian/workspace.json
+docs/sportmoto-os/.obsidian/workspaces.json
+
+# Arquivos temporários
+docs/sportmoto-os/.trash/
+docs/sportmoto-os/.DS_Store
+docs/sportmoto-os/Thumbs.db
