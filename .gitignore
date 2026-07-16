@@ -28,6 +28,9 @@
 /public/
 /.claude/
 
+/docs/
+/docs/sportmoto-os/
+
 # Scripts utilitarios soltos / dumps / backups (vazamento se forem pro server)
 /db.backup
 /migration.sql
@@ -82,3 +85,4 @@ docs/sportmoto-os/.obsidian/workspaces.json
 docs/sportmoto-os/.trash/
 docs/sportmoto-os/.DS_Store
 docs/sportmoto-os/Thumbs.db
+

@@ -37,9 +37,9 @@ $configJson = $fluxo['config_json'] ?: "{\n  \"reentrada\": \"nunca\",\n  \"sair
       </span>
     </div>
 
-    <button type="button" id="fx-zoom-out"   class="fx-btn fx-btn-icon" title="Zoom -"><i class="bi bi-zoom-out"></i></button>
-    <button type="button" id="fx-zoom-reset" class="fx-btn fx-btn-icon" title="Zoom 100%"><i class="bi bi-aspect-ratio"></i></button>
-    <button type="button" id="fx-zoom-in"    class="fx-btn fx-btn-icon" title="Zoom +"><i class="bi bi-zoom-in"></i></button>
+    <button type="button" id="fx-zoom-out"   class="fx-btn fx-btn-icon" title="Zoom -"><i class="bi bi-zoom-out"><?= IconLibrary::render('zoom-out') ?></i></button>
+    <button type="button" id="fx-zoom-reset" class="fx-btn fx-btn-icon" title="Zoom 100%"><i class="bi bi-aspect-ratio"><?= IconLibrary::render('aspect-ratio') ?></i></button>
+    <button type="button" id="fx-zoom-in"    class="fx-btn fx-btn-icon" title="Zoom +"><i class="bi bi-zoom-in"><?= IconLibrary::render('zoom-in') ?></i></button>
 
     <button type="button" id="fx-cfg-toggle" class="fx-btn">
       <i class="bi bi-shield-check"></i> Guard-rails
@@ -48,7 +48,7 @@ $configJson = $fluxo['config_json'] ?: "{\n  \"reentrada\": \"nunca\",\n  \"sair
       <i class="bi bi-save"></i> Salvar rascunho
     </button>
     <button type="button" id="fx-publicar" class="fx-btn fx-btn-pri">
-      <i class="bi bi-rocket-takeoff"></i> Publicar
+      <i class="bi bi-rocket-takeoff"><?= IconLibrary::render('rocket-launch') ?></i></i> Publicar
     </button>
     <?php if ($fluxo['status'] === 'publicado'): ?>
       <button type="button" class="fx-btn fx-status-btn" data-status="pausado">

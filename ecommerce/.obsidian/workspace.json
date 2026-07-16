@@ -1,0 +1,192 @@
+{
+  "main": {
+    "id": "ffef14b29548e953",
+    "type": "split",
+    "children": [
+      {
+        "id": "c626aa7c7c883a65",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "f3aeebbe1a0ffe26",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "teste/teste.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "teste"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "68488c695a4b12b2",
+    "type": "split",
+    "children": [
+      {
+        "id": "533c4f032a0c6c18",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "b246024ff1113b77",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Explorador de arquivos"
+            }
+          },
+          {
+            "id": "ec0f70886d044335",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Procurar"
+            }
+          },
+          {
+            "id": "10e6bc7e4df5093c",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Marcadores"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "1ca5daf74af1596b",
+    "type": "split",
+    "children": [
+      {
+        "id": "6440df9e60bf8bad",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "7a0ee76c31cbbe80",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "teste/teste.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Links inversos para teste"
+            }
+          },
+          {
+            "id": "5f999afa5eba88e0",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "teste/teste.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Links de saída para teste"
+            }
+          },
+          {
+            "id": "f80002527ba41737",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Etiquetas"
+            }
+          },
+          {
+            "id": "1d6bc08865d88ead",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Todas as propriedades"
+            }
+          },
+          {
+            "id": "f0b6d6ce1b25b766",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "teste/teste.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Sumário de teste"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Abrir a troca rápida": false,
+      "graph:Abrir visualização em gráfico": false,
+      "canvas:Criar novo canvas": false,
+      "daily-notes:Abrir a nota de hoje": false,
+      "templates:Inserir modelo": false,
+      "command-palette:Abrir paleta de comandos": false,
+      "bases:Criar nova base": false
+    }
+  },
+  "active": "b246024ff1113b77",
+  "lastOpenFiles": [
+    "teste/teste.md",
+    "teste",
+    "arquivo de teste.md"
+  ]
+}
