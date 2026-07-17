@@ -809,7 +809,7 @@ class ProdutosController extends Controller {
             LogService::debug('uploadImagem', [$e]);
             // Falha inesperada (R2 fora, GD, etc.) -> log completo, resposta genérica
             LogService::exception($e, 'error', 'media', ['produto_id' => $produtoId]);
-            $this->json(['ok' => false, 'msg' => 'Erro ao processar a imagem.']);
+            $this->json(['ok' => false, 'msg' => 'Erro ao processar a imagem. debug']);
         }
 
         // ── Persistência (lógica de principal/ordem PRESERVADA) ──────────
