@@ -123,12 +123,20 @@ final class LogService
         string $canal = 'app',
         array $ctx = []
     ): void {
+        
+        self::write('debug', $canal, $e->getMessage(), $ctx);
+
         $anterior = $e->getPrevious();
         if ($anterior !== null) {
             $ctx['excecao_anterior'] = $anterior::class . ': ' . $anterior->getMessage();
         }
 
-        self::write($nivel, $canal, $e->getMessage(), $ctx);
+        self::write($nivel, $canal, $e->getMessage(), $ctx, [
+            'tipo'    => $e::class,
+            'arquivo' => $e->getFile(),
+            'linha'   => $e->getLine(),
+            'trace'   => self::redactString($e->getTraceAsString()),
+        ]);
     }
 
     /** ID que correlaciona todos os logs da MESMA requisição. */
