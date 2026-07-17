@@ -814,15 +814,21 @@ class ProdutosController extends Controller {
             $this->json(['ok' => false, 'msg' => 'Erro ao processar a imagem. debug']);
         }
 
+        LogService::debug('uploadImagem chega aqui', []);
+
         // ── Persistência (lógica de principal/ordem PRESERVADA) ──────────
         // Primeira imagem do produto vira a principal.
         $stmt = $db->prepare("SELECT COUNT(*) FROM produto_imagens WHERE produto_id = ?");
         $stmt->execute([$produtoId]);
         $isPrincipal = (int) $stmt->fetchColumn() === 0 ? 1 : 0;
 
+        LogService::debug('uploadImagem talvez chega aqui', []);
+
         $stmt = $db->prepare("SELECT COALESCE(MAX(ordem),0)+1 FROM produto_imagens WHERE produto_id = ?");
         $stmt->execute([$produtoId]);
         $ordem = (int) $stmt->fetchColumn();
+
+        LogService::debug('uploadImagem e agora chega aqui', []);
 
         // A coluna `arquivo` agora guarda a URL COMPLETA do R2 (full).
         // Guardamos também a thumb. (Ver nota de schema abaixo.)
@@ -830,6 +836,8 @@ class ProdutosController extends Controller {
             "INSERT INTO produto_imagens (produto_id, arquivo, arquivo_thumb, principal, ordem)
              VALUES (?, ?, ?, ?, ?)"
         )->execute([$produtoId, $urls['full'], $urls['thumb'], $isPrincipal, $ordem]);
+
+        LogService::debug('uploadImagem possivelmente chega aqui', []);
 
         $imgId = (int) $db->lastInsertId();
 
@@ -842,8 +850,8 @@ class ProdutosController extends Controller {
         $this->json([
             'ok'        => true,
             'id'        => $imgId,
-            'url'       => $urls['full'],   // URL do R2 direto (não mais UPLOAD_URL)
-            'thumb'     => $urls['thumb'],
+            'url'       => $urls['full'] ?? '',   // URL do R2 direto (não mais UPLOAD_URL)
+            'thumb'     => $urls['thumb'] ?? '',
             'principal' => $isPrincipal,
         ]);
     }
