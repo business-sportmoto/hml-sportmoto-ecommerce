@@ -782,8 +782,7 @@ class ProdutosController extends Controller {
             ], 'media');
             $this->json(['ok' => false, 'msg' => 'Produto não encontrado.']);
         }
-
-        LogService::critical('teste', [$produtoId]);
+    
 
         try {
             // Valida (magic bytes, não extensão), reprocessa (destrói payload),

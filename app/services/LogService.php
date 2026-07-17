@@ -128,12 +128,7 @@ final class LogService
             $ctx['excecao_anterior'] = $anterior::class . ': ' . $anterior->getMessage();
         }
 
-        self::write($nivel, $canal, $e->getMessage(), $ctx, [
-            'tipo'    => $e::class,
-            'arquivo' => $e->getFile(),
-            'linha'   => $e->getLine(),
-            'trace'   => self::redactString($e->getTraceAsString()),
-        ]);
+        self::write($nivel, $canal, $e->getMessage(), $ctx);
     }
 
     /** ID que correlaciona todos os logs da MESMA requisição. */
