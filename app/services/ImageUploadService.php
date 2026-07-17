@@ -62,8 +62,12 @@ final class ImageUploadService
             return null; // slot vazio -> não sobrescreve
         }
 
+        LogService::debug('upload', [$file]);
+
         $this->processor->validateUpload($file);                 // magic bytes + tamanho + dimensão
         $variantes = $this->processor->toWebpVariants($file['tmp_name'], $presets);
+
+        LogService::debug('variantes', [$variantes]);
 
         // Todas as variantes do mesmo upload compartilham o hash base,
         // diferenciando pelo sufixo -> fácil correlacionar e limpar depois.

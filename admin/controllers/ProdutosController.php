@@ -791,7 +791,9 @@ class ProdutosController extends Controller {
                 $_FILES['imagem'] ?? [],
                 'produtos',
                 ['full' => 1200, 'thumb' => 400]   // presets do contexto produto
-            );            
+            );
+            
+            LogService::debug('uploadImagem', [$urls]);
 
             if ($urls === null) {
                 $this->json(['ok' => false, 'msg' => 'Nenhuma imagem enviada.']);
