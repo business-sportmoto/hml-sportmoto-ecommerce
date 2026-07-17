@@ -150,4 +150,24 @@ final class ImageProcessor
         }
         return $bytes;
     }
+/**
+     * Valida um arquivo em disco (origem não-$_FILES, ex.: baixado de URL).
+     * Mantém a checagem que importa: é uma imagem real do tipo permitido?
+     * @throws \RuntimeException
+     */
+    public function validateBytes(string $caminho): void
+    {
+        $info = @getimagesize($caminho);   // lê magic bytes, não a extensão
+        if ($info === false) {
+            throw new \RuntimeException('Arquivo não é uma imagem válida.');
+        }
+        $permitidos = [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_WEBP, IMAGETYPE_GIF];
+        if (!in_array($info[2], $permitidos, true)) {
+            throw new \RuntimeException('Formato de imagem não suportado.');
+        }
+        // Dimensão sanidade: evita "bomba" de pixels (ex.: 50000x50000)
+        if ($info[0] > 10000 || $info[1] > 10000) {
+            throw new \RuntimeException('Imagem excede as dimensões máximas.');
+        }
+    }
 }

@@ -90,6 +90,7 @@ class TrayImportController extends Controller {
 
     /** POST /admin/importar/chunk */
     public function chunk(): void {
+        $this->verifyCsrf(); 
         $jobId = (int)($_POST['job_id'] ?? 0);
         $tipo  = SecurityHelper::sanitizeString($_POST['tipo'] ?? '');
         if (!$jobId) $this->json(['ok' => false, 'msg' => 'job_id inválido.']);
@@ -111,6 +112,7 @@ class TrayImportController extends Controller {
 
     /** POST /admin/importar/processar-imagens */
     public function processarImagens(): void {
+        $this->verifyCsrf();  
         $limite = min(100, (int)($_POST['limite'] ?? 30));
         $this->json($this->service->processarFilaImagens($limite));
     }

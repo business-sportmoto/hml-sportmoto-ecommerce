@@ -75,9 +75,13 @@ class TrayImportService {
     private PDO            $db;
     private EstoqueService $estoque;
 
+    private ImageUploadService $img;   // ← NOVO
+
     public function __construct() {
         $this->db      = Database::getInstance()->getConnection();
         $this->estoque = new EstoqueService();
+
+        $this->img     = ImageUploadService::fromEnv();   // ← NOVO
     }
 
     // ════════════════════════════════════════════════════
@@ -213,7 +217,11 @@ class TrayImportService {
                     'linha' => $linhaNum ?? 0,
                     'msg'   => $e->getMessage() . ' - file:'. $e->getFile() . ' - line:'. $e->getLine(),
                 ];
-                error_log("[TrayImport] Linha {$linhaNum}: " . $e->getMessage());
+                // ANTES: error_log("[TrayImport] Linha {$linhaNum}: ...")
+                LogService::exception($e, 'warning', 'import', [
+                    'job_id' => $jobId,
+                    'linha'  => $linhaNum ?? 0,
+                ]);
             }
         }
 
@@ -285,7 +293,7 @@ class TrayImportService {
             'nome'             => $nome,
             'slug'             => SlugHelper::unique($nome, 'produtos'),
             'marca_id'         => $marcaId,
-            'categoria_id'     => $catId,
+            'categoria_id'     => null,
             'sku_legado'       => $this->utf8($r[self::P['referencia']] ?? '') ?: null,
             'preco'            => $preco > 0 ? $preco : 0.01,
             'preco_promo'      => $precoPromo,
@@ -483,83 +491,212 @@ class TrayImportService {
     // DOWNLOAD DE IMAGENS (chamado pelo cron/admin)
     // ════════════════════════════════════════════════════
 
-    public function processarFilaImagens(int $limite = 30): array {
+    // public function processarFilaImagens(int $limite = 30): array {
+    //     $stmt = $this->db->prepare(
+    //         "SELECT * FROM import_image_queue
+    //          WHERE status = 'pendente' AND tentativas < 3
+    //          ORDER BY id ASC LIMIT ?"
+    //     );
+    //     $stmt->execute([$limite]);
+    //     $fila = $stmt->fetchAll();
+
+    //     $ok = $erro = 0;
+    //     foreach ($fila as $item) {
+    //         // Marca como baixando
+    //         $this->db->prepare(
+    //             "UPDATE import_image_queue SET status='baixando', tentativas=tentativas+1 WHERE id=?"
+    //         )->execute([$item['id']]);
+
+    //         $arquivo = $this->baixarImagem($item['url']);
+
+    //         if ($arquivo) {
+    //             // Insere em produto_imagens
+    //             $this->db->prepare(
+    //                 "INSERT INTO produto_imagens (produto_id, arquivo, principal, ordem, sku_id)
+    //                  VALUES (?, ?, ?, ?, ?)
+    //                  ON DUPLICATE KEY UPDATE arquivo = VALUES(arquivo)"
+    //             )->execute([
+    //                 $item['produto_id'],
+    //                 $arquivo,
+    //                 $item['principal'],
+    //                 $item['ordem'],
+    //                 $item['sku_id'],
+    //             ]);
+
+    //             $this->db->prepare(
+    //                 "UPDATE import_image_queue
+    //                  SET status='concluido', processado_em=NOW() WHERE id=?"
+    //             )->execute([$item['id']]);
+    //             $ok++;
+    //         } else {
+    //             $this->db->prepare(
+    //                 "UPDATE import_image_queue
+    //                  SET status=IF(tentativas>=3,'erro','pendente'), erro='Download falhou' WHERE id=?"
+    //             )->execute([$item['id']]);
+    //             $erro++;
+    //         }
+    //     }
+
+    //     return ['ok' => $ok, 'erro' => $erro, 'fila' => count($fila)];
+    // }
+
+    /**
+     * Processa a fila de imagens: baixa da Tray -> valida -> WebP -> R2.
+     *
+     * [AUDITORIA] Endurecido com:
+     *  A. RECOVERY: itens presos em 'baixando' (request anterior morreu)
+     *     voltam a 'pendente' após 10 min — antes ficavam presos PARA SEMPRE.
+     *  B. CLAIM ATÔMICO: dois requests simultâneos não processam o mesmo item
+     *     (mesmo padrão do carrinho abandonado: UPDATE condicional + rowCount).
+     *  C. TRY/CATCH POR ITEM: uma PDOException (FK, coluna faltando) marca o
+     *     ITEM como erro e segue — antes matava o batch inteiro e deixava
+     *     itens em 'baixando'.
+     *  D. ORÇAMENTO DE TEMPO: para antes do max_execution_time; o front
+     *     rechama e continua de onde parou.
+     */
+    public function processarFilaImagens(int $limite = 25): array
+    {
+        // A. RECOVERY — resgata itens de execuções que morreram no meio.
+        $this->db->exec(
+            "UPDATE import_image_queue
+                SET status = 'pendente'
+              WHERE status = 'baixando'
+                AND claim_em < (NOW() - INTERVAL 10 MINUTE)
+                AND tentativas < 3"
+        );
+        // Presos com 3+ tentativas viram erro definitivo:
+        $this->db->exec(
+            "UPDATE import_image_queue
+                SET status = 'erro', erro = 'Excesso de tentativas (worker morreu)'
+              WHERE status = 'baixando'
+                AND claim_em < (NOW() - INTERVAL 10 MINUTE)
+                AND tentativas >= 3"
+        );
+
         $stmt = $this->db->prepare(
             "SELECT * FROM import_image_queue
-             WHERE status = 'pendente' AND tentativas < 3
-             ORDER BY id ASC LIMIT ?"
+              WHERE status = 'pendente'
+              ORDER BY id ASC
+              LIMIT ?"
         );
-        $stmt->execute([$limite]);
+        $stmt->bindValue(1, max(1, min(50, $limite)), PDO::PARAM_INT);
+        $stmt->execute();
         $fila = $stmt->fetchAll();
 
-        $ok = $erro = 0;
+        $ok = $erro = $pulados = 0;
+        $inicio = microtime(true);
+
         foreach ($fila as $item) {
-            // Marca como baixando
-            $this->db->prepare(
-                "UPDATE import_image_queue SET status='baixando', tentativas=tentativas+1 WHERE id=?"
-            )->execute([$item['id']]);
+            // D. ORÇAMENTO DE TEMPO: 20s de trabalho por request. O que sobrar
+            // fica 'pendente' e a próxima chamada do front continua.
+            if ((microtime(true) - $inicio) > 20) {
+                break;
+            }
 
-            $arquivo = $this->baixarImagem($item['url']);
+            // B. CLAIM ATÔMICO: só processa se ESTE request converteu
+            // pendente->baixando. Se outro request chegou antes, pula.
+            $claim = $this->db->prepare(
+                "UPDATE import_image_queue
+                    SET status = 'baixando', tentativas = tentativas + 1, claim_em = NOW()
+                  WHERE id = ? AND status = 'pendente'"
+            );
+            $claim->execute([$item['id']]);
+            if ($claim->rowCount() === 0) {
+                $pulados++;
+                continue; // outro worker reivindicou
+            }
 
-            if ($arquivo) {
-                // Insere em produto_imagens
-                $this->db->prepare(
-                    "INSERT INTO produto_imagens (produto_id, arquivo, principal, ordem, sku_id)
-                     VALUES (?, ?, ?, ?, ?)
-                     ON DUPLICATE KEY UPDATE arquivo = VALUES(arquivo)"
-                )->execute([
-                    $item['produto_id'],
-                    $arquivo,
-                    $item['principal'],
-                    $item['ordem'],
-                    $item['sku_id'],
+            // C. TRY/CATCH POR ITEM: falha isolada não derruba o batch.
+            try {
+                $urls = $this->baixarImagem($item['url']);
+
+                if ($urls !== null) {
+                    $this->db->prepare(
+                        "INSERT INTO produto_imagens
+                            (produto_id, arquivo, arquivo_thumb, principal, ordem, sku_id)
+                         VALUES (?, ?, ?, ?, ?, ?)
+                         ON DUPLICATE KEY UPDATE
+                            arquivo = VALUES(arquivo),
+                            arquivo_thumb = VALUES(arquivo_thumb)"
+                    )->execute([
+                        $item['produto_id'],
+                        $urls['full'] ?? '',
+                        $urls['thumb'] ?? '',
+                        $item['principal'],
+                        $item['ordem'],
+                        $item['sku_id'],
+                    ]);
+
+                    $this->db->prepare(
+                        "UPDATE import_image_queue
+                            SET status='concluido', processado_em=NOW() WHERE id=?"
+                    )->execute([$item['id']]);
+                    $ok++;
+                } else {
+                    $this->db->prepare(
+                        "UPDATE import_image_queue
+                            SET status=IF(tentativas>=3,'erro','pendente'),
+                                erro='Download/validação falhou'
+                          WHERE id=?"
+                    )->execute([$item['id']]);
+                    $erro++;
+                }
+
+            } catch (\Throwable $e) {
+                // FK violada, coluna faltando, R2 fora... marca o ITEM e segue.
+                LogService::exception($e, 'error', 'import', [
+                    'queue_id'   => (int) $item['id'],
+                    'produto_id' => (int) $item['produto_id'],
                 ]);
-
                 $this->db->prepare(
                     "UPDATE import_image_queue
-                     SET status='concluido', processado_em=NOW() WHERE id=?"
-                )->execute([$item['id']]);
-                $ok++;
-            } else {
-                $this->db->prepare(
-                    "UPDATE import_image_queue
-                     SET status=IF(tentativas>=3,'erro','pendente'), erro='Download falhou' WHERE id=?"
-                )->execute([$item['id']]);
+                        SET status=IF(tentativas>=3,'erro','pendente'), erro=?
+                      WHERE id=?"
+                )->execute([mb_substr($e->getMessage(), 0, 250), $item['id']]);
                 $erro++;
             }
+
+            // Educação com a CDN da Tray: 30k downloads em rajada podem
+            // disparar rate-limit deles e falhar tudo em massa.
+            usleep(150000); // 150ms entre downloads
         }
 
-        return ['ok' => $ok, 'erro' => $erro, 'fila' => count($fila)];
+        return ['ok' => $ok, 'erro' => $erro, 'pulados' => $pulados, 'fila' => count($fila)];
     }
 
-    private function baixarImagem(string $url): ?string {
-        $ext     = strtolower(pathinfo(parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION));
-        $extAllow= ['jpg','jpeg','png','webp'];
-        if (!in_array($ext, $extAllow)) $ext = 'jpg';
+    /**
+     * Baixa uma imagem da Tray (URL) e sobe para o R2, retornando as URLs
+     * públicas (full + thumb). Retorna null se o download/validação falhar.
+     *
+     * Mudou de disco local -> R2. A coluna produto_imagens.arquivo passa a
+     * guardar a URL COMPLETA do R2. Validação e anti-SSRF ficam no service.
+     *
+     * @return array{full:string,thumb:string}|null
+     */
+    private function baixarImagem(string $url): ?array
+    {
+        try {
+            
+            $urls = $this->img->uploadFromUrl($url, 'produtos', [
+                'full'  => 1200,
+                'thumb' => 400,
+            ]);
+            return $urls;   // ['full'=>'https://media...', 'thumb'=>'https://media...'] ou null
 
-        $arquivo = bin2hex(random_bytes(10)) . '.' . $ext;
-        $destDir = UPLOAD_PATH . '/products';
-        $dest    = $destDir . '/' . $arquivo;
+        } catch (\RuntimeException $e) {
+            // URL insegura (SSRF) ou imagem inválida -> falha controlada, loga e segue
+            LogService::warning('Imagem da Tray rejeitada', [
+                'url_host' => parse_url($url, PHP_URL_HOST),   // NÃO loga a URL inteira
+                'motivo'   => $e->getMessage(),
+            ], 'import');
+            return null;
 
-        if (!is_dir($destDir)) mkdir($destDir, 0755, true);
-
-        $ctx = stream_context_create(['http' => [
-            'timeout'         => 20,
-            'user_agent'      => 'Mozilla/5.0 (compatible; ProductImporter/1.0)',
-            'follow_location' => true,
-        ]]);
-
-        $dados = @file_get_contents($url, false, $ctx);
-        if ($dados === false || strlen($dados) < 100) return null;
-
-        file_put_contents($dest, $dados);
-
-        // Redimensiona com GD se disponível
-        if (extension_loaded('gd')) {
-            (new UploadHelper())->resizeExistente($dest, 1200, 1200, $ext);
+        } catch (\Throwable $e) {
+            LogService::exception($e, 'error', 'import', [
+                'url_host' => parse_url($url, PHP_URL_HOST),
+            ]);
+            return null;
         }
-
-        return $arquivo;
     }
 
     // ════════════════════════════════════════════════════

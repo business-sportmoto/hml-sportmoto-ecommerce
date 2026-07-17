@@ -792,8 +792,7 @@ class ProdutosController extends Controller {
                 'produtos',
                 ['full' => 1200, 'thumb' => 400]   // presets do contexto produto
             );
-            
-            LogService::debug('uploadImagem', [$urls]);
+                    
 
             if ($urls === null) {
                 $this->json(['ok' => false, 'msg' => 'Nenhuma imagem enviada.']);
@@ -807,14 +806,11 @@ class ProdutosController extends Controller {
             ], 'media');
             $this->json(['ok' => false, 'msg' => $e->getMessage()]);
 
-        } catch (\Throwable $e) {
-            LogService::debug('uploadImagem', [$e]);
+        } catch (\Throwable $e) {            
             // Falha inesperada (R2 fora, GD, etc.) -> log completo, resposta genérica
             LogService::exception($e, 'error', 'media', ['produto_id' => $produtoId]);
             $this->json(['ok' => false, 'msg' => 'Erro ao processar a imagem. debug']);
         }
-
-        LogService::debug('uploadImagem chega aqui', []);
 
         // ── Persistência (lógica de principal/ordem PRESERVADA) ──────────
         // Primeira imagem do produto vira a principal.
@@ -822,13 +818,9 @@ class ProdutosController extends Controller {
         $stmt->execute([$produtoId]);
         $isPrincipal = (int) $stmt->fetchColumn() === 0 ? 1 : 0;
 
-        LogService::debug('uploadImagem talvez chega aqui', []);
-
         $stmt = $db->prepare("SELECT COALESCE(MAX(ordem),0)+1 FROM produto_imagens WHERE produto_id = ?");
         $stmt->execute([$produtoId]);
         $ordem = (int) $stmt->fetchColumn();
-
-        LogService::debug('uploadImagem e agora chega aqui', []);
 
         // A coluna `arquivo` agora guarda a URL COMPLETA do R2 (full).
         // Guardamos também a thumb. (Ver nota de schema abaixo.)
@@ -836,8 +828,6 @@ class ProdutosController extends Controller {
             "INSERT INTO produto_imagens (produto_id, arquivo, arquivo_thumb, principal, ordem)
              VALUES (?, ?, ?, ?, ?)"
         )->execute([$produtoId, $urls['full'], $urls['thumb'], $isPrincipal, $ordem]);
-
-        LogService::debug('uploadImagem possivelmente chega aqui', []);
 
         $imgId = (int) $db->lastInsertId();
 
