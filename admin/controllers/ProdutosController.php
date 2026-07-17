@@ -791,7 +791,7 @@ class ProdutosController extends Controller {
                 $_FILES['imagem'] ?? [],
                 'produtos',
                 ['full' => 1200, 'thumb' => 400]   // presets do contexto produto
-            );
+            );            
 
             if ($urls === null) {
                 $this->json(['ok' => false, 'msg' => 'Nenhuma imagem enviada.']);
@@ -806,6 +806,7 @@ class ProdutosController extends Controller {
             $this->json(['ok' => false, 'msg' => $e->getMessage()]);
 
         } catch (\Throwable $e) {
+            LogService::debug('uploadImagem', [$e]);
             // Falha inesperada (R2 fora, GD, etc.) -> log completo, resposta genérica
             LogService::exception($e, 'error', 'media', ['produto_id' => $produtoId]);
             $this->json(['ok' => false, 'msg' => 'Erro ao processar a imagem.']);
