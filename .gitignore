@@ -40,6 +40,8 @@
 
 # ── STORAGE / CACHE / LOGS (gerados em runtime) ────────────────────────────
 /storage/cache/*
+/storage/ia/*
+/storage/locks/*
 /storage/logs/*
 /storage/email-imports/errors/*
 /logs/

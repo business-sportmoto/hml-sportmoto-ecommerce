@@ -28,14 +28,28 @@ class IATipoConteudo
     public function listarAtivos(): array
     {
         try {
-            $sql = 'SELECT id, codigo, nome, grupo, capacidade, campos_briefing, max_tokens
+            $sql = "SELECT id, codigo, nome, grupo, capacidade, campos_briefing, max_tokens
                       FROM ia_tipos_conteudo
-                     WHERE ativo = 1
-                  ORDER BY grupo ASC, ordem ASC, nome ASC';
+                     WHERE ativo = 1 AND grupo <> 'sistema'
+                  ORDER BY grupo ASC, ordem ASC, nome ASC";
             return $this->db->query($sql)->fetchAll(PDO::FETCH_ASSOC) ?: [];
         } catch (Throwable $e) {
             LogService::error('ia_tipo_listar_erro', ['erro' => $e->getMessage()]);
             return [];
+        }
+    }
+
+    /** Tipos internos (grupo sistema) são localizados pelo código. */
+    public function buscarPorCodigo(string $codigo): ?array
+    {
+        try {
+            $stmt = $this->db->prepare('SELECT * FROM ia_tipos_conteudo WHERE codigo = :c LIMIT 1');
+            $stmt->execute([':c' => $codigo]);
+            $t = $stmt->fetch(PDO::FETCH_ASSOC);
+            return $t ?: null;
+        } catch (Throwable $e) {
+            LogService::error('ia_tipo_codigo_erro', ['codigo' => $codigo, 'erro' => $e->getMessage()]);
+            return null;
         }
     }
 }

@@ -49,6 +49,14 @@ class ReplicateAdapter extends IAProviderBase
             }
         }
 
+        // Foto do produto como referência (FLUX.2 aceita imagens de entrada).
+        // Nome do parâmetro configurável por modelo: params_padrao {"ref_param":"input_images"}
+        $refParam = is_string($input['ref_param'] ?? null) ? $input['ref_param'] : 'input_images';
+        unset($input['ref_param']);
+        if (!empty($job['imagem_referencia'])) {
+            $input[$refParam] = [(string) $job['imagem_referencia']];
+        }
+
         $payload = ['input' => $input];
 
         // Webhook é otimização de latência; sem a constante, a varredura resolve (dev/Laragon).
@@ -59,6 +67,54 @@ class ReplicateAdapter extends IAProviderBase
 
         // Modelos oficiais: POST /models/{owner}/{name}/predictions
         $resp = $this->httpJson('POST', '/models/' . $job['modelo_codigo'] . '/predictions', $payload, 30);
+
+        if ($resp['status'] === 0) {
+            $r = IAResultado::falha('rede', 'Sem resposta do provedor: ' . ($resp['erro'] ?? 'falha de rede'));
+            $r->tempoMs = $resp['tempo_ms'];
+            return $r;
+        }
+
+        if (!in_array($resp['status'], [200, 201], true) || !is_array($resp['corpo']) || empty($resp['corpo']['id'])) {
+            [$codigo, $msg] = $this->extrairErro($resp['corpo'], $resp['status']);
+            $r = IAResultado::falha($codigo, $msg, true);
+            $r->tempoMs = $resp['tempo_ms'];
+            $r->respostaBruta = $resp['corpo_bruto'];
+            return $r;
+        }
+
+        $r = IAResultado::pendente((string) $resp['corpo']['id']);
+        $r->tempoMs = $resp['tempo_ms'];
+        return $r;
+    }
+
+    /**
+     * Remoção de fundo (bria) — assíncrona como toda prediction.
+     * A imagem de origem PRECISA ser uma URL pública que o Replicate
+     * consiga baixar (IA_PRODUTO_IMG_BASE + produto_imagens.arquivo).
+     */
+    public function removerFundo(array $job): IAResultado
+    {
+        $origem = trim((string) ($job['imagem_origem'] ?? ''));
+        if ($origem === '' || strpos($origem, 'http') !== 0) {
+            return IAResultado::falha('imagem_origem_invalida', 'URL pública da imagem de origem ausente ou inválida.', false);
+        }
+
+        $input = ['image' => $origem];
+
+        $params = is_array($job['params'] ?? null) ? $job['params'] : [];
+        foreach ($params as $chave => $valor) {
+            if (!array_key_exists($chave, $input)) {
+                $input[$chave] = $valor;
+            }
+        }
+
+        $payload = ['input' => $input];
+        if (defined('IA_WEBHOOK_BASE') && IA_WEBHOOK_BASE !== '') {
+            $payload['webhook']               = rtrim((string) IA_WEBHOOK_BASE, '/') . '/webhooks/ia/replicate';
+            $payload['webhook_events_filter'] = ['completed'];
+        }
+
+        $resp = $this->httpJson('POST', '/models/' . $job['modelo_codigo'] . '/predictions', $payload, (int) max(30, $job['timeout_s'] ?? 30));
 
         if ($resp['status'] === 0) {
             $r = IAResultado::falha('rede', 'Sem resposta do provedor: ' . ($resp['erro'] ?? 'falha de rede'));

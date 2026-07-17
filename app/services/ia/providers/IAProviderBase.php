@@ -50,6 +50,16 @@ abstract class IAProviderBase
         return IAResultado::falha('nao_suportado', 'Capacidade imagem não suportada por ' . $this->codigo() . '.', true);
     }
 
+    /**
+     * Remoção de fundo. $job:
+     *  imagem_origem (URL pública), modelo_codigo (string),
+     *  timeout_s (int), params (array)
+     */
+    public function removerFundo(array $job): IAResultado
+    {
+        return IAResultado::falha('nao_suportado', 'Capacidade remoção de fundo não suportada por ' . $this->codigo() . '.', true);
+    }
+
     /* ------------------------------------------------------------------ */
     /* Download binário (URLs de entrega — expiram; baixar IMEDIATAMENTE)  */
     /* ------------------------------------------------------------------ */

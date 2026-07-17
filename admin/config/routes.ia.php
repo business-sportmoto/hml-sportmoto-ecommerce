@@ -27,6 +27,7 @@ AdminRouter::get ('/ia/gerar/produto-busca',        'IAGeracaoController@produto
 AdminRouter::get ('/ia/gerar/produto-painel',       'IAGeracaoController@produtoPainel');
 AdminRouter::post('/ia/gerar/preview',              'IAGeracaoController@preview');
 AdminRouter::post('/ia/gerar/enfileirar',           'IAGeracaoController@enfileirar');
+AdminRouter::post('/ia/recorte/gerar',              'IAGeracaoController@recorteGerar');
 AdminRouter::get ('/ia/gerar/status',               'IAGeracaoController@status');
 AdminRouter::get ('/ia/arquivo',                    'IAGeracaoController@arquivo');
 

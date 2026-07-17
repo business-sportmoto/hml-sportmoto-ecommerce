@@ -115,22 +115,38 @@ class IAOrchestrator
     }
 
     /**
-     * Executa uma geração de IMAGEM (Fase 2 · Bloco A).
+     * Executa uma geração de MÍDIA (imagem | remocao_fundo) — Fase 2 A/B.
      * Síncrono (OpenAI): devolve ok com binários. Assíncrono (Replicate):
      * devolve aguardando + externalId — a tentativa PARA aqui de propósito
      * (o job vive no provedor; fallback entre tentativas assíncronas é Fase 2C).
      */
     public function executarImagem(array $geracao, array $tipo): IAResultado
     {
-        $candidatos = $this->modelosDaCapacidade('imagem', isset($tipo['modelo_id']) ? (int) $tipo['modelo_id'] : null);
+        $cap = in_array((string) ($geracao['capacidade'] ?? 'imagem'), ['imagem', 'remocao_fundo'], true)
+            ? (string) $geracao['capacidade'] : 'imagem';
+
+        $ctx = json_decode((string) ($geracao['contexto'] ?? ''), true);
+        $ctx = is_array($ctx) ? $ctx : [];
+
+        // Foto do produto como referência (só na geração criativa)
+        $referencia = ($cap === 'imagem' && !empty($ctx['imagem_referencia']))
+            ? (string) $ctx['imagem_referencia'] : null;
+
+        $candidatos = $this->modelosDaCapacidade($cap, isset($tipo['modelo_id']) ? (int) $tipo['modelo_id'] : null);
 
         if (empty($candidatos)) {
-            return IAResultado::falha('sem_modelos', 'Nenhum modelo de imagem ativo com provedor configurado.', false);
+            return IAResultado::falha('sem_modelos', "Nenhum modelo ativo da capacidade {$cap} com provedor configurado.", false);
         }
 
         $ultimo = null;
 
         foreach ($candidatos as $m) {
+            // Referência de imagem: por ora só o Replicate (FLUX.2) aceita.
+            if ($referencia !== null && $m['prov_codigo'] !== 'replicate') {
+                $this->logRoteamento((int) $geracao['id'], $m, 'pulado', 'sem_suporte_referencia', 'Modelo não aceita imagem de referência.', 0);
+                continue;
+            }
+
             $limiteProv = ($m['prov_limite'] !== null) ? (float) $m['prov_limite'] : null;
             if ($limiteProv !== null && $this->custo->gastoProvedorHoje($m['prov_codigo']) >= $limiteProv) {
                 $this->logRoteamento((int) $geracao['id'], $m, 'pulado', 'limite_provedor', 'Teto diário do provedor atingido.', 0);
@@ -143,15 +159,25 @@ class IAOrchestrator
                 continue;
             }
 
-            $job = [
-                'prompt'        => (string) $geracao['prompt_final'],
-                'proporcao'     => !empty($geracao['formato']) ? (string) $geracao['formato'] : '1:1',
-                'modelo_codigo' => (string) $m['codigo_modelo'],
-                'timeout_s'     => (int) $m['timeout_s'],
-                'params'        => $this->decodificarJson($m['params_padrao']),
-            ];
-
-            $resultado = $adapter->gerarImagem($job);
+            if ($cap === 'remocao_fundo') {
+                $job = [
+                    'imagem_origem' => (string) ($ctx['imagem_origem'] ?? ''),
+                    'modelo_codigo' => (string) $m['codigo_modelo'],
+                    'timeout_s'     => (int) $m['timeout_s'],
+                    'params'        => $this->decodificarJson($m['params_padrao']),
+                ];
+                $resultado = $adapter->removerFundo($job);
+            } else {
+                $job = [
+                    'prompt'            => (string) $geracao['prompt_final'],
+                    'proporcao'         => !empty($geracao['formato']) ? (string) $geracao['formato'] : '1:1',
+                    'modelo_codigo'     => (string) $m['codigo_modelo'],
+                    'timeout_s'         => (int) $m['timeout_s'],
+                    'params'            => $this->decodificarJson($m['params_padrao']),
+                    'imagem_referencia' => $referencia,
+                ];
+                $resultado = $adapter->gerarImagem($job);
+            }
 
             if ($resultado->aguardando) {
                 // Provedor aceitou: registra a tentativa e encerra — webhook/varredura concluem.

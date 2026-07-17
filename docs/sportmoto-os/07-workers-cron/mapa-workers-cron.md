@@ -26,3 +26,4 @@
  *
  * Cron sugerido (1x por minuto, com flock externo de defesa em profundidade):
  *   * * * * * flock -n /tmp/sm-email-worker.lock php /caminho/cli/email-worker.php >> /caminho/storage/logs/email-worker.log 2>&1
+*

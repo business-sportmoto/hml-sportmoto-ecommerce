@@ -89,7 +89,23 @@ var FLUXO_UI = {
       campos: [
         { k: 'acao', label: 'Ação', tipo: 'select', ops: ['adicionar','remover'] },
         { k: 'tag', label: 'Tag', tipo: 'text', def: '' }
-      ] }
+      ] },
+    esperar_evento: { cat: 'fluxo', label: 'Esperar evento', icone: 'bi-hourglass-bottom',
+      campos: [
+        { k: 'evento', label: 'Evento aguardado', tipo: 'select',
+          ops: ['produto_visto','categoria_vista','busca','banner_click','pagina_vista','pedido_criado','email_aberto'] },
+        { k: 'mesma_entidade', label: 'Mesmo produto do contexto', tipo: 'checkbox', def: false },
+        { k: 'timeout_dias',    label: 'Timeout — dias',    tipo: 'number', def: 2 },
+        { k: 'timeout_horas',   label: 'Timeout — horas',   tipo: 'number', def: 0 },
+        { k: 'timeout_minutos', label: 'Timeout — minutos', tipo: 'number', def: 0 }
+      ] },
+
+    acao_webhook: { cat: 'acao', label: 'Webhook (POST)', icone: 'bi-hdd-network',
+      campos: [
+        { k: 'url', label: 'URL de destino', tipo: 'text', def: '' },
+        { k: 'hmac_secret', label: 'Segredo HMAC (opcional)', tipo: 'text', def: '' },
+        { k: 'parar_se_falhar', label: 'Parar a jornada se falhar', tipo: 'checkbox', def: false }
+      ] },
   },
 
   /** Resumo curto exibido dentro do nó no canvas. */
@@ -104,6 +120,15 @@ var FLUXO_UI = {
         if (cfg.minutos) p.push(cfg.minutos + 'min');
         return p.join(' ') || 'imediato';
       }
+      case 'esperar_evento': {
+        var t = [];
+        if (cfg.timeout_dias)    t.push(cfg.timeout_dias + 'd');
+        if (cfg.timeout_horas)   t.push(cfg.timeout_horas + 'h');
+        if (cfg.timeout_minutos) t.push(cfg.timeout_minutos + 'min');
+        return (cfg.evento || '—') + ' · ≤' + (t.join(' ') || '24h');
+      }
+      case 'acao_webhook':
+        return cfg.url ? cfg.url.replace(/^https?:\/\//, '').substring(0, 24) : 'sem URL';
       case 'split_ab':         return (cfg.pesos ? cfg.pesos.join('/') : '50/50');
       case 'cond_evento_ocorreu': return (cfg.evento || '—') + ' em ' + (cfg.janela_dias || 7) + 'd';
       case 'cond_total_gasto': return (cfg.operador || '>=') + ' R$ ' + (cfg.valor || 0);
@@ -273,12 +298,32 @@ if (typeof window !== 'undefined' && window.jQuery && window.Drawflow) {
     if (tipo === 'split_ab') {
       return { pesos: [parseInt(cfg.peso_a || 50, 10), parseInt(cfg.peso_b || 50, 10)] };
     }
+    if (tipo === 'esperar_evento') {
+         return {
+          evento: cfg.evento,
+           mesma_entidade: !!cfg.mesma_entidade,
+           timeout: {
+             dias:    parseInt(cfg.timeout_dias    || 0, 10),
+             horas:   parseInt(cfg.timeout_horas   || 0, 10),
+             minutos: parseInt(cfg.timeout_minutos || 0, 10)
+           }
+         };
+       }
     return cfg;
   }
   function configParaUi(tipo, cfg) {
     if (tipo === 'split_ab' && cfg && cfg.pesos) {
       return { peso_a: cfg.pesos[0], peso_b: cfg.pesos[1] };
     }
+    if (tipo === 'esperar_evento' && cfg && cfg.timeout) {
+         return {
+           evento: cfg.evento,
+           mesma_entidade: cfg.mesma_entidade,
+           timeout_dias:    cfg.timeout.dias,
+           timeout_horas:   cfg.timeout.horas,
+           timeout_minutos: cfg.timeout.minutos
+         };
+       }
     return cfg || {};
   }
 

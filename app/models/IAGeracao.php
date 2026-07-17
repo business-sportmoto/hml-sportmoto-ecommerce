@@ -169,8 +169,8 @@ class IAGeracao
             $limite = max(1, min(20, $limite));
             $idade  = max(0, $idadeMinSegundos);
             $stmt = $this->db->query(
-                "SELECT id, uuid, usuario_id, capacidade, formato, external_id,
-                        modelo_id, provedor_codigo, modelo_codigo,
+                "SELECT id, uuid, usuario_id, produto_id, capacidade, formato, external_id,
+                        modelo_id, provedor_codigo, modelo_codigo, contexto,
                         custo_estimado_usd, status, iniciado_em
                    FROM ia_geracoes
                   WHERE status = 'aguardando_provedor'
@@ -191,8 +191,8 @@ class IAGeracao
     {
         try {
             $stmt = $this->db->prepare(
-                'SELECT id, uuid, usuario_id, capacidade, formato, external_id,
-                        modelo_id, provedor_codigo, modelo_codigo,
+                'SELECT id, uuid, usuario_id, produto_id, capacidade, formato, external_id,
+                        modelo_id, provedor_codigo, modelo_codigo, contexto,
                         custo_estimado_usd, status
                    FROM ia_geracoes
                   WHERE external_id = :ref

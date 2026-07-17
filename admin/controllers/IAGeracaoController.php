@@ -84,10 +84,26 @@ class IAGeracaoController extends Controller
             'ctx'     => $contexto,
             'tipos'   => (new IATipoConteudo())->listarAtivos(),
             'angulos' => (new IAPromptTemplate())->listarAngulos(),
+            'imagem'  => (new IARecorteService())->imagemDoProduto($produtoId),
             'csrf'    => $this->tokenCsrf(),
         ]);
 
         $this->json(['ok' => true, 'html' => $html]);
+    }
+
+    /** Remoção de fundo da foto do produto — cache-first (Fase 2B). */
+    public function recorteGerar()
+    {
+        AuthHelper::requirePermission('marketing_ia');
+        $this->verifyCsrf();
+
+        $resultado = (new IARecorteService())->obterRecorte(
+            (int) ($_POST['produto_id'] ?? 0),
+            $this->usuarioAtualId(),
+            !empty($_POST['imagem_id']) ? (int) $_POST['imagem_id'] : null
+        );
+
+        $this->json($resultado);
     }
 
     /** Pré-visualização do prompt (para o usuário editar antes de enviar). */
@@ -152,6 +168,7 @@ class IAGeracaoController extends Controller
             'prompt_custom'    => trim((string) ($_POST['prompt_custom'] ?? '')),
             'variacoes'        => (int) ($_POST['variacoes'] ?? 1),
             'proporcao'        => trim((string) ($_POST['proporcao'] ?? '1:1')),
+            'usar_referencia'  => !empty($_POST['usar_referencia']),
         ]);
 
         $this->json($resultado);

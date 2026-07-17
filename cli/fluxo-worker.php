@@ -59,9 +59,21 @@ try {
     $log(sprintf("  eventos_lidos=%d execucoes_iniciadas=%d",
         $sa['eventos_lidos'], $sa['execucoes_iniciadas']));
 
+    // ── FASE A2: resolução de esperas por evento (Fase 3A) ──
+    $motor = new FluxoMotor();
+    $log("--- FASE A2: resolução de esperas por evento ---");
+    $resolvidas = $motor->resolverEsperasEvento(300);
+    $log("  esperas_resolvidas=$resolvidas");
+
+    // ── FASE A3: ponte de engajamento de email (Fase 3B) ──
+    $log("--- FASE A3: ponte de engajamento de email ---");
+    $bridge = new EmailEngajamentoBridge();
+    $sBridge = $bridge->sincronizar(1000);
+    $log(sprintf("  emails_lidos=%d stream=%d sem_cliente=%d",
+        $sBridge['lidos'], $sBridge['stream'], $sBridge['sem_cliente']));
+
     // ── FASE B: execuções ──
     $log("--- FASE B: processamento de execuções ---");
-    $motor = new FluxoMotor();
     $sb = $motor->processarExecucoes(200, 150);
     $log(sprintf("  processadas=%d concluidas=%d dormindo=%d sairam=%d erros=%d",
         $sb['processadas'], $sb['concluidas'] ?? 0, $sb['dormindo'] ?? 0,

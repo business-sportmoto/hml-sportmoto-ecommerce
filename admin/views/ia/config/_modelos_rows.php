@@ -37,17 +37,17 @@ if (empty($modelos)): ?>
       <div class="ia_acoes">
         <button type="button" class="ia_btn ia_btn_icone ia_ac_mod_editar"
                 data-id="<?= (int) $m['id'] ?>" title="Editar modelo">
-          <i class="bi bi-pencil"></i>
+          <i class="bi bi-pencil"><?= IconLibrary::render('edit') ?></i>
         </button>
         <button type="button" class="ia_btn ia_btn_icone ia_ac_mod_alternar"
                 data-id="<?= (int) $m['id'] ?>"
                 title="<?= ((int) $m['ativo'] === 1) ? 'Desativar' : 'Ativar' ?>">
-          <i class="bi bi-power"></i>
+          <i class="bi bi-power"><?= IconLibrary::render('radio_button_check') ?></i>
         </button>
         <button type="button" class="ia_btn ia_btn_icone ia_perigo ia_ac_mod_excluir"
                 data-id="<?= (int) $m['id'] ?>"
                 <?= $usado ? 'disabled title="Já utilizado em gerações — desative em vez de excluir"' : 'title="Excluir modelo"' ?>>
-          <i class="bi bi-trash"></i>
+          <i class="bi bi-trash"><?= IconLibrary::render('delete') ?></i>
         </button>
       </div>
     </td>

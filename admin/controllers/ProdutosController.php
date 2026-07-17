@@ -783,6 +783,8 @@ class ProdutosController extends Controller {
             $this->json(['ok' => false, 'msg' => 'Produto não encontrado.']);
         }
 
+        LogService::critical('teste', [$produtoId]);
+
         try {
             // Valida (magic bytes, não extensão), reprocessa (destrói payload),
             // gera WebP em 2 tamanhos, sobe pro R2, devolve as URLs.

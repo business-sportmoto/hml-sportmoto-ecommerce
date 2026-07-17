@@ -19,7 +19,7 @@
   --em-off-bg: #eaecf0;
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  /* :root {
     --em-bg: #0f1115;
     --em-card: #171a21;
     --em-texto: #e7e9ee;
@@ -30,7 +30,7 @@
     --em-aviso-bg: rgba(146, 64, 14, .18);
     --em-erro-bg: rgba(180, 35, 24, .16);
     --em-off-bg: rgba(71, 84, 103, .25);
-  }
+  } */
 }
 
 .ia_pagina { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; color: var(--em-texto); }

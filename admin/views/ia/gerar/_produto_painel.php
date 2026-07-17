@@ -29,7 +29,9 @@ $rotuloGrupo = [
 ?>
 <div class="ia_card">
   <div class="ia_produto">
-    <div class="ia_produto_thumb"><i class="bi bi-box-seam"></i></div>
+    <div class="ia_produto_thumb"><i class="bi bi-box-seam">
+      <?= IconLibrary::render('view-in-ar'); ?>
+    </i></div>
     <div class="ia_produto_info">
       <p class="ia_produto_nome"><?= ia_e($ctx['nome']) ?> <span class="ia_celula_sub" style="display:inline">#<?= (int) $ctx['produto_id'] ?></span></p>
       <div class="ia_resultado_meta">
@@ -69,6 +71,19 @@ $rotuloGrupo = [
     <input type="hidden" name="csrf_token" value="<?= ia_e($csrf ?? '') ?>">
     <input type="hidden" name="produto_id" value="<?= (int) $ctx['produto_id'] ?>">
 
+<?php if (!empty($imagem) && !empty($imagem['url'])): ?>
+    <div class="ia_foto_strip">
+      <img src="<?= ia_e($imagem['url']) ?>" alt="Foto principal do produto" loading="lazy">
+      <div>
+        <p class="ia_foto_titulo">Foto principal do produto</p>
+        <p class="ia_ajuda">Fonte do recorte (fundo removido) e da geração com referência.</p>
+        <button type="button" class="ia_btn" id="ia_btn_recorte">
+          <i class="bi bi-scissors"></i> Remover fundo (recorte)
+        </button>
+      </div>
+    </div>
+<?php endif; ?>
+
     <div class="ia_form_linha">
       <div class="ia_form_grupo">
         <label for="ia_g_tipo">Tipo de conteúdo</label>
@@ -105,8 +120,18 @@ $rotuloGrupo = [
           <option value="1:1" selected>Quadrado (1:1) — feed</option>
           <option value="3:2">Paisagem (3:2) — banner/site</option>
           <option value="2:3">Retrato (2:3) — story base</option>
+          <option value="9:16">Story 9:16</option>
+          <option value="16:9">16:9</option>
+          <option value="3:4">3:4</option>
+          <option value="4:3">4:3</option>
         </select>
         <p class="ia_ajuda">Formatos exatos (1920×800 etc.) saem do compositor na Fase 2C.</p>
+        <?php if (!empty($imagem) && !empty($imagem['url'])): ?>
+          <label class="ia_check" style="margin-top:8px">
+            <input type="checkbox" name="usar_referencia" value="1">
+            Usar a foto do produto como referência (FLUX.2)
+          </label>
+        <?php endif; ?>
       </div>
     </div>
 

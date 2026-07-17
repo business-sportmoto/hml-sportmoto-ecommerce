@@ -100,7 +100,7 @@ class FluxoMotor
     public function processarExecucoes(int $limite = 100, int $maxSegundos = 120): array
     {
         $stats = ['processadas' => 0, 'concluidas' => 0, 'dormindo' => 0,
-                  'sairam' => 0, 'erros' => 0];
+                  'sairam' => 0, 'erros' => 0, 'aguardando' => 0];
         $inicio = time();
 
         try {
@@ -151,6 +151,8 @@ class FluxoMotor
             'criado_em'  => $row['criado_em'],
             'dormir_ate' => null,
             'erro_detalhe' => null,
+            'evento_aguardado' => null,   // ← Fase 3A
+            'timeout_em'       => null,   // ← Fase 3A
         ];
 
         $fluxo    = $this->carregarFluxo($exec['fluxo_id']);
@@ -181,8 +183,32 @@ class FluxoMotor
                 return 'erros';
             }
 
+            // $config = json_decode($no['config_json'] ?? '{}', true) ?: [];
+            // $porta  = $handler->executar($exec, $config, $this->db);
             $config = json_decode($no['config_json'] ?? '{}', true) ?: [];
-            $porta  = $handler->executar($exec, $config, $this->db);
+
+            // ── Frequency capping (Fase 3B) ──
+            // Se o nó é de envio e o cliente estourou o teto da semana, pula o
+            // envio e segue pela porta 'saida' (não trava a jornada).
+            $canalEnvio = FluxoGuard::canalDoNo($no['tipo_no']);
+            $cid        = (int)($exec['cliente_id'] ?? 0);
+
+            if ($canalEnvio !== null && $cid > 0 && FluxoGuard::capAtingido($cid, $canalEnvio, $this->db)) {
+                if (class_exists('LogService')) {
+                    try {
+                        LogService::info('fluxo: envio pulado por cap', [
+                            'cliente_id' => $cid, 'canal' => $canalEnvio, 'fluxo_id' => $exec['fluxo_id'],
+                        ]);
+                    } catch (Throwable $x) {}
+                }
+                $porta = 'saida';
+            } else {
+                $porta = $handler->executar($exec, $config, $this->db);
+                // Só conta se o envio de fato saiu (porta 'saida'); DORMIR/ERRO não contam
+                if ($canalEnvio !== null && $cid > 0 && $porta === 'saida') {
+                    FluxoGuard::registrarEnvio($cid, $canalEnvio, (int)$exec['fluxo_id'], $this->db);
+                }
+            }
 
             // ── Retornos especiais ──
             if ($porta === FluxoNo::DORMIR) {
@@ -196,6 +222,11 @@ class FluxoMotor
             if ($porta === FluxoNo::ERRO) {
                 $this->finalizar($exec, 'erro');
                 return 'erros';
+            }
+
+            if ($porta === FluxoNo::AGUARDAR_EVENTO) {
+                $this->salvarAguardandoEvento($exec);
+                return 'aguardando';
             }
 
             // ── Porta normal: segue a conexão ──
@@ -321,6 +352,138 @@ class FluxoMotor
             ':id'  => $exec['id'],
         ]);
     }
+
+     /** Persiste uma execução em espera por evento (status aguardando_evento). */
+    private function salvarAguardandoEvento(array $exec): void
+    {
+        $this->db->prepare(
+            "UPDATE fluxo_execucoes
+             SET no_atual=:no, status='aguardando_evento',
+                 evento_aguardado=:ev, timeout_em=:to, dormir_ate=NULL,
+                 contexto_json=:ctx, passos_executados = passos_executados + 1
+             WHERE id=:id"
+        )->execute([
+            ':no'  => $exec['no_atual'],
+            ':ev'  => $exec['evento_aguardado'] ?? null,
+            ':to'  => $exec['timeout_em'] ?? null,
+            ':ctx' => json_encode($exec['contexto'], JSON_UNESCAPED_UNICODE),
+            ':id'  => $exec['id'],
+        ]);
+    }
+
+    /**
+     * Fase de resolução das esperas por evento — chamada pelo worker ANTES de
+     * processarExecucoes(). Para cada execução em 'aguardando_evento':
+     *   - evento ocorreu na janela [desde, timeout_em]  → reativa via porta 'evento'
+     *   - timeout_em já passou (e o evento não veio)     → reativa via porta 'timeout'
+     * A reativação apenas marca a porta no contexto e volta status='ativo'; o
+     * nó esperar_evento, ao rodar de novo, lê o marcador e segue.
+     *
+     * @return int quantas foram resolvidas
+     */
+    public function resolverEsperasEvento(int $limite = 300): int
+    {
+        $resolvidas = 0;
+        try {
+            $st = $this->db->prepare(
+                "SELECT id, fluxo_id, cliente_id, visitante_token, no_atual,
+                        evento_aguardado, timeout_em, contexto_json, criado_em
+                 FROM fluxo_execucoes
+                 WHERE status = 'aguardando_evento'
+                 ORDER BY id ASC
+                 LIMIT " . max(1, min(1000, $limite))
+            );
+            $st->execute();
+
+            foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $chave = (string)$row['no_atual'];
+                $ctx   = json_decode($row['contexto_json'] ?? '{}', true) ?: [];
+                $spec  = $ctx['_ee_spec_' . $chave] ?? null;
+
+                // Sem spec no contexto (dado antigo/corrompido): usa as colunas
+                if (!is_array($spec)) {
+                    $spec = [
+                        'evento'        => $row['evento_aguardado'],
+                        'entidade_tipo' => null,
+                        'entidade_id'   => null,
+                        'desde'         => $row['criado_em'],
+                        'timeout_em'    => $row['timeout_em'],
+                        'observavel'    => ($row['cliente_id'] !== null || !empty($row['visitante_token'])) ? 1 : 0,
+                    ];
+                }
+
+                $via = null;
+                if (!empty($spec['observavel']) && $this->checarEventoNoIntervalo($row, $spec)) {
+                    $via = 'evento';
+                } elseif (!empty($spec['timeout_em']) && strtotime((string)$spec['timeout_em']) <= time()) {
+                    $via = 'timeout';
+                }
+                if ($via === null) continue;
+
+                $ctx['_ee_resolvido_' . $chave] = $via;
+                $this->db->prepare(
+                    "UPDATE fluxo_execucoes
+                     SET status='ativo', evento_aguardado=NULL, timeout_em=NULL,
+                         dormir_ate=NULL, contexto_json=:ctx
+                     WHERE id=:id AND status='aguardando_evento'"
+                )->execute([
+                    ':ctx' => json_encode($ctx, JSON_UNESCAPED_UNICODE),
+                    ':id'  => $row['id'],
+                ]);
+                $resolvidas++;
+            }
+        } catch (Throwable $e) {
+            $this->logErro('resolverEsperasEvento', $e);
+        }
+        return $resolvidas;
+    }
+
+    /** O evento aguardado ocorreu em (desde, timeout_em], para este sujeito? */
+    private function checarEventoNoIntervalo(array $row, array $spec): bool
+    {
+        $evento = (string)($spec['evento'] ?? '');
+        if ($evento === '') return false;
+
+        $sql = "SELECT 1 FROM eventos
+                WHERE tipo = :t AND criado_em > :desde AND criado_em <= :ate";
+        $params = [
+            ':t'     => $evento,
+            ':desde' => (string)$spec['desde'],
+            ':ate'   => (string)$spec['timeout_em'],
+        ];
+
+        if ($row['cliente_id'] !== null) {
+            $sql .= " AND cliente_id = :c";
+            $params[':c'] = (int)$row['cliente_id'];
+        } elseif (!empty($row['visitante_token'])) {
+            $sql .= " AND visitante_token = :v";
+            $params[':v'] = $row['visitante_token'];
+        } else {
+            return false;
+        }
+
+        if (!empty($spec['entidade_tipo'])) {
+            $sql .= " AND entidade_tipo = :et";
+            $params[':et'] = $spec['entidade_tipo'];
+        }
+        if (!empty($spec['entidade_id'])) {
+            $sql .= " AND entidade_id = :ei";
+            $params[':ei'] = (int)$spec['entidade_id'];
+        }
+        $sql .= " LIMIT 1";
+
+        try {
+            $st = $this->db->prepare($sql);
+            foreach ($params as $k => $v) {
+                $st->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
+            }
+            $st->execute();
+            return (bool)$st->fetchColumn();
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
 
     private function carregarFluxo(int $id): ?array
     {

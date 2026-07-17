@@ -73,6 +73,7 @@ class IAGeracaoService
         }
 
         $contexto = $this->builder->montarContexto($produtoId);
+        LogService::debug('enfileirar', $contexto, 'app');
         if ($contexto === null) {
             return ['ok' => false, 'msg' => 'Produto não encontrado ou removido.'];
         }
@@ -102,6 +103,23 @@ class IAGeracaoService
             return ['ok' => false, 'msg' => 'Prompt longo demais (máximo ' . self::MAX_PROMPT_CHARS . ' caracteres).'];
         }
 
+        // Foto do produto como referência (só imagem; FLUX.2 via Replicate)
+        $imagemReferencia = null;
+        if ($capacidade === 'imagem' && !empty($entrada['usar_referencia'])) {
+            $imgRef = (new IARecorteService())->imagemDoProduto($produtoId);
+            
+            if ($imgRef === null) {
+                return ['ok' => false, 'msg' => 'Produto sem imagem cadastrada para usar como referência.'];
+            }
+            if (empty($imgRef['url'])) {
+                return ['ok' => false, 'msg' => 'Defina IA_PRODUTO_IMG_BASE no config para usar a foto como referência.'];
+            }
+            $imagemReferencia = (string) $imgRef['url'];
+            $promptFinal .= "\nUse a imagem de referência fornecida: mantenha o produto idêntico ao da foto (forma, cores, rótulos, proporções).";
+        }
+
+        LogService::debug('imagemReferencia enfileirar', [$promptFinal, $imagemReferencia]);
+
         // Custo estimado (modelo primário da capacidade) e limites — barra ANTES de gastar
         if ($capacidade === 'imagem') {
             $custoUnitario = $this->custo->estimarImagem($this->custo->custoConfigPrimario('imagem'));
@@ -120,9 +138,10 @@ class IAGeracaoService
 
         // Snapshot de contexto (o que o modelo viu) + briefing para refazer/variações
         $contextoJson = json_encode([
-            'produto'  => $contexto,
-            'briefing' => $briefing,
-            'sistema'  => $tipo['instrucoes_sistema'] ?? null,
+            'produto'           => $contexto,
+            'briefing'          => $briefing,
+            'sistema'           => $tipo['instrucoes_sistema'] ?? null,
+            'imagem_referencia' => $imagemReferencia,
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         $uuids  = [];
@@ -219,11 +238,19 @@ class IAGeracaoService
 
     public function concluir(array $geracao, IAResultado $r): void
     {
-        // IMAGEM: persiste os binários ANTES de marcar concluída — sem arquivo não há conclusão.
-        if (($geracao['capacidade'] ?? 'texto') === 'imagem') {
-            if (empty($r->imagens) || !$this->salvarImagens($geracao, $r->imagens)) {
+        $capacidade = (string) ($geracao['capacidade'] ?? 'texto');
+
+        // MÍDIA: persiste os binários ANTES de marcar concluída — sem arquivo não há conclusão.
+        if (in_array($capacidade, ['imagem', 'remocao_fundo'], true)) {
+            $caminhos = empty($r->imagens) ? [] : $this->salvarImagens($geracao, $r->imagens);
+            if (empty($caminhos)) {
                 $this->falhar($geracao, IAResultado::falha('salvar_arquivo', 'Imagem gerada, mas falhou ao gravar no storage.', false));
                 return;
+            }
+
+            // Recorte de produto: alimenta o cache (nunca pagar duas vezes)
+            if ($capacidade === 'remocao_fundo') {
+                (new IARecorteService())->gravarCache($geracao, $caminhos[0], $r->modeloCodigo);
             }
         }
 
@@ -358,8 +385,8 @@ class IAGeracaoService
     /* Internos                                                            */
     /* ------------------------------------------------------------------ */
 
-    /** Grava binários em IA_STORAGE_PATH/imagens/AAAA/MM e indexa em ia_arquivos. */
-    private function salvarImagens(array $geracao, array $imagens): bool
+    /** Grava binários em IA_STORAGE_PATH/imagens/AAAA/MM e indexa em ia_arquivos. Retorna os caminhos gravados. */
+    private function salvarImagens(array $geracao, array $imagens): array
     {
         try {
             $base = defined('IA_STORAGE_PATH')
@@ -369,10 +396,10 @@ class IAGeracaoService
             $dir = $base . '/imagens/' . date('Y/m');
             if (!is_dir($dir) && !mkdir($dir, 0750, true) && !is_dir($dir)) {
                 LogService::error('ia_storage_imagens_indisponivel', ['dir' => $dir]);
-                return false;
+                return [];
             }
 
-            $gravadas = 0;
+            $caminhos = [];
             foreach (array_values($imagens) as $i => $img) {
                 if (empty($img['binario'])) {
                     continue;
@@ -393,13 +420,13 @@ class IAGeracaoService
                     strlen($img['binario']),
                     hash('sha256', $img['binario'])
                 );
-                $gravadas++;
+                $caminhos[] = $caminho;
             }
 
-            return $gravadas > 0;
+            return $caminhos;
         } catch (Throwable $e) {
             LogService::error('ia_salvar_imagens_erro', ['geracao_id' => (int) $geracao['id'], 'erro' => $e->getMessage()]);
-            return false;
+            return [];
         }
     }
 

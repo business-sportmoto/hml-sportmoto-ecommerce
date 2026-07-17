@@ -159,6 +159,12 @@ try {
                     $servico->concluir($g, $r);
                     $log("Geração #{$g['id']} concluída via {$r->modeloCodigo} em {$r->tempoMs}ms" .
                          ($r->custoRealUsd !== null ? ' (US$ ' . number_format($r->custoRealUsd, 6, '.', '') . ')' : '') . '.');
+                         NotificacaoService::criarBroadcast([
+                            'categoria' => 'sistema',
+                            'tipo'      => 'central_ia_sucesso',
+                            'titulo'    => "Geração #{$g['id']} concluída via {$r->modeloCodigo}",
+                            'url'       => "/admin/ia/historico",
+                        ], 'todos_admins');
                     $processadas++;
                 } else {
                     $servico->falhar($g, $r);

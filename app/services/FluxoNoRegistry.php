@@ -23,6 +23,7 @@ abstract class FluxoNo
     public const DORMIR   = '__dormir';    // nó setou $exec['dormir_ate']
     public const ENCERRAR = '__encerrar';
     public const ERRO     = '__erro';      // nó setou $exec['erro_detalhe']
+    public const AGUARDAR_EVENTO = '__aguardar_evento';   // ← ADICIONAR    
 
     abstract public function executar(array &$exec, array $config, PDO $db): string;
 
@@ -548,6 +549,7 @@ class FluxoNoAcaoTag extends FluxoNo
     }
 }
 
+
 // ═════════════════════════════════════════════════════════════════════════════
 // REGISTRY
 // ═════════════════════════════════════════════════════════════════════════════
@@ -570,6 +572,8 @@ class FluxoNoRegistry
         'acao_notificacao'      => FluxoNoAcaoNotificacao::class,
         'acao_whatsapp'         => FluxoNoAcaoWhatsapp::class,
         'acao_tag'              => FluxoNoAcaoTag::class,
+        'esperar_evento'        => FluxoNoEsperarEvento::class,   // ← ADICIONAR
+        'acao_webhook'          => FluxoNoAcaoWebhook::class,      // ← ADICIONAR
     ];
 
     /** @var array<string,FluxoNo> instâncias (stateless, reutilizáveis) */
@@ -603,3 +607,225 @@ class FluxoNoRegistry
         return $out;
     }
 }
+
+
+/**
+ * esperar_evento — dorme até um evento ocorrer OU o timeout estourar.
+ * O nó mais poderoso do catálogo: ramifica a jornada pela REAÇÃO do cliente.
+ *
+ * config: {
+ *   "evento": "produto_visto",          // tipo do evento no stream
+ *   "entidade_tipo": null,              // opcional: exige entidade (produto...)
+ *   "mesma_entidade": false,            // true = espera o MESMO produto do contexto
+ *   "timeout": {"dias":2,"horas":0,"minutos":0}   // padrão 24h se ausente/zero
+ * }
+ * portas: evento (ocorreu na janela) | timeout (não ocorreu a tempo)
+ *
+ * Mecânica: na 1ª execução grava a "spec" no contexto e devolve AGUARDAR_EVENTO
+ * (o motor põe a execução em status 'aguardando_evento'). O worker, na fase de
+ * resolução (FluxoMotor::resolverEsperasEvento), detecta evento/timeout e
+ * reativa a execução com o marcador da porta — a 2ª execução do nó lê o
+ * marcador e segue pela porta certa. Mesmo padrão do nó 'esperar'.
+ */
+class FluxoNoEsperarEvento extends FluxoNo
+{
+    public function portas(): array { return ['evento', 'timeout']; }
+
+    public function executar(array &$exec, array $config, PDO $db): string
+    {
+        $ctx   = $this->ctx($exec);
+        $chave = (string)($exec['no_atual'] ?? '');
+        $mResolvido = '_ee_resolvido_' . $chave;
+
+        // 2ª passada: o resolver já decidiu — segue pela porta e limpa marcadores
+        if (isset($ctx[$mResolvido])) {
+            $porta = $ctx[$mResolvido];
+            unset($ctx[$mResolvido], $ctx['_ee_spec_' . $chave]);
+            $exec['contexto'] = $ctx;
+            return in_array($porta, ['evento', 'timeout'], true) ? $porta : 'timeout';
+        }
+
+        // 1ª passada: monta a espera
+        $evento = trim((string)($config['evento'] ?? ''));
+        if ($evento === '') { $exec['erro_detalhe'] = 'esperar_evento sem evento'; return self::ERRO; }
+
+        // Sem cliente nem token não há como o evento ser observado → vai de timeout
+        $temSujeito = !empty($exec['cliente_id']) || !empty($ctx['_visitante_token']);
+
+        // Entidade alvo (mesma_entidade usa o produto do contexto)
+        $entidadeTipo = $config['entidade_tipo'] ?? null;
+        $entidadeId   = null;
+        if (!empty($config['mesma_entidade']) && !empty($ctx['produto_id'])) {
+            $entidadeTipo = 'produto';
+            $entidadeId   = (int)$ctx['produto_id'];
+        }
+
+        $seg = ((int)($config['timeout']['minutos'] ?? 0)) * 60
+             + ((int)($config['timeout']['horas'] ?? 0)) * 3600
+             + ((int)($config['timeout']['dias'] ?? 0)) * 86400;
+        if ($seg <= 0) $seg = 86400; // padrão 24h
+
+        $agora     = date('Y-m-d H:i:s');
+        $timeoutEm = date('Y-m-d H:i:s', time() + $seg);
+
+        $ctx['_ee_spec_' . $chave] = [
+            'evento'        => $evento,
+            'entidade_tipo' => $entidadeTipo,
+            'entidade_id'   => $entidadeId,
+            'desde'         => $agora,
+            'timeout_em'    => $timeoutEm,
+            'observavel'    => $temSujeito ? 1 : 0,
+        ];
+        $exec['contexto']         = $ctx;
+        $exec['evento_aguardado'] = $evento;
+        $exec['timeout_em']       = $timeoutEm;
+        return self::AGUARDAR_EVENTO;
+    }
+}
+
+
+/**
+ * acao_webhook — dispara um POST JSON para uma URL externa.
+ * Integra o fluxo com qualquer sistema (ERP, CRM, planilha, Zapier...).
+ *
+ * config: {
+ *   "url": "https://exemplo.com/hook",
+ *   "headers": {"X-Chave": "..."},        // opcional
+ *   "hmac_secret": null,                  // opcional: assina o corpo (X-Signature-SHA256)
+ *   "parar_se_falhar": false              // padrão: loga e segue (não mata a jornada)
+ * }
+ * portas: saida
+ *
+ * Segurança: recusa URLs para rede interna/loopback (anti-SSRF), sem redirect,
+ * timeout curto para não travar o worker.
+ */
+class FluxoNoAcaoWebhook extends FluxoNo
+{
+    public function portas(): array { return ['saida']; }
+
+    public function executar(array &$exec, array $config, PDO $db): string
+    {
+        $url = trim((string)($config['url'] ?? ''));
+        if ($url === '' || !preg_match('#^https?://#i', $url)) {
+            $exec['erro_detalhe'] = 'webhook sem URL válida';
+            return self::ERRO;
+        }
+        if ($this->urlPerigosa($url)) {
+            $exec['erro_detalhe'] = 'webhook bloqueado: URL aponta para rede interna';
+            return self::ERRO;
+        }
+
+        $vars = $this->montarVars($exec, $db);
+        $ctx  = $this->ctx($exec);
+
+        $payload = [
+            'evento_fluxo' => true,
+            'fluxo_id'     => (int)($exec['fluxo_id'] ?? 0),
+            'cliente_id'   => $exec['cliente_id'] ?? null,
+            'enviado_em'   => date('c'),
+            'cliente'      => [
+                'nome'  => $vars['nome']  ?? null,
+                'email' => $vars['email'] ?? null,
+            ],
+            'contexto'     => array_filter($ctx, fn($k) => $k[0] !== '_', ARRAY_FILTER_USE_KEY),
+        ];
+        if (!empty($vars['produto_nome'])) {
+            $payload['produto'] = ['nome' => $vars['produto_nome'], 'url' => $vars['produto_url'] ?? null];
+        }
+        if (!empty($vars['moto_label'])) {
+            $payload['moto'] = ['label' => $vars['moto_label'], 'apelido' => $vars['moto_apelido'] ?? null];
+        }
+
+        $body    = json_encode($payload, JSON_UNESCAPED_UNICODE);
+        $headers = ['Content-Type: application/json', 'User-Agent: SportMoto-Fluxo/1.0'];
+        foreach ((array)($config['headers'] ?? []) as $k => $v) {
+            if (is_string($k) && is_scalar($v)) $headers[] = $k . ': ' . $v;
+        }
+        if (!empty($config['hmac_secret'])) {
+            $headers[] = 'X-Signature-SHA256: ' . hash_hmac('sha256', $body, (string)$config['hmac_secret']);
+        }
+
+        $ok = false; $detalhe = '';
+        try {
+            if (function_exists('curl_init')) {
+                $ch = curl_init($url);
+                curl_setopt_array($ch, [
+                    CURLOPT_POST           => true,
+                    CURLOPT_POSTFIELDS     => $body,
+                    CURLOPT_HTTPHEADER     => $headers,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT        => 8,
+                    CURLOPT_CONNECTTIMEOUT => 5,
+                    CURLOPT_FOLLOWLOCATION => false, // sem redirect (anti-SSRF)
+                ]);
+                curl_exec($ch);
+                $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $err  = curl_error($ch);
+                curl_close($ch);
+                $ok = ($code >= 200 && $code < 300);
+                $detalhe = $ok ? '' : ($err ?: "HTTP $code");
+            } else {
+                $ctxHttp = stream_context_create(['http' => [
+                    'method'        => 'POST',
+                    'header'        => implode("\r\n", $headers),
+                    'content'       => $body,
+                    'timeout'       => 8,
+                    'ignore_errors' => true,
+                ]]);
+                $resp = @file_get_contents($url, false, $ctxHttp);
+                $code = 0;
+                if (isset($http_response_header[0]) &&
+                    preg_match('#\s(\d{3})\s#', $http_response_header[0], $m)) {
+                    $code = (int)$m[1];
+                }
+                $ok = ($code >= 200 && $code < 300);
+                $detalhe = $ok ? '' : "HTTP $code";
+            }
+        } catch (Throwable $e) {
+            $detalhe = mb_substr($e->getMessage(), 0, 300);
+        }
+
+        if ($ok) return 'saida';
+
+        // Falhou: por padrão loga e segue (webhook não deve matar a jornada)
+        if (class_exists('LogService')) {
+            try { LogService::warning('fluxo acao_webhook falhou', ['url' => $url, 'detalhe' => $detalhe]); } catch (Throwable $x) {}
+        }
+        if (!empty($config['parar_se_falhar'])) {
+            $exec['erro_detalhe'] = 'webhook falhou: ' . $detalhe;
+            return self::ERRO;
+        }
+        return 'saida';
+    }
+
+    /** Bloqueia loopback, redes privadas e link-local (anti-SSRF). */
+    private function urlPerigosa(string $url): bool
+    {
+        $host = parse_url($url, PHP_URL_HOST);
+        if (!$host) return true;
+
+        $ip = filter_var($host, FILTER_VALIDATE_IP) ? $host : @gethostbyname($host);
+        if (!filter_var($ip, FILTER_VALIDATE_IP)) return false; // não resolveu: deixa o curl decidir
+
+        // IPv6 loopback/local
+        if (strpos($ip, ':') !== false) {
+            return ($ip === '::1' || stripos($ip, 'fc') === 0 || stripos($ip, 'fd') === 0 || stripos($ip, 'fe80') === 0);
+        }
+
+        $long = ip2long($ip);
+        if ($long === false) return false;
+        $blocos = [
+            ['0.0.0.0',     '255.0.0.0'],       // this-network
+            ['127.0.0.0',   '255.0.0.0'],       // loopback
+            ['10.0.0.0',    '255.0.0.0'],       // privado
+            ['172.16.0.0',  '255.240.0.0'],     // privado
+            ['192.168.0.0', '255.255.0.0'],     // privado
+            ['169.254.0.0', '255.255.0.0'],     // link-local
+        ];
+        foreach ($blocos as [$net, $mask]) {
+            if (($long & ip2long($mask)) === (ip2long($net) & ip2long($mask))) return true;
+        }
+        return false;
+    }
+}
+

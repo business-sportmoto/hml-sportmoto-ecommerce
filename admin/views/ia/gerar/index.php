@@ -50,6 +50,7 @@ jQuery(function ($) {
     painel:     '/admin/ia/gerar/produto-painel',
     preview:    '/admin/ia/gerar/preview',
     enfileirar: '/admin/ia/gerar/enfileirar',
+    recorte:    '/admin/ia/recorte/gerar',
     status:     '/admin/ia/gerar/status',
     aprovacao:  '/admin/ia/historico/aprovacao',
     refazer:    '/admin/ia/historico/refazer'
@@ -132,6 +133,23 @@ jQuery(function ($) {
     $('#ia_g_angulo_wrap').toggle(!ehImagem);
     $('#ia_g_proporcao_wrap').toggle(ehImagem);
     if (ehImagem) { $('#ia_g_angulo').val(''); }
+  });
+
+  // Remoção de fundo da foto do produto (cache-first): reusa o card + polling.
+  $(document).on('click', '#ia_btn_recorte', function () {
+    var $b  = $(this).prop('disabled', true);
+    var pid = $('#ia_form_gerar [name=produto_id]').val();
+
+    iaPost(URLS.recorte, { produto_id: pid }, function (r) {
+      $b.prop('disabled', false);
+      if (!r.ok) { toast(r.msg || 'Erro ao solicitar o recorte.', false); return; }
+      toast(r.msg || (r.cache ? 'Recorte em cache — custo zero.' : 'Remoção de fundo enfileirada.'), true);
+      (r.uuids || []).forEach(function (u) {
+        criarCardPendente(u);
+        if (pendentes.indexOf(u) === -1) { pendentes.push(u); }
+      });
+      if ((r.uuids || []).length) { iniciarPolling(); }
+    });
   });
 
   $(document).on('click', function (e) {
