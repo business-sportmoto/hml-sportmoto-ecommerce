@@ -548,6 +548,393 @@ class FluxoNoAcaoTag extends FluxoNo
         return 'saida';
     }
 }
+/**
+ * acao_cupom — gera um cupom único por cliente e o expõe como variável.
+ *
+ * config: {
+ *   "pct": 10,                       // % de desconto
+ *   "dias_validade": 15,             // validade em dias
+ *   "prefixo": "VOLTA",              // prefixo do código (ex.: VOLTA-JOAOSI-A3F9C2)
+ *   "nome": "Volte e ganhe 10%",     // nome do cupom (aparece pro cliente)
+ *   "valor_minimo": 0                // pedido mínimo (0 = sem mínimo)
+ * }
+ * portas: saida
+ *
+ * Idempotente por execução: se o nó já gerou um cupom nesta jornada, reusa o
+ * mesmo (evita cupons duplicados em retry/reprocessamento).
+ */
+class FluxoNoAcaoCupom extends FluxoNo
+{
+    public function portas(): array { return ['saida']; }
+
+    public function executar(array &$exec, array $config, PDO $db): string
+    {
+        $cid = $this->clienteId($exec);
+        // Cupom é exclusivo por cliente — sem cliente identificado, segue sem cupom
+        if (!$cid) return 'saida';
+
+        $ctx   = $this->ctx($exec);
+        $chave = (string)($exec['no_atual'] ?? '');
+        $marca = '_cupom_gerado_' . $chave;
+
+        // Já gerou nesta execução? reexpõe e segue
+        if (!empty($ctx[$marca])) {
+            $ctx['cupom_codigo'] = $ctx[$marca];
+            $exec['contexto'] = $ctx;
+            return 'saida';
+        }
+
+        if (!class_exists('AutomacaoCupomService')
+            || !method_exists('AutomacaoCupomService', 'gerarParaFluxo')) {
+            $exec['erro_detalhe'] = 'AutomacaoCupomService::gerarParaFluxo indisponível';
+            return self::ERRO;
+        }
+
+        $pct  = (float)($config['pct'] ?? 10.0);
+        $dias = (int)($config['dias_validade'] ?? 15);
+        if ($pct  <= 0) $pct  = 10.0;
+        if ($dias <= 0) $dias = 15;
+
+        try {
+            $svc = new AutomacaoCupomService();
+            $r = $svc->gerarParaFluxo($cid, [
+                'pct'          => $pct,
+                'dias_validade'=> $dias,
+                'prefixo'      => (string)($config['prefixo'] ?? 'FLUXO'),
+                'nome'         => (string)($config['nome'] ?? 'Cupom exclusivo'),
+                'valor_minimo' => (float)($config['valor_minimo'] ?? 0),
+            ]);
+
+            $codigo = (string)($r['codigo'] ?? '');
+            if ($codigo === '') { $exec['erro_detalhe'] = 'cupom sem código'; return self::ERRO; }
+
+            // % formatado: 10.0 → "10", 10.5 → "10,5"
+            $pctFmt = rtrim(rtrim(number_format($pct, 1, ',', ''), '0'), ',');
+
+            $ctx[$marca]           = $codigo;
+            $ctx['cupom_codigo']   = $codigo;                                  // {{cupom_codigo}}
+            $ctx['cupom_valor']    = $pctFmt . '%';                            // {{cupom_valor}}
+            $ctx['cupom_validade'] = date('d/m/Y', strtotime("+{$dias} days"));// {{cupom_validade}}
+            $exec['contexto']      = $ctx;
+
+            if (class_exists('LogService')) {
+                try {
+                    LogService::info('fluxo gerou cupom', [
+                        'cliente_id' => $cid, 'codigo' => $codigo, 'fluxo_id' => $exec['fluxo_id'],
+                    ]);
+                } catch (Throwable $x) {}
+            }
+            return 'saida';
+        } catch (Throwable $e) {
+            $exec['erro_detalhe'] = 'cupom falhou: ' . mb_substr($e->getMessage(), 0, 200);
+            return self::ERRO;
+        }
+    }
+}
+
+
+/**
+ * Helper compartilhado pelos dois nós de vendedor.
+ * (Fica no registry, junto das classes de nó, pelo mesmo motivo delas:
+ *  evitar caminhos novos no autoloader.)
+ */
+class FluxoVendedorHelper
+{
+    /**
+     * Descobre o vendedor ligado a esta jornada.
+     *
+     * Cascata conforme o escopo:
+     *   auto             → contexto (codigo_vendedor / pedido_id / carrinho_id),
+     *                      senão o ÚLTIMO pedido/carrinho do cliente com código
+     *   contexto         → só o contexto (mais preciso; nada de histórico)
+     *   cliente_ultimo   → ignora contexto, usa o último do cliente
+     *   cliente_primeiro → ignora contexto, usa o PRIMEIRO (atribuição sticky:
+     *                      "de quem é esse cliente")
+     *
+     * @return array|null linha de `vendedores` (ativo), ou null
+     */
+    public static function resolver(PDO $db, array $ctx, ?int $clienteId, string $escopo = 'auto'): ?array
+    {
+        $codigo = null;
+
+        if ($escopo === 'auto' || $escopo === 'contexto') {
+            // 1. Código explícito gravado pelo gatilho
+            if (!empty($ctx['codigo_vendedor'])) {
+                $codigo = (string)$ctx['codigo_vendedor'];
+            }
+            // 2. Pedido do contexto
+            if ($codigo === null && !empty($ctx['pedido_id'])) {
+                $codigo = self::col($db, "SELECT codigo_vendedor FROM pedidos WHERE id = :id LIMIT 1",
+                                   [':id' => (int)$ctx['pedido_id']]);
+            }
+            // 3. Carrinho do contexto
+            if ($codigo === null && !empty($ctx['carrinho_id'])) {
+                $codigo = self::col($db, "SELECT codigo_vendedor FROM carrinhos WHERE id = :id LIMIT 1",
+                                   [':id' => (int)$ctx['carrinho_id']]);
+            }
+        }
+
+        // 4. Histórico do cliente
+        if ($codigo === null && $clienteId && $escopo !== 'contexto') {
+            $ordem = ($escopo === 'cliente_primeiro') ? 'ASC' : 'DESC';
+            $codigo = self::col($db,
+                "SELECT codigo_vendedor FROM pedidos
+                 WHERE cliente_id = :c AND codigo_vendedor IS NOT NULL AND codigo_vendedor <> ''
+                 ORDER BY id {$ordem} LIMIT 1", [':c' => $clienteId]);
+
+            if ($codigo === null) {
+                $codigo = self::col($db,
+                    "SELECT codigo_vendedor FROM carrinhos
+                     WHERE cliente_id = :c AND codigo_vendedor IS NOT NULL AND codigo_vendedor <> ''
+                     ORDER BY id {$ordem} LIMIT 1", [':c' => $clienteId]);
+            }
+        }
+
+        if ($codigo === null || trim($codigo) === '') return null;
+
+        // Código órfão ou vendedor inativo não conta como "veio de vendedor"
+        try {
+            $st = $db->prepare(
+                "SELECT id, codigo, nome, email, usuario_id, comissao
+                 FROM vendedores WHERE codigo = :cod AND ativo = 1 LIMIT 1"
+            );
+            $st->execute([':cod' => trim($codigo)]);
+            $v = $st->fetch(PDO::FETCH_ASSOC);
+            return $v ?: null;
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * ═══ PONTO DE AJUSTE ═══
+     * Para onde mandar a notificação in-app do vendedor.
+     *
+     * O sistema de notificações usa destinatario_tipo (cliente|admin) +
+     * destinatario_id, resolvido pela SESSÃO do leitor. Então o id gravado
+     * precisa viver no MESMO espaço que a sessão lê:
+     *   - admin   → Session::get('admin_id')   → admins.id
+     *   - cliente → Session::get('cliente_id') → clientes.id
+     *
+     * Cascata: conta de admin → conta de cliente → (nenhum: cai para email).
+     * Se no seu projeto `admin_id` for usuarios.id em vez de admins.id, troque
+     * a 1ª query — é o único lugar que precisa mudar.
+     *
+     * @return array{tipo:string,id:int}|null
+     */
+    public static function destinoNotificacao(PDO $db, array $vendedor): ?array
+    {
+        $uid = (int)($vendedor['usuario_id'] ?? 0);
+        if ($uid <= 0) return null;
+
+        // 1. É admin?
+        $id = self::col($db, "SELECT id FROM admins WHERE usuario_id = :u LIMIT 1", [':u' => $uid]);
+        if ($id !== null) return ['tipo' => 'admin', 'id' => (int)$id];
+
+        // 2. É cliente?
+        $id = self::col($db, "SELECT id FROM clientes WHERE usuario_id = :u LIMIT 1", [':u' => $uid]);
+        if ($id !== null) return ['tipo' => 'cliente', 'id' => (int)$id];
+
+        return null;
+    }
+
+    /** SELECT de 1 coluna, tolerante a erro (tabela ausente em ambiente de teste). */
+    private static function col(PDO $db, string $sql, array $params)
+    {
+        try {
+            $st = $db->prepare($sql);
+            $st->execute($params);
+            $v = $st->fetchColumn();
+            return ($v === false || $v === null || $v === '') ? null : $v;
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+}
+
+
+/**
+ * cond_veio_de_vendedor — a jornada tem um vendedor por trás?
+ *
+ * config: {
+ *   "escopo": "auto",     // auto | contexto | cliente_ultimo | cliente_primeiro
+ *   "codigo": ""          // opcional: exige um vendedor específico (ex.: "JOAO01")
+ * }
+ * portas: true | false
+ *
+ * Ao encontrar, publica no contexto (viram {{vars}} nos nós seguintes):
+ *   {{vendedor_nome}}, {{vendedor_codigo}}
+ */
+class FluxoNoCondVeioDeVendedor extends FluxoNo
+{
+    public function portas(): array { return ['true', 'false']; }
+
+    public function executar(array &$exec, array $config, PDO $db): string
+    {
+        $ctx    = $this->ctx($exec);
+        $cid    = $this->clienteId($exec);
+        $escopo = (string)($config['escopo'] ?? 'auto');
+
+        $v = FluxoVendedorHelper::resolver($db, $ctx, $cid, $escopo);
+        if (!$v) return 'false';
+
+        // Exige um vendedor específico?
+        $exigido = trim((string)($config['codigo'] ?? ''));
+        if ($exigido !== '' && strcasecmp((string)$v['codigo'], $exigido) !== 0) {
+            return 'false';
+        }
+
+        $ctx['vendedor_codigo'] = $v['codigo'];   // {{vendedor_codigo}}
+        $ctx['vendedor_nome']   = $v['nome'];     // {{vendedor_nome}}
+        $ctx['_vendedor_id']    = (int)$v['id'];  // interno (o "_" o mantém fora das vars)
+        $exec['contexto']       = $ctx;
+        return 'true';
+    }
+}
+
+
+/**
+ * acao_notificar_vendedor — avisa o vendedor sobre algo do cliente dele.
+ *
+ * config: {
+ *   "canal": "auto",                  // auto | notificacao | email
+ *   "escopo": "auto",                 // idem cond_veio_de_vendedor (se ainda não resolvido)
+ *   "categoria": "sistema",
+ *   "titulo": "{{primeiro_nome}} está de olho em {{produto_nome}}",
+ *   "mensagem": "Que tal dar um toque?",
+ *   "url": "/admin/clientes/123"
+ * }
+ * portas: saida
+ *
+ * canal "auto": tenta notificação in-app; sem conta vinculada, cai para email
+ * do cadastro do vendedor.
+ *
+ * As {{vars}} são as do CLIENTE (o vendedor está sendo informado SOBRE ele),
+ * mais {{vendedor_nome}} e {{vendedor_codigo}}.
+ *
+ * Falha aqui NÃO mata a jornada do cliente (loga e segue) — o mesmo princípio
+ * do acao_webhook. E, por não ser um canal do cliente, este nó fica fora do
+ * frequency capping (FluxoGuard::canalDoNo devolve null para ele).
+ */
+class FluxoNoAcaoNotificarVendedor extends FluxoNo
+{
+    public function portas(): array { return ['saida']; }
+
+    public function executar(array &$exec, array $config, PDO $db): string
+    {
+        $ctx = $this->ctx($exec);
+        $cid = $this->clienteId($exec);
+
+        // Vendedor já resolvido por um cond_veio_de_vendedor anterior?
+        $v = null;
+        if (!empty($ctx['_vendedor_id'])) {
+            try {
+                $st = $db->prepare("SELECT id, codigo, nome, email, usuario_id, comissao
+                                    FROM vendedores WHERE id = :id AND ativo = 1 LIMIT 1");
+                $st->execute([':id' => (int)$ctx['_vendedor_id']]);
+                $v = $st->fetch(PDO::FETCH_ASSOC) ?: null;
+            } catch (Throwable $e) { $v = null; }
+        }
+        if (!$v) {
+            $v = FluxoVendedorHelper::resolver($db, $ctx, $cid, (string)($config['escopo'] ?? 'auto'));
+        }
+        // Sem vendedor não há o que notificar — segue a jornada normalmente
+        if (!$v) return 'saida';
+
+        $vars = $this->montarVars($exec, $db);
+        $vars['vendedor_nome']   = $v['nome'];
+        $vars['vendedor_codigo'] = $v['codigo'];
+
+        $titulo   = $this->interpolar((string)($config['titulo'] ?? 'Novidade de um cliente seu'), $vars);
+        $mensagem = isset($config['mensagem']) ? $this->interpolar((string)$config['mensagem'], $vars) : null;
+        $url      = isset($config['url']) ? $this->interpolar((string)$config['url'], $vars) : null;
+        $canal    = (string)($config['canal'] ?? 'auto');
+
+        $enviou = false;
+
+        // ── 1. Notificação in-app ────────────────────────────────────────────
+        if ($canal === 'auto' || $canal === 'notificacao') {
+            $destino = FluxoVendedorHelper::destinoNotificacao($db, $v);
+            if ($destino && class_exists('NotificacaoService')) {
+                try {
+                    NotificacaoService::criar([
+                        'categoria' => (string)($config['categoria'] ?? 'sistema'),
+                        'tipo'      => 'fluxo_vendedor',
+                        'titulo'    => $titulo,
+                        'mensagem'  => $mensagem,
+                        'url'       => $url,
+                    ], [['tipo' => $destino['tipo'], 'id' => $destino['id']]]);
+                    $enviou = true;
+                } catch (Throwable $e) {
+                    $this->logFalha('notificacao', $v, $e->getMessage());
+                }
+            }
+        }
+
+        // ── 2. Email (fallback do "auto", ou canal explícito) ────────────────
+        if (!$enviou && ($canal === 'auto' || $canal === 'email')) {
+            $para = trim((string)($v['email'] ?? ''));
+            if ($para !== '') {
+                $enviou = $this->enviarEmail($db, $para, (string)$v['nome'], $titulo, $mensagem, $url);
+            }
+        }
+
+        if (!$enviou) {
+            $this->logFalha('sem_destino', $v, 'vendedor sem conta vinculada nem email');
+        }
+        return 'saida'; // nunca trava a jornada do cliente
+    }
+
+    /** Email simples ao vendedor — transacional interno, sem link de descadastro. */
+    private function enviarEmail(PDO $db, string $para, string $nome, string $titulo, ?string $msg, ?string $url): bool
+    {
+        try {
+            $stP = $db->query("SELECT * FROM email_provedores WHERE ativo=1 AND padrao=1 LIMIT 1");
+            $cfg = $stP ? $stP->fetch(PDO::FETCH_ASSOC) : null;
+            if (!$cfg) {
+                $stP = $db->query("SELECT * FROM email_provedores WHERE ativo=1 LIMIT 1");
+                $cfg = $stP ? $stP->fetch(PDO::FETCH_ASSOC) : null;
+            }
+            if (!$cfg || !class_exists('EmailProviderService')) return false;
+
+            $esc  = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+            $base = defined('BASE_URL') ? BASE_URL : '';
+            $link = $url ? (preg_match('#^https?://#i', $url) ? $url : $base . $url) : null;
+
+            $html = '<p>' . $esc($titulo) . '</p>'
+                  . ($msg  ? '<p>' . $esc($msg) . '</p>' : '')
+                  . ($link ? '<p><a href="' . $esc($link) . '">Ver detalhes</a></p>' : '');
+            $texto = $titulo . ($msg ? "\n\n" . $msg : '') . ($link ? "\n\n" . $link : '');
+
+            $provider = (new EmailProviderService())->buildPadrao();
+            $r = $provider->send([
+                'from_email' => $cfg['remetente_email'],
+                'from_name'  => $cfg['remetente_nome'] ?? '',
+                'to_email'   => $para,
+                'to_name'    => $nome,
+                'subject'    => $titulo,
+                'html'       => $html,
+                'text'       => $texto,
+            ]);
+            return !empty($r->success);
+        } catch (Throwable $e) {
+            $this->logFalha('email', ['codigo' => '?'], $e->getMessage());
+            return false;
+        }
+    }
+
+    private function logFalha(string $etapa, array $v, string $detalhe): void
+    {
+        if (!class_exists('LogService')) return;
+        try {
+            LogService::warning('fluxo: notificação de vendedor falhou', [
+                'etapa'   => $etapa,
+                'codigo'  => $v['codigo'] ?? null,
+                'detalhe' => mb_substr($detalhe, 0, 200),
+            ]);
+        } catch (Throwable $x) {}
+    }
+}
 
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -574,6 +961,9 @@ class FluxoNoRegistry
         'acao_tag'              => FluxoNoAcaoTag::class,
         'esperar_evento'        => FluxoNoEsperarEvento::class,   // ← ADICIONAR
         'acao_webhook'          => FluxoNoAcaoWebhook::class,      // ← ADICIONAR
+        'acao_cupom'            => FluxoNoAcaoCupom::class,     // ← ADICIONAR
+        'cond_veio_de_vendedor'     => FluxoNoCondVeioDeVendedor::class,   // ← ADICIONAR
+        'acao_notificar_vendedor'   => FluxoNoAcaoNotificarVendedor::class, // ← ADICIONAR
     ];
 
     /** @var array<string,FluxoNo> instâncias (stateless, reutilizáveis) */

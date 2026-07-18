@@ -516,6 +516,12 @@ AdminRouter::post('/fluxos/{id}/salvar',    'FluxoAdminController@salvar');
 AdminRouter::post('/fluxos/{id}/publicar',  'FluxoAdminController@publicar');
 AdminRouter::post('/fluxos/{id}/status',    'FluxoAdminController@status');
 
+AdminRouter::get ('/vida-util',          'VidaUtilAdminController@index');
+AdminRouter::get ('/vida-util/listar',   'VidaUtilAdminController@listar');
+AdminRouter::post('/vida-util/salvar',   'VidaUtilAdminController@salvar');
+AdminRouter::post('/vida-util/pausar',   'VidaUtilAdminController@pausar');
+AdminRouter::post('/vida-util/excluir',  'VidaUtilAdminController@excluir');
+
 require __DIR__ . '/routes.email-marketing.php';
 require __DIR__ . '/routes.ia.php';
 

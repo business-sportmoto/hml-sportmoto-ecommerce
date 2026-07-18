@@ -150,4 +150,48 @@ class AutomacaoCupomService
         ]);
         return ['id' => (int)$this->db->lastInsertId(), 'codigo' => $dados['codigo']];
     }
+
+    /**
+     * Gera cupom único por cliente para uso genérico em automações de fluxo.
+     * Reusa os helpers privados da própria classe.
+     *
+     * @param array{
+     *   pct?: float, dias_validade?: int, prefixo?: string,
+     *   nome?: string, tipo?: string, valor_minimo?: float
+     * } $opts
+     * @return array{id:int, codigo:string}
+     */
+    public function gerarParaFluxo(int $clienteId, array $opts = []): array
+    {
+        $pct      = (float)($opts['pct'] ?? 10.0);
+        $dias     = (int)($opts['dias_validade'] ?? 15);
+        $prefixo  = strtoupper(preg_replace('/[^A-Z0-9]/i', '', (string)($opts['prefixo'] ?? 'FLUXO'))) ?: 'FLUXO';
+        $nome     = trim((string)($opts['nome'] ?? 'Cupom exclusivo'));
+        $tipo     = (string)($opts['tipo'] ?? 'recuperacao_carrinho');
+        $valorMin = (float)($opts['valor_minimo'] ?? 0);
+
+        if ($pct  <= 0) $pct  = 10.0;
+        if ($dias <= 0) $dias = 15;
+
+        $hash   = strtoupper(substr(bin2hex(random_bytes(3)), 0, 6));
+        $codigo = $prefixo . '-' . $this->prefixoCliente($clienteId) . '-' . $hash;
+
+        $inicio = date('Y-m-d H:i:s');
+        $fim    = date('Y-m-d H:i:s', strtotime("+{$dias} days"));
+
+        return $this->inserir([
+            'codigo'              => $codigo,
+            'nome'                => $nome,
+            'descricao'           => 'Gerado por automação — cliente #' . $clienteId,
+            'tipo'                => $tipo,
+            'valor'               => $pct,
+            'valor_minimo_pedido' => $valorMin,
+            'ativo'               => 1,
+            'data_inicio'         => $inicio,
+            'data_fim'            => $fim,
+            'limite_total'        => 1,
+            'limite_por_cliente'  => 1,
+            'escopo_clientes'     => json_encode([$clienteId]),
+        ]);
+    }
 }

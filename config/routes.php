@@ -15,6 +15,8 @@ Router::post('/webhook/bling', 'BlingWebhookController@receive');
 
 Router::post('/webhooks/ia/replicate', 'IAWebhookController@replicate');
 
+Router::get('/dica/{id}', 'DicaCuidadoController@abrir');
+
 // Catálogo
 Router::get('/categoria/{slug}',          'CategoryController@show');
 Router::get('/busca',                     'SearchController@results');

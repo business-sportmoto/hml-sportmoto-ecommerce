@@ -6,8 +6,9 @@ $categoryModel    = new Category();
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>  
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <?php View::partial('partials/seo-tags') ?>
-  <?php //View::partial('partials/pwa-meta'); ?>
+  
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/main.css') ?>">
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/mototv-busca.css') ?>">
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/clips.css') ?>">

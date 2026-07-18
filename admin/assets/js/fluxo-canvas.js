@@ -106,6 +106,30 @@ var FLUXO_UI = {
         { k: 'hmac_secret', label: 'Segredo HMAC (opcional)', tipo: 'text', def: '' },
         { k: 'parar_se_falhar', label: 'Parar a jornada se falhar', tipo: 'checkbox', def: false }
       ] },
+    acao_cupom: { cat: 'acao', label: 'Gerar cupom', icone: 'bi-ticket-perforated',
+      campos: [
+        { k: 'pct',          label: 'Desconto (%)',            tipo: 'number', def: 10 },
+        { k: 'dias_validade',label: 'Validade (dias)',         tipo: 'number', def: 15 },
+        { k: 'prefixo',      label: 'Prefixo do código',       tipo: 'text',   def: 'VOLTA' },
+        { k: 'nome',         label: 'Nome do cupom (pro cliente)', tipo: 'text', def: 'Cupom exclusivo' },
+        { k: 'valor_minimo', label: 'Pedido mínimo (R$, 0 = sem)', tipo: 'number', def: 0 }
+      ] },
+    cond_veio_de_vendedor: { cat: 'condicao', label: 'Veio de vendedor?', icone: 'bi-person-badge',
+      campos: [
+        { k: 'escopo', label: 'Onde procurar', tipo: 'select',
+          ops: ['auto', 'contexto', 'cliente_ultimo', 'cliente_primeiro'] },
+        { k: 'codigo', label: 'Código do vendedor (vazio = qualquer)', tipo: 'text', def: '' }
+      ] },
+
+    acao_notificar_vendedor: { cat: 'acao', label: 'Avisar vendedor', icone: 'bi-megaphone',
+      campos: [
+        { k: 'canal',     label: 'Canal', tipo: 'select', ops: ['auto', 'notificacao', 'email'] },
+        { k: 'categoria', label: 'Categoria', tipo: 'select',
+          ops: ['sistema', 'pedido', 'promocao', 'financeiro'] },
+        { k: 'titulo',    label: 'Título (aceita {{vars}})', tipo: 'text', def: '' },
+        { k: 'mensagem',  label: 'Mensagem', tipo: 'textarea', def: '' },
+        { k: 'url',       label: 'Link (opcional)', tipo: 'text', def: '' }
+      ] },
   },
 
   /** Resumo curto exibido dentro do nó no canvas. */
@@ -127,6 +151,9 @@ var FLUXO_UI = {
         if (cfg.timeout_minutos) t.push(cfg.timeout_minutos + 'min');
         return (cfg.evento || '—') + ' · ≤' + (t.join(' ') || '24h');
       }
+      case 'acao_cupom':
+        return (cfg.pct || 10) + '% · ' + (cfg.dias_validade || 15) + 'd'
+             + (cfg.prefixo ? ' · ' + cfg.prefixo : '');
       case 'acao_webhook':
         return cfg.url ? cfg.url.replace(/^https?:\/\//, '').substring(0, 24) : 'sem URL';
       case 'split_ab':         return (cfg.pesos ? cfg.pesos.join('/') : '50/50');
@@ -138,6 +165,12 @@ var FLUXO_UI = {
       case 'acao_notificacao': return cfg.titulo ? cfg.titulo.substring(0, 26) : '—';
       case 'acao_whatsapp':    return cfg.template || '—';
       case 'acao_tag':         return (cfg.acao || 'adicionar') + ' "' + (cfg.tag || '') + '"';
+      case 'cond_veio_de_vendedor':
+        return cfg.codigo ? '= ' + cfg.codigo : 'qualquer vendedor';
+
+      case 'acao_notificar_vendedor':
+        return (cfg.canal || 'auto') + ' · ' +
+               (cfg.titulo ? cfg.titulo.substring(0, 22) : 'sem título');
       default: return '';
     }
   }

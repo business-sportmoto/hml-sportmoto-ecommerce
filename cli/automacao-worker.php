@@ -110,7 +110,8 @@ if (!$apenasDespachar) {
         }
     } catch (Throwable $e) {
         $log("ERRO na detecção: " . $e->getMessage());
-        LogService::error("ERRO na detecção: " . $e->getMessage());
+        // LogService::error("ERRO na detecção: " . $e->getMessage());
+        LogService::exception($e, 'error', 'worker');
     }
 }
 
@@ -126,7 +127,7 @@ if (!$apenasDetectar && (time() - $started) < $maxRun) {
 
         $enviados = 0; $suprimidos = 0; $erros = 0;
 
-        LogService::error("BuscaProntos: ", $prontos);
+        // LogService::error("BuscaProntos: ", $prontos);
 
         foreach ($prontos as $item) {
             if ((time() - $started) >= $maxRun) {
@@ -134,7 +135,7 @@ if (!$apenasDetectar && (time() - $started) < $maxRun) {
                 break;
             }
             $res = $dispatch->processar($item);
-            LogService::error("ERRO no processar()->: " . $res);
+            // LogService::error("ERRO no processar()->: " . $res);
             switch ($res) {
                 case 'enviado':   $enviados++;   break;
                 case 'suprimido': $suprimidos++; break;

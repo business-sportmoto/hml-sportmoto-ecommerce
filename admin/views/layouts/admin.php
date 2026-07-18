@@ -189,6 +189,12 @@ function adminIsActive(string $path): string {
         Carrinho abandonado
       </a>
       
+      <a href="<?= BASE_URL ?>/admin/vida-util" class="admin-nav-item<?= adminIsActive('/admin/vida-util') ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('automation-02', 'icon icon--md') ?>
+        </span>
+        Vida útil
+      </a>
     </div>
 
     <div class="admin-nav-section">

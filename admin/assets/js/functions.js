@@ -426,12 +426,7 @@ $(function(){
             }
         }
 
-        escutar(
-            evento,
-            seletor,
-            handler,
-            options = {}
-        ) {
+        escutar(evento, seletor, handler, options = {}) {
             if (typeof seletor === 'function') {
                 options = handler ?? {};
                 handler = seletor;
@@ -444,10 +439,13 @@ $(function(){
                 );
             }
 
+            // Escuta o drawer inteiro, não apenas o body
+            const container = this.element;
+
             const listener = event => {
                 if (!seletor) {
                     handler.call(
-                        this.bodyElement,
+                        container,
                         event,
                         this.api
                     );
@@ -455,20 +453,29 @@ $(function(){
                     return;
                 }
 
-                if (!(event.target instanceof Element)) {
+                const target =
+                    event.target instanceof Element
+                        ? event.target
+                        : event.target?.parentElement;
+
+                if (!target) {
                     return;
                 }
 
-                const alvo = event.target.closest(seletor);
+                const elemento = target.closest(seletor);
 
                 if (
-                    !alvo ||
-                    !this.bodyElement.contains(alvo)
+                    !elemento ||
+                    !container.contains(elemento)
                 ) {
                     return;
                 }
 
-                handler.call(alvo, event, this.api);
+                handler.call(
+                    elemento,
+                    event,
+                    this.api
+                );
             };
 
             const eventOptions =
@@ -476,16 +483,16 @@ $(function(){
                     ? { capture: options }
                     : { ...options };
 
-            delete eventOptions.signal;
-
             eventOptions.signal =
                 this.abortController.signal;
 
-            this.bodyElement.addEventListener(
+            container.addEventListener(
                 evento,
                 listener,
                 eventOptions
             );
+
+            return this.api;
         }
 
         focar(alvo = null) {

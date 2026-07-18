@@ -6,22 +6,22 @@
  */
 
 // Carrega nome do app do banco (com cache simples em sessão)
-if (!isset($_SESSION['_pwa_name'])) {
-    try {
-        $db  = Database::getInstance()->getConnection();
-        $cfg = $db->query("SELECT app_name, app_short_name, theme_color FROM pwa_config WHERE id=1 LIMIT 1")->fetch();
-        $_SESSION['_pwa_name']  = $cfg['app_name']       ?? 'Minha Loja';
-        $_SESSION['_pwa_short'] = $cfg['app_short_name'] ?? 'Loja';
-        $_SESSION['_pwa_theme'] = $cfg['theme_color']    ?? '#0f172a';
-    } catch (\Throwable) {
-        $_SESSION['_pwa_name']  = 'Minha Loja';
-        $_SESSION['_pwa_short'] = 'Loja';
-        $_SESSION['_pwa_theme'] = '#0f172a';
-    }
-}
-$_pwaName  = htmlspecialchars($_SESSION['_pwa_name'],  ENT_QUOTES, 'UTF-8');
-$_pwaShort = htmlspecialchars($_SESSION['_pwa_short'], ENT_QUOTES, 'UTF-8');
-$_pwaTheme = htmlspecialchars($_SESSION['_pwa_theme'], ENT_QUOTES, 'UTF-8');
+// if (!isset($_SESSION['_pwa_name'])) {
+//     try {
+//         $db  = Database::getInstance()->getConnection();
+//         $cfg = $db->query("SELECT app_name, app_short_name, theme_color FROM pwa_config WHERE id=1 LIMIT 1")->fetch();
+//         $_SESSION['_pwa_name']  = $cfg['app_name']       ?? 'Minha Loja';
+//         $_SESSION['_pwa_short'] = $cfg['app_short_name'] ?? 'Loja';
+//         $_SESSION['_pwa_theme'] = $cfg['theme_color']    ?? '#0f172a';
+//     } catch (\Throwable) {
+//         $_SESSION['_pwa_name']  = 'Minha Loja';
+//         $_SESSION['_pwa_short'] = 'Loja';
+//         $_SESSION['_pwa_theme'] = '#0f172a';
+//     }
+// }
+// $_pwaName  = htmlspecialchars($_SESSION['_pwa_name'],  ENT_QUOTES, 'UTF-8');
+// $_pwaShort = htmlspecialchars($_SESSION['_pwa_short'], ENT_QUOTES, 'UTF-8');
+// $_pwaTheme = htmlspecialchars($_SESSION['_pwa_theme'], ENT_QUOTES, 'UTF-8');
 ?>
 
 <!-- ══ PWA Meta Tags ════════════════════════════════════ -->
@@ -30,10 +30,10 @@ $_pwaTheme = htmlspecialchars($_SESSION['_pwa_theme'], ENT_QUOTES, 'UTF-8');
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
 <!-- Manifest -->
-<link rel="manifest" href="<?= BASE_URL ?>/manifest.json">
+<!-- <link rel="manifest" href="<?= BASE_URL ?>/manifest.json"> -->
 
 <!-- Theme color (barra de status no Android/Chrome) -->
-<meta name="theme-color" content="<?= $_pwaTheme ?>">
+<!-- <meta name="theme-color" content="<?= $_pwaTheme ?>"> -->
 
 <!-- Android standalone -->
 <meta name="mobile-web-app-capable" content="yes">
