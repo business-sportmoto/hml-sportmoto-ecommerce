@@ -291,7 +291,9 @@ class TrayImportService {
         $campos = [
             'tray_id'          => $trayId,
             'nome'             => $nome,
-            'slug'             => SlugHelper::unique($nome, 'produtos'),
+            // Preserva o slug já indexado (coluna "Endereço do Produto" do CSV da Tray).
+            // Gerar slug novo quebraria todas as URLs no Google.
+            'slug'             => $this->resolverSlug($nome, $linha['Endereço do Produto'] ?? null),
             'marca_id'         => $marcaId,
             'categoria_id'     => null,
             'sku_legado'       => $this->utf8($r[self::P['referencia']] ?? '') ?: null,
@@ -892,5 +894,106 @@ class TrayImportService {
             return "{$m[3]}-{$m[2]}-{$m[1]}";
         }
         return null;
+    }
+
+    /**
+     * Extrai o slug da URL da Tray, preservando o caminho já indexado.
+     *
+     * Entrada: https://www.sportmoto.com.br/produtos/bauletos-laterais-...-braz-acessorios
+     * Saída:   bauletos-laterais-...-braz-acessorios
+     *
+     * REGRAS:
+     *  - Usa o ÚLTIMO segmento do path (a Tray sempre põe o slug no fim).
+     *  - Remove query string, âncora e barra final.
+     *  - Normaliza para minúsculas e recusa caracteres fora de [a-z0-9-]
+     *    (defesa: o CSV é fonte externa; slug entra em URL e em rota).
+     *  - Retorna null se a coluna vier vazia ou o slug for inválido —
+     *    o chamador decide o fallback.
+     */
+    private function slugDaUrlTray(?string $url): ?string
+    {
+        $url = trim((string) $url);
+        if ($url === '') {
+            return null;
+        }
+
+        // Aceita URL completa OU já só o slug (planilhas variam)
+        $path = parse_url($url, PHP_URL_PATH);
+        if ($path === null || $path === false || $path === '') {
+            $path = $url; // veio sem esquema/host
+        }
+
+        // Último segmento: .../produtos/{slug}  ->  {slug}
+        $path = rtrim($path, '/');
+        $slug = substr($path, (int) strrpos($path, '/') + 1);
+
+        // Limpeza defensiva
+        $slug = strtolower(trim(urldecode($slug)));
+        $slug = preg_replace('/\.(html?|php)$/', '', $slug) ?? $slug; // .html no fim, se houver
+        $slug = preg_replace('/[^a-z0-9\-]/', '-', $slug) ?? $slug;   // só a-z 0-9 -
+        $slug = preg_replace('/-+/', '-', $slug) ?? $slug;            // colapsa --
+        $slug = trim($slug, '-');
+
+        // Sanidade: slug de 1-2 chars provavelmente é lixo da planilha
+        if (strlen($slug) < 3 || strlen($slug) > 200) {
+            return null;
+        }
+
+        return $slug;
+    }
+
+    /**
+     * Resolve o slug definitivo de um produto na importação.
+     *
+     * PRECEDÊNCIA:
+     *  1. Slug da URL da Tray (preserva SEO)  ← o que queremos em 99% dos casos
+     *  2. Se esse slug já pertence a OUTRO produto, sufixa (-2, -3...)
+     *  3. Se a coluna veio vazia/inválida, gera pelo nome (comportamento antigo)
+     *
+     * @param string      $nome       Nome do produto (fallback).
+     * @param string|null $urlTray    Conteúdo da coluna "Endereço do Produto".
+     * @param int|null    $produtoId  ID se for UPDATE (ignora colisão consigo mesmo).
+     */
+    private function resolverSlug(string $nome, ?string $urlTray, ?int $produtoId = null): string
+    {
+        $slug = $this->slugDaUrlTray($urlTray);
+
+        // 3. Sem slug utilizável -> comportamento antigo
+        if ($slug === null) {
+            LogService::warning('Produto sem URL da Tray — slug gerado pelo nome', [
+                'nome' => mb_substr($nome, 0, 80),
+            ], 'import');
+            return SlugHelper::unique($nome, 'produtos');
+        }
+
+        // 2. Colisão: o slug já é de OUTRO produto?
+        $sql = "SELECT id FROM produtos WHERE slug = ?" . ($produtoId ? " AND id <> ?" : "") . " LIMIT 1";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($produtoId ? [$slug, $produtoId] : [$slug]);
+
+        if (!$stmt->fetchColumn()) {
+            return $slug; // 1. livre -> preserva exatamente
+        }
+
+        // Colisão real: sufixa até achar livre. NÃO sobrescreve o outro produto.
+        $base = $slug;
+        for ($i = 2; $i <= 50; $i++) {
+            $tentativa = $base . '-' . $i;
+            $stmt = $this->db->prepare(
+                "SELECT id FROM produtos WHERE slug = ?" . ($produtoId ? " AND id <> ?" : "") . " LIMIT 1"
+            );
+            $stmt->execute($produtoId ? [$tentativa, $produtoId] : [$tentativa]);
+
+            if (!$stmt->fetchColumn()) {
+                LogService::warning('Slug da Tray duplicado — sufixado', [
+                    'slug_original' => $base,
+                    'slug_usado'    => $tentativa,
+                ], 'import');
+                return $tentativa;
+            }
+        }
+
+        // Improvável: 50 colisões. Cai no gerador antigo.
+        return SlugHelper::unique($nome, 'produtos');
     }
 }
