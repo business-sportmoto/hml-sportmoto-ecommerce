@@ -50,22 +50,25 @@ class FluxoMotor
             if (!$fluxo || $fluxo['status'] !== 'publicado' || (int)$fluxo['versao_publicada'] < 1) {
                 return null;
             }
+            
             $versao = (int)$fluxo['versao_publicada'];
 
             if (!$this->reentradaPermitida($fluxo, $clienteId, $visitanteToken)) {
                 return null;
             }
-
             // Nó de entrada = o trigger da versão publicada
             $st = $this->db->prepare(
                 "SELECT chave, tipo_no FROM fluxo_nos
                  WHERE fluxo_id=:f AND versao=:v"
             );
             $st->execute([':f' => $fluxoId, ':v' => $versao]);
-            $trigger = null;
+            $trigger = null; $triggerTipo = 'trigger';
             foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $no) {
-                if (FluxoNoRegistry::ehTrigger($no['tipo_no'])) { $trigger = $no['chave']; break; }
-            }
+                if (FluxoNoRegistry::ehTrigger($no['tipo_no'])) {
+                    $trigger = $no['chave']; $triggerTipo = $no['tipo_no']; break;
+                }
+            }            
+
             if (!$trigger) return null;
 
             $ins = $this->db->prepare(
@@ -81,8 +84,14 @@ class FluxoMotor
                 ':no'  => $trigger,
                 ':ctx' => json_encode($contexto, JSON_UNESCAPED_UNICODE),
             ]);
-            return (int)$this->db->lastInsertId() ?: null;
+            
+            
+            $novoId = (int)$this->db->lastInsertId() ?: null;
 
+            if ($novoId && class_exists('FluxoLogService')) {
+                FluxoLogService::inicio($this->db, $novoId, $fluxoId, $versao, $clienteId, $triggerTipo);
+            }
+            return $novoId;
         } catch (Throwable $e) {
             $this->logErro('iniciarExecucao', $e);
             return null;
@@ -192,22 +201,31 @@ class FluxoMotor
             // envio e segue pela porta 'saida' (não trava a jornada).
             $canalEnvio = FluxoGuard::canalDoNo($no['tipo_no']);
             $cid        = (int)($exec['cliente_id'] ?? 0);
+            $t0         = microtime(true);        // ← observabilidade
+            $logDetalhe = null;                   // ← "cap" quando envio pulado
 
             if ($canalEnvio !== null && $cid > 0 && FluxoGuard::capAtingido($cid, $canalEnvio, $this->db)) {
                 if (class_exists('LogService')) {
-                    try {
-                        LogService::info('fluxo: envio pulado por cap', [
-                            'cliente_id' => $cid, 'canal' => $canalEnvio, 'fluxo_id' => $exec['fluxo_id'],
-                        ]);
-                    } catch (Throwable $x) {}
+                    try { LogService::info('fluxo: envio pulado por cap', ['cliente_id'=>$cid,'canal'=>$canalEnvio,'fluxo_id'=>$exec['fluxo_id']]); } catch (Throwable $x) {}
                 }
                 $porta = 'saida';
+                $logDetalhe = 'cap';
             } else {
                 $porta = $handler->executar($exec, $config, $this->db);
-                // Só conta se o envio de fato saiu (porta 'saida'); DORMIR/ERRO não contam
                 if ($canalEnvio !== null && $cid > 0 && $porta === 'saida') {
                     FluxoGuard::registrarEnvio($cid, $canalEnvio, (int)$exec['fluxo_id'], $this->db);
                 }
+            }
+
+            // ── Observabilidade: registra o passo com a porta real ──
+            if (class_exists('FluxoLogService')) {
+                if ($porta === FluxoNo::ERRO && !empty($exec['erro_detalhe'])) {
+                    $logDetalhe = mb_substr((string)$exec['erro_detalhe'], 0, 200);
+                }
+                FluxoLogService::passo(
+                    $this->db, $exec, $chave, $no['tipo_no'],
+                    $porta, $logDetalhe, (microtime(true) - $t0) * 1000
+                );
             }
 
             // ── Retornos especiais ──
@@ -276,7 +294,7 @@ class FluxoMotor
     {
         $cfg  = json_decode($fluxo['config_json'] ?? '{}', true) ?: [];
         $modo = (string)($cfg['reentrada'] ?? 'nunca');
-
+        
         $where  = "fluxo_id = :f AND ";
         $params = [':f' => $fluxo['id']];
         if ($clienteId) { $where .= "cliente_id = :c";      $params[':c'] = $clienteId; }
@@ -312,6 +330,8 @@ class FluxoMotor
             $st->execute($params);
             return !$st->fetchColumn();
 
+            
+
         } catch (Throwable $e) {
             return false; // na dúvida, não duplica
         }
@@ -341,6 +361,10 @@ class FluxoMotor
 
     private function finalizar(array $exec, string $status): void
     {
+        if (class_exists('FluxoLogService')) {
+            FluxoLogService::fim($this->db, $exec, $status);
+        }
+        
         $this->db->prepare(
             "UPDATE fluxo_execucoes
              SET status=:st, contexto_json=:ctx, erro_detalhe=:err, dormir_ate=NULL
@@ -399,6 +423,8 @@ class FluxoMotor
                 $chave = (string)$row['no_atual'];
                 $ctx   = json_decode($row['contexto_json'] ?? '{}', true) ?: [];
                 $spec  = $ctx['_ee_spec_' . $chave] ?? null;
+
+                
 
                 // Sem spec no contexto (dado antigo/corrompido): usa as colunas
                 if (!is_array($spec)) {

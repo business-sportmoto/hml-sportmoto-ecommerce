@@ -19,6 +19,7 @@ $badge = [
     <button type="button" id="fx-novo" class="ntfa-btn-pri" style="width:auto;padding:9px 18px;">
       <i class="bi bi-plus-lg"></i> Novo fluxo
     </button>
+    <a href="<?= $base; ?>/admin/fluxos/atividade">Atividades</a>
   </div>
 
   <div class="cl-card">

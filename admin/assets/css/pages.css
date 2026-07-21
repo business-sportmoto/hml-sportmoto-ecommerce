@@ -1434,364 +1434,117 @@ from{transform:translate3d(24px,0,0);opacity:0}
 }
 
 
-/**
- * public/css/vida-util-admin.css
- *
- * Tela de regras de dica de cuidado. Segue o sistema do painel
- * (vars --em-*, cantos de 16px, pills, tabular-nums, dark mode automático).
- * Prefixo próprio .vu_ — mesma convenção do módulo de IA (.ia_).
- */
-
-/* ── Cabeçalho ───────────────────────────────────────────────────────────── */
-.vu_head {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  margin-bottom: 22px;
-  flex-wrap: wrap;
-}
-.vu_head_txt { margin-right: auto; }
-.vu_h1 {
-  font-size: 20px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  margin: 0 0 4px;
-}
-.vu_sub {
-  font-size: 13px;
-  color: var(--em-text-muted, #71717a);
-  margin: 0;
-  max-width: 62ch;
-  line-height: 1.5;
-}
-
-.vu_btn {
-  border: 0.5px solid var(--em-border, #e5e7eb);
-  background: var(--em-bg-card, #fff);
-  color: inherit;
-  border-radius: 999px;
-  padding: 9px 18px;
-  font-size: 13px;
-  font-weight: 550;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  transition: background .15s, border-color .15s, transform .12s;
-}
-.vu_btn:hover { background: var(--em-bg, #f4f4f5); }
-.vu_btn:active { transform: scale(.98); }
-.vu_btn:focus-visible { outline: 2px solid var(--em-blue, #0a66c2); outline-offset: 2px; }
-.vu_btn.vu_pri {
-  background: var(--em-blue, #0a66c2);
-  border-color: var(--em-blue, #0a66c2);
-  color: #fff;
-  font-weight: 600;
-}
-.vu_btn.vu_pri:hover { background: #0857a6; }
-
-/* ── Funil (agendadas → enviadas → cliques) ──────────────────────────────── */
-/* A tela é sobre um mecanismo sequencial, então os números vêm como percurso,
-   não como quatro cartões soltos. O clique é o desfecho — e o que importa. */
-.vu_funil {
-  display: flex;
-  align-items: stretch;
-  border: 0.5px solid var(--em-border, #e5e7eb);
-  border-radius: 16px;
-  background: var(--em-bg-card, #fff);
-  box-shadow: var(--em-shadow, 0 1px 3px rgba(0,0,0,.04));
-  overflow: hidden;
-  margin-bottom: 22px;
-}
-.vu_etapa {
-  flex: 1;
-  padding: 16px 20px;
-  position: relative;
-  min-width: 0;
-}
-.vu_etapa + .vu_etapa { border-left: 0.5px solid var(--em-border, #e5e7eb); }
-.vu_etapa_num {
-  font-size: 26px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
-}
-.vu_etapa_lbl {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: .07em;
-  color: var(--em-text-muted, #a1a1aa);
-  margin-top: 3px;
-}
-.vu_etapa_nota {
-  font-size: 11.5px;
-  color: var(--em-text-muted, #71717a);
-  margin-top: 5px;
-}
-/* Última etapa: o sinal de interesse, que é o ponto do sistema todo */
-.vu_etapa.vu_final .vu_etapa_num { color: var(--em-blue, #0a66c2); }
-.vu_etapa.vu_final { background: linear-gradient(180deg, rgba(10,102,194,.045), transparent); }
-
-/* ── Tabela ──────────────────────────────────────────────────────────────── */
-.vu_card {
-  border: 0.5px solid var(--em-border, #e5e7eb);
-  border-radius: 16px;
-  background: var(--em-bg-card, #fff);
-  box-shadow: var(--em-shadow, 0 1px 3px rgba(0,0,0,.04));
-  overflow: hidden;
-}
-.vu_tabela { width: 100%; border-collapse: collapse; }
-.vu_tabela thead th {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  color: var(--em-text-muted, #a1a1aa);
-  text-align: left;
-  padding: 12px 18px;
-  border-bottom: 0.5px solid var(--em-border, #e5e7eb);
-  white-space: nowrap;
-}
-.vu_tabela tbody td {
-  padding: 14px 18px;
-  font-size: 13.5px;
-  border-bottom: 0.5px solid var(--em-border, #f1f1f3);
-  vertical-align: top;
-}
-.vu_tabela tbody tr:last-child td { border-bottom: none; }
-.vu_tabela tbody tr:hover { background: var(--em-bg, #fafafa); }
-.vu_num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
-.vu_th_num { text-align: right; }
-
-.vu_cat {
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.vu_prazo {
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  white-space: nowrap;
-}
-.vu_prazo small {
-  font-weight: 400;
-  color: var(--em-text-muted, #a1a1aa);
-  margin-left: 3px;
-}
-.vu_titulo_dica {
-  display: block;
-  max-width: 46ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.vu_corpo_dica {
-  display: block;
-  max-width: 46ch;
-  font-size: 12px;
-  color: var(--em-text-muted, #a1a1aa);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-top: 2px;
-}
-
-.vu_pill {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: .03em;
-  padding: 2px 9px;
-  border-radius: 999px;
-  background: var(--em-bg, #f4f4f5);
-  color: var(--em-text-muted, #71717a);
-  text-transform: uppercase;
-}
-tr.vu_pausada td { opacity: .55; }
-tr.vu_pausada:hover td { opacity: .8; }
-
-.vu_acoes { display: flex; gap: 4px; justify-content: flex-end; }
-.vu_ic {
-  border: none;
-  background: transparent;
-  color: var(--em-text-muted, #71717a);
-  border-radius: 8px;
-  width: 30px;
-  height: 30px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  transition: background .12s, color .12s;
-}
-.vu_ic:hover { background: var(--em-bg, #f0f0f2); color: inherit; }
-.vu_ic:focus-visible { outline: 2px solid var(--em-blue, #0a66c2); outline-offset: 1px; }
-.vu_ic.vu_perigo:hover { background: #fee2e2; color: #991b1b; }
-
-/* ── Vazio e carregando ──────────────────────────────────────────────────── */
-.vu_vazio { padding: 54px 24px; text-align: center; }
-.vu_vazio i { font-size: 26px; color: var(--em-text-muted, #d4d4d8); }
-.vu_vazio_t { font-size: 15px; font-weight: 600; margin: 12px 0 6px; }
-.vu_vazio_p {
-  font-size: 13px;
-  color: var(--em-text-muted, #71717a);
-  max-width: 46ch;
-  margin: 0 auto 18px;
-  line-height: 1.55;
-}
-.vu_load { padding: 40px; text-align: center; font-size: 13px; color: var(--em-text-muted, #a1a1aa); }
-
-/* ── Formulário no drawer ────────────────────────────────────────────────── */
-.vu_campo { margin-bottom: 16px; }
-.vu_label {
-  display: block;
-  font-size: 12px;
-  font-weight: 600;
-  margin-bottom: 5px;
-}
-.vu_ajuda {
-  font-size: 11.5px;
-  color: var(--em-text-muted, #a1a1aa);
-  margin: 5px 0 0;
-  line-height: 1.45;
-}
-.vu_input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 9px 11px;
-  font-size: 13.5px;
-  font-family: inherit;
-  border: 0.5px solid var(--em-border, #e5e7eb);
-  border-radius: 10px;
-  background: var(--em-bg-card, #fff);
-  color: inherit;
-  outline: none;
-  transition: border-color .15s, box-shadow .15s;
-}
-.vu_input:focus {
-  border-color: var(--em-blue, #0a66c2);
-  box-shadow: 0 0 0 3px rgba(10,102,194,.1);
-}
-textarea.vu_input { resize: vertical; min-height: 82px; line-height: 1.5; }
-.vu_linha { display: flex; gap: 12px; }
-.vu_linha > .vu_campo { flex: 1; }
-.vu_check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
-
-.vu_erros {
-  background: #fee2e2;
-  color: #991b1b;
-  border-radius: 10px;
-  padding: 10px 13px;
-  font-size: 12.5px;
-  margin-bottom: 14px;
-  line-height: 1.5;
-}
-.vu_erros ul { margin: 0; padding-left: 17px; }
-
-/* ── Preview: a notificação como o cliente vai ver ───────────────────────── */
-/* O ponto do subsistema é o tom (cuidado, não venda). Ver o texto renderizado
-   enquanto escreve é o que mantém esse tom honesto. */
-.vu_preview_wrap {
-  margin-top: 22px;
-  padding-top: 18px;
-  border-top: 0.5px solid var(--em-border, #e5e7eb);
-}
-.vu_preview_lbl {
-  font-size: 10.5px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .07em;
-  color: var(--em-text-muted, #a1a1aa);
-  margin-bottom: 9px;
-}
-.vu_notif {
-  display: flex;
-  gap: 11px;
-  padding: 13px 14px;
-  border: 0.5px solid var(--em-border, #e5e7eb);
-  border-radius: 14px;
-  background: var(--em-bg, #fafafa);
-}
-.vu_notif_ic {
-  flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: rgba(10,102,194,.1);
-  color: var(--em-blue, #0a66c2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 15px;
-}
-.vu_notif_corpo { min-width: 0; flex: 1; }
-.vu_notif_t {
-  font-size: 13.5px;
-  font-weight: 600;
-  line-height: 1.35;
-  word-break: break-word;
-}
-.vu_notif_m {
-  font-size: 12.5px;
-  color: var(--em-text-muted, #71717a);
-  line-height: 1.5;
-  margin-top: 3px;
-  word-break: break-word;
-}
-.vu_notif_hora {
-  font-size: 11px;
-  color: var(--em-text-muted, #a1a1aa);
-  margin-top: 6px;
-}
-.vu_vars { font-size: 11.5px; color: var(--em-text-muted, #a1a1aa); margin-top: 10px; line-height: 1.6; }
-.vu_vars code {
-  background: var(--em-bg, #f4f4f5);
-  border-radius: 5px;
-  padding: 1px 5px;
-  font-size: 11px;
-}
-
-/* ── Respeita quem prefere menos movimento ───────────────────────────────── */
+.vu_head{display:flex;align-items:flex-start;gap:16px;margin-bottom:22px;flex-wrap:wrap}
+.vu_head_txt{margin-right:auto}
+.vu_h1{font-size:20px;font-weight:650;letter-spacing:-.01em;margin:0 0 4px}
+.vu_sub{font-size:13px;color:var(--em-text-muted,#71717a);margin:0;max-width:62ch;line-height:1.5}
+.vu_btn{border:.5px solid var(--em-border,#e5e7eb);background:var(--em-bg-card,#fff);color:inherit;border-radius:999px;padding:9px 18px;font-size:13px;font-weight:550;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:background .15s,border-color .15s,transform .12s}
+.vu_btn:hover{background:var(--em-bg,#f4f4f5)}
+.vu_btn:active{transform:scale(.98)}
+.vu_btn:focus-visible{outline:2px solid var(--em-blue,#0a66c2);outline-offset:2px}
+.vu_btn.vu_pri{background:var(--em-blue,#0a66c2);border-color:var(--em-blue,#0a66c2);color:#fff;font-weight:600}
+.vu_btn.vu_pri:hover{background:#0857a6}
+.vu_funil{display:flex;align-items:stretch;border:.5px solid var(--em-border,#e5e7eb);border-radius:16px;background:var(--em-bg-card,#fff);box-shadow:var(--em-shadow,0 1px 3px #0000000a);overflow:hidden;margin-bottom:22px}
+.vu_etapa{flex:1;padding:16px 20px;position:relative;min-width:0}
+.vu_etapa + .vu_etapa{border-left:.5px solid var(--em-border,#e5e7eb)}
+.vu_etapa_num{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.02em;line-height:1.1}
+.vu_etapa_lbl{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--em-text-muted,#a1a1aa);margin-top:3px}
+.vu_etapa_nota{font-size:11.5px;color:var(--em-text-muted,#71717a);margin-top:5px}
+.vu_etapa.vu_final .vu_etapa_num{color:var(--em-blue,#0a66c2)}
+.vu_etapa.vu_final{background:linear-gradient(180deg,#0a66c20b,transparent)}
+.vu_card{border:.5px solid var(--em-border,#e5e7eb);border-radius:16px;background:var(--em-bg-card,#fff);box-shadow:var(--em-shadow,0 1px 3px #0000000a);overflow:hidden}
+.vu_tabela{width:100%;border-collapse:collapse}
+.vu_tabela thead th{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--em-text-muted,#a1a1aa);text-align:left;padding:12px 18px;border-bottom:.5px solid var(--em-border,#e5e7eb);white-space:nowrap}
+.vu_tabela tbody td{padding:14px 18px;font-size:13.5px;border-bottom:.5px solid var(--em-border,#f1f1f3);vertical-align:top}
+.vu_tabela tbody tr:last-child td{border-bottom:none}
+.vu_tabela tbody tr:hover{background:var(--em-bg,#fafafa)}
+.vu_num{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.vu_th_num{text-align:right}
+.vu_cat{font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.vu_prazo{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.vu_prazo small{font-weight:400;color:var(--em-text-muted,#a1a1aa);margin-left:3px}
+.vu_titulo_dica{display:block;max-width:46ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vu_corpo_dica{display:block;max-width:46ch;font-size:12px;color:var(--em-text-muted,#a1a1aa);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
+.vu_pill{font-size:10.5px;font-weight:700;letter-spacing:.03em;padding:2px 9px;border-radius:999px;background:var(--em-bg,#f4f4f5);color:var(--em-text-muted,#71717a);text-transform:uppercase}
+tr.vu_pausada td{opacity:.55}
+tr.vu_pausada:hover td{opacity:.8}
+.vu_tabela tbody tr{cursor:pointer}
+.vu_acoes{display:flex;gap:6px;justify-content:flex-end;align-items:center}
+.vu_btn_mini{border:.5px solid var(--em-border,#d4d4d8);background:var(--em-bg-card,#fff);color:inherit;border-radius:999px;padding:5px 13px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:background .12s,border-color .12s;white-space:nowrap}
+.vu_btn_mini:hover{background:var(--em-bg,#f4f4f5);border-color:var(--em-blue,#0a66c2)}
+.vu_btn_mini:focus-visible{outline:2px solid var(--em-blue,#0a66c2);outline-offset:2px}
+.vu_ic{border:.5px solid var(--em-border,#d4d4d8);background:var(--em-bg-card,#fff);color:var(--em-text-muted,#52525b);border-radius:999px;width:30px;height:30px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:14px;transition:background .12s,color .12s,border-color .12s}
+.vu_ic:hover{background:var(--em-bg,#f0f0f2);color:inherit;border-color:var(--em-blue,#0a66c2)}
+.vu_ic:focus-visible{outline:2px solid var(--em-blue,#0a66c2);outline-offset:1px}
+.vu_ic.vu_perigo:hover{background:#fee2e2;color:#991b1b}
+.vu_vazio{padding:54px 24px;text-align:center}
+.vu_vazio i{font-size:26px;color:var(--em-text-muted,#d4d4d8)}
+.vu_vazio_t{font-size:15px;font-weight:600;margin:12px 0 6px}
+.vu_vazio_p{font-size:13px;color:var(--em-text-muted,#71717a);max-width:46ch;margin:0 auto 18px;line-height:1.55}
+.vu_load{padding:40px;text-align:center;font-size:13px;color:var(--em-text-muted,#a1a1aa)}
+.vu_campo{margin-bottom:16px}
+.vu_label{display:block;font-size:12px;font-weight:600;margin-bottom:5px}
+.vu_ajuda{font-size:11.5px;color:var(--em-text-muted,#a1a1aa);margin:5px 0 0;line-height:1.45}
+.vu_input{width:100%;box-sizing:border-box;padding:9px 11px;font-size:13.5px;font-family:inherit;border:.5px solid var(--em-border,#e5e7eb);border-radius:10px;background:var(--em-bg-card,#fff);color:inherit;outline:none;transition:border-color .15s,box-shadow .15s}
+.vu_input:focus{border-color:var(--em-blue,#0a66c2);box-shadow:0 0 0 3px #0a66c21a}
+textarea.vu_input{resize:vertical;min-height:82px;line-height:1.5}
+.vu_linha{display:flex;gap:12px}
+.vu_linha > .vu_campo{flex:1}
+.vu_check{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer}
+.vu_erros{background:#fee2e2;color:#991b1b;border-radius:10px;padding:10px 13px;font-size:12.5px;margin-bottom:14px;line-height:1.5}
+.vu_erros ul{margin:0;padding-left:17px}
+.vu_preview_wrap{margin-top:22px;padding-top:18px;border-top:.5px solid var(--em-border,#e5e7eb)}
+.vu_preview_lbl{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--em-text-muted,#a1a1aa);margin-bottom:9px}
+.vu_notif{display:flex;gap:11px;padding:13px 14px;border:.5px solid var(--em-border,#e5e7eb);border-radius:14px;background:var(--em-bg,#fafafa)}
+.vu_notif_ic{flex-shrink:0;width:32px;height:32px;border-radius:50%;background:#0a66c21a;color:var(--em-blue,#0a66c2);display:flex;align-items:center;justify-content:center;font-size:15px}
+.vu_notif_corpo{min-width:0;flex:1}
+.vu_notif_t{font-size:13.5px;font-weight:600;line-height:1.35;word-break:break-word}
+.vu_notif_m{font-size:12.5px;color:var(--em-text-muted,#71717a);line-height:1.5;margin-top:3px;word-break:break-word}
+.vu_notif_hora{font-size:11px;color:var(--em-text-muted,#a1a1aa);margin-top:6px}
+.vu_vars{font-size:11.5px;color:var(--em-text-muted,#a1a1aa);margin-top:10px;line-height:1.6}
+.vu_vars code{background:var(--em-bg,#f4f4f5);border-radius:5px;padding:1px 5px;font-size:11px}
+.vu_form_foot{display:flex;gap:10px;margin-top:20px;padding-top:16px;border-top:.5px solid var(--em-border,#e5e7eb)}
+.vu_btn_sec{border:.5px solid var(--em-border,#d4d4d8);background:transparent;color:inherit;border-radius:999px;padding:8px 15px;font-size:12.5px;font-weight:550;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.vu_btn_sec:hover{background:var(--em-bg,#f4f4f5)}
+.vu_btn_sec.vu_perigo_txt{color:#b91c1c;border-color:#fca5a5}
+.vu_btn_sec.vu_perigo_txt:hover{background:#fee2e2}
 @media (prefers-reduced-motion: reduce) {
-  .vu_btn, .vu_ic, .vu_input { transition: none; }
-  .vu_btn:active { transform: none; }
+.vu_btn,.vu_ic,.vu_input{transition:none}
+.vu_btn:active{transform:none}
 }
-
-/* ── Telas estreitas ─────────────────────────────────────────────────────── */
 @media (max-width: 860px) {
-  .vu_funil { flex-direction: column; }
-  .vu_etapa + .vu_etapa {
-    border-left: none;
-    border-top: 0.5px solid var(--em-border, #e5e7eb);
-  }
-  .vu_col_opcional { display: none; }
-  .vu_linha { flex-direction: column; gap: 0; }
+.vu_funil{flex-direction:column}
+.vu_etapa + .vu_etapa{border-left:none;border-top:.5px solid var(--em-border,#e5e7eb)}
+.vu_col_opcional{display:none}
+.vu_linha{flex-direction:column;gap:0}
 }
-
-/* ── Dark mode ───────────────────────────────────────────────────────────── */
 @media (prefers-color-scheme: dark) {
-  /* .vu_funil, .vu_card { background: #1c1c1e; border-color: #2c2c2e; }
-  .vu_etapa + .vu_etapa { border-left-color: #2c2c2e; }
-  .vu_tabela thead th { border-bottom-color: #2c2c2e; }
-  .vu_tabela tbody td { border-bottom-color: #242426; }
-  .vu_tabela tbody tr:hover { background: #232326; }
-  .vu_btn { background: #232326; border-color: #3a3a3d; }
-  .vu_btn:hover { background: #2c2c2e; }
-  .vu_btn.vu_pri { background: var(--em-blue, #0a66c2); border-color: var(--em-blue, #0a66c2); }
-  .vu_btn.vu_pri:hover { background: #0857a6; }
-  .vu_pill { background: #2c2c2e; }
-  .vu_ic:hover { background: #2c2c2e; }
-  .vu_ic.vu_perigo:hover { background: #3f1d1d; color: #fca5a5; }
-  .vu_input { background: #232326; border-color: #3a3a3d; }
-  .vu_notif { background: #232326; border-color: #3a3a3d; }
-  .vu_vars code { background: #2c2c2e; }
-  .vu_preview_wrap { border-top-color: #2c2c2e; }
-  .vu_erros { background: #3f1d1d; color: #fca5a5; }
-  @media (max-width: 860px) {
-    .vu_etapa + .vu_etapa { border-top-color: #2c2c2e; }
-  } */
+/* .vu_funil,.vu_card{background:#1c1c1e;border-color:#2c2c2e}
+.vu_etapa + .vu_etapa{border-left-color:#2c2c2e}
+.vu_tabela thead th{border-bottom-color:#2c2c2e}
+.vu_tabela tbody td{border-bottom-color:#242426}
+.vu_tabela tbody tr:hover{background:#232326}
+.vu_btn{background:#232326;border-color:#3a3a3d}
+.vu_btn:hover{background:#2c2c2e}
+.vu_btn.vu_pri{background:var(--em-blue,#0a66c2);border-color:var(--em-blue,#0a66c2)}
+.vu_btn.vu_pri:hover{background:#0857a6}
+.vu_pill{background:#2c2c2e}
+.vu_btn_mini{background:#232326;border-color:#3a3a3d}
+.vu_btn_mini:hover{background:#2c2c2e}
+.vu_ic{background:#232326;border-color:#3a3a3d;color:#a1a1aa}
+.vu_ic:hover{background:#2c2c2e}
+.vu_ic.vu_perigo:hover{background:#3f1d1d;color:#fca5a5}
+.vu_form_foot{border-top-color:#2c2c2e}
+.vu_btn_sec{border-color:#3a3a3d}
+.vu_btn_sec:hover{background:#2c2c2e}
+.vu_btn_sec.vu_perigo_txt{color:#fca5a5;border-color:#7f1d1d}
+.vu_btn_sec.vu_perigo_txt:hover{background:#3f1d1d}
+.vu_input{background:#232326;border-color:#3a3a3d}
+.vu_notif{background:#232326;border-color:#3a3a3d}
+.vu_vars code{background:#2c2c2e}
+.vu_preview_wrap{border-top-color:#2c2c2e}
+.vu_erros{background:#3f1d1d;color:#fca5a5} */
+@media (max-width: 860px) {
+.vu_etapa + .vu_etapa{border-top-color:#2c2c2e}
+}
 }

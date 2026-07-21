@@ -86,5 +86,12 @@ try {
     }
 }
 
+// ── Purge diário do log de observabilidade (retenção configurável) ──
+    if (class_exists('FluxoLogService')) {
+        $apagados = FluxoLogService::purgarSeDevido(Database::getInstance()->getConnection());
+        if ($apagados > 0) $log("log de passos: purge de {$apagados} linhas antigas");
+    }
+
+
 $log("worker encerrado");
 exit(0);

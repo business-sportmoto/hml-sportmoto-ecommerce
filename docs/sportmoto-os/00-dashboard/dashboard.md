@@ -41,3 +41,6 @@ status: ativo
 ## Captura rápida
 
 Registre informações ainda não classificadas em:
+
+# Arquitetura
+- [[Fluxo de automações]]

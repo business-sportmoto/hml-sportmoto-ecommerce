@@ -2458,9 +2458,9 @@ function fecharModal(id) {
       $tr.append($('<td class="vu_num">').text(cliqueTxt));
 
       var $acoes = $('<div class="vu_acoes">')
-        .append($('<button type="button" class="vu_ic vu-editar">')
-          .attr('title', 'Editar regra').attr('aria-label', 'Editar regra')
-          .append('<i class="bi bi-pencil"></i>'))
+        .append($('<button type="button" class="vu_btn_mini vu-editar">')
+          .append('<i class="bi bi-pencil"></i>')
+          .append($('<span>').text('Editar')))
         .append($('<button type="button" class="vu_ic vu-pausar">')
           .attr('title', r.ativo ? 'Pausar regra' : 'Ativar regra')
           .attr('aria-label', r.ativo ? 'Pausar regra' : 'Ativar regra')
@@ -2513,9 +2513,6 @@ function fecharModal(id) {
              '<i class="bi bi-check-lg"></i> Salvar regra</button>'
     });
 
-    console.log(drawer);
-    
-
     // Preenche os valores depois de montado (evita escapar HTML na mão)
     var $c = $(drawer.corpo());
     if (!novo) {
@@ -2534,9 +2531,21 @@ function fecharModal(id) {
     $c.on('input change', '.vu_input', function () { atualizarPreview($c); });
 
     // Ações: delegação do próprio drawer (padrão documentado do componente)
-    drawer.escutar('click', '.vu-salvar', function () { 
-      salvar(drawer);
-     });
+    drawer.escutar('click', '.vu-salvar', function () { salvar(drawer); });
+
+    if (!novo) {
+      $c.find('.vu-drawer-pausar').html(
+        regra.ativo ? '<i class="bi bi-pause"></i> Pausar regra'
+                    : '<i class="bi bi-play"></i> Ativar regra');
+      drawer.escutar('click', '.vu-drawer-pausar', function () {
+        pausar(regra.id, !regra.ativo);
+        drawer.fechar('pausada', { force: true });
+      });
+      drawer.escutar('click', '.vu-drawer-excluir', function () {
+        drawer.fechar('excluindo', { force: true });
+        excluir(regra);
+      });
+    }
 
     return drawer;
   }
@@ -2605,6 +2614,13 @@ function fecharModal(id) {
             '<span>Regra ativa</span>' +
           '</label>' +
         '</div>' +
+
+        (novo ? '' :
+          '<div class="vu_form_foot">' +
+            '<button type="button" class="vu_btn_sec vu-drawer-pausar"></button>' +
+            '<button type="button" class="vu_btn_sec vu_perigo_txt vu-drawer-excluir">' +
+              '<i class="bi bi-trash"></i> Excluir regra</button>' +
+          '</div>') +
 
         '<div class="vu_preview_wrap">' +
           '<div class="vu_preview_lbl">Como o cliente vai ver</div>' +
@@ -2707,15 +2723,24 @@ function fecharModal(id) {
     $('#vu-novo').on('click', function () { abrirDrawer(null); });
     $('#vu-conteudo').on('click', '#vu-novo-vazio', function () { abrirDrawer(null); });
 
-    $('#vu-conteudo').on('click', '.vu-editar', function () {
+    $('#vu-conteudo').on('click', '.vu-editar', function (e) {
+      e.stopPropagation();
       var r = acharRegra(parseInt($(this).closest('tr').data('id'), 10));
       if (r) abrirDrawer(r);
     });
-    $('#vu-conteudo').on('click', '.vu-pausar', function () {
+    // A linha inteira abre a edição — área de clique generosa
+    $('#vu-conteudo').on('click', 'tbody tr[data-id]', function (e) {
+      if ($(e.target).closest('button').length) return;
+      var r = acharRegra(parseInt($(this).data('id'), 10));
+      if (r) abrirDrawer(r);
+    });
+    $('#vu-conteudo').on('click', '.vu-pausar', function (e) {
+      e.stopPropagation();
       var r = acharRegra(parseInt($(this).closest('tr').data('id'), 10));
       if (r) pausar(r.id, !r.ativo);
     });
-    $('#vu-conteudo').on('click', '.vu-excluir', function () {
+    $('#vu-conteudo').on('click', '.vu-excluir', function (e) {
+      e.stopPropagation();
       var r = acharRegra(parseInt($(this).closest('tr').data('id'), 10));
       if (r) excluir(r);
     });

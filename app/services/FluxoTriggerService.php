@@ -43,6 +43,7 @@ class FluxoTriggerService
 
         try {
             $cursor = (int)$this->getConfig('trigger_cursor_evento_id', '0');
+            // LogService::debug('teste2',[$cursor]);
 
             // Índice: triggers ativos por tipo de evento
             $triggers = $this->carregarTriggersPublicados();
@@ -59,6 +60,8 @@ class FluxoTriggerService
             $st->execute();
             $eventos = $st->fetchAll(PDO::FETCH_ASSOC);
 
+            // LogService::debug('teste 3',[$eventos]);
+
             $ultimoId = $cursor;
             foreach ($eventos as $ev) {
                 $ultimoId = (int)$ev['id'];
@@ -66,7 +69,9 @@ class FluxoTriggerService
 
                 $lista = $triggers[$ev['tipo']] ?? [];
                 foreach ($lista as $t) {
+                    
                     if ($this->casa($t['config'], $ev)) {
+                        
                         $ctx = $this->contextoDoEvento($ev);
                         $id = $this->motor->iniciarExecucao(
                             (int)$t['fluxo_id'],
@@ -74,6 +79,9 @@ class FluxoTriggerService
                             $ev['visitante_token'] ?: null,
                             $ctx
                         );
+
+                        // LogService::debug('resolverEsperasEvento', [$ctx, $id]);
+                        
                         if ($id) $stats['execucoes_iniciadas']++;
                     }
                 }

@@ -467,6 +467,8 @@ function adminIsActive(string $path): string {
 <?php endif; ?>
 <script src="<?= BASE_URL ?>/assets/js/email-marketing.js"></script>
 
+<?php if(trim(adminIsActive('/admin/fluxos')) == 'active'){ ?>
 <script src="<?= View::asset('js/fluxo-canvas.js') ?>"></script>
+<?php } ?>
 </body>
 </html>

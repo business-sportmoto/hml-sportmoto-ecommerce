@@ -87,7 +87,7 @@ $diasRestantes = max(0, (int)ceil(
       <?php else: ?>
         <?php foreach ($itens as $item):
           $imgUrl = !empty($item['imagem'])
-            ? View::upload('products/' . $item['imagem'])
+            ? View::e($item['imagem'])
             : null;
           $opcoes = $item['opcoes'] ?? [];
         ?>

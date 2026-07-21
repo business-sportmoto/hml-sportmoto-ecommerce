@@ -143,6 +143,7 @@ class FluxoAdminService
 
             $this->db->prepare("DELETE FROM fluxo_nos WHERE fluxo_id=:f AND versao=0")
                      ->execute([':f' => $fluxoId]);
+                     LogService::debug('era pra deletar o nó:'.$fluxoId, $val);
             $this->db->prepare("DELETE FROM fluxo_conexoes WHERE fluxo_id=:f AND versao=0")
                      ->execute([':f' => $fluxoId]);
 

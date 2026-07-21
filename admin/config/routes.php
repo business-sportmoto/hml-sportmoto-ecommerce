@@ -510,11 +510,18 @@ AdminRouter::post('/importar/processar-imagens',  'TrayImportController@processa
 
 # Motor de Automação v2 (grafo) — Fase 1
 AdminRouter::get('/fluxos',                'FluxoAdminController@index');
+AdminRouter::get('/fluxos/atividade',   'FluxoAdminController@atividade');
+AdminRouter::get('/fluxos/atividade/dados', 'FluxoAdminController@atividadeDados');
 AdminRouter::get('/fluxos/{id}',           'FluxoAdminController@editor');
 AdminRouter::post('/fluxos/criar',          'FluxoAdminController@criar');
 AdminRouter::post('/fluxos/{id}/salvar',    'FluxoAdminController@salvar');
 AdminRouter::post('/fluxos/{id}/publicar',  'FluxoAdminController@publicar');
 AdminRouter::post('/fluxos/{id}/status',    'FluxoAdminController@status');
+AdminRouter::get('/fluxos/{id}/stats',  'FluxoAdminController@stats');
+
+AdminRouter::get('/fluxos/atividade',       'FluxoAdminController@atividade');
+AdminRouter::get('/fluxos/atividade/dados', 'FluxoAdminController@atividadeDados');
+AdminRouter::get('/fluxos/{id}/stats',      'FluxoAdminController@stats');
 
 AdminRouter::get ('/vida-util',          'VidaUtilAdminController@index');
 AdminRouter::get ('/vida-util/listar',   'VidaUtilAdminController@listar');
