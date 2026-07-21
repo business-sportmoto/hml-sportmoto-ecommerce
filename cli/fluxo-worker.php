@@ -7,7 +7,7 @@
  *   B) Processa execuções prontas (caminha no grafo)
  *
  * Cron (crontab -u www-data -e):
- *   * * * * * cd /home/homo-v2.sportmoto.com.br/public_html && /usr/local/lsws/lsphp82/bin/php cli/fluxo-worker.php --verbose >> storage/logs/fluxo-worker.log 2>&1
+ *   * * * * * cd /home/ploi/hml.sportmoto.com.br && php cli/fluxo-worker.php --verbose >> storage/logs/fluxo-worker.log 2>&1
  */
 
 if (PHP_SAPI !== 'cli') { fwrite(STDERR, "Só roda em CLI.\n"); exit(1); }

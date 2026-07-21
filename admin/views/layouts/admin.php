@@ -16,15 +16,15 @@ function adminIsActive(string $path): string {
   <title><?= $page_title ?? 'Admin' ?> — <?= htmlspecialchars(\ConfigHelper::get('site_nome', 'Loja'), ENT_QUOTES) ?></title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="<?= View::asset('css/admin.css') ?>">
-  <link rel="stylesheet" href="<?= View::asset('css/functions.css') ?>">
-  <link rel="stylesheet" href="<?= View::asset('css/pages.css') ?>">
-  <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/email-marketing.css">
-  <link rel="stylesheet" href="<?= ASSET_URL ?>/css/icon-finder.css">
-  <link rel="stylesheet" href="<?= ASSET_URL ?>/css/toast.css">
-  <link rel="stylesheet" href="<?= ASSET_URL ?>/css/lightbox.css">
+  <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('/css/admin.css', true) ?>">
+  <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('/css/functions.css', true) ?>">
+  <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('/css/pages.css', true) ?>">
+  <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('/css/email-marketing.css', false) ?>">
+  <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('/css/icon-finder.css', false) ?>">
+  <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('/css/toast.css', false) ?>">
+  <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('/css/lightbox.css', false) ?>">
 
-  <link rel="stylesheet" href="<?= View::asset('css/fluxo-canvas.css') ?>">
+  <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/fluxo-canvas.css', true) ?>">
 
   <script src="<?= BASE_URL ?>/assets/js/jquery.min.js"></script>
 </head>
@@ -453,22 +453,22 @@ function adminIsActive(string $path): string {
   document.querySelectorAll('.observe-animate').forEach(el => observer.observe(el));
 </script>
 
-<script src="<?= ASSET_URL ?>/js/toast.js"></script>
-<script src="<?= ASSET_URL ?>/js/lightbox.js"></script>
-<script src="<?= View::asset('js/admin-core.js') ?>"></script>
-<script src="<?= View::asset('js/admin.js') ?>"></script>
-<script src="<?= View::asset('js/functions.js') ?>"></script>
-<script src="<?= View::asset('js/pages.js') ?>"></script>
-<script src="<?= ASSET_URL ?>/js/icon-finder.js"></script>
+<script src="<?= PerformanceHelper::assetVersion('js/toast.js', false) ?>"></script>
+<script src="<?= PerformanceHelper::assetVersion('js/lightbox.js', false) ?>"></script>
+<script src="<?= PerformanceHelper::assetVersion('js/admin-core.js', true) ?>"></script>
+<script src="<?= PerformanceHelper::assetVersion('js/admin.js', true) ?>"></script>
+<script src="<?= PerformanceHelper::assetVersion('js/functions.js', true) ?>"></script>
+<script src="<?= PerformanceHelper::assetVersion('js/pages.js', true) ?>"></script>
+<script src="<?= PerformanceHelper::assetVersion('js/icon-finder.js', false) ?>"></script>
 <?php if (!empty($extra_js)): ?>
   <?php foreach ((array)$extra_js as $js): ?>
   <script src="<?= htmlspecialchars($js, ENT_QUOTES) ?>"></script>
   <?php endforeach; ?>
 <?php endif; ?>
-<script src="<?= BASE_URL ?>/assets/js/email-marketing.js"></script>
+<script src="<?= PerformanceHelper::assetVersion('js/email-marketing.js', false) ?>"></script>
 
 <?php if(trim(adminIsActive('/admin/fluxos')) == 'active'){ ?>
-<script src="<?= View::asset('js/fluxo-canvas.js') ?>"></script>
+<script src="<?= PerformanceHelper::assetVersion('js/fluxo-canvas.js', true) ?>"></script>
 <?php } ?>
 </body>
 </html>

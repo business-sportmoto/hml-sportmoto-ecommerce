@@ -56,11 +56,11 @@ class PerformanceHelper {
      * Produção: lê manifest pré-gerado no deploy (zero I/O adicional por request).
      * /usr/local/lsws/lsphp82/bin/php script/generate-asset-manifest.php
      */
-    public static function assetVersion(string $path): string
+    public static function assetVersion(string $path, bool $adm = false): string
     {
         $path    = '/' . ltrim($path, '/');
         $version = self::resolverHash($path);
-        return ASSET_URL . $path . '?v=' . $version;
+        return (!$adm ? ASSET_URL : ADMIN_ASSET_URL) . $path . '?v=' . $version;
     }
 
     private static $assetManifest = null;

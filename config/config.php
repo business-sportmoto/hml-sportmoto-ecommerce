@@ -53,6 +53,7 @@ if(APP_ENV == 'development'){ //Quando tiver no localhost
 // define('BASE_URL', 'http://localhost/ecommerce');
 
 define('ADMIN_URL', BASE_URL . '/admin');
+define('ADMIN_ASSET_URL', BASE_URL . '/admin/assets');
 define('ASSET_URL', BASE_URL . '/assets');
 define('UPLOAD_URL', BASE_URL . '/uploads');
 
