@@ -264,15 +264,10 @@ $tipoMidia = $b['tipo_midia'] ?? 'imagem';
 
           <div class="pe-card">
 
-            <div class="form-group">
-              <label class="pe-label">Título sobreposto</label>
-              <input type="text" name="titulo_overlay" class="form-control"
-                     value="<?= View::e($b['titulo_overlay'] ?? '') ?>"
-                     placeholder="Ex: Promoção de inverno">
-            </div>
+            
 
             <div class="form-group">
-              <label class="pe-label">Subtítulo</label>
+              <label class="pe-label">Subtítulo - Conjunto com o titulo de badge</label>
               <textarea name="subtitulo_overlay" class="form-control" rows="2"
                         placeholder="Texto descritivo opcional"><?= View::e($b['subtitulo_overlay'] ?? '') ?></textarea>
             </div>

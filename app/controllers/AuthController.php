@@ -13,6 +13,8 @@ class AuthController extends Controller {
      */
     private const DUMMY_HASH = '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi';
 
+    private const COOKIE_ORIGEM = 'ec_verify_origin';
+
     private User             $userModel;
     private TokenService     $tokenService;
     private TwoFactorService $twoFactorService;
@@ -385,7 +387,7 @@ class AuthController extends Controller {
             LogService::warning('Tentativa de login em conta desativada', [
                 'usuario_id' => (int) $user['id'],
             ], 'auth');
-            $this->json(['ok' => false, 'msg' => 'Conta desativada.']);
+            $this->json(['ok' => false, 'msg' => 'Conta desativada. Se isso for um engano, envie um e-mail para ecommerce@sportmoto.com.br.']);
         }
 
         /**
@@ -503,10 +505,14 @@ class AuthController extends Controller {
              WHERE usuario_id = ? AND tipo = 'email_verify' AND usado = 0"
         )->execute([$user['id']]);
 
+        // Vincula o token ao navegador que o solicitou
+        $origemHash = $this->emitirNonceOrigem();
+ 
         $db->prepare(
-            "INSERT INTO tokens_verificacao (usuario_id, token, tipo, expira_em)
-             VALUES (?, ?, 'email_verify', ?)"
-        )->execute([$user['id'], $code, $expiraEm]);
+            "INSERT INTO tokens_verificacao
+                (usuario_id, token, tipo, expira_em, origem_hash)
+             VALUES (?, ?, 'email_verify', ?, ?)"
+        )->execute([$user['id'], $code, $expiraEm, $origemHash]);
 
         // Envia e-mail
         // Envia e-mail
@@ -603,7 +609,7 @@ class AuthController extends Controller {
             return;
         }
 
-        $this->finalizeLogin($user, $lembrar);
+        $this->finalizeLogin($user, $lembrar); 
     }
 
     // ── 2FA ───────────────────────────────────────────────────
@@ -1216,11 +1222,14 @@ class AuthController extends Controller {
             // Gera código de verificação (6 dígitos numéricos)
             $code     = SecurityHelper::generateNumericCode(6);
             $expiraEm = date('Y-m-d H:i:s', time() + 86400); // 24h
-
+            // Vincula o token ao navegador que o solicitou
+            $origemHash = $this->emitirNonceOrigem();
+    
             $db->prepare(
-                "INSERT INTO tokens_verificacao (usuario_id, token, tipo, expira_em)
-                 VALUES (?, ?, 'email_verify', ?)"
-            )->execute([$userId, $code, $expiraEm]);
+                "INSERT INTO tokens_verificacao
+                    (usuario_id, token, tipo, expira_em, origem_hash)
+                VALUES (?, ?, 'email_verify', ?, ?)"
+            )->execute([$userId, $code, $expiraEm, $origemHash]);
 
             $db->commit();
 
@@ -1292,24 +1301,24 @@ class AuthController extends Controller {
     // ── Verificação de e-mail ─────────────────────────────────
 
     public function verifyEmail(string $token): void {
-        // Aceita token na URL (link antigo) ou código numérico (novo)
         $db = Database::getInstance()->getConnection();
-
+ 
+        // origem_hash entra no SELECT — é o que decide o auto-login
         $stmt = $db->prepare(
-            "SELECT t.id, t.usuario_id, t.expira_em
+            "SELECT t.id, t.usuario_id, t.expira_em, t.origem_hash
              FROM tokens_verificacao t
-             WHERE t.token   = ?
-               AND t.tipo    = 'email_verify'
-               AND t.usado   = 0
+             WHERE t.token = ?
+               AND t.tipo  = 'email_verify'
+               AND t.usado = 0
              LIMIT 1"
         );
         $stmt->execute([$token]);
         $row = $stmt->fetch();
-
+ 
         if (!$row) {
-            // Token não existe OU já foi usado. Distinguir importa:
-            // scanners de link (Outlook Safe Links, antivírus) consomem
-            // o link antes do usuário — mostrar "inválido" para quem já
+            // Token inexistente OU já consumido. Distinguir importa:
+            // scanners de link (Outlook Safe Links, antivírus) abrem
+            // o link antes do usuário — dizer "inválido" a quem já
             // está verificado gera pânico e ticket de suporte.
             $usado = $db->prepare(
                 "SELECT 1 FROM tokens_verificacao
@@ -1317,37 +1326,57 @@ class AuthController extends Controller {
                  LIMIT 1"
             );
             $usado->execute([$token]);
-
-            if ($usado->fetchColumn()) {
-                SeoHelper::setTitle('E-mail já verificado');
-                $this->render('auth/verify-invalid', ['jaUsado' => true], 'minimal');
-                return;
-            }
-
-            SeoHelper::setTitle('Link inválido');
-            $this->render('auth/verify-invalid', ['jaUsado' => false], 'minimal');
+ 
+            $jaUsado = (bool)$usado->fetchColumn();
+            SeoHelper::setTitle($jaUsado ? 'E-mail já verificado' : 'Link inválido');
+            $this->render('auth/verify-invalid', ['jaUsado' => $jaUsado], 'minimal');
             return;
         }
-
+ 
         if (strtotime($row['expira_em']) < time()) {
             SeoHelper::setTitle('Link expirado');
-            // NÃO passa usuario_id: a view não o usa (o reenvio é por
-            // e-mail digitado) e expor ID interno numa página acessível
-            // por token de URL é vazamento desnecessário.
             $this->render('auth/verify-expired', [], 'minimal');
             return;
         }
-
-        // Ativa o e-mail
-        $db->prepare(
-            "UPDATE usuarios SET email_verificado = 1 WHERE id = ?"
-        )->execute([$row['usuario_id']]);
-
-        $db->prepare(
-            "UPDATE tokens_verificacao SET usado = 1 WHERE id = ?"
-        )->execute([$row['id']]);
-
-        // Faz login automático após verificar
+ 
+        // ── Ativa o e-mail SEMPRE ─────────────────────────
+        // Independente do navegador: um link legitimamente aberto
+        // em outro dispositivo não pode impedir a ativação da conta.
+        $db->prepare("UPDATE usuarios SET email_verificado = 1 WHERE id = ?")
+           ->execute([$row['usuario_id']]);
+ 
+        $db->prepare("UPDATE tokens_verificacao SET usado = 1 WHERE id = ?")
+           ->execute([$row['id']]);
+ 
+        // ── Auto-login: SÓ no navegador de origem ─────────
+        // Prova de posse do navegador = cookie cujo hash bate com
+        // o gravado na criação do token. Comparação em tempo
+        // constante (hash_equals) — o hash não é segredo, mas o
+        // hábito evita vazar por timing em código copiado.
+        //
+        // FAIL-CLOSED: token legado (origem_hash NULL) ou cookie
+        // ausente/divergente → verifica o e-mail e pede login.
+        $mesmoNavegador = false;
+        $cookie = (string)($_COOKIE[self::COOKIE_ORIGEM] ?? '');
+ 
+        if (!empty($row['origem_hash']) && $cookie !== '') {
+            $mesmoNavegador = hash_equals(
+                (string)$row['origem_hash'],
+                hash('sha256', $cookie)
+            );
+        }
+ 
+        $this->limparNonceOrigem(); // single-use, independente do resultado
+ 
+        if (!$mesmoNavegador) {
+            Session::flash('success',
+                'E-mail verificado com sucesso! Faça login para acessar sua conta.');
+            $this->redirect(BASE_URL . '/login');
+            return;
+        }
+ 
+        // Mesmo navegador → login automático (finalizeLogin já
+        // redireciona de verdade em navegação, pelo patch anterior)
         $stmtUser = $db->prepare(
             "SELECT u.*, c.id AS cliente_id
              FROM usuarios u
@@ -1356,13 +1385,14 @@ class AuthController extends Controller {
         );
         $stmtUser->execute([$row['usuario_id']]);
         $user = $stmtUser->fetch();
-
+ 
         if ($user) {
             $this->finalizeLogin($user, false);
-        } else {
-            Session::flash('success', 'E-mail verificado! Faça login para continuar.');
-            $this->redirect(BASE_URL . '/login');
+            return;
         }
+ 
+        Session::flash('success', 'E-mail verificado! Faça login para continuar.');
+        $this->redirect(BASE_URL . '/login');
     }
 
     public function resendVerification(): void {
@@ -1393,10 +1423,14 @@ class AuthController extends Controller {
              WHERE usuario_id = ? AND tipo = 'email_verify' AND usado = 0"
         )->execute([$user['id']]);
 
+        // Vincula o token ao navegador que o solicitou
+        $origemHash = $this->emitirNonceOrigem();
+ 
         $db->prepare(
-            "INSERT INTO tokens_verificacao (usuario_id, token, tipo, expira_em)
-             VALUES (?, ?, 'email_verify', ?)"
-        )->execute([$user['id'], $code, $expiraEm]);
+            "INSERT INTO tokens_verificacao
+                (usuario_id, token, tipo, expira_em, origem_hash)
+             VALUES (?, ?, 'email_verify', ?, ?)"
+        )->execute([$user['id'], $code, $expiraEm, $origemHash]);
 
         MailHelper::sendVerificationEmail($user['email'], $user['nome'], $code);
 
@@ -1629,5 +1663,30 @@ class AuthController extends Controller {
         }
 
         return $stmt->fetch() ?: null;
+    }
+
+    private function emitirNonceOrigem(int $ttlSegundos = 86400): string {
+        $nonce = bin2hex(random_bytes(32)); // 256 bits
+ 
+        setcookie(self::COOKIE_ORIGEM, $nonce, [
+            'expires'  => time() + $ttlSegundos, // = TTL do token
+            'path'     => '/',
+            'secure'   => SecurityHelper::isHttps(),      // proxy-aware (Cloudflare)
+            'httponly' => true,                  // XSS não lê
+            'samesite' => 'Lax',                 // ver nota acima
+        ]);
+ 
+        return hash('sha256', $nonce);
+    }
+
+    /** Consome o cookie de origem (single-use). */
+    private function limparNonceOrigem(): void {
+        setcookie(self::COOKIE_ORIGEM, '', [
+            'expires'  => time() - 3600,
+            'path'     => '/',
+            'secure'   => SecurityHelper::isHttps(),
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
     }
 }

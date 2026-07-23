@@ -25,7 +25,7 @@
     </div>
 
     <form id="form-reenvio" style="display:flex;flex-direction:column;gap:12px;">
-      <?= SecurityHelper::csrfField() ?>
+      <?= SecurityHelper::csrfField(); ?>
 
       <div class="form-group" style="margin:0;">
         <label class="form-label" for="reenvio-email">Seu e-mail</label>

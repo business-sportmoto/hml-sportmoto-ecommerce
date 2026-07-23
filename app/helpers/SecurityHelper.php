@@ -388,4 +388,34 @@ class SecurityHelper {
         return (int)$cnpj[12] === $calc($cnpj, 12)
             && (int)$cnpj[13] === $calc($cnpj, 13);
     }
+
+    /**
+     * Detecta se a requisição chegou por HTTPS, ciente de proxy.
+     *
+     * Ordem: sinais LOCAIS primeiro (o servidor sabe a verdade sobre
+     * a conexão que ele mesmo terminou); headers de proxy só depois.
+     *
+     * Confiar em X-Forwarded-Proto / CF-Visitor só é seguro porque a
+     * origem está fechada: o UFW libera 80/443 apenas para as faixas
+     * da Cloudflare. Sem essa trava de rede, qualquer um forjaria o
+     * header — mesma lição do X-Forwarded-For que já validamos com
+     * teste de spoofing externo.
+     */
+    public static function isHttps(): bool {
+        // 1. TLS terminado no próprio servidor
+        $https = (string)($_SERVER['HTTPS'] ?? '');
+        if ($https !== '' && strtolower($https) !== 'off') return true;
+        if ((int)($_SERVER['SERVER_PORT'] ?? 0) === 443)    return true;
+
+        // 2. Proxy à frente (Cloudflare) — ver nota de confiança acima.
+        //    Em cadeia de proxies vem "https, http": o 1º é o do cliente.
+        $proto = strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
+        if (str_starts_with($proto, 'https')) return true;
+
+        // Cloudflare também envia CF-Visitor: {"scheme":"https"}
+        $cf = json_decode((string)($_SERVER['HTTP_CF_VISITOR'] ?? ''), true);
+        if (is_array($cf) && ($cf['scheme'] ?? '') === 'https') return true;
+
+        return false;
+    }
 }

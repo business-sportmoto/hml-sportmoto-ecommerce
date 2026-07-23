@@ -44,7 +44,7 @@ $jaUsado = !empty($jaUsado);
     <?php endif; ?>
 
     <p style="margin:28px 0 0;font-size:12.5px;color:var(--c-text-muted);">
-      Precisa de ajuda? <a href="<?= BASE_URL ?>/ajuda"
+      Precisa de ajuda? <a href="<?= BASE_URL ?>/contato"
          style="color:inherit;text-decoration:underline;">Fale com a gente</a>
     </p>
   </div>

@@ -4,6 +4,7 @@ declare(strict_types=1);
 class BannerController extends Controller {
 
     private Banner $bannerModel;
+    
 
     public function __construct() {
         $this->bannerModel = new Banner();

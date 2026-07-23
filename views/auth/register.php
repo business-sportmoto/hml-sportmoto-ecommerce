@@ -66,10 +66,10 @@ $ctx = $ctxOrigem[$origemCtx] ?? null;
           <a href="<?= BASE_URL ?>" class="auth-logo">
             <?= View::e($config['nome'] ?? ConfigHelper::get('site_nome', 'SportMoto')) ?>
           </a>
-          <h1 class="auth-title">
+          <h1 class="auth-title" id="auth-title">
             <?= $ctx ? View::e($ctx['titulo']) : 'Criar sua conta' ?>
           </h1>
-          <p class="auth-sub">
+          <p class="auth-sub" id="auth-sub">
             <?= $ctx ? View::e($ctx['sub']) : 'Preencha os dados abaixo para começar.' ?>
           </p>
           
@@ -112,7 +112,7 @@ $ctx = $ctxOrigem[$origemCtx] ?? null;
             <div class="form-group form-col">
               <label for="email">E-mail <span class="required">*</span></label>
               <input type="email" id="email" name="email" class="form-control form-control--lg"
-                     value="<?= $email_pre ?>"
+                     value="<?= View::e($email_pre ?? '') ?>"
                      placeholder="seu@email.com" required autocomplete="email">
               <span class="field-error" id="err-email"></span>
               <span class="field-hint" id="hint-email" style="display:none;"></span>
@@ -123,7 +123,7 @@ $ctx = $ctxOrigem[$origemCtx] ?? null;
             <div class="form-group form-col">
               <label for="cpf">CPF</label>
               <input type="text" id="cpf" name="cpf" class="form-control form-control--lg cpf-mask"
-                     value="<?= $cpf_pre ?>"
+                     value="<?= View::e($cpf_pre ?? '') ?>"
                      placeholder="000.000.000-00" maxlength="14" autocomplete="off">
               <span class="field-error" id="err-cpf"></span>
             </div>
@@ -195,6 +195,7 @@ $ctx = $ctxOrigem[$origemCtx] ?? null;
             </svg>
           </button>
         </form>
+        <?= View::partial('auth/partials/_etapa-verificacao') ?>
 
         <p class="auth-back">Já tem uma conta? <a href="<?= BASE_URL ?>/login">Fazer login</a></p>
       </div>

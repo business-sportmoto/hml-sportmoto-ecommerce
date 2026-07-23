@@ -362,11 +362,16 @@ $(function () {
   // ════════════════════════════════════════════════════════
   // VERIFICAÇÃO DE E-MAIL PÓS-CADASTRO
   // ════════════════════════════════════════════════════════
-  function mostrarEtapaVerificacao(login, msg) {
+  function mostrarEtapaVerificacao(login, msg, emailMask) {
     $('#hidden-login-verify').val(login);
-    $('#verify-email-dest').text('seu e-mail');
-    $('#etapa-identidade, #etapa-senha').hide();
+    $('#verify-email-dest').text(emailMask || 'seu e-mail');
+
+    // Seletores cobrem login.php E register.php ao mesmo tempo:
+    // o que não existe na página atual vira no-op silencioso no
+    // jQuery. Evita ter duas funções quase idênticas.
+    $('#etapa-identidade, #etapa-senha, #form-register, .auth-back').hide();
     $('#etapa-verificacao').show();
+
     $('#auth-title').text('Verifique seu e-mail');
     $('#auth-sub').text(msg || 'Insira o código que enviamos.');
 
@@ -405,7 +410,7 @@ $(function () {
       _csrf_token: CSRF_TOKEN,
     }, function (res) {
       if (res.ok) {
-        window.location.href = res.redirect;
+        // window.location.href = res.redirect;
         return;
       }
 
@@ -725,10 +730,21 @@ $(function () {
       dataType: 'json',
     }).done(function (res) {
       if (res.ok) {
-        notify(res.msg || 'Cadastro realizado com sucesso.', 'success');
-        setTimeout(function () {
+        if (res.ok) {
+          if (res.verificacao) {
+            // Mesma etapa que o login usa com email_pendente = true.
+            // O cliente NÃO troca de página: digita o código e entra.
+            mostrarEtapaVerificacao(
+              $('#email').val().trim(), res.msg, res.email_mask
+            );
+            setLoading($btn, false);
+            return;
+          }
+          // Fallback: cadastro sem verificação pendente
+          notify(res.msg || 'Cadastro realizado com sucesso.', 'success');
           window.location.href = BASE_URL + '/login';
-        }, 2500);
+          return;
+        }
         return;
       }
 
