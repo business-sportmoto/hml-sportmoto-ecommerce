@@ -52,7 +52,7 @@ if (!APP_DEBUG) {
 
 // Inicia sessão segura
 Session::start();
-
+AuthHelper::enforceEmailVerificado();
 // Verifica cookie de "lembrar login"
 if (!Session::isClienteLogado() && !empty($_COOKIE['ec_remember'])) {
     require_once ROOT_PATH . '/app/services/TokenService.php';

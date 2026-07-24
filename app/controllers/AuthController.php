@@ -604,6 +604,14 @@ class AuthController extends Controller {
         $rateLimit->register($ip, $login, true, 'codigo_email');
         $rateLimit->clearAccount($login);
 
+        // Consumir um token 'email_verify' É prova de posse do e-mail.
+        // Sem isto, quem ativa pelo CÓDIGO fica com email_verificado = 0
+        // para sempre — só o clique no link (verifyEmail) marcava.
+        if (empty($user['email_verificado'])) {
+            (new User())->markEmailVerified((int)$user['id']);
+            $user['email_verificado'] = 1;   // finalizeLogin recebe o valor certo
+        }
+
         // Gate de 2FA também no login por código de e-mail
         if ($this->maybeRequire2FA($user, $lembrar)) {
             return;
@@ -834,10 +842,11 @@ class AuthController extends Controller {
         SecurityHelper::clearRateLimit('login_' . md5($user['email']));
 
         // Estado de verificação na sessão
-        $stmt = $db->prepare("SELECT verificado FROM clientes WHERE id = ? LIMIT 1");
-        $stmt->execute([$user['cliente_id']]);
-        Session::set('cliente_verificado', (bool)$stmt->fetchColumn());
-
+        // $stmt = $db->prepare("SELECT verificado FROM clientes WHERE id = ? LIMIT 1");
+        // $stmt->execute([$user['cliente_id']]);
+        // Session::set('cliente_verificado', (bool)$stmt->fetchColumn());
+        Session::set('email_verificado', !empty($user['email_verificado']));
+        
         if ($lembrar) {
             // Cria sessão persistente com cookie (30 dias)
             $this->tokenService->createRememberToken($user['id']);

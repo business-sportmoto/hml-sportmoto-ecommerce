@@ -170,4 +170,85 @@ class AuthHelper {
             'label' => Cargos::label($nivel),
         ];
     }
+
+    /**
+     * Desloga sessão de cliente cuja conta não está ativada.
+     * Chamar no bootstrap, logo após Session::start().
+     *
+     * Por que deslogar em vez de só redirecionar: elimina o estado
+     * "autenticado porém não verificado". Sem sessão meia-boca, não
+     * há rota protegida que precise lembrar de checar verificação —
+     * o invariante vale para o sistema inteiro, não rota a rota.
+     */
+    public static function enforceEmailVerificado(): void {
+        if (!Session::isClienteLogado())   return;
+        if (self::clienteEmailVerificado()) return;
+ 
+        Session::logoutCliente();
+        session_regenerate_id(true);   // identidade antiga morre junto
+ 
+        // Ajax recebe JSON: um $.post que ganha HTML de redirect
+        // quebra no parse e esconde o motivo real (mesma lição do
+        // requireAdminLevel).
+        if (self::isAjax()) {
+            http_response_code(401);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'ok'       => false,
+                'msg'      => 'Ative sua conta para continuar.',
+                'redirect' => BASE_URL . '/login',
+            ]);
+            exit;
+        }
+ 
+        Session::flash('error',
+            'Ative sua conta para continuar. Faça login para receber um novo código.');
+        header('Location: ' . BASE_URL . '/login');
+        exit;
+    }
+
+    /**
+     * Estado de ativação do cliente logado.
+     *
+     * ⚠ NÃO confundir com a chave de sessão 'cliente_verificado',
+     * que guarda `clientes.verificado` — coluna que NUNCA é escrita
+     * em lugar nenhum do projeto (sempre 0). Usar aquela chave aqui
+     * deslogaria 100% dos clientes. A verificação de e-mail mora em
+     * `usuarios.email_verificado`.
+     *
+     * Lazy com cache em sessão (padrão do usuarioId()): sessões
+     * abertas antes do deploy não têm a chave e são resolvidas na
+     * primeira navegação, sem forçar relogin geral.
+     */
+    private static function clienteEmailVerificado(): bool {
+        $flag = Session::get('email_verificado');
+        if ($flag !== null) return (bool) $flag;
+ 
+        $clienteId = (int) (Session::getClienteId() ?: 0);
+        if ($clienteId <= 0) return true;   // fail-open — ver nota abaixo
+ 
+        try {
+            $stmt = Database::getInstance()->getConnection()->prepare(
+                "SELECT u.email_verificado
+                 FROM clientes c
+                 JOIN usuarios u ON u.id = c.usuario_id
+                 WHERE c.id = ? LIMIT 1"
+            );
+            $stmt->execute([$clienteId]);
+            $v = $stmt->fetchColumn();
+ 
+            if ($v === false) return true;  // registro sumiu — fail-open
+ 
+            Session::set('email_verificado', (bool) $v);
+            return (bool) $v;
+        } catch (\Throwable $e) {
+            // FAIL-OPEN DELIBERADO: banco instável não pode deslogar a
+            // loja inteira. Este guard é a 2ª camada; a 1ª (bloqueio no
+            // login, linha ~412) continua de pé e não depende disto.
+            // Trade-off: um cliente não verificado navega até o banco
+            // voltar. Aceitável frente a uma queda de sessão global.
+            error_log('[AuthHelper::clienteEmailVerificado] ' . $e->getMessage());
+            return true;
+        }
+    }
 }

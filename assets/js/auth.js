@@ -293,14 +293,14 @@ $(function () {
     });
   });
 
-  $('#input-codigo').on('input', function () {
-    const codigo = $(this).val().replace(/\D/g, '').substring(0, 6);
-    $(this).val(codigo);
+  // $('#input-codigo').on('input', function () {
+  //   const codigo = $(this).val().replace(/\D/g, '').substring(0, 6);
+  //   $(this).val(codigo);
 
-    if (codigo.length === 6) {
-      $('#form-codigo').trigger('submit');
-    }
-  });
+  //   if (codigo.length === 6) {
+  //     $('#form-codigo').trigger('submit');
+  //   }
+  // });
 
   $('#form-codigo').on('submit', function (e) {
     e.preventDefault();
@@ -380,17 +380,19 @@ $(function () {
     }, 100);
   }
 
-  $('#input-verify-codigo').on('input', function () {
-    const codigo = $(this).val().replace(/\D/g, '').substring(0, 6);
-    $(this).val(codigo);
+  // $('#input-verify-codigo').on('input', function () {
+  //   const codigo = $(this).val().replace(/\D/g, '').substring(0, 6);
+  //   $(this).val(codigo);
 
-    if (codigo.length === 6) {
-      $('#form-verify-email').trigger('submit');
-    }
-  });
+  //   if (codigo.length === 6) {
+  //     $('#form-verify-email').trigger('submit');
+  //   }
+  // });
 
   $('#form-verify-email').on('submit', function (e) {
     e.preventDefault();
+    const $form = $(this);
+    if ($form.data('enviando')) return;
 
     const codigo = $('#input-verify-codigo').val().trim();
     const login  = $('#hidden-login-verify').val();
@@ -403,6 +405,7 @@ $(function () {
       return;
     }
 
+    $form.data('enviando', true);
     $.post(BASE_URL + '/login/validar-codigo', {
       login,
       codigo,
@@ -410,13 +413,16 @@ $(function () {
       _csrf_token: CSRF_TOKEN,
     }, function (res) {
       if (res.ok) {
-        // window.location.href = res.redirect;
+        $err.text(res.msg);
+        window.location.href = res.redirect;
         return;
       }
 
       $err.text(res.msg || 'Código inválido.');
+      $form.data('enviando', false);
     }, 'json').fail(function () {
       $err.text('Erro de conexão.');
+      $form.data('enviando', false);
     });
   });
 
