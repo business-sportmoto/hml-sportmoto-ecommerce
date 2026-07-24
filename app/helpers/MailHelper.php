@@ -25,6 +25,7 @@ class MailHelper
         $ok = self::viaService('verificacao_email', $email, $nome, [
             'url_acao' => $url,
             'token'    => $token,
+            'codigo'    => $token
         ]);
         if ($ok) return true;
 
