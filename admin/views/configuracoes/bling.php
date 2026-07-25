@@ -9,8 +9,12 @@
     <?php if ($conectado): ?>
     <div style="display:flex;gap:8px;">
       <button type="button" class="btn btn-outline btn-sm" id="btn-sync-estoque">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+        <?= IconLibrary::render('sync') ?>
         Sync estoque agora
+      </button>
+      <button type="button" class="btn btn-outline btn-sm" id="btn-sync-clientes">
+        <?= IconLibrary::render('person-serach') ?>
+        Sincronizar clientes
       </button>
       <button type="button" class="btn btn-outline btn-sm btn-danger" id="btn-desconectar">
         Desconectar
@@ -405,5 +409,16 @@ $('#btn-desconectar').on('click', function() {
   .done(function(r) {
     if (r.ok) location.reload();
   });
+});
+
+$('#btn-sync-clientes').on('click', function() {
+  var $btn = $(this);
+  CK.btnLoading($btn);
+  $.post(ADMIN_URL + '/configuracoes/bling/sync-clientes', { _token: CSRF_TOKEN })
+  .done(function(r) {
+    CK.btnLoading($btn, false);
+    adminToast(r.msg, r.ok ? 'success' : 'error');
+  })
+  .fail(function() { CK.btnLoading($btn, false); adminToast('Erro.', 'error'); });
 });
 </script>

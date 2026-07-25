@@ -266,8 +266,19 @@ $statusPedMap=['aguardando_pagamento'=>['cor'=>'warning','label'=>'Aguardando pg
           </div>
           <?php endif; ?>
         </div>
-
+        <div style="margin-top:14px;">
+          <button type="button" class="btn btn-outline btn-sm" id="btn-sync-bling-cliente"
+                  data-id="<?= (int)$cliente['cliente_id'] ?>">
+            <?= !empty($cliente['bling_id']) ? 'Ressincronizar com Bling' : 'Sincronizar com Bling' ?>
+          </button>
+          <?php if (!empty($cliente['bling_sync_erro'])): ?>
+          <div style="margin-top:8px;font-size:12px;color:#dc2626;">
+            ⚠ Último erro: <?= View::e($cliente['bling_sync_erro']) ?>
+          </div>
+          <?php endif; ?>
+        </div>
       </div>
+      
     </section>
 
     <!-- 01 DASHBOARD ──────────────────────────────────── -->
@@ -936,5 +947,17 @@ $(document).on('click', '.wl-card', function () {
   }).fail(function () {
     drawer.setConteudo('<div style="padding:40px;text-align:center;color:#ef4444;">Erro ao carregar.</div>');
   });
+});
+
+$('#btn-sync-bling-cliente').on('click', function() {
+  var $btn = $(this), id = $btn.data('id');
+  CK.btnLoading($btn);
+  $.post(ADMIN_URL + '/clientes/' + id + '/sync-bling', { _token: CSRF_TOKEN })
+  .done(function(r) {
+    CK.btnLoading($btn, false);
+    adminToast(r.msg, r.ok ? 'success' : 'error');
+    if (r.ok) setTimeout(function() { location.reload(); }, 1500);
+  })
+  .fail(function() { CK.btnLoading($btn, false); adminToast('Erro de rede.', 'error'); });
 });
 </script>

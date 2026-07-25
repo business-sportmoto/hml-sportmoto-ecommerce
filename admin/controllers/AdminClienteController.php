@@ -278,4 +278,25 @@ class AdminClienteController extends Controller {
         }
         return ['status' => 'outro_mes', 'data_fmt' => $nasc->format('d/m'), 'dias_ate' => $diasAte, 'idade' => $idade];
     }
+
+    // ── POST /admin/clientes/{id}/sync-bling ──────────────
+    // super + gerente. Síncrono (admin quer resultado na hora).
+    public function syncBling(int $id): void
+    {
+        $this->verifyCsrf();
+        AuthHelper::requireAdminLevel('super', 'gerente');
+
+        $r = (new BlingContatoService())->sincronizarCliente($id);
+
+        // Recarrega a linha e devolve o HTML do badge já atualizado,
+        // para o front trocar sem reload. Fonte única: o mesmo
+        // ClienteBadges que a listagem usa no render inicial.
+        if ($r['ok']) {
+            $cliente = $this->model->findById($id);
+            if ($cliente) {
+                $r['badge_bling'] = ClienteBadges::badgeBlingHtml($cliente);
+            }
+        }
+        $this->json($r);
+    }
 }

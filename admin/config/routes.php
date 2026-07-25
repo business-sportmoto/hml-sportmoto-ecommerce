@@ -231,6 +231,8 @@ AdminRouter::post('/clientes/{id:\d+}/score/remover-override',     'AdminCredito
 AdminRouter::post('/clientes/{id:\d+}/credito/lancar',             'AdminCreditoScoreController@lancarCredito');
 AdminRouter::post('/clientes/{id:\d+}/credito/debitar',            'AdminCreditoScoreController@debitarCredito');
 
+AdminRouter::post('/clientes/{id:\d+}/sync-bling', 'AdminClienteController@syncBling');
+
 // Admin — devolução
 AdminRouter::get ('/devolucoes',                                'AdminDevolucaoController@index');
 AdminRouter::get ('/devolucoes/{id:\d+}',                      'AdminDevolucaoController@show');
@@ -316,6 +318,8 @@ AdminRouter::post('/configuracoes/bling/forcar-sync',              'AdminBlingCo
 AdminRouter::get ('/configuracoes/bling/status-map',               'AdminBlingController@getStatusMap');
 AdminRouter::post('/configuracoes/bling/status-map',               'AdminBlingController@salvarStatusMap');
 AdminRouter::get ('/configuracoes/bling/situacoes',                'AdminBlingController@getSituacoesBling');
+
+AdminRouter::post('/configuracoes/bling/sync-clientes', 'AdminBlingController@syncClientes');
 
 AdminRouter::get('/logs',          'AdminLogsController@index');
 AdminRouter::get('/logs/detalhe',  'AdminLogsController@detalhe');

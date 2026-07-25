@@ -232,4 +232,24 @@ class AdminBlingController extends Controller
             $this->json(['ok' => false, 'msg' => $e->getMessage()]);
         }
     }
+
+    // ── POST /admin/configuracoes/bling/sync-clientes ─────
+    // Enfileira todos os clientes elegíveis; o cron drena a fila.
+    // NÃO sincroniza inline — evita timeout e estouro de rate
+    // limit numa request web (pode haver centenas de clientes).
+    public function syncClientes(): void
+    {
+        $this->verifyCsrf();
+        try {
+            $n = (new BlingContatoService())->enfileirarTodos();
+            $this->json([
+                'ok'  => true,
+                'msg' => $n > 0
+                    ? "{$n} cliente(s) enfileirado(s). A sincronização ocorre em segundo plano (cron)."
+                    : 'Nenhum cliente novo para sincronizar — todos já estão no Bling.',
+            ]);
+        } catch (\Throwable $e) {
+            $this->json(['ok' => false, 'msg' => $e->getMessage()]);
+        }
+    }
 }

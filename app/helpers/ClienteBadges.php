@@ -98,15 +98,37 @@ final class ClienteBadges {
             'danger'  => '#dc2626;background:#fef2f2;border-color:#fecaca',
         ];
         $out = '';
-        foreach (self::para($c) as $b) {
+        foreach (self::para($c) as $chave => $b) {
+            $extra = $chave === 'bling' ? ' cli-badge--bling' : '';
             $cor = $cores[$b['tipo']] ?? $cores['neutral'];
-            $out .= '<span class="cli-badge" title="'.self::e($b['titulo']).'"'
+            $out .= '<span class="cli-badge'.$extra.'" title="'.self::e($b['titulo']).'"'
                   . ' style="display:inline-flex;align-items:center;gap:3px;'
                   . 'font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;'
                   . 'border:1px solid;color:'.$cor.';">'
                   . self::e($b['icone']).' '.self::e($b['label']).'</span> ';
         }
         return $out;
+    }
+
+    /** HTML de UM badge (para troca via AJAX sem reload). */
+    public static function badgeHtml(array $b): string {
+        $cores = [
+            'success' => '#16a34a;background:#f0fdf4;border-color:#bbf7d0',
+            'warning' => '#d97706;background:#fffbeb;border-color:#fde68a',
+            'info'    => '#1d4ed8;background:#eff6ff;border-color:#bfdbfe',
+            'neutral' => '#64748b;background:#f8fafc;border-color:#e2e8f0',
+            'danger'  => '#dc2626;background:#fef2f2;border-color:#fecaca',
+        ];
+        $cor = $cores[$b['tipo']] ?? $cores['neutral'];
+        return '<span class="cli-badge cli-badge--bling" title="'.self::e($b['titulo']).'"'
+             . ' style="display:inline-flex;align-items:center;gap:3px;font-size:11px;'
+             . 'font-weight:700;padding:2px 8px;border-radius:99px;border:1px solid;'
+             . 'color:'.$cor.';">'.self::e($b['icone']).' '.self::e($b['label']).'</span>';
+    }
+
+    /** Só o badge do Bling — usado no retorno AJAX da sync. */
+    public static function badgeBlingHtml(array $c): string {
+        return self::badgeHtml(self::bling($c));
     }
 
     private static function e(string|int|null $v): string {

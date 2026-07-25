@@ -11,6 +11,7 @@ declare(strict_types=1);
 //
 // Ploi Scheduler (a cada 15 min):
 //   */15 * * * * php /cli/bling-sync.php >> /var/log/bling-sync.log 2>&1
+//  /home/ploi/hml.sportmoto.com.br/storage/logs/bling-sync.log 2>&1
 // ════════════════════════════════════════════════════════
 
 // AJUSTE o path conforme a pasta deste arquivo:

@@ -156,7 +156,18 @@ $nomeMes  = ['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov
                 <?= $c['ativo'] ? 'Ativo' : 'Bloqueado' ?>
               </span>
             </td>
-            <td style="padding:12px 10px;"><?= ClienteBadges::html($c) ?></td>
+            <td style="padding:12px 10px;">
+              <span class="badges-wrap" data-cliente="<?= (int)$c['id'] ?>">
+                <?= ClienteBadges::html($c) ?>
+              </span>
+              <?php if (empty($c['bling_id'])): ?>
+              <button type="button" class="btn btn-ghost btn-xs btn-sync-bling"
+                      data-id="<?= (int)$c['id'] ?>"
+                      style="margin-left:6px;font-size:10.5px;padding:2px 8px;"
+                      title="Sincronizar este cliente com o Bling">⟳ Bling</button>
+              <?php endif; ?>
+            </td>
+            
             <td class="text-right">
               <a href="<?= ADMIN_URL ?>/clientes/<?= (int)$c['id'] ?>"
                  class="btn-icon" title="Ver perfil">
@@ -183,3 +194,28 @@ $nomeMes  = ['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov
     <?php endif; ?>
   </div>
 </div>
+
+<script>
+  $(document).on('click', '.btn-sync-bling', function () {
+  var $btn = $(this), id = $btn.data('id');
+  CK.btnLoading($btn);
+
+  $.post(BASE_URL + '/admin/clientes/' + id + '/sync-bling', { _token: CSRF_TOKEN })
+    .done(function (r) {
+      CK.btnLoading($btn, false);
+      adminToast(r.msg, r.ok ? 'success' : 'error');
+
+      if (r.ok && r.badge_bling) {
+        // Troca o badge do Bling na linha, sem reload
+        var $wrap = $('.badges-wrap[data-cliente="' + id + '"]');
+        $wrap.find('.cli-badge--bling').replaceWith(r.badge_bling);
+        // Sincronizado: o botão perde a razão de existir
+        $btn.remove();
+      }
+    })
+    .fail(function () {
+      CK.btnLoading($btn, false);
+      adminToast('Erro de rede.', 'error');
+    });
+});
+</script>
