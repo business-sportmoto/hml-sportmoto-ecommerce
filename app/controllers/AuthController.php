@@ -610,6 +610,7 @@ class AuthController extends Controller {
         if (empty($user['email_verificado'])) {
             (new User())->markEmailVerified((int)$user['id']);
             $user['email_verificado'] = 1;   // finalizeLogin recebe o valor certo
+            (new BlingContatoService())->enfileirarPorUsuario((int)$user['id']);
         }
 
         // Gate de 2FA também no login por código de e-mail
@@ -1353,6 +1354,8 @@ class AuthController extends Controller {
         // em outro dispositivo não pode impedir a ativação da conta.
         $db->prepare("UPDATE usuarios SET email_verificado = 1 WHERE id = ?")
            ->execute([$row['usuario_id']]);
+        
+           (new BlingContatoService())->enfileirarPorUsuario((int)$row['usuario_id']);
  
         $db->prepare("UPDATE tokens_verificacao SET usado = 1 WHERE id = ?")
            ->execute([$row['id']]);

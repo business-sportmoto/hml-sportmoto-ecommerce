@@ -558,7 +558,7 @@ class EstoqueService {
 
         } catch (\Exception $e) {
             $this->db->rollBack();
-            LogService::error('EstoqueService::mover falhou: ' . $e->getMessage());
+            LogService::error('EstoqueService::mover falhou: ' . $e->getMessage(), [$e], 'webhook');
             throw $e;
         }
     }
