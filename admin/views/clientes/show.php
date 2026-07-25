@@ -232,6 +232,44 @@ $statusPedMap=['aguardando_pagamento'=>['cor'=>'warning','label'=>'Aguardando pg
   <!-- Conteúdo em scroll -->
   <div class="cfg-content">
 
+    <?php $badges = ClienteBadges::para($cliente); ?>
+    <section class="cfg-grupo" id="ac-stats">
+      
+      <div class="cfg-grupo-header"><?= IconLibrary::render('sync') ?><h2>Origem & Sincronização</h2></div>
+      <div style="display:flex;flex-wrap:wrap;gap:20px;">
+
+        <div>
+          <div style="font-size:11px;color:var(--c-text-muted);text-transform:uppercase;
+                      letter-spacing:.4px;margin-bottom:4px;">E-mail</div>
+          <span style="font-weight:700;color:<?= $badges['verificado']['tipo']==='success'?'#16a34a':'#d97706' ?>">
+            <?= $badges['verificado']['icone'] ?> <?= View::e($badges['verificado']['label']) ?>
+          </span>
+        </div>
+
+        <div>
+          <div style="font-size:11px;color:var(--c-text-muted);text-transform:uppercase;
+                      letter-spacing:.4px;margin-bottom:4px;">Origem</div>
+          <span style="font-weight:700;" title="<?= View::e($badges['origem']['titulo']) ?>">
+            <?= $badges['origem']['icone'] ?> <?= View::e($badges['origem']['label']) ?>
+          </span>
+        </div>
+
+        <div>
+          <div style="font-size:11px;color:var(--c-text-muted);text-transform:uppercase;
+                      letter-spacing:.4px;margin-bottom:4px;">Bling</div>
+          <span style="font-weight:700;" title="<?= View::e($badges['bling']['titulo']) ?>">
+            <?= $badges['bling']['icone'] ?> <?= View::e($badges['bling']['label']) ?>
+          </span>
+          <?php if (!empty($cliente['bling_id'])): ?>
+          <div style="font-size:11px;color:var(--c-text-muted);margin-top:2px;">
+            ID: <?= View::e($cliente['bling_id']) ?>
+          </div>
+          <?php endif; ?>
+        </div>
+
+      </div>
+    </section>
+
     <!-- 01 DASHBOARD ──────────────────────────────────── -->
     <section class="cfg-grupo" id="ac-stats">
       <div class="cfg-grupo-header"><?= $navIcons['bar-chart-2'] ?><h2>Dashboard</h2></div>
@@ -263,6 +301,7 @@ $statusPedMap=['aguardando_pagamento'=>['cor'=>'warning','label'=>'Aguardando pg
         </span>
       </div>
     </section>
+    
 
     <!-- 02 DADOS PESSOAIS ─────────────────────────────── -->
     <section class="cfg-grupo" id="ac-dados" style="margin-top:28px;">

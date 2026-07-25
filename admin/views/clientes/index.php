@@ -86,6 +86,7 @@ $nomeMes  = ['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov
             <th>Tags</th>
             <th>Último acesso</th>
             <th>Status</th>
+            <th style="padding:12px 10px;">Origem & Status</th>
             <th class="text-right">Ação</th>
           </tr>
         </thead>
@@ -155,6 +156,7 @@ $nomeMes  = ['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov
                 <?= $c['ativo'] ? 'Ativo' : 'Bloqueado' ?>
               </span>
             </td>
+            <td style="padding:12px 10px;"><?= ClienteBadges::html($c) ?></td>
             <td class="text-right">
               <a href="<?= ADMIN_URL ?>/clientes/<?= (int)$c['id'] ?>"
                  class="btn-icon" title="Ver perfil">

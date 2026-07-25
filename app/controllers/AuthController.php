@@ -442,7 +442,7 @@ class AuthController extends Controller {
                 $this->json(['ok' => false, 'msg' => 'E-mail ou senha incorretos.']);
             }
 
-        if (!$user['email_verificado']) {
+        if (!$user['email_verificado']) { 
             $this->json([
                 'ok'             => false,
                 'email_pendente' => true,

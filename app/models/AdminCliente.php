@@ -38,7 +38,10 @@ class AdminCliente {
                     (SELECT COUNT(*) FROM pedidos p WHERE p.cliente_id = c.id) AS total_pedidos_real,
                     GROUP_CONCAT(DISTINCT t.nome ORDER BY t.ordenacao SEPARATOR '||') AS tags_nomes,
                     GROUP_CONCAT(DISTINCT t.cor  ORDER BY t.ordenacao SEPARATOR '||') AS tags_cores,
-                    cl.avatar AS avatar
+                    cl.avatar AS avatar,
+                    u.email_verificado,
+                    u.atualizado_em,
+                    c.tray_id, c.bling_id, c.bling_sincronizado_em
              FROM clientes c
              JOIN usuarios u ON u.id = c.usuario_id
              LEFT JOIN clientes cl ON cl.id = c.id
@@ -80,7 +83,10 @@ class AdminCliente {
                     cl.cpf, cl.telefone, cl.celular,
                     cl.nascimento, cl.genero, cl.newsletter,
                     cl.insta_cliente,
-                    cl.avatar AS avatar
+                    cl.avatar AS avatar,
+                    u.email_verificado,
+                    u.atualizado_em,
+                    c.tray_id, c.bling_id, c.bling_sincronizado_em
              FROM clientes c
              JOIN usuarios u  ON u.id  = c.usuario_id
              LEFT JOIN clientes cl ON cl.id = c.id
