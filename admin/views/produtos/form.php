@@ -249,6 +249,18 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
                   <?php endforeach; ?>
                 </select>
               </div>
+              <div class="form-group">
+                <label class="pe-label">
+                  Bling ID
+                  <span style="font-weight:400;color:var(--c-text-muted);font-size:11px;">
+                    (preenchido pelo sync; edite só se necessário)
+                  </span>
+                </label>
+                <input type="text" name="bling_id" class="form-control"
+                       value="<?= View::e($p['bling_id'] ?? '') ?>"
+                       placeholder="Resolvido automaticamente"
+                       style="font-family:var(--font-mono);font-size:13px;">
+              </div>
             </div>
           </div>
         </section>

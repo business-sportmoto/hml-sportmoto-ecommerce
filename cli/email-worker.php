@@ -124,7 +124,9 @@ $lockExpira  = (int)$cfg['lock_expira_segundos'];
 $log = function ($m) use ($verbose) {
     if ($verbose) echo '[' . date('H:i:s') . "] $m\n";
     if (class_exists('LogService')) {
-        try { LogService::info('email_worker: ' . $m); } catch (Throwable $e) {}
+        try { 
+            // LogService::info('email_worker: ' . $m); 
+        } catch (Throwable $e) {}
     }
 };
 
@@ -431,7 +433,9 @@ foreach ($campanhas as $camp) {
     } catch (Throwable $e) {
         $log("  ERRO campanha #{$camp['id']}: " . $e->getMessage());
         if (class_exists('LogService')) {
-            try { LogService::error('email_worker campanha #' . $camp['id'] . ': ' . $e->getMessage()); } catch (Throwable $ex) {}
+            try { 
+                // LogService::error('email_worker campanha #' . $camp['id'] . ': ' . $e->getMessage()); 
+            } catch (Throwable $ex) {}
         }
     }
 }

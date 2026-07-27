@@ -2180,6 +2180,19 @@ $(document).on('change', '#pe-categoria', function () {
     format: (v) => 'R$ ' + parseFloat(v).toFixed(2).replace('.', ',').replace(/(\d)(?=(\d{3})+,)/g, '$1.')
   };
 
+  $(document).on('click', '.btn-sync-bling-produto', function () {
+  var $btn = $(this), id = $btn.data('id');
+  CK.btnLoading($btn);
+  $.post(BASE_URL + '/admin/produtos/' + id + '/sync-bling', { _token: CSRF_TOKEN })
+    .done(function (r) {
+      CK.btnLoading($btn, false);
+      showToast(r.msg, r.ok ? 'success' : 'error');
+      // Erro fica visível no toast tempo suficiente pra ler o motivo
+      if (r.ok) setTimeout(function(){ location.reload(); }, 1800);
+    })
+    .fail(function () { CK.btnLoading($btn, false); showToast('Erro de rede.', 'error'); });
+});
+
 })();
 
 // ═══ MODERAÇÃO DE FOTOS ════════════════════════════════

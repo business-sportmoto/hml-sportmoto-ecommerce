@@ -297,6 +297,34 @@ $totalFiltros = count($filtrosAtivos);
                 <?php if ($p['destaque']): ?>
                 <span class="prod-badge prod-badge--destaque">Destaque</span>
                 <?php endif; ?>
+
+                <?php
+                  // Estado de vínculo com o Bling
+                  $temVarLinha = (bool)$p['tem_variacao'];
+                  $paiVinc     = !empty($p['bling_id']);
+                  $totalSkus   = (int)($p['total_skus'] ?? 0);
+                  $skusVinc    = (int)($p['skus_vinculados'] ?? 0);
+
+                  if ($temVarLinha) {
+                      // Produto com variação: o que importa é o vínculo dos SKUs
+                      if ($totalSkus > 0 && $skusVinc === $totalSkus) {
+                          $blingCls = 'ok';   $blingTxt = 'Bling';
+                      } elseif ($skusVinc > 0) {
+                          $blingCls = 'parcial'; $blingTxt = "Bling {$skusVinc}/{$totalSkus}";
+                      } else {
+                          $blingCls = 'off';  $blingTxt = 'Sem Bling';
+                      }
+                  } else {
+                      // Produto simples: vínculo é o do próprio pai
+                      $blingCls = $paiVinc ? 'ok' : 'off';
+                      $blingTxt = $paiVinc ? 'Bling' : 'Sem Bling';
+                  }
+                ?>
+                <span class="prod-badge prod-badge--bling-<?= $blingCls ?>"
+                      data-bling-produto="<?= (int)$p['id'] ?>"
+                      title="Vínculo de estoque com o Bling">
+                  <?= $blingTxt ?>
+                </span>
               </div>
 
               <!-- Campos inline de edição em massa -->
@@ -438,32 +466,22 @@ $totalFiltros = count($filtrosAtivos);
             <!-- Ações -->
             <td class="text-right">
               <div class="admin-row-actions">
+                <button type="button" class="btn btn-xs btn-ghost btn-sync-bling-produto" data-id="<?= $p['id'] ?>">
+                  <?= IconLibrary::render('sync') ?>
+                </button>
                 <a href="<?= BASE_URL ?>/produto/<?= View::e($p['slug']) ?>"
                    target="_blank" class="btn btn-xs btn-ghost">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                       stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                    <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/>
-                    <polyline points="15 3 21 3 21 9"/>
-                    <line x1="10" y1="14" x2="21" y2="3"/>
-                  </svg>
+                  <?= IconLibrary::render('open-in-new') ?>
                 </a>
                 <a href="<?= BASE_URL ?>/admin/produtos/<?= $p['id'] ?>/editar"
                    class="btn btn-xs btn-ghost">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                       stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-                    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                  </svg>
+                  <?= IconLibrary::render('edit') ?>
                 </a>
                 <button type="button"
                         class="btn btn-xs btn-ghost btn-excluir-produto"
                         data-id="<?= $p['id'] ?>"
                         data-nome="<?= View::e($p['nome']) ?>">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                       stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                    <polyline points="3 6 5 6 21 6"/>
-                    <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
-                  </svg>
+                  <?= IconLibrary::render('delete') ?>
                 </button>
               </div>
             </td>

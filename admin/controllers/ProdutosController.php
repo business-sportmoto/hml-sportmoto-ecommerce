@@ -149,14 +149,18 @@ class ProdutosController extends Controller {
 
         // ── Busca paginada ────────────────────────────────────
         $stmt = $db->prepare(
-            "SELECT p.id, p.nome, p.slug, p.sku_legado,
+            "SELECT p.id, p.nome, p.slug, p.sku_legado, p.bling_id, 
                     p.preco, p.preco_promo,
                     p.estoque_total, p.estoque_minimo,
                     p.ativo, p.destaque, p.lancamento,
                     p.tem_variacao, p.criado_em,
                     pi.arquivo AS imagem,
                     c.nome     AS categoria_nome,
-                    m.nome     AS marca_nome
+                    m.nome     AS marca_nome,
+                    (SELECT COUNT(*) FROM produto_skus ps
+                       WHERE ps.produto_id = p.id) AS total_skus,
+                    (SELECT COUNT(*) FROM produto_skus ps
+                       WHERE ps.produto_id = p.id AND ps.bling_id IS NOT NULL) AS skus_vinculados                    
             FROM produtos p
             LEFT JOIN produto_imagens pi
                     ON pi.produto_id = p.id AND pi.principal = 1
@@ -450,6 +454,7 @@ class ProdutosController extends Controller {
             'marca_id'         => $marcaId  ?: null,
             'familia_id'       => $familiaId ?: null,
             'sku_legado'       => $skuLegado ?: null,
+            'bling_id'         => SecurityHelper::sanitizeString($_POST['bling_id'] ?? '') ?: null,
             'preco'            => $preco,
             'preco_promo'      => $precoPromo,
             'promo_inicio'     => $promoIn,
@@ -1092,5 +1097,51 @@ class ProdutosController extends Controller {
         $skus = $stmt->fetchAll();
 
         $this->json(['ok' => true, 'skus' => $skus]);
+    }
+
+    // ── POST /admin/produtos/{id}/sync-bling ──────────────
+    // Sincroniza UM produto com o Bling e RETORNA o erro em caso
+    // de falha — é a ferramenta de diagnóstico do vínculo.
+    public function syncBling(int $id): void
+    {
+        $this->verifyCsrf();
+        AuthHelper::requireAdminLevel('super', 'gerente');
+        $db      = Database::getInstance()->getConnection();
+        $prod = $db->prepare("SELECT id, sku_legado, bling_id, tem_variacao FROM produtos WHERE id = ? LIMIT 1");
+        $prod->execute([$id]);
+        $p = $prod->fetch();
+        if (!$p) { $this->json(['ok' => false, 'msg' => 'Produto não encontrado.']); }
+
+        $svc = new BlingEstoqueService();
+
+        try {
+            // Resolve/atualiza o vínculo do pai
+            $blingId = $p['bling_id']
+                ?: $svc->resolverBlingIdProduto((string)($p['sku_legado'] ?? ''), $id);
+
+            if (!$blingId) {
+                $this->json([
+                    'ok'  => false,
+                    'msg' => "Nenhum produto no Bling com o código \"{$p['sku_legado']}\". "
+                           . "Confira se o SKU/Código do produto bate com o cadastro no Bling.",
+                ]);
+            }
+
+            // Produto simples: sincroniza o estoque agora e mostra o saldo
+            if (!(int)$p['tem_variacao']) {
+                $r = $svc->sincronizarProdutoSimples($id);   // ver método abaixo
+                $this->json($r);
+            }
+
+            // Produto com variação: vínculo do pai OK, estoque vem dos SKUs
+            $this->json([
+                'ok'  => true,
+                'msg' => "Vínculo do produto-pai OK (Bling ID {$blingId}). "
+                       . "O estoque das variações sincroniza pelos SKUs.",
+                'bling_id' => $blingId,
+            ]);
+        } catch (\Throwable $e) {
+            $this->json(['ok' => false, 'msg' => 'Bling: ' . $e->getMessage()]);
+        }
     }
 }

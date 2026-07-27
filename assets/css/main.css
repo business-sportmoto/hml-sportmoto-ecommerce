@@ -1805,7 +1805,10 @@ Dropdown
                       border-radius: 20px; border: 1px solid rgba(255,255,255,.15); } */
                     
 :root{--c-primary:#398de6;--smf-bg:#040914;--smf-bg-2:#07111f;--smf-bg-3:#0a1628;--smf-card:#ffffff0b;--smf-card-2:#ffffff13;--smf-border:#ffffff1b;--smf-border-2:#398de63d;--smf-text:#fff;--smf-muted:#96a4b8;--smf-soft:#c8d3e2;--smf-shadow:0 24px 80px #00000057;--smf-glow:0 18px 60px #398de657}
-.smf_footer{position:relative;overflow:hidden;background:radial-gradient(circle at 15% 8%,#398de629,transparent 30%),radial-gradient(circle at 86% 18%,#398de621,transparent 28%),linear-gradient(180deg,#050a14 0%,#030812 100%);color:var(--smf-text);font-family:inherit}
+.smf_footer{position:relative;overflow:hidden;color:var(--smf-text);font-family:inherit;
+/* background:radial-gradient(circle at 15% 8%,#398de629,transparent 30%),radial-gradient(circle at 86% 18%,#398de621,transparent 28%),linear-gradient(180deg,#050a14 0%,#030812 100%); */
+background-color: #111;
+}
 .smf_footer::before{content:"";position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(#ffffff06 1px,transparent 1px),linear-gradient(90deg,#ffffff06 1px,transparent 1px);background-size:42px 42px;mask-image:linear-gradient(180deg,#000000bf,transparent 86%)}
 .smf_footer *{box-sizing:border-box}
 .smf_container{position:relative;z-index:1;width:min(100%,1190px);margin:0 auto;padding:0 20px}
@@ -1826,7 +1829,7 @@ Dropdown
 .smf_newsletter_button:hover{transform:translateY(-1px);filter:saturate(1.08);box-shadow:0 22px 58px #398de68c inset 0 1px 0 #ffffff40}
 .smf_newsletter_button:hover::before{transform:translateX(120%)}
 .smf_newsletter_msg{position:absolute;left:0;bottom:-20px;font-size:11px;color:#9fc8f7}
-.smf_benefits{background:linear-gradient(180deg,#091222f0,#050a14f5);border-bottom:1px solid var(--smf-border)}
+.smf_benefits{border-bottom:1px solid var(--smf-border)}
 .smf_benefits_grid{display:grid;grid-template-columns:repeat(5,1fr);gap:28px;padding:19px 0}
 .smf_benefit_item{position:relative;display:flex;align-items:center;gap:12px;min-width:0;padding:9px 10px;border:1px solid transparent;border-radius:14px;transition:background .2s ease,border-color .2s ease,transform .2s ease}
 .smf_benefit_item:hover{transform:translateY(-2px);border-color:#398de62e;background:#398de60e}
@@ -1836,7 +1839,7 @@ Dropdown
 .smf_benefit_item small{display:block;margin-top:4px;color:var(--smf-muted);font-size:10px;line-height:1.1}
 .smf_benefit_item a {display:block;margin-top:4px;color:var(--c-primary);font-size:8px;line-height:1.1}
 .smf_benefit_item a:hover { text-decoration: underline;}
-.smf_main{position:relative;padding:50px 0 42px;background:radial-gradient(circle at 10% 0%,#398de61c,transparent 24%),linear-gradient(180deg,#060b15 0%,#040914 100%)}
+.smf_main{position:relative;padding:50px 0 42px;}
 .smf_columns{display:grid;grid-template-columns:1.65fr .75fr .75fr .75fr .75fr;gap:58px}
 .smf_logo{display:inline-flex;align-items:center;gap:11px;color:#fff;text-decoration:none}
 .smf_logo_icon{position:relative;width:38px;height:38px;display:grid;place-items:center;border-radius:13px;background:linear-gradient(135deg,#72bdff 0%,var(--c-primary) 46%,#175aaa 100%);color:#fff;box-shadow:0 18px 45px #398de654 inset 0 1px 0 #ffffff40}
@@ -1899,7 +1902,24 @@ Dropdown
 .smf_info_rows{margin-top:38px}
 .smf_bottom_inner{align-items:flex-start;flex-direction:column}
 }
-
+/* ══════════════════════════════════════════════════════════
+   FOOTER v2 — bandeiras SVG, selos reais e social com ícone
+   COLAR NO FINAL do main.css (a cascata sobrescreve o antigo).
+   Obs: as regras .smf_apps (linhas ~1853-1857) ficaram órfãs
+   — o bloco de apps saiu do HTML; remover depois, sem pressa.
+   ══════════════════════════════════════════════════════════ */
+.smf_social a svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.smf_pay{display:flex;flex-wrap:wrap;gap:8px}
+.smf_pay_chip{width:46px;height:30px;display:grid;place-items:center;overflow:hidden;border:1px solid #ffffff2e;border-radius:6px;background:#fff;box-shadow:inset 0 1px 0 #ffffff66,0 10px 24px #00000029;transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
+.smf_pay_chip:hover{transform:translateY(-2px);border-color:#398de680;box-shadow:0 14px 30px #398de62b}
+.smf_pay_chip svg{width:100%;height:100%;display:block}
+.smf_seals{display:grid;gap:9px}
+.smf_seal{display:flex;align-items:center;gap:10px;padding:8px 11px;border:1px solid #ffffff24;border-radius:9px;background:linear-gradient(180deg,#ffffff0f,#ffffff06);box-shadow:inset 0 1px 0 #fff1;transition:transform .18s ease,border-color .18s ease,background .18s ease}
+.smf_seal:hover{transform:translateY(-2px);border-color:#398de675;background:#398de61a}
+.smf_seal>svg{width:17px;height:17px;flex:0 0 17px;color:#72b8ff;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 10px #398de64d)}
+.smf_seal strong{display:block;color:#fff;font-size:10.5px;font-weight:850;line-height:1.1}
+.smf_seal small{display:block;margin-top:2px;color:#8797ad;font-size:9px;line-height:1.15}
+@media (max-width:720px){.smf_pay{gap:7px}.smf_pay_chip{width:42px;height:27px}}
 
 /* ── MINI CART ───────────────────────────────────────────── */
 .mini-cart-drawer {

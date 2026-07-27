@@ -354,7 +354,7 @@ AdminRouter::post('/produtos/remover-imagem',     'ProdutosController@removerIma
 AdminRouter::post('/produtos/reordenar-imagens',  'ProdutosController@reordenarImagens');
 AdminRouter::post('/produtos/excluir',            'ProdutosController@excluir');
 AdminRouter::post('/produtos/toggle-ativo',       'ProdutosController@toggleAtivo');
-
+AdminRouter::post('/produtos/{id:\d+}/sync-bling','ProdutosController@syncBling');
 
 
 // admin/config/routes.php
