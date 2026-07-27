@@ -86,6 +86,7 @@ class BlingWebhookController extends Controller
                 $db->prepare(
                     "UPDATE bling_sync_log SET status = 'erro', msg_erro = ? WHERE id = ?"
                 )->execute([$e->getMessage(), $logId]);
+                LogService::exception($e, 'error', 'int',[$logId]);
             } catch (\Throwable) {}
         }
  
