@@ -384,7 +384,7 @@ class ProdutosController extends Controller {
         $largura     = !empty($_POST['largura_cm'])       ? (float)$_POST['largura_cm']      : null;
         $altura      = !empty($_POST['altura_cm'])        ? (float)$_POST['altura_cm']       : null;
         $descCurta   = $_POST['descricao_curta']  ?? '';
-        $descricao   = $_POST['descricao']        ?? '';
+        $descricao   = HtmlHelper::sanitizeRich($_POST['descricao'] ?? '');;
         $metaTitle   = SecurityHelper::sanitizeString($_POST['meta_title']        ?? '');
         $metaDesc    = SecurityHelper::sanitizeString($_POST['meta_description']  ?? '');
         $metaKw      = SecurityHelper::sanitizeString($_POST['meta_keywords']     ?? '');

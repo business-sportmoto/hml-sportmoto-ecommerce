@@ -1,6 +1,7 @@
 {
     "require": {
         "google/apiclient": "^2.14",
-        "aws/aws-sdk-php": "^3.388"
+        "aws/aws-sdk-php": "^3.388",
+        "ezyang/htmlpurifier": "^4.19"
     }
 }

@@ -172,7 +172,7 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
               </div>
             </div>
 
-            <div class="form-group">
+            <div class="form-group" id="pe-descricao-curta">
               <label class="pe-label">Descrição curta</label>
               <p class="pe-field-hint">
                 Resumo exibido no card e topo da página do produto. Até 300 caracteres.
@@ -192,6 +192,25 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
               <textarea name="descricao" id="pe-descricao"
                         class="form-control pe-textarea-rich" rows="10"
                         placeholder="Descreva detalhes técnicos, diferenciais, especificações..."><?= View::e($p['descricao'] ?? '') ?></textarea>
+              <div class="pe-rte" data-target="pe-descricao">
+                <div class="pe-rte-toolbar" role="toolbar" aria-label="Formatação">
+                  <button type="button" class="pe-rte-btn" data-cmd="bold" title="Negrito"><strong>B</strong></button>
+                  <button type="button" class="pe-rte-btn" data-cmd="italic" title="Itálico"><em>I</em></button>
+                  <button type="button" class="pe-rte-btn" data-cmd="underline" title="Sublinhado"><u>U</u></button>
+                  <span class="pe-rte-sep"></span>
+                  <button type="button" class="pe-rte-btn" data-cmd="formatBlock" data-val="h2" title="Título">H2</button>
+                  <button type="button" class="pe-rte-btn" data-cmd="formatBlock" data-val="h3" title="Subtítulo">H3</button>
+                  <button type="button" class="pe-rte-btn" data-cmd="formatBlock" data-val="p" title="Parágrafo">¶</button>
+                  <span class="pe-rte-sep"></span>
+                  <button type="button" class="pe-rte-btn" data-cmd="insertUnorderedList" title="Lista">•</button>
+                  <button type="button" class="pe-rte-btn" data-cmd="insertOrderedList" title="Lista numerada">1.</button>
+                  <span class="pe-rte-sep"></span>
+                  <button type="button" class="pe-rte-btn" data-cmd="createLink" title="Link">🔗</button>
+                  <button type="button" class="pe-rte-btn" data-cmd="removeFormat" title="Limpar formatação">⌫</button>
+                </div>
+              
+                <div class="pe-rte-area" contenteditable="true" data-placeholder="Descreva o produto…"></div>
+              </div>
             </div>
           </div>
 
@@ -1742,6 +1761,24 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
   </div>
 </div>
 
+<style>
+.pe-rte{border:1px solid var(--c-border,#e2e8f0);border-radius:8px;overflow:hidden;background:#fff}
+.pe-rte-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:2px;padding:6px 8px;border-bottom:1px solid var(--c-border,#e2e8f0);background:#f8fafc}
+.pe-rte-btn{min-width:30px;height:30px;padding:0 8px;border:1px solid transparent;border-radius:6px;background:transparent;cursor:pointer;font-size:13px;color:#334155;display:inline-flex;align-items:center;justify-content:center;transition:background .15s,border-color .15s}
+.pe-rte-btn:hover{background:#fff;border-color:var(--c-border,#e2e8f0)}
+.pe-rte-btn.is-active{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}
+.pe-rte-sep{width:1px;height:18px;background:var(--c-border,#e2e8f0);margin:0 4px}
+.pe-rte-area{min-height:180px;max-height:460px;overflow-y:auto;padding:14px 16px;font-size:14px;line-height:1.7;color:#1e293b;outline:none}
+.pe-rte-area:empty::before{content:attr(data-placeholder);color:#94a3b8}
+.pe-rte-area:focus{box-shadow:inset 0 0 0 2px #dbeafe}
+.pe-rte-area h2{font-size:20px;font-weight:800;margin:.6em 0 .3em}
+.pe-rte-area h3{font-size:16px;font-weight:700;margin:.6em 0 .3em}
+.pe-rte-area p{margin:0 0 .7em}
+.pe-rte-area ul,.pe-rte-area ol{margin:0 0 .7em 1.4em}
+.pe-rte-area a{color:#2563eb;text-decoration:underline}
+/* oculta o textarea original sem removê-lo do form */
+#pe-descricao, #pe-descricao-curta{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);border:0}
+</style>
 
 <?php
 // Separa os dois papéis
@@ -1857,4 +1894,70 @@ adminSeoIA({
 
 */
 
+(function () {
+  var wrap = document.querySelector('.pe-rte');
+  if (!wrap) return;
+ 
+  var ta   = document.getElementById(wrap.dataset.target); // #pe-descricao
+  var area = wrap.querySelector('.pe-rte-area');
+  if (!ta || !area) return;
+ 
+  // Inicializa o editor com o conteúdo já salvo no textarea
+  area.innerHTML = ta.value || '';
+ 
+  // Sincroniza editor → textarea (é o textarea que o form envia)
+  function sync() { ta.value = area.innerHTML; }
+  area.addEventListener('input', sync);
+  area.addEventListener('blur', sync);
+  // Garante sync no submit, mesmo sem blur
+  if (ta.form) ta.form.addEventListener('submit', sync);
+ 
+  // Toolbar
+  wrap.querySelectorAll('.pe-rte-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var cmd = btn.dataset.cmd;
+      area.focus();
+ 
+      if (cmd === 'createLink') {
+        var url = prompt('URL do link (https://…):', 'https://');
+        if (url) {
+          // Só permite http/https/mailto — bloqueia javascript:
+          if (/^(https?:|mailto:)/i.test(url)) {
+            document.execCommand('createLink', false, url);
+          } else {
+            alert('Link inválido. Use http://, https:// ou mailto:');
+          }
+        }
+      } else if (cmd === 'formatBlock') {
+        document.execCommand('formatBlock', false, btn.dataset.val);
+      } else {
+        document.execCommand(cmd, false, null);
+      }
+      sync();
+      atualizarEstado();
+    });
+  });
+ 
+  // Cola como TEXTO estruturado limpo (evita HTML sujo do clipboard).
+  // Lembrete: isto é cosmético — a defesa real é o HtmlHelper no servidor.
+  area.addEventListener('paste', function (e) {
+    e.preventDefault();
+    var texto = (e.clipboardData || window.clipboardData).getData('text/plain');
+    document.execCommand('insertText', false, texto);
+    sync();
+  });
+ 
+  // Realça os botões ativos conforme a seleção
+  function atualizarEstado() {
+    [['bold','bold'],['italic','italic'],['underline','underline']].forEach(function (p) {
+      var b = wrap.querySelector('.pe-rte-btn[data-cmd="' + p[0] + '"]');
+      if (b) {
+        try { b.classList.toggle('is-active', document.queryCommandState(p[1])); }
+        catch (err) {}
+      }
+    });
+  }
+  area.addEventListener('keyup', atualizarEstado);
+  area.addEventListener('mouseup', atualizarEstado);
+})();
 </script>
