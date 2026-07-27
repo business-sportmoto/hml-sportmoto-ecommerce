@@ -41,7 +41,7 @@ class BlingEstoqueService
         int    $quantidade,
         int    $saldoFisico
     ): bool {
-        // 1. Tenta pelo cache (bling_id já foi resolvido antes)
+        // ── NÍVEL 1: produto COM variação (produto_skus) ──
         $stmt = $this->db->prepare(
             "SELECT ps.id AS sku_id, ps.produto_id
              FROM produto_skus ps
@@ -51,31 +51,95 @@ class BlingEstoqueService
         $stmt->execute([$blingProdutoId]);
         $sku = $stmt->fetch();
 
-        // 2. Cache miss — resolve via API e persiste
+        // Cache miss — resolve via API contra produto_skus.sku
         if (!$sku) {
             $sku = $this->resolverSkuPorBlingProdutoId($blingProdutoId);
         }
 
-        if (!$sku) {
-            $this->db->prepare(
-                "INSERT INTO bling_sync_log
-                 (tipo, direcao, referencia_id, status, msg_erro)
-                 VALUES ('estoque', 'webhook', ?, 'erro', ?)"
-            )->execute([
-                $blingProdutoId,
-                "Produto Bling ID {$blingProdutoId} não encontrado em produto_skus.",
-            ]);
-            return false;
+        if ($sku) {
+            $this->aplicarMovimento(
+                (int)$sku['sku_id'],
+                (int)$sku['produto_id'],
+                $operacao,
+                $quantidade,
+                $saldoFisico
+            );
+            return true;
         }
 
-        $this->aplicarMovimento(
-            (int)$sku['sku_id'],
-            (int)$sku['produto_id'],
-            $operacao,
-            $quantidade,
-            $saldoFisico
+        // ── NÍVEL 2: produto SEM variação (produtos.bling_id) ──
+        // Mesmo fix do cron (Braço 3): produto sem linha em produto_skus,
+        // estoque a nível de produto, ledger com sku_id = NULL.
+        $produtoId = $this->resolverProdutoSemVariacao($blingProdutoId);
+
+        if ($produtoId) {
+            // sku_id = NULL → movimento a nível de produto
+            $this->aplicarMovimento(
+                null,
+                $produtoId,
+                $operacao,
+                $quantidade,
+                $saldoFisico
+            );
+            return true;
+        }
+
+        // ── NÍVEL 3: não existe no site → loga e ignora ──
+        // Decisão de produto: webhook NÃO cria produto. Só sincroniza
+        // estoque do que já foi importado. Produto no Bling mas ausente
+        // do site é caso legítimo de ignorar (não é erro de vínculo).
+        $this->db->prepare(
+            "INSERT INTO bling_sync_log
+             (tipo, direcao, referencia_id, status, msg_erro)
+             VALUES ('estoque', 'webhook', ?, 'ignorado', ?)"
+        )->execute([
+            $blingProdutoId,
+            "Produto Bling ID {$blingProdutoId} não existe no site (nem SKU nem produto). Ignorado — webhook não importa produtos.",
+        ]);
+        return false;
+    }
+
+    /**
+     * Resolve um produto SEM variação pelo ID do Bling.
+     * Primeiro pelo cache (produtos.bling_id), depois via API
+     * (/produtos/{id}.codigo contra produtos.sku_legado).
+     * Persiste o vínculo. Retorna produto_id ou null.
+     */
+    private function resolverProdutoSemVariacao(string $blingProdutoId): ?int
+    {
+        // 1. Cache — já vinculado em produtos.bling_id
+        $stmt = $this->db->prepare(
+            "SELECT id FROM produtos WHERE bling_id = ? LIMIT 1"
         );
-        return true;
+        $stmt->execute([$blingProdutoId]);
+        $id = $stmt->fetchColumn();
+        if ($id) return (int)$id;
+
+        // 2. Resolve via API pelo código → produtos.sku_legado
+        try {
+            $produto = $this->api->get("/produtos/{$blingProdutoId}");
+            $codigo  = trim($produto['codigo'] ?? '');
+            if (!$codigo) return null;
+
+            $stmt = $this->db->prepare(
+                "SELECT id FROM produtos
+                 WHERE sku_legado = ?
+                   AND NOT EXISTS (SELECT 1 FROM produto_skus ps WHERE ps.produto_id = produtos.id)
+                 LIMIT 1"
+            );
+            $stmt->execute([$codigo]);
+            $id = $stmt->fetchColumn();
+            if (!$id) return null;
+
+            // Persiste o vínculo no pai
+            $this->db->prepare(
+                "UPDATE produtos SET bling_id = ? WHERE id = ?"
+            )->execute([$blingProdutoId, (int)$id]);
+
+            return (int)$id;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
@@ -117,18 +181,17 @@ class BlingEstoqueService
     // ════════════════════════════════════════════════════
 
     private function aplicarMovimento(
-        int    $skuId,
+        ?int   $skuId,
         int    $produtoId,
         string $operacao,
         int    $quantidade,
         int    $saldoFisico
     ): void {
-        // idempotency_key inclui segundos para operações rápidas
-        // não colide com o cron (que usa YmdHi — minutos)
-        $idempotencyKey = 'bling_mov_' . $operacao . '_' . $skuId . '_' . date('YmdHis');
+        $idempotencyKey = 'bling_mov_' . $operacao . '_'
+                        . ($skuId ?? 'p' . $produtoId) . '_' . date('YmdHis');
 
         $opcoes = [
-            'sku_id'          => $skuId,
+            'sku_id'          => $skuId,   // NULL = produto sem variação
             'referencia_tipo' => 'bling_sync',
             'idempotency_key' => $idempotencyKey,
         ];
@@ -168,6 +231,12 @@ class BlingEstoqueService
 
     public function sincronizarTudo(): array
     {
+        $idDeposito = $this->getDepositoPadrao();
+        if (!$idDeposito) {
+            return ['total' => 0, 'atualizados' => 0, 'erros' => 0,
+                    'erro' => 'Nenhum depósito Bling configurado. Sincronize os depósitos primeiro.'];
+        }
+
         $atualizados = 0;
         $erros       = 0;
 
@@ -192,11 +261,14 @@ class BlingEstoqueService
 
         foreach (array_chunk($comBlingId, self::BATCH_SIZE) as $batch) {
             try {
-                $ids      = implode(',', array_column($batch, 'bling_id'));
-                $estoques = $this->api->get('/estoques', ['idsProdutos' => $ids]);
-                foreach ($estoques as $e) {
-                    $blingProdutoId = (string)($e['produto']['id'] ?? '');
-                    $saldo          = (float)($e['saldoVirtualTotal'] ?? $e['saldo'] ?? 0);
+                $blingIds = array_column($batch, 'bling_id');
+                $itens = $this->api->getComArray(
+                    "/estoques/saldos/{$idDeposito}",
+                    ['idsProdutos' => $blingIds]
+                );
+                foreach ($itens as $e) {
+                    $blingProdutoId = (string)($e['produto']['id'] ?? $e['produtoId'] ?? '');
+                    $saldo          = (float)($e['saldoFisicoTotal'] ?? $e['saldoFisico'] ?? 0);
                     foreach ($batch as $sku) {
                         if ($sku['bling_id'] === $blingProdutoId) {
                             $this->corrigirSaldoAbsoluto((int)$sku['sku_id'], (int)$sku['produto_id'], $saldo);
@@ -244,8 +316,9 @@ class BlingEstoqueService
 
                 if (!$blingId) { $erros++; continue; }
 
-                $estoque = $this->api->get("/estoques/{$blingId}");
-                $saldo   = (float)($estoque['saldoVirtualTotal'] ?? $estoque['saldo'] ?? 0);
+                // $estoque = $this->api->get("/estoques/{$blingId}");
+                // $saldo   = (float)($estoque['saldoVirtualTotal'] ?? $estoque['saldo'] ?? 0);
+                $saldo = (float)$this->saldoDoBling($blingId, $idDeposito);
                 $this->corrigirSaldoAbsoluto(null, (int)$prod['produto_id'], $saldo);
                 $atualizados++;
             } catch (\Throwable) {
@@ -379,6 +452,11 @@ class BlingEstoqueService
      */
     public function sincronizarProdutoSimples(int $produtoId): array
     {
+        $idDeposito = $this->getDepositoPadrao();
+        if (!$idDeposito) {
+            return ['ok' => false, 'msg' => 'Nenhum depósito Bling configurado. Sincronize os depósitos primeiro.'];
+        }
+
         $stmt = $this->db->prepare(
             "SELECT id, bling_id, sku_legado FROM produtos WHERE id = ? LIMIT 1"
         );
@@ -392,11 +470,39 @@ class BlingEstoqueService
             return ['ok' => false, 'msg' => "Sem vínculo no Bling para \"{$p['sku_legado']}\"."];
         }
 
-        $estoque = $this->api->get("/estoques/saldos/{$blingId}");
-        $saldo   = (int)($estoque['saldoVirtualTotal'] ?? $estoque['saldo'] ?? 0);
+        // $estoque = $this->api->get("/estoques/saldos/{$blingId}");
+        $saldo = $this->saldoDoBling($blingId, $idDeposito);
         $this->corrigirSaldoAbsoluto(null, $produtoId, (float)$saldo);
+        return ['ok' => true, 'bling_id' => $blingId, 'msg' => "Estoque sincronizado: {$saldo} unidade(s)."];
+    }
+    
+    /** ID do depósito padrão (o sync usa este). Null se não sincronizou. */
+    private function getDepositoPadrao(): ?int
+    {
+        $id = $this->db->query(
+            "SELECT bling_deposito_id FROM bling_depositos
+             WHERE ativo = 1 ORDER BY padrao DESC, id ASC LIMIT 1"
+        )->fetchColumn();
+        return $id ? (int)$id : null;
+    }
 
-        return ['ok' => true, 'bling_id' => $blingId,
-                'msg' => "Estoque sincronizado: {$saldo} unidade(s)."];
+    /**
+     * Saldo de UM produto no Bling via /estoques/saldos/{idDeposito}.
+     * Lê saldoFisicoTotal (soma de todos os depósitos). Parsing
+     * defensivo — a resposta pode variar de shape.
+     */
+    private function saldoDoBling(string $blingProdutoId, int $idDeposito): int
+    {
+        $itens = $this->api->getComArray(
+            "/estoques/saldos/{$idDeposito}",
+            ['idsProdutos' => [$blingProdutoId]]
+        );
+        foreach ($itens as $e) {
+            $pid = (string)($e['produto']['id'] ?? $e['produtoId'] ?? '');
+            if ($pid === '' || $pid === $blingProdutoId) {
+                return (int)($e['saldoFisicoTotal'] ?? $e['saldoFisico'] ?? 0);
+            }
+        }
+        return 0;
     }
 }

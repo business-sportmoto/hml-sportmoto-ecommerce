@@ -208,4 +208,25 @@ class BlingApiClient
         if (str_contains($endpoint, 'contato'))  return 'cliente';
         return 'pedido';
     }
+
+    /**
+     * GET com arrays no formato do Bling: idsProdutos[]=1&idsProdutos[]=2
+     * (colchetes VAZIOS). O http_build_query padrão gera idsProdutos[0]=1,
+     * que o Bling IGNORA — este método monta a query manualmente.
+     */
+    public function getComArray(string $endpoint, array $params = []): array
+    {
+        $partes = [];
+        foreach ($params as $chave => $valor) {
+            if (is_array($valor)) {
+                foreach ($valor as $item) {
+                    $partes[] = urlencode($chave) . '[]=' . urlencode((string)$item);
+                }
+            } else {
+                $partes[] = urlencode($chave) . '=' . urlencode((string)$valor);
+            }
+        }
+        $url = self::BASE_URL . $endpoint . ($partes ? '?' . implode('&', $partes) : '');
+        return $this->request('GET', $url, null, $endpoint);
+    }
 }

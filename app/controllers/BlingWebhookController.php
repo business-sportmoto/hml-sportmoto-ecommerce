@@ -13,7 +13,22 @@ class BlingWebhookController extends Controller
     public function receive(): void
     {
         // Lê o payload bruto
-        $raw     = file_get_contents('php://input');
+        // $raw     = file_get_contents('php://input');
+        // $payload = json_decode($raw, true);
+
+        $raw = file_get_contents('php://input');
+
+        // ── Validação de assinatura ANTES de tudo ──
+        // Fail-closed: assinatura inválida → 401 e para. Não loga
+        // payload (é potencialmente forjado — não polui a tabela),
+        // não processa nada.
+        if (!$this->assinaturaValida($raw)) {
+            http_response_code(401);
+            header('Content-Type: application/json');
+            echo json_encode(['ok' => false, 'error' => 'invalid signature']);
+            return;
+        }
+
         $payload = json_decode($raw, true);
  
         // Responde 200 imediatamente (Bling espera < 5s)
@@ -92,5 +107,41 @@ class BlingWebhookController extends Controller
             $quantidade,
             $saldoFisico
         );
+    }
+
+    /**
+     * Valida a assinatura HMAC do webhook (X-Bling-Signature-256).
+     * A chave é o client_secret do app Bling — o mesmo da integração.
+     *
+     * CRÍTICO: o HMAC é calculado sobre o corpo BRUTO ($raw), nunca
+     * sobre o payload re-serializado. json_encode reordena chaves e
+     * altera espaços → a assinatura nunca bateria (rejeitaria tudo).
+     */
+    private function assinaturaValida(string $rawBody): bool
+    {
+        $header = $_SERVER['HTTP_X_BLING_SIGNATURE_256'] ?? '';
+        if ($header === '') {
+            return false; // sem assinatura = rejeita (fail-closed)
+        }
+
+        // client_secret do Bling — mesma credencial da integração.
+        // Ajuste a fonte se o seu BlingAuthService expõe de outro jeito.
+        $secret = (new BlingAuthService())->getClientSecret();
+        if (empty($secret)) {
+            // Sem secret configurado: NÃO libere por engano. Loga e nega.
+            error_log('[BlingWebhook] client_secret ausente — não é possível validar assinatura.');
+            return false;
+        }
+
+        // Bling manda "sha256=<hex>"; alguns provedores mandam só o hex.
+        // Normaliza tirando o prefixo se houver.
+        $recebida = str_starts_with($header, 'sha256=')
+            ? substr($header, 7)
+            : $header;
+
+        $calculada = hash_hmac('sha256', $rawBody, $secret);
+
+        // Comparação timing-safe — nunca use === para comparar hashes
+        return hash_equals($calculada, $recebida);
     }
 }

@@ -27,9 +27,15 @@ class AdminBlingController extends Controller
         $ultimaSync  = $db->query(
             "SELECT MAX(criado_em) FROM bling_sync_log WHERE tipo = 'estoque' AND status = 'ok'"
         )->fetchColumn();
+
+        $depositos = $db->query(
+            "SELECT bling_deposito_id, descricao, padrao, ativo
+             FROM bling_depositos
+             ORDER BY padrao DESC, descricao ASC"
+        )->fetchAll();
  
         $this->render('configuracoes/bling', compact(
-            'conectado', 'tokenInfo', 'logs', 'ultimaSync'
+            'conectado', 'tokenInfo', 'logs', 'ultimaSync', 'depositos'
         ),'admin');
     }
  
@@ -248,6 +254,47 @@ class AdminBlingController extends Controller
                     ? "{$n} cliente(s) enfileirado(s). A sincronização ocorre em segundo plano (cron)."
                     : 'Nenhum cliente novo para sincronizar — todos já estão no Bling.',
             ]);
+        } catch (\Throwable $e) {
+            $this->json(['ok' => false, 'msg' => $e->getMessage()]);
+        }
+    }
+
+    // ── POST /admin/configuracoes/bling/sync-depositos ────
+    public function syncDepositos(): void
+    {
+        $this->verifyCsrf();
+        try {
+            $resp = (new BlingApiClient())->get('/depositos');
+            $db   = Database::getInstance()->getConnection();
+
+            $stmt = $db->prepare(
+                "INSERT INTO bling_depositos (bling_deposito_id, descricao, padrao, ativo)
+                 VALUES (?, ?, ?, 1)
+                 ON DUPLICATE KEY UPDATE
+                   descricao = VALUES(descricao),
+                   padrao    = VALUES(padrao),
+                   ativo     = 1"
+            );
+
+            $n = 0;
+            foreach ((array)$resp as $d) {
+                $bid = (string)($d['id'] ?? '');
+                if ($bid === '') continue;
+                $desc   = (string)($d['descricao'] ?? $d['nome'] ?? ('Depósito ' . $bid));
+                $padrao = !empty($d['padrao']) ? 1 : 0;
+                $stmt->execute([$bid, $desc, $padrao]);
+                $n++;
+            }
+
+            // Garante um padrão: se nenhum veio marcado, elege o 1º ativo
+            $temPadrao = (int)$db->query(
+                "SELECT COUNT(*) FROM bling_depositos WHERE padrao = 1 AND ativo = 1"
+            )->fetchColumn();
+            if ($temPadrao === 0) {
+                $db->exec("UPDATE bling_depositos SET padrao = 1 WHERE ativo = 1 ORDER BY id ASC LIMIT 1");
+            }
+
+            $this->json(['ok' => true, 'msg' => "{$n} depósito(s) sincronizado(s)."]);
         } catch (\Throwable $e) {
             $this->json(['ok' => false, 'msg' => $e->getMessage()]);
         }

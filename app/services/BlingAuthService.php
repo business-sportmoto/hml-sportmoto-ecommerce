@@ -21,6 +21,17 @@ class BlingAuthService
     {
         $this->db = Database::getInstance()->getConnection();
     }
+    
+    /**
+     * Retorna o client_secret configurado — usado para validar a
+     * assinatura HMAC dos webhooks (X-Bling-Signature-256), que o
+     * Bling assina com essa mesma credencial.
+     */
+    public function getClientSecret(): string
+    {
+        $creds = $this->getCredenciais();
+        return (string)($creds['client_secret'] ?? '');
+    }
 
     // ════════════════════════════════════════════════════
     // CONFIGURAÇÃO — salva client_id e client_secret

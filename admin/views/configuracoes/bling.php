@@ -209,6 +209,51 @@
         </div>
       </div>
 
+      <!-- Depósitos do Bling -->
+      <div class="admin-card" style="margin-bottom:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 0;">
+          <h3 class="ap-card-title" style="margin:0;">Depósitos</h3>
+          <button type="button" class="btn btn-outline btn-sm" id="btn-sync-depositos">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+              <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+            </svg>
+            Sincronizar
+          </button>
+        </div>
+
+        <div style="padding:14px 20px 18px;">
+          <p style="font-size:13px;color:var(--c-text-muted);margin-bottom:14px;line-height:1.6;">
+            O depósito marcado como <strong>padrão</strong> é a fonte do saldo que o sync de estoque reflete no site.
+          </p>
+
+          <div id="depositos-lista">
+            <?php if (empty($depositos)): ?>
+            <div style="display:flex;align-items:center;gap:10px;padding:14px;border:1px dashed var(--c-border);border-radius:8px;font-size:13px;color:var(--c-text-muted);">
+              <div style="width:9px;height:9px;border-radius:50%;background:#94a3b8;flex-shrink:0;"></div>
+              Nenhum depósito sincronizado. Clique em <strong style="margin:0 3px;">Sincronizar</strong> para buscar da sua conta Bling.
+            </div>
+            <?php else: ?>
+              <?php foreach ($depositos as $dep): ?>
+              <div style="display:flex;align-items:center;gap:12px;padding:11px 14px;border:1px solid var(--c-border);border-radius:8px;margin-bottom:8px;<?= $dep['padrao'] ? 'background:#f0fdf4;border-color:#bbf7d0;' : '' ?>">
+                <div style="width:9px;height:9px;border-radius:50%;flex-shrink:0;background:<?= $dep['ativo'] ? '#16a34a' : '#cbd5e1' ?>;<?= $dep['padrao'] ? 'box-shadow:0 0 0 3px rgba(22,163,74,.2);' : '' ?>"></div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-weight:700;font-size:13.5px;color:var(--c-dark);">
+                    <?= View::e($dep['descricao'] ?: 'Depósito sem nome') ?>
+                    <?php if ($dep['padrao']): ?>
+                    <span style="font-size:10.5px;font-weight:800;color:#16a34a;background:#dcfce7;padding:1px 7px;border-radius:99px;margin-left:6px;vertical-align:middle;">PADRÃO</span>
+                    <?php endif; ?>
+                  </div>
+                  <code style="font-size:11.5px;color:var(--c-text-muted);">ID: <?= View::e($dep['bling_deposito_id']) ?></code>
+                </div>
+              </div>
+              <?php endforeach; ?>
+            <?php endif; ?>
+          </div>
+        </div>
+      </div>
+
       <div class="admin-card">
         <h3 class="ap-card-title">Cron de estoque</h3>
         <div style="padding:14px 20px;">
@@ -420,5 +465,17 @@ $('#btn-sync-clientes').on('click', function() {
     adminToast(r.msg, r.ok ? 'success' : 'error');
   })
   .fail(function() { CK.btnLoading($btn, false); adminToast('Erro.', 'error'); });
+});
+
+$('#btn-sync-depositos').on('click', function () {
+  var $btn = $(this);
+  CK.btnLoading($btn);
+  $.post(ADMIN_URL + '/configuracoes/bling/sync-depositos', { _token: CSRF_TOKEN })
+    .done(function (r) {
+      CK.btnLoading($btn, false);
+      adminToast(r.msg, r.ok ? 'success' : 'error');
+      if (r.ok) setTimeout(function () { location.reload(); }, 1200);
+    })
+    .fail(function () { CK.btnLoading($btn, false); adminToast('Erro de rede.', 'error'); });
 });
 </script>

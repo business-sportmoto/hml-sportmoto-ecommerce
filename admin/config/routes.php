@@ -320,6 +320,7 @@ AdminRouter::post('/configuracoes/bling/status-map',               'AdminBlingCo
 AdminRouter::get ('/configuracoes/bling/situacoes',                'AdminBlingController@getSituacoesBling');
 
 AdminRouter::post('/configuracoes/bling/sync-clientes', 'AdminBlingController@syncClientes');
+AdminRouter::post('/configuracoes/bling/sync-depositos', 'AdminBlingController@syncDepositos');
 
 AdminRouter::get('/logs',          'AdminLogsController@index');
 AdminRouter::get('/logs/detalhe',  'AdminLogsController@detalhe');
