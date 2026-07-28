@@ -389,6 +389,7 @@ class TrayImportService {
         $sku        = $this->utf8(trim($r[self::V['referencia']] ?? ''));
 
         if (empty($trayProdId) || empty($var1Nome) || empty($var1Valor)) return 'ignorado';
+        
 
         // Busca produto pelo tray_id
         $stmt = $this->db->prepare("SELECT id FROM produtos WHERE tray_id = ? LIMIT 1");
@@ -421,10 +422,85 @@ class TrayImportService {
         $stmt->execute([$produtoId, $sku]);
         $skuId = $stmt->fetchColumn();
 
+        // EAN da linha (normalizado — vazio vira NULL)
+        $ean = $this->utf8($r[self::V['ean']] ?? '') ?: null;
+
+        // ── Guarda de EAN duplicado (uk_ean é GLOBAL) ──
+        // A detecção de SKU existente é por (produto_id + sku), mas o
+        // uk_ean é único em TODA a tabela. Um EAN repetido em outro
+        // produto (erro de cadastro comum na Tray) estouraria 1062 no
+        // INSERT. Decisão: importar SEM o EAN e logar o conflito —
+        // não perde o produto, e registra pra investigar a origem.
+        if ($ean !== null) {
+            $stmtEan = $this->db->prepare(
+                "SELECT ps.id, ps.produto_id, ps.sku
+                 FROM produto_skus ps
+                 WHERE ps.ean = ?
+                   AND NOT (ps.produto_id = ? AND ps.sku = ?)
+                 LIMIT 1"
+            );
+            $stmtEan->execute([$ean, $produtoId, $sku]);
+            $conflito = $stmtEan->fetch();
+
+            if ($conflito) {
+                LogService::warning(
+                    'EAN duplicado na importação Tray — SKU importado sem EAN',
+                    [
+                        'ean'                => $ean,
+                        'produto_id_novo'    => $produtoId,
+                        'sku_novo'           => $sku,
+                        'sku_id_conflitante' => (int)$conflito['id'],
+                        'produto_id_conflitante' => (int)$conflito['produto_id'],
+                        'sku_conflitante'    => $conflito['sku'],
+                    ],
+                    'import'
+                );
+                $ean = null; // grava sem EAN; o produto entra, o conflito fica logado
+            }
+        }
+
+        // ── SKU ausente: gera determinístico + loga ──
+        // sku é NOT NULL e é a chave de deduplicação. Referência
+        // vazia é erro de dado na Tray (deveria sempre existir).
+        // Geramos a partir de um ID ESTÁVEL da linha (codigo_var),
+        // não aleatório — senão cada reimportação criaria uma
+        // variação nova (o dedup é por sku). Assim, mesma variação
+        // → mesmo SKU → atualiza em vez de duplicar.
+        if ($sku === '') {
+            $codigoVar  = $this->utf8(trim($r[self::V['codigo_var']]  ?? ''));
+            $codigoProd = $this->utf8(trim($r[self::V['codigo_prod']] ?? ''));
+
+            if ($codigoVar !== '') {
+                $sku = 'TRAY-V' . $codigoVar;
+            } elseif ($codigoProd !== '') {
+                // Sem código de variação, ancora no produto + atributos
+                $sku = 'TRAY-P' . $codigoProd . '-'
+                     . substr(md5($var1Valor . '|' . $var2Valor), 0, 8);
+            } else {
+                // Sem nenhum ID estável — último recurso: hash da linha
+                // inteira. Determinístico p/ linha idêntica, mas frágil
+                // se a linha mudar. É o pior caso; loga como tal.
+                $sku = 'TRAY-X' . substr(md5(json_encode($r)), 0, 12);
+            }
+
+            LogService::warning(
+                'Variação Tray sem referência — SKU gerado automaticamente',
+                [
+                    'produto_id'   => $produtoId,
+                    'sku_gerado'   => $sku,
+                    'codigo_var'   => $codigoVar ?: null,
+                    'codigo_prod'  => $codigoProd ?: null,
+                    'var1'         => $var1Valor ?? null,
+                    'var2'         => $var2Valor ?? null,
+                ],
+                'import'
+            );
+        }
+
         $skuDados = [
             'produto_id'  => $produtoId,
-            'sku'         => $sku ?: null,
-            'ean'         => $this->utf8($r[self::V['ean']] ?? '') ?: null,
+            'sku'         => $sku,
+            'ean'         => $ean,
             'preco'       => $preco > 0 ? $preco : 0.01,
             'preco_promo' => $precoPromo,
             'estoque'     => (int)($r[self::V['estoque']] ?? 0),

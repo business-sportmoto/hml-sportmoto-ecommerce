@@ -63,6 +63,7 @@ class AdminCliente {
             "SELECT COUNT(DISTINCT c.id)
              FROM clientes c
              JOIN usuarios u ON u.id = c.usuario_id
+             LEFT JOIN clientes cl ON cl.id = c.id
              LEFT JOIN clientes_score cs ON cs.cliente_id = c.id
              LEFT JOIN clientes_tags ct ON ct.cliente_id = c.id
              WHERE {$where}"

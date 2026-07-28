@@ -1777,7 +1777,7 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
 .pe-rte-area ul,.pe-rte-area ol{margin:0 0 .7em 1.4em}
 .pe-rte-area a{color:#2563eb;text-decoration:underline}
 /* oculta o textarea original sem removê-lo do form */
-#pe-descricao, #pe-descricao-curta{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);border:0}
+#pe-descricao, #pe-descricao-curta{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);border:0;}
 </style>
 
 <?php
