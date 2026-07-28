@@ -204,19 +204,43 @@ class TrayClienteImportService {
         $bloqueado = ($r[self::C['bloqueado']] ?? '0') === '1';
 
         // ── Checa CPF duplicado em outro cliente ──────────
+        // ── CPF duplicado: reconcilia em vez de barrar ──────────
         if ($cpf) {
             $stmt = $this->db->prepare(
-                "SELECT c.id, u.email
+                "SELECT c.id, c.usuario_id, u.email
                  FROM clientes c
                  JOIN usuarios u ON u.id = c.usuario_id
                  WHERE c.cpf = ? LIMIT 1"
             );
             $stmt->execute([$cpf]);
             $cpfExistente = $stmt->fetch();
-            if ($cpfExistente && strtolower($cpfExistente['email']) !== $email) {
-                throw new \RuntimeException(
-                    "CPF {$cpf} já está em uso por outro cliente ({$cpfExistente['email']})."
+
+            if ($cpfExistente) {
+                $emailCadastrado = strtolower(trim($cpfExistente['email']));
+
+                if ($emailCadastrado === $email) {
+                    // Mesma pessoa (CPF + e-mail batem) → atualiza campos
+                    // vazios (atualizarCliente já faz COALESCE, não toca senha)
+                    return $this->atualizarCliente(
+                        ['usuario_id' => (int)$cpfExistente['usuario_id'],
+                         'cliente_id' => (int)$cpfExistente['id']],
+                        $r, $trayId, $cpf, $bloqueado
+                    );
+                }
+
+                // CPF bate mas e-mail DIFERENTE → ambíguo, não arrisca.
+                // Pode ser conta trocada, erro de digitação, ou fraude.
+                LogService::warning(
+                    'CPF já cadastrado com e-mail diferente — cliente Tray ignorado',
+                    [
+                        'cpf'              => $cpf,
+                        'email_tray'       => $email,
+                        'email_cadastrado' => $emailCadastrado,
+                        'tray_id'          => $trayId,
+                    ],
+                    'import'
                 );
+                return 'ignorado';
             }
         }
 
@@ -364,7 +388,19 @@ class TrayClienteImportService {
 
     // ── INSERT endereço ───────────────────────────────────
     private function inserirEndereco(int $clienteId, array $r, string $nomeFallback): void {
-        $cep        = $this->limparNumeros($r[self::C['cep']] ?? '');
+        // limparNumeros já tira a máscara; mas a Tray às vezes manda
+        // >8 dígitos (concatenação/lixo) → estoura a coluna (1406).
+        // CEP brasileiro é sempre 8 dígitos: trunca o excedente.
+        $cep = $this->limparNumeros($r[self::C['cep']] ?? '');
+        if (strlen($cep) > 8) {
+            LogService::warning(
+                'CEP com mais de 8 dígitos na importação Tray — truncado',
+                ['cep_original' => $cep, 'clienteId' => $clienteId, 'nomeFallback' => $nomeFallback],
+                'import'
+            );
+            $cep = substr($cep, 0, 8);
+        }
+
         $logradouro = $this->utf8(trim($r[self::C['logradouro']] ?? ''));
 
         // Só insere se tiver pelo menos CEP ou logradouro
