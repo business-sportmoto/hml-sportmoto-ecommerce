@@ -1,6 +1,12 @@
 <?php
 // views/admin/importar/index.php
-$tipoLabels = ['produtos' => 'Produtos', 'variacoes' => 'Variações'];
+// $tipoLabels = ['produtos' => 'Produtos', 'variacoes' => 'Variações'];
+$tipoLabels = [
+    'produtos'  => 'Produtos',
+    'variacoes' => 'Variações',
+    'clientes'  => 'Clientes',
+    'pedidos'   => 'Pedidos',
+];
 $statusLabels = [
     'aguardando'   => ['cor'=>'warning', 'label'=>'Aguardando'],
     'processando'  => ['cor'=>'primary', 'label'=>'Processando'],
@@ -324,7 +330,7 @@ $statusLabels = [
           }
         ?>
         <tr>
-          <td><span class="badge badge-info"><?= $tipoLabels[$j['tipo']] ?></span></td>
+          <td><span class="badge badge-info"><?= View::e($tipoLabels[$j['tipo']] ?? ucfirst($j['tipo'])) ?></span></td>
           <td><span class="badge badge-<?= $st['cor'] ?>"><?= $st['label'] ?></span></td>
           <td><?= (int)$j['total_linhas'] ?></td>
           <td style="color:#16a34a;font-weight:700;"><?= (int)$j['criados'] ?></td>
