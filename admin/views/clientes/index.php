@@ -52,11 +52,21 @@ $pct = fn($n, $t) => $t > 0 ? round($n / $t * 100) : 0;
   </div>
  
   <div class="cli-dash-card">
-    <div class="cli-dash-label">Bloqueados</div>
-    <div class="cli-dash-value <?= $stats['bloqueados'] > 0 ? 'cli-dash-value--danger' : '' ?>">
-      <?= number_format($stats['bloqueados'], 0, ',', '.') ?>
+    <div class="cli-dash-label">Banidos / Suspensos</div>
+    <div class="cli-dash-novos" style="margin-top:2px;">
+      <div>
+        <span class="cli-dash-novos-num <?= $stats['banidos_total'] > 0 ? 'cli-dash-value--danger' : '' ?>">
+          <?= number_format($stats['banidos_total'], 0, ',', '.') ?>
+        </span>
+        <span class="cli-dash-novos-cap">Banidos</span>
+      </div>
+      <div>
+        <span class="cli-dash-novos-num <?= $stats['suspensos_compra'] > 0 ? 'cli-dash-value--danger' : '' ?>">
+          <?= number_format($stats['suspensos_compra'], 0, ',', '.') ?>
+        </span>
+        <span class="cli-dash-novos-cap" title="não podem realizar compra">Sem compra</span>
+      </div>
     </div>
-    <div class="cli-dash-foot">Conta inativa</div>
   </div>
  
   <div class="cli-dash-card cli-dash-card--novos">

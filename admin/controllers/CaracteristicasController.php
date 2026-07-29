@@ -58,7 +58,7 @@ class CaracteristicasController extends Controller {
 
         $db   = Database::getInstance()->getConnection();
         $slug = $id > 0
-                ? SlugHelper::unique($nome, 'caracteristicas', 'slug', (string)$id)
+                ? SlugHelper::unique($nome, 'caracteristicas', 'slug', (int)$id)
                 : SlugHelper::unique($nome, 'caracteristicas', 'slug', 0);
 
         $campos = [

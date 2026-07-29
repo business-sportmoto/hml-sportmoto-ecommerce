@@ -189,7 +189,16 @@ $totalFiltros = count($filtrosAtivos);
             </select>
           </div>
           <?php endforeach; ?>
-
+          
+          <div class="prod-filter-group">
+            <label class="prod-filter-label">Sincronização Bling</label>
+            <select name="bling_sync" class="form-control form-control--sm">
+              <option value="">Todos</option>
+              <option value="sku_nao_sync" <?= ($_GET['bling_sync']??'')==='sku_nao_sync' ? 'selected':'' ?>>SKU não sincronizado</option>
+              <option value="pai_nao_sync" <?= ($_GET['bling_sync']??'')==='pai_nao_sync' ? 'selected':'' ?>>Produto sem vínculo</option>
+              <option value="sincronizado" <?= ($_GET['bling_sync']??'')==='sincronizado' ? 'selected':'' ?>>Totalmente vinculado</option>
+            </select>
+          </div>
         </div>
 
         <?php if ($totalFiltros > 0): ?>

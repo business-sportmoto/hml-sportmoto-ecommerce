@@ -2045,6 +2045,10 @@ input:checked + .pe-toggle-track .pe-toggle-thumb-inner { left: 21px; }
 .pe-skus-table .pe-sku-row:last-child td { border-bottom: none; }
 .pe-skus-table .pe-sku-row:hover td { background: var(--bg); }
 
+.pe-sku-bling{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;flex-shrink:0;cursor:help}
+.pe-sku-bling.is-sync{color:#16a34a;background:#f0fdf4}
+.pe-sku-bling.is-nosync{color:#d97706;background:#fffbeb}
+
 /* Botão remover SKU */
 .pe-sku-del {
   background: none; border: none; cursor: pointer; padding: 5px;

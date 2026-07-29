@@ -1015,9 +1015,15 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
             <div class="pe-card" style="margin-top:16px;">
               <div class="pe-card-title-row">
                 <span class="pe-card-title">SKUs</span>
-                <button type="button" class="btn btn-sm btn-outline" id="btn-add-sku">
-                  + Adicionar SKU
-                </button>
+                <div>
+                  <button type="button" class="btn btn-sm btn-outline" id="btn-add-sku">
+                    + Adicionar SKU
+                  </button>
+                  <button type="button" class="btn btn-sm btn-primary" id="btn-sync-skus-bling"
+                          data-produto-id="<?= (int)($p['id'] ?? 0) ?>">
+                    ⟳ Sincronizar com Bling
+                  </button>
+                </div>
               </div>
 
               <!-- <div class="pe-skus-table-wrap">
@@ -1106,12 +1112,28 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
                         <tr class="pe-sku-row" data-sku-id="<?= $sku['id'] ?>">
 
                             <td>
-                            <input type="text"
-                                    name="skus[<?= $sku['id'] ?>][sku]"
-                                    class="form-control form-control--sm"
-                                    value="<?= View::e($sku['sku']) ?>"
-                                    placeholder="SKU-001"
-                                    style="font-family:var(--font-mono);font-size:12px;">
+                              <?php
+                                $skuBlingId = $sku['bling_id'] ?? null;
+                                $skuSync    = !empty($skuBlingId);
+                              ?>
+                              <div style="display:flex;align-items:center;gap:6px;">
+                                <span class="pe-sku-bling <?= $skuSync ? 'is-sync' : 'is-nosync' ?>"
+                                      title="<?= $skuSync
+                                          ? 'Vinculado ao Bling — ID: ' . View::e($skuBlingId)
+                                          : 'Não vinculado ao Bling' ?>">
+                                  <?php if ($skuSync): ?>
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                                  <?php else: ?>
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                                  <?php endif; ?>
+                                </span>
+                                <input type="text"
+                                       name="skus[<?= $sku['id'] ?>][sku]"
+                                       class="form-control form-control--sm"
+                                       value="<?= View::e($sku['sku']) ?>"
+                                       placeholder="SKU-001"
+                                       style="font-family:var(--font-mono);font-size:10px;">
+                              </div>
                             </td>
 
                             <td>
@@ -1959,5 +1981,18 @@ adminSeoIA({
   }
   area.addEventListener('keyup', atualizarEstado);
   area.addEventListener('mouseup', atualizarEstado);
+
+  $('#btn-sync-skus-bling').on('click', function () {
+    var $btn = $(this), id = $btn.data('produto-id');
+    if (!id) { adminToast('Salve o produto antes de sincronizar.', 'warning'); return; }
+    CK.btnLoading($btn);
+    $.post(BASE_URL + '/admin/produtos/' + id + '/sync-bling', { _token: CSRF_TOKEN })
+      .done(function (r) {
+        CK.btnLoading($btn, false);
+        adminToast(r.msg, r.ok ? 'success' : 'error');
+        if (r.ok) setTimeout(function () { location.reload(); }, 1500);
+      })
+      .fail(function () { CK.btnLoading($btn, false); adminToast('Erro de rede.', 'error'); });
+  });
 })();
 </script>

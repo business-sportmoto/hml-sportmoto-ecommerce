@@ -857,7 +857,7 @@ $(document).on('change', '#pe-categoria', function () {
           if (!res.ok) { showToast(res.msg, 'error'); return; }
           showToast(res.msg, 'success');
           drawer.close();
-          setTimeout(() => window.location.reload(), 500);
+          // setTimeout(() => window.location.reload(), 500);
         },
         dataType: 'json',
       });
@@ -2188,7 +2188,9 @@ $(document).on('change', '#pe-categoria', function () {
       CK.btnLoading($btn, false);
       showToast(r.msg, r.ok ? 'success' : 'error');
       // Erro fica visível no toast tempo suficiente pra ler o motivo
-      if (r.ok) setTimeout(function(){ location.reload(); }, 1800);
+      if (r.ok) setTimeout(function(){ 
+        // location.reload();
+       }, 1800);
     })
     .fail(function () { CK.btnLoading($btn, false); showToast('Erro de rede.', 'error'); });
 });

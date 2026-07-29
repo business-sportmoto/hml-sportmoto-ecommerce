@@ -238,4 +238,103 @@ final class BlingVinculoService
         }
         return $n;
     }
+
+    /**
+     * Vincula UM produto e suas variações via detalhe do Bling
+     * (GET /produtos/{blingId}), que retorna variacoes[] aninhadas.
+     * Eficiente: 1-2 chamadas, não lista o catálogo inteiro.
+     *
+     * Usado pelo sync individual do painel — corrige o caso de
+     * VARIAÇÃO NOVA que o resolverBlingId 1-por-1 não casava.
+     *
+     * @return array{ok:bool, pai_vinculado:bool, skus_vinculados:int, msg:string}
+     */
+    public function vincularUmProduto(int $produtoId): array
+    {
+        // 1. Resolve o bling_id do PAI (se ainda não tem)
+        $stmt = $this->db->prepare(
+            "SELECT id, sku_legado, bling_id FROM produtos WHERE id = ? LIMIT 1"
+        );
+        $stmt->execute([$produtoId]);
+        $prod = $stmt->fetch();
+        if (!$prod) {
+            return ['ok'=>false, 'pai_vinculado'=>false, 'skus_vinculados'=>0,
+                    'msg'=>'Produto não encontrado.'];
+        }
+
+        $blingIdPai = (string)($prod['bling_id'] ?? '');
+        $paiVinculado = false;
+
+        if ($blingIdPai === '') {
+            // Busca o pai no Bling pelo código (sku_legado)
+            $codigo = trim((string)($prod['sku_legado'] ?? ''));
+            if ($codigo === '') {
+                return ['ok'=>false, 'pai_vinculado'=>false, 'skus_vinculados'=>0,
+                        'msg'=>'Produto sem código (sku_legado) para buscar no Bling.'];
+            }
+            $busca = $this->api->get('/produtos', ['codigo' => $codigo]);
+            $blingIdPai = (string)($busca[0]['id'] ?? '');
+            if ($blingIdPai === '') {
+                return ['ok'=>false, 'pai_vinculado'=>false, 'skus_vinculados'=>0,
+                        'msg'=>"Nenhum produto no Bling com o código \"{$codigo}\"."];
+            }
+            $this->db->prepare("UPDATE produtos SET bling_id = ? WHERE id = ?")
+                     ->execute([$blingIdPai, $produtoId]);
+            $paiVinculado = true;
+        }
+
+        // 2. Busca o DETALHE do produto — traz variacoes[] aninhadas
+        $detalhe = $this->api->get("/produtos/{$blingIdPai}");
+
+        // 3. Monta índice das variações: codigo => bling_id
+        $idxVariacoes = [];
+        $vars = $detalhe['variacoes'] ?? $detalhe['variations'] ?? [];
+        if (is_array($vars)) {
+            foreach ($vars as $v) {
+                $codVar = trim((string)($v['codigo'] ?? ''));
+                $idVar  = (string)($v['id'] ?? '');
+                if ($codVar !== '' && $idVar !== '') {
+                    $idxVariacoes[$codVar] = $idVar;
+                }
+            }
+        }
+
+        // 4. Casa os SKUs locais (mesma lógica da massa, com TRIM/COLLATE/(string))
+        $skusVinculados = $this->casarSkusProduto($idxVariacoes, $produtoId);
+
+        LogService::info('Sync individual de produto (Bling)', [
+            'produto_id'       => $produtoId,
+            'bling_id_pai'     => $blingIdPai,
+            'variacoes_bling'  => count($idxVariacoes),
+            'skus_vinculados'  => $skusVinculados,
+        ], 'bling');
+
+        return [
+            'ok'              => true,
+            'pai_vinculado'   => $paiVinculado,
+            'skus_vinculados' => $skusVinculados,
+            'msg'             => ($paiVinculado ? 'Pai vinculado. ' : '')
+                               . "{$skusVinculados} variação(ões) vinculada(s).",
+        ];
+    }
+
+    /** Casa SKUs de UM produto específico (escopo por produto_id,
+     *  diferente do casarSkus global). TRIM/COLLATE/(string) — as
+     *  mesmas defesas da massa contra espaço/caixa/chave-int. */
+    private function casarSkusProduto(array $idx, int $produtoId): int
+    {
+        if (!$idx) return 0;
+        $stmt = $this->db->prepare(
+            "UPDATE produto_skus SET bling_id = ?
+             WHERE TRIM(sku) = ? COLLATE utf8mb4_unicode_ci
+               AND produto_id = ?
+               AND bling_id IS NULL"
+        );
+        $n = 0;
+        foreach ($idx as $codigo => $blingId) {
+            $stmt->execute([$blingId, trim((string)$codigo), $produtoId]);
+            $n += $stmt->rowCount();
+        }
+        return $n;
+    }
 }

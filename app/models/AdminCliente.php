@@ -578,8 +578,11 @@ class AdminCliente {
                 -- Ativaram a conta (e-mail verificado em usuarios)
                 SUM(CASE WHEN u.email_verificado = 1 THEN 1 ELSE 0 END) AS ativados,
 
-                -- Bloqueados (conta inativa em usuarios — não loga)
-                SUM(CASE WHEN u.ativo = 0 THEN 1 ELSE 0 END) AS bloqueados,
+                -- Banidos TOTAIS (conta inativa em usuarios — não logam)
+                SUM(CASE WHEN u.ativo = 0 THEN 1 ELSE 0 END) AS banidos_total,
+
+                -- Suspensos de COMPRA (clientes.ativo='0' — logam, não compram)
+                SUM(CASE WHEN c.ativo = '0' THEN 1 ELSE 0 END) AS suspensos_compra,
 
                 -- Novos por período (data do registro de cliente)
                 SUM(CASE WHEN DATE(c.criado_em) = CURDATE() THEN 1 ELSE 0 END) AS novos_hoje,
@@ -603,7 +606,8 @@ class AdminCliente {
             'total'        => (int)($row['total']        ?? 0),
             'da_tray'      => (int)($row['da_tray']       ?? 0),
             'ativados'     => (int)($row['ativados']      ?? 0),
-            'bloqueados'   => (int)($row['bloqueados']    ?? 0),
+            'banidos_total'    => (int)($row['banidos_total']    ?? 0),
+            'suspensos_compra' => (int)($row['suspensos_compra'] ?? 0),
             'novos_hoje'   => (int)($row['novos_hoje']    ?? 0),
             'novos_semana' => (int)($row['novos_semana']  ?? 0),
             'novos_mes'    => (int)($row['novos_mes']     ?? 0),
