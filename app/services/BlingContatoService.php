@@ -203,9 +203,15 @@ final class BlingContatoService {
     private function carregarDadosCliente(int $clienteId): ?array {
         $stmt = $this->db->prepare(
             "SELECT c.id, c.cpf, c.telefone, c.celular, c.bling_id,
-                    u.nome, u.email, u.email_verificado
+                    u.nome, u.email, u.email_verificado,
+                    e.cep AS end_cep, e.logradouro AS end_logradouro,
+                    e.numero AS end_numero, e.complemento AS end_complemento,
+                    e.bairro AS end_bairro, e.cidade AS end_cidade,
+                    e.estado AS end_uf
              FROM clientes c
              JOIN usuarios u ON u.id = c.usuario_id
+             LEFT JOIN enderecos e
+                    ON e.cliente_id = c.id AND e.principal = 1
              WHERE c.id = ? LIMIT 1"
         );
         $stmt->execute([$clienteId]);
@@ -267,10 +273,26 @@ final class BlingContatoService {
             'tipo'     => 'F',
             'situacao' => 'A',
         ];
-        if ($cpfLimpo) $dados['cpfCnpj'] = $cpfLimpo;
+        if ($cpfLimpo) $dados['numeroDocumento'] = $cpfLimpo;
         if ($email)    $dados['email']   = $c['email'];
 
         $tel = preg_replace('/\D/', '', (string)($c['celular'] ?? $c['telefone'] ?? ''));
+
+        // Endereço principal (opcional). Reenviado na criação E na
+        // atualização. Estrutura endereco.geral conforme a API do Bling.
+        if (!empty($c['end_cep']) && !empty($c['end_logradouro'])) {
+            $dados['endereco'] = [
+                'geral' => [
+                    'endereco'    => (string)$c['end_logradouro'],
+                    'cep'         => preg_replace('/\D/', '', (string)$c['end_cep']),
+                    'bairro'      => (string)($c['end_bairro'] ?? ''),
+                    'municipio'   => (string)($c['end_cidade'] ?? ''),
+                    'uf'          => (string)($c['end_uf'] ?? ''),
+                    'numero'      => (string)($c['end_numero'] ?? ''),
+                    'complemento' => (string)($c['end_complemento'] ?? ''),
+                ],
+            ];
+        }
 
         if ($contatoId) {
             // Atualização de contato EXISTENTE não exige telefone
