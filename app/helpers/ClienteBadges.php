@@ -66,6 +66,15 @@ final class ClienteBadges {
      *     esconderia, mostrando verde para dado velho
      */
     private static function bling(array $c): array {
+        // Estado de ERRO tem prioridade — cliente que falhou a sync
+         if (($c['bling_sync_status'] ?? '') === 'erro') {
+            return [
+                'tipo'   => 'danger',
+                'icone'  => '✕',
+                'label'  => 'Erro Bling',
+                'titulo' => 'Falha: ' . ($c['bling_sync_erro'] ?? 'ver perfil'),
+            ];
+        }
         if (empty($c['bling_id'])) {
             return ['tipo'=>'neutral', 'icone'=>'○', 'label'=>'Sem Bling',
                     'titulo'=>'Cliente ainda não sincronizado com o Bling'];

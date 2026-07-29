@@ -271,26 +271,27 @@ final class BlingContatoService {
         if ($email)    $dados['email']   = $c['email'];
 
         $tel = preg_replace('/\D/', '', (string)($c['celular'] ?? $c['telefone'] ?? ''));
-        if ($tel) $dados['telefone'] = $tel;
 
-        // 3. Atualiza se achou
         if ($contatoId) {
-            return $contatoId; //Estou apenas retornando o id contato;
-            try {
-                $this->api->put("/contatos/{$contatoId}", $dados);
-            } catch (\Throwable $e) {
-                LogService::error('[BlingContato] update: ' . $e->getMessage());
-            }
+            // Atualização de contato EXISTENTE não exige telefone
+            if ($tel) $dados['telefone'] = $tel;
+            try { $this->api->put("/contatos/{$contatoId}", $dados); }
+            catch (\Throwable $e) { error_log('[BlingContato] update: ' . $e->getMessage()); }
             return $contatoId;
         }
 
-        // 4. Cria — falha AQUI propaga (vira bling_sync_erro visível)
-        $resp = $this->api->post('/contatos', $dados);
+        // CRIAÇÃO: o Bling EXIGE telefone (VALIDATION_ERROR campo 'fone').
+        // Sem telefone, bloqueia com mensagem específica — não gasta a
+        // chamada e o registrarFalha grava em bling_sync_erro pra cobrar.
+        if (!$tel) {
+            throw new \RuntimeException('Cliente sem telefone cadastrado — o Bling exige telefone para criar o contato.');
+        }
+        $dados['telefone'] = $tel;
+
+        $resp   = $this->api->post('/contatos', $dados);
         $novoId = (string)($resp['data']['id'] ?? $resp['id'] ?? '');
         if (!$novoId) {
-            throw new \RuntimeException(
-                'Bling não retornou ID do contato. Resposta: ' . json_encode($resp)
-            );
+            throw new \RuntimeException('Bling não retornou ID do contato. Resposta: ' . json_encode($resp));
         }
         return $novoId;
     }

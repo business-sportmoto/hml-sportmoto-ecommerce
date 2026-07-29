@@ -26,6 +26,7 @@ class AdminClienteController extends Controller {
         $filtros = [
             'q'              => SecurityHelper::sanitizeString($_GET['q']              ?? ''),
             'tier'           => SecurityHelper::sanitizeString($_GET['tier']           ?? ''),
+            'bling_sync'     => SecurityHelper::sanitizeString($_GET['bling_sync']           ?? ''),
             'tag_id'         => (int)($_GET['tag_id'] ?? 0) ?: '',
             'ativo'          => $_GET['ativo'] ?? '',
             'aniversario_mes'=> (int)($_GET['aniversario_mes'] ?? 0) ?: '',

@@ -266,17 +266,28 @@ $statusPedMap=['aguardando_pagamento'=>['cor'=>'warning','label'=>'Aguardando pg
           </div>
           <?php endif; ?>
         </div>
-        <div style="margin-top:14px;">
+        <div style="margin-top:14px; width:100%">
           <button type="button" class="btn btn-outline btn-sm" id="btn-sync-bling-cliente"
                   data-id="<?= (int)$cliente['cliente_id'] ?>">
             <?= !empty($cliente['bling_id']) ? 'Ressincronizar com Bling' : 'Sincronizar com Bling' ?>
           </button>
-          <?php if (!empty($cliente['bling_sync_erro'])): ?>
-          <div style="margin-top:8px;font-size:12px;color:#dc2626;">
-            ⚠ Último erro: <?= View::e($cliente['bling_sync_erro']) ?>
+        </div>
+
+        <?php if (!empty($cliente['bling_sync_erro'])): ?>
+          <div style="margin-top:8px;padding:10px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;">
+            <div style="font-size:11px;font-weight:800;color:#dc2626;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">
+              Falha na sincronização Bling
+            </div>
+            <div style="font-size:13px;color:#7f1d1d;">
+              <?= View::e($cliente['bling_sync_erro']) ?>
+            </div>
+            <?php if (!empty($cliente['bling_sync_tentativas'])): ?>
+            <div style="font-size:11px;color:#991b1b;margin-top:4px;">
+              <?= (int)$cliente['bling_sync_tentativas'] ?> tentativa(s)
+            </div>
+            <?php endif; ?>
           </div>
           <?php endif; ?>
-        </div>
       </div>
       
     </section>

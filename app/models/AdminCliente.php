@@ -41,7 +41,11 @@ class AdminCliente {
                     cl.avatar AS avatar,
                     u.email_verificado,
                     u.atualizado_em,
-                    c.tray_id, c.bling_id, c.bling_sincronizado_em
+                    c.tray_id, 
+                    c.bling_id, 
+                    c.bling_sincronizado_em,
+                    c.bling_sync_status, 
+                    c.bling_sync_erro 
              FROM clientes c
              JOIN usuarios u ON u.id = c.usuario_id
              LEFT JOIN clientes cl ON cl.id = c.id
@@ -87,7 +91,8 @@ class AdminCliente {
                     cl.avatar AS avatar,
                     u.email_verificado,
                     u.atualizado_em,
-                    c.tray_id, c.bling_id, c.bling_sincronizado_em
+                    c.tray_id, c.bling_id, c.bling_sincronizado_em,
+                    c.bling_sync_status, c.bling_sync_erro
              FROM clientes c
              JOIN usuarios u  ON u.id  = c.usuario_id
              LEFT JOIN clientes cl ON cl.id = c.id
@@ -533,6 +538,15 @@ class AdminCliente {
         if (!empty($f['aniversario_mes'])) {
             $where[]  = 'MONTH(cl.nascimento) = ?';
             $params[] = (int)$f['aniversario_mes'];
+        }
+        if (!empty($f['bling_sync'])) {
+            if ($f['bling_sync'] === 'nao') {
+                $where[] = 'c.bling_id IS NULL';
+            } elseif ($f['bling_sync'] === 'erro') {
+                $where[] = "c.bling_sync_status = 'erro'";
+            } elseif ($f['bling_sync'] === 'ok') {
+                $where[] = 'c.bling_id IS NOT NULL';
+            }
         }
         return [implode(' AND ', $where), $params];
     }

@@ -15,6 +15,10 @@ $nomeMes  = ['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov
       <h1 class="admin-page-title">Clientes</h1>
       <p class="admin-page-sub"><?= number_format($total) ?> clientes encontrados</p>
     </div>
+     <div>
+    <a href="?bling_sync=erro" class="btn btn-outline btn-sm">Falhas de sync</a>
+    <a href="?bling_sync=nao" class="btn btn-outline btn-sm">Não sincronizados</a>
+    </div>
   </div>
 
   
