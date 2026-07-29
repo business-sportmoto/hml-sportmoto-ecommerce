@@ -73,22 +73,25 @@ final class BlingVinculoService
             foreach ($lista as $prod) {
                 $codigo  = trim((string)($prod['codigo'] ?? ''));
                 $blingId = (string)($prod['id'] ?? '');
-                if ($codigo !== '' && $blingId !== '') {
-                    $idxProdutos[$codigo] = $blingId;
-                    $produtosBling++;
+                $idPai   = (string)($prod['idProdutoPai'] ?? '0');
+
+                if ($codigo === '' || $blingId === '') {
+                    continue;
                 }
 
-                // VARIAÇÕES aninhadas? Detecta os nomes de campo comuns.
-                $vars = $prod['variacoes'] ?? $prod['variations'] ?? null;
-                if (is_array($vars)) {
-                    foreach ($vars as $v) {
-                        $codVar   = trim((string)($v['codigo'] ?? ''));
-                        $idVar    = (string)($v['id'] ?? '');
-                        if ($codVar !== '' && $idVar !== '') {
-                            $idxVariacoes[$codVar] = $idVar;
-                            $variacoesBling++;
-                        }
-                    }
+                // idProdutoPai distingue os 3 casos direto da LISTAGEM,
+                // sem buscar detalhe de cada produto:
+                //  == id      → produto simples
+                //  == 0/vazio → produto-pai de família
+                //  != id, !=0 → variação (linha própria na lista)
+                $ehVariacao = ($idPai !== '0' && $idPai !== '' && $idPai !== $blingId);
+
+                if ($ehVariacao) {
+                    $idxVariacoes[$codigo] = $blingId;
+                    $variacoesBling++;
+                } else {
+                    $idxProdutos[$codigo] = $blingId;
+                    $produtosBling++;
                 }
             }
 
@@ -130,33 +133,36 @@ final class BlingVinculoService
         ];
     }
 
-    /** Casa produtos locais (sku_legado) com o índice do Bling. */
+    /** Casa produtos locais (sku_legado) com o índice do Bling.
+     *  TRIM + comparação case-insensitive: sku_legado com espaço ou
+     *  caixa diferente do código Bling casaria a zero sem isto. */
     private function casarProdutos(array $idx): int
     {
         if (!$idx) return 0;
         $stmt = $this->db->prepare(
             "UPDATE produtos SET bling_id = ?
-             WHERE sku_legado = ? AND bling_id IS NULL"
+             WHERE TRIM(sku_legado) = ? COLLATE utf8mb4_unicode_ci
+               AND bling_id IS NULL"
         );
         $n = 0;
         foreach ($idx as $codigo => $blingId) {
-            $stmt->execute([$blingId, $codigo]);
+            $stmt->execute([$blingId, trim($codigo)]);
             $n += $stmt->rowCount();
         }
         return $n;
     }
 
-    /** Casa SKUs locais (produto_skus.sku) com o índice do Bling. */
     private function casarSkus(array $idx): int
     {
         if (!$idx) return 0;
         $stmt = $this->db->prepare(
             "UPDATE produto_skus SET bling_id = ?
-             WHERE sku = ? AND bling_id IS NULL"
+             WHERE TRIM(sku) = ? COLLATE utf8mb4_unicode_ci
+               AND bling_id IS NULL"
         );
         $n = 0;
         foreach ($idx as $codigo => $blingId) {
-            $stmt->execute([$blingId, $codigo]);
+            $stmt->execute([$blingId, trim($codigo)]);
             $n += $stmt->rowCount();
         }
         return $n;
