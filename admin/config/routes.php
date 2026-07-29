@@ -323,6 +323,10 @@ AdminRouter::post('/configuracoes/bling/sync-clientes', 'AdminBlingController@sy
 AdminRouter::post('/configuracoes/bling/sync-depositos', 'AdminBlingController@syncDepositos');
 AdminRouter::post('/configuracoes/bling/vincular-produtos', 'AdminBlingController@vincularProdutos');
 
+
+AdminRouter::post('/configuracoes/bling/sync-contatos',      'AdminBlingController@syncContatos');
+AdminRouter::post('/configuracoes/bling/processar-contatos', 'AdminBlingController@processarContatos');
+
 AdminRouter::get('/logs',          'AdminLogsController@index');
 AdminRouter::get('/logs/detalhe',  'AdminLogsController@detalhe');
 AdminRouter::post('/logs/resolver','AdminLogsController@resolver');

@@ -114,7 +114,7 @@
             <code class="ap-code-block" id="webhook-url" style="flex:1;background:var(--c-bg-alt);padding:8px 12px;border-radius:8px;font-size:13px;">
               <?= BASE_URL ?>/webhook/bling
             </code>
-            <button type="button" class="btn btn-outline btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('webhook-url').textContent.trim());adminToast('Copiado!','success');">
+            <button type="button" class="btn btn-outline btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('webhook-url').textContent.trim());showToast('Copiado!','success');">
               Copiar
             </button>
           </div>
@@ -224,6 +224,24 @@
           </p>
         </div>
       </div>
+
+      <div class="admin-card" style="margin-bottom:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 0;">
+          <h3 class="ap-card-title" style="margin:0;">Sincronizar contatos</h3>
+          <div style="display:flex;gap:8px;">
+            <button type="button" class="btn btn-outline btn-sm" id="btn-sync-contatos">Enfileirar todos</button>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-processar-contatos">Processar lote</button>
+          </div>
+        </div>
+        <div style="padding:14px 20px 18px;">
+          <p style="font-size:13px;color:var(--c-text-muted);line-height:1.6;margin:0 0 8px;">
+            <strong>1.</strong> "Enfileirar todos" marca os clientes verificados para sincronizar.
+            <strong>2.</strong> "Processar lote" envia 30 por vez ao Bling (clique repetido até zerar).
+            O restante também é drenado pelo processamento em segundo plano.
+          </p>
+          <div id="contatos-progresso" style="font-size:13px;font-weight:700;color:#16a34a;"></div>
+        </div>
+      </div>
       
 
       <!-- Depósitos do Bling -->
@@ -330,7 +348,7 @@ $('#btn-abrir-status-map').on('click', function () {
     $.get(ADMIN_URL + '/configuracoes/bling/situacoes')
     .done(function (r) {
       CK.btnLoading($btn, false);
-      if (!r.ok) { adminToast(r.msg, 'error'); return; }
+      if (!r.ok) { showToast(r.msg, 'error'); return; }
       // Adiciona apenas as que ainda não estão na tabela
       var existentes = $('#sm-table-wrap tbody tr').map(function () {
         return $(this).find('[data-field="bling_id"]').val();
@@ -341,10 +359,10 @@ $('#btn-abrir-status-map').on('click', function () {
       novas.forEach(function (s) {
         appendLinha({ bling_id: s.id, bling_label: s.descricao, status_local: '' });
       });
-      if (novas.length) adminToast(novas.length + ' situações adicionadas.', 'success');
-      else adminToast('Nenhuma situação nova.', 'info');
+      if (novas.length) showToast(novas.length + ' situações adicionadas.', 'success');
+      else showToast('Nenhuma situação nova.', 'info');
     })
-    .fail(function () { CK.btnLoading($btn, false); adminToast('Erro ao buscar situações.', 'error'); });
+    .fail(function () { CK.btnLoading($btn, false); showToast('Erro ao buscar situações.', 'error'); });
   });
 
   // Adiciona linha manual
@@ -384,10 +402,10 @@ $('#btn-abrir-status-map').on('click', function () {
     })
     .done(function (r) {
       CK.btnLoading($btn, false);
-      adminToast(r.msg, r.ok ? 'success' : 'error');
+      showToast(r.msg, r.ok ? 'success' : 'error');
       if (r.ok) drawer.close();
     })
-    .fail(function () { CK.btnLoading($btn, false); adminToast('Erro.', 'error'); });
+    .fail(function () { CK.btnLoading($btn, false); showToast('Erro.', 'error'); });
   });
 
   // ── helpers ──────────────────────────────────────────
@@ -446,9 +464,9 @@ $('#btn-salvar-creds').on('click', function() {
   })
   .done(function(r) {
     CK.btnLoading($btn, false);
-    adminToast(r.msg, r.ok ? 'success' : 'error');
+    showToast(r.msg, r.ok ? 'success' : 'error');
   })
-  .fail(function() { CK.btnLoading($btn, false); adminToast('Erro.', 'error'); });
+  .fail(function() { CK.btnLoading($btn, false); showToast('Erro.', 'error'); });
 });
 
 // ── Sync estoque ──────────────────────────────────────
@@ -458,10 +476,10 @@ $('#btn-sync-estoque').on('click', function() {
   $.post(ADMIN_URL + '/configuracoes/bling/sync-estoque', { _token: CSRF_TOKEN })
   .done(function(r) {
     CK.btnLoading($btn, false);
-    adminToast(r.msg, r.ok ? 'success' : 'error');
+    showToast(r.msg, r.ok ? 'success' : 'error');
     if (r.ok) setTimeout(function() { location.reload(); }, 2000);
   })
-  .fail(function() { CK.btnLoading($btn, false); adminToast('Erro.', 'error'); });
+  .fail(function() { CK.btnLoading($btn, false); showToast('Erro.', 'error'); });
 });
 
 // ── Desconectar ───────────────────────────────────────
@@ -479,9 +497,9 @@ $('#btn-sync-clientes').on('click', function() {
   $.post(ADMIN_URL + '/configuracoes/bling/sync-clientes', { _token: CSRF_TOKEN })
   .done(function(r) {
     CK.btnLoading($btn, false);
-    adminToast(r.msg, r.ok ? 'success' : 'error');
+    showToast(r.msg, r.ok ? 'success' : 'error');
   })
-  .fail(function() { CK.btnLoading($btn, false); adminToast('Erro.', 'error'); });
+  .fail(function() { CK.btnLoading($btn, false); showToast('Erro.', 'error'); });
 });
 
 $('#btn-sync-depositos').on('click', function () {
@@ -490,10 +508,10 @@ $('#btn-sync-depositos').on('click', function () {
   $.post(ADMIN_URL + '/configuracoes/bling/sync-depositos', { _token: CSRF_TOKEN })
     .done(function (r) {
       CK.btnLoading($btn, false);
-      adminToast(r.msg, r.ok ? 'success' : 'error');
+      showToast(r.msg, r.ok ? 'success' : 'error');
       if (r.ok) setTimeout(function () { location.reload(); }, 1200);
     })
-    .fail(function () { CK.btnLoading($btn, false); adminToast('Erro de rede.', 'error'); });
+    .fail(function () { CK.btnLoading($btn, false); showToast('Erro de rede.', 'error'); });
 });
 
 $('#btn-vincular-produtos').on('click', function () {
@@ -508,11 +526,45 @@ $('#btn-vincular-produtos').on('click', function () {
   })
   .done(function (r) {
     CK.btnLoading($btn, false);
-    adminToast(r.msg, r.ok ? 'success' : 'error');
+    showToast(r.msg, r.ok ? 'success' : 'error');
   })
   .fail(function (xhr, status) {
     CK.btnLoading($btn, false);
-    adminToast(status === 'timeout' ? 'Demorou demais — verifique os logs.' : 'Erro de rede.', 'error');
+    showToast(status === 'timeout' ? 'Demorou demais — verifique os logs.' : 'Erro de rede.', 'error');
+  });
+});
+
+$('#btn-sync-contatos').on('click', function () {
+  var $btn = $(this);
+  CK.btnLoading($btn);
+  $.post(ADMIN_URL + '/configuracoes/bling/sync-contatos', { _token: CSRF_TOKEN })
+    .done(function (r) {
+      CK.btnLoading($btn, false);
+      showToast(r.msg, r.ok ? 'success' : 'error');
+    })
+    .fail(function () { CK.btnLoading($btn, false); showToast('Erro de rede.', 'error'); });
+});
+
+$('#btn-processar-contatos').on('click', function () {
+  var $btn = $(this);
+  CK.btnLoading($btn);
+  $.ajax({
+    url: ADMIN_URL + '/configuracoes/bling/processar-contatos',
+    method: 'POST', data: { _token: CSRF_TOKEN }, timeout: 120000
+  })
+  .done(function (r) {
+    CK.btnLoading($btn, false);
+    showToast(r.msg, r.ok ? 'success' : 'error');
+    if (r.ok) {
+      $('#contatos-progresso').text(
+        r.restam > 0 ? ('Faltam ' + r.restam + ' — clique "Processar lote" novamente.')
+                     : 'Todos os contatos sincronizados ✓'
+      );
+    }
+  })
+  .fail(function (xhr, status) {
+    CK.btnLoading($btn, false);
+    showToast(status === 'timeout' ? 'Lote demorou demais — reduza o tamanho.' : 'Erro de rede.', 'error');
   });
 });
 </script>
