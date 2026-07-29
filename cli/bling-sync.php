@@ -23,9 +23,9 @@ $falhou = false;
 
 // ── 1. Estoque (produtos) ─────────────────────────────
 try {
-    $r = (new BlingEstoqueService())->sincronizarTudo();
-    echo "{$ts()} | estoque OK | total={$r['total']} "
-       . "atualizados={$r['atualizados']} erros={$r['erros']}\n";
+    // era: (new BlingEstoqueService())->sincronizarTudo();
+    $r = (new BlingEstoqueService())->sincronizarEstoque();
+    echo "{$ts()} | estoque | total={$r['total']} atualizados={$r['atualizados']} erros={$r['erros']}\n";
 } catch (\Throwable $e) {
     // NÃO aborta: a fila de clientes é independente e precisa rodar
     echo "{$ts()} | estoque ERRO | {$e->getMessage()}\n";

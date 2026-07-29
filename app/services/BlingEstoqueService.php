@@ -505,4 +505,109 @@ class BlingEstoqueService
         }
         return 0;
     }
+
+    /**
+     * Estoque dos produtos que JÁ têm bling_id — em LOTE.
+     * NÃO resolve vínculo (isso é o cron diário). Roda a cada 15min
+     * e faz só chamadas em lote: N produtos = N/BATCH_SIZE calls.
+     */
+    public function sincronizarEstoque(): array
+    {
+        $idDeposito = $this->getDepositoPadrao();
+        if (!$idDeposito) {
+            return ['total'=>0,'atualizados'=>0,'erros'=>0,
+                    'erro'=>'Nenhum depósito Bling configurado.'];
+        }
+
+        // Mapa bling_id => {sku_id, produto_id}: SKUs E produtos simples
+        // que já têm vínculo. sku_id NULL = produto sem variação.
+        $mapa = [];
+
+        foreach ($this->db->query(
+            "SELECT ps.id AS sku_id, ps.produto_id, ps.bling_id
+             FROM produto_skus ps
+             WHERE ps.ativo = 1 AND ps.bling_id IS NOT NULL"
+        )->fetchAll() as $s) {
+            $mapa[(string)$s['bling_id']] = [
+                'sku_id' => (int)$s['sku_id'], 'produto_id' => (int)$s['produto_id']];
+        }
+
+        foreach ($this->db->query(
+            "SELECT p.id AS produto_id, p.bling_id
+             FROM produtos p
+             WHERE p.ativo = 1 AND p.deleted_at IS NULL AND p.bling_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM produto_skus ps WHERE ps.produto_id = p.id)"
+        )->fetchAll() as $p) {
+            $mapa[(string)$p['bling_id']] = [
+                'sku_id' => null, 'produto_id' => (int)$p['produto_id']];
+        }
+
+        $blingIds = array_keys($mapa);
+        $total = count($blingIds);
+        $atualizados = 0; $erros = 0;
+
+        foreach (array_chunk($blingIds, self::BATCH_SIZE) as $batch) {
+            try {
+                $itens = $this->api->getComArray(
+                    "/estoques/saldos/{$idDeposito}",
+                    ['idsProdutos' => $batch]
+                );
+                foreach ($itens as $e) {
+                    $bid = (string)($e['produto']['id'] ?? $e['produtoId'] ?? '');
+                    if (!isset($mapa[$bid])) continue;
+                    $saldo = (float)($e['saldoFisicoTotal'] ?? $e['saldoFisico'] ?? 0);
+                    $this->corrigirSaldoAbsoluto(
+                        $mapa[$bid]['sku_id'], $mapa[$bid]['produto_id'], $saldo);
+                    $atualizados++;
+                }
+            } catch (\Throwable) {
+                $erros++;
+            }
+        }
+
+        return compact('total', 'atualizados', 'erros');
+    }
+
+    /**
+     * Resolve bling_id de produtos/SKUs que ainda não têm — via
+     * GET por código (caro, 1 call cada). RODA 1x/DIA. O LIMIT é o
+     * airbag do rate limit: nunca passa de $limite×2 calls por dia.
+     */
+    public function resolverVinculos(int $limite = 300): array
+    {
+        $resolvidos = 0; $falhas = 0;
+
+        // Produtos-pai / simples sem vínculo
+        $prods = $this->db->prepare(
+            "SELECT p.id, p.sku_legado
+             FROM produtos p
+             WHERE p.ativo = 1 AND p.deleted_at IS NULL
+               AND p.bling_id IS NULL
+               AND p.sku_legado IS NOT NULL AND p.sku_legado <> ''
+             ORDER BY p.id LIMIT ?"
+        );
+        $prods->execute([$limite]);
+        foreach ($prods->fetchAll() as $p) {
+            $this->resolverBlingIdProduto((string)$p['sku_legado'], (int)$p['id'])
+                ? $resolvidos++ : $falhas++;
+            usleep(150000);
+        }
+
+        // SKUs sem vínculo
+        $skus = $this->db->prepare(
+            "SELECT ps.id, ps.sku, ps.produto_id
+             FROM produto_skus ps
+             WHERE ps.ativo = 1 AND ps.bling_id IS NULL
+               AND ps.sku IS NOT NULL AND ps.sku <> ''
+             ORDER BY ps.id LIMIT ?"
+        );
+        $skus->execute([$limite]);
+        foreach ($skus->fetchAll() as $s) {
+            $this->resolverBlingId((string)$s['sku'], (int)$s['produto_id'])
+                ? $resolvidos++ : $falhas++;
+            usleep(150000);
+        }
+
+        return compact('resolvidos', 'falhas');
+    }
 }

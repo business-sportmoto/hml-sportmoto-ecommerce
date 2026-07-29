@@ -38,6 +38,27 @@ class AdminBlingController extends Controller
             'conectado', 'tokenInfo', 'logs', 'ultimaSync', 'depositos'
         ),'admin');
     }
+
+    // ── POST /admin/configuracoes/bling/vincular-produtos ─────
+    public function vincularProdutos(): void
+    {
+        $this->verifyCsrf();
+        // Operação longa (lista catálogo inteiro): estende o tempo limite
+        set_time_limit(300);
+        try {
+            $r = (new BlingVinculoService())->vincularTudo();
+            $this->json([
+                'ok'  => true,
+                'msg' => "Vinculação concluída: {$r['vinculados_produtos']} produto(s) "
+                       . "e {$r['vinculados_skus']} SKU(s) vinculados. "
+                       . "Catálogo Bling: {$r['produtos_bling']} produtos, "
+                       . "{$r['variacoes_bling']} variações em {$r['paginas']} páginas.",
+                'detalhe' => $r,
+            ]);
+        } catch (\Throwable $e) {
+            $this->json(['ok' => false, 'msg' => $e->getMessage()]);
+        }
+    }
  
     // ── POST /admin/configuracoes/bling/credenciais ───────
     public function salvarCredenciais(): void

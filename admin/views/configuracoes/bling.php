@@ -209,6 +209,23 @@
         </div>
       </div>
 
+      <div class="admin-card" style="margin-bottom:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 0;">
+          <h3 class="ap-card-title" style="margin:0;">Vincular produtos ao Bling</h3>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-vincular-produtos">
+            Vincular agora
+          </button>
+        </div>
+        <div style="padding:14px 20px 18px;">
+          <p style="font-size:13px;color:var(--c-text-muted);line-height:1.6;margin:0;">
+            Lista o catálogo do Bling e preenche o <code>bling_id</code> dos produtos e SKUs
+            que casam por código. Operação única — rode após importar da Tray.
+            Não estoura o limite: usa listagem em lote, não busca item a item.
+          </p>
+        </div>
+      </div>
+      
+
       <!-- Depósitos do Bling -->
       <div class="admin-card" style="margin-bottom:14px;">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 0;">
@@ -477,5 +494,25 @@ $('#btn-sync-depositos').on('click', function () {
       if (r.ok) setTimeout(function () { location.reload(); }, 1200);
     })
     .fail(function () { CK.btnLoading($btn, false); adminToast('Erro de rede.', 'error'); });
+});
+
+$('#btn-vincular-produtos').on('click', function () {
+  var $btn = $(this);
+  if (!confirm('Vincular produtos e SKUs ao Bling? Pode levar alguns minutos.')) return;
+  CK.btnLoading($btn);
+  $.ajax({
+    url: ADMIN_URL + '/configuracoes/bling/vincular-produtos',
+    method: 'POST',
+    data: { _token: CSRF_TOKEN },
+    timeout: 300000   // 5min — a operação lista o catálogo inteiro
+  })
+  .done(function (r) {
+    CK.btnLoading($btn, false);
+    adminToast(r.msg, r.ok ? 'success' : 'error');
+  })
+  .fail(function (xhr, status) {
+    CK.btnLoading($btn, false);
+    adminToast(status === 'timeout' ? 'Demorou demais — verifique os logs.' : 'Erro de rede.', 'error');
+  });
 });
 </script>
