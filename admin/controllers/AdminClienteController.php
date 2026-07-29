@@ -37,8 +37,10 @@ class AdminClienteController extends Controller {
         $tags    = $this->model->getTodasTags();
         $totalPages = (int)ceil($total / 25);
 
+        $stats = $this->model->getDashboardStats();
+
         $this->render('clientes/index', compact(
-            'clientes','filtros','total','page','totalPages','tags'
+            'clientes','filtros','total','page','totalPages','tags', 'stats'
         ), 'admin');
     }
 

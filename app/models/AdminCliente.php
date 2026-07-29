@@ -550,4 +550,63 @@ class AdminCliente {
         }
         return [implode(' AND ', $where), $params];
     }
+
+// ════════════════════════════════════════════════════════
+// MÉTODO para AdminCliente.php (model)
+// Adicionar como método público. Uma query só, com agregação
+// condicional (SUM(CASE WHEN...)) — não faz N queries.
+// ════════════════════════════════════════════════════════
+
+    /**
+     * Estatísticas para o header da listagem de clientes.
+     * Tudo numa query: COUNT total + somas condicionais.
+     *
+     * @return array{
+     *   total:int, da_tray:int, ativados:int, bloqueados:int,
+     *   novos_hoje:int, novos_semana:int, novos_mes:int
+     * }
+     */
+    public function getDashboardStats(): array
+    {
+        $sql = "
+            SELECT
+                COUNT(*) AS total,
+
+                -- Origem Tray (tray_id preenchido em clientes)
+                SUM(CASE WHEN c.tray_id IS NOT NULL AND c.tray_id <> '' THEN 1 ELSE 0 END) AS da_tray,
+
+                -- Ativaram a conta (e-mail verificado em usuarios)
+                SUM(CASE WHEN u.email_verificado = 1 THEN 1 ELSE 0 END) AS ativados,
+
+                -- Bloqueados (conta inativa em usuarios — não loga)
+                SUM(CASE WHEN u.ativo = 0 THEN 1 ELSE 0 END) AS bloqueados,
+
+                -- Novos por período (data do registro de cliente)
+                SUM(CASE WHEN DATE(c.criado_em) = CURDATE() THEN 1 ELSE 0 END) AS novos_hoje,
+
+                SUM(CASE WHEN c.criado_em >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
+                         THEN 1 ELSE 0 END) AS novos_semana,
+
+                SUM(CASE WHEN YEAR(c.criado_em) = YEAR(CURDATE())
+                          AND MONTH(c.criado_em) = MONTH(CURDATE())
+                         THEN 1 ELSE 0 END) AS novos_mes
+
+            FROM clientes c
+            JOIN usuarios u ON u.id = c.usuario_id
+            WHERE u.deleted_at IS NULL
+        ";
+
+        $row = $this->db->query($sql)->fetch();
+
+        // Cast defensivo — fetchColumn de SUM pode vir string/null
+        return [
+            'total'        => (int)($row['total']        ?? 0),
+            'da_tray'      => (int)($row['da_tray']       ?? 0),
+            'ativados'     => (int)($row['ativados']      ?? 0),
+            'bloqueados'   => (int)($row['bloqueados']    ?? 0),
+            'novos_hoje'   => (int)($row['novos_hoje']    ?? 0),
+            'novos_semana' => (int)($row['novos_semana']  ?? 0),
+            'novos_mes'    => (int)($row['novos_mes']     ?? 0),
+        ];
+    }
 }

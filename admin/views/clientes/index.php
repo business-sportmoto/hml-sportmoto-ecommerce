@@ -20,9 +20,63 @@ $nomeMes  = ['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov
     <a href="?bling_sync=nao" class="btn btn-outline btn-sm">Não sincronizados</a>
     </div>
   </div>
-
-  
-
+  <?php
+// ════════════════════════════════════════════════════════
+// HEADER DASHBOARD — topo da view clientes/index.php
+// Colar ANTES da tabela de clientes.
+// Requer $stats (do controller: getDashboardStats()).
+//
+// WEEKDAY() do MySQL: segunda=0 → "semana" começa na segunda.
+// Se sua semana começa domingo, ajuste a query do model.
+// ════════════════════════════════════════════════════════
+$pct = fn($n, $t) => $t > 0 ? round($n / $t * 100) : 0;
+?>
+ 
+<div class="cli-dash">
+  <div class="cli-dash-card cli-dash-card--primary">
+    <div class="cli-dash-label">Total de clientes</div>
+    <div class="cli-dash-value"><?= number_format($stats['total'], 0, ',', '.') ?></div>
+    <div class="cli-dash-foot">Base completa</div>
+  </div>
+ 
+  <div class="cli-dash-card">
+    <div class="cli-dash-label">Vindos da Tray</div>
+    <div class="cli-dash-value"><?= number_format($stats['da_tray'], 0, ',', '.') ?></div>
+    <div class="cli-dash-foot"><?= $pct($stats['da_tray'], $stats['total']) ?>% da base</div>
+  </div>
+ 
+  <div class="cli-dash-card">
+    <div class="cli-dash-label">Ativaram a conta</div>
+    <div class="cli-dash-value cli-dash-value--ok"><?= number_format($stats['ativados'], 0, ',', '.') ?></div>
+    <div class="cli-dash-foot"><?= $pct($stats['ativados'], $stats['total']) ?>% ativados</div>
+  </div>
+ 
+  <div class="cli-dash-card">
+    <div class="cli-dash-label">Bloqueados</div>
+    <div class="cli-dash-value <?= $stats['bloqueados'] > 0 ? 'cli-dash-value--danger' : '' ?>">
+      <?= number_format($stats['bloqueados'], 0, ',', '.') ?>
+    </div>
+    <div class="cli-dash-foot">Conta inativa</div>
+  </div>
+ 
+  <div class="cli-dash-card cli-dash-card--novos">
+    <div class="cli-dash-label">Novos clientes</div>
+    <div class="cli-dash-novos">
+      <div>
+        <span class="cli-dash-novos-num"><?= number_format($stats['novos_hoje'], 0, ',', '.') ?></span>
+        <span class="cli-dash-novos-cap">Hoje</span>
+      </div>
+      <div>
+        <span class="cli-dash-novos-num"><?= number_format($stats['novos_semana'], 0, ',', '.') ?></span>
+        <span class="cli-dash-novos-cap">Semana</span>
+      </div>
+      <div>
+        <span class="cli-dash-novos-num"><?= number_format($stats['novos_mes'], 0, ',', '.') ?></span>
+        <span class="cli-dash-novos-cap">Mês</span>
+      </div>
+    </div>
+  </div>
+</div>
   <!-- Filtros -->
   <form method="GET" class="admin-filters" style="margin-bottom:16px;">
     <div class="filter-row">
@@ -198,6 +252,28 @@ $nomeMes  = ['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov
     <?php endif; ?>
   </div>
 </div>
+
+<style>
+.cli-dash{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}
+.cli-dash-card{background:#fff;border:1px solid var(--c-border,#e6e9ef);border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:4px;transition:box-shadow .18s,transform .18s}
+.cli-dash-card:hover{box-shadow:0 8px 24px rgba(15,23,42,.06);transform:translateY(-1px)}
+.cli-dash-card--primary{background:linear-gradient(135deg,#1e293b,#0f172a);border-color:#0f172a}
+.cli-dash-card--primary .cli-dash-label{color:#94a3b8}
+.cli-dash-card--primary .cli-dash-value{color:#fff}
+.cli-dash-card--primary .cli-dash-foot{color:#64748b}
+.cli-dash-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--c-text-muted,#64748b)}
+.cli-dash-value{font-size:28px;font-weight:800;line-height:1.1;color:var(--c-dark,#0f172a);font-variant-numeric:tabular-nums}
+.cli-dash-value--ok{color:#16a34a}
+.cli-dash-value--danger{color:#dc2626}
+.cli-dash-foot{font-size:11px;color:var(--c-text-muted,#94a3b8)}
+.cli-dash-card--novos{grid-column:span 1}
+.cli-dash-novos{display:flex;gap:14px;margin-top:2px}
+.cli-dash-novos>div{display:flex;flex-direction:column}
+.cli-dash-novos-num{font-size:20px;font-weight:800;color:var(--c-dark,#0f172a);line-height:1.1;font-variant-numeric:tabular-nums}
+.cli-dash-novos-cap{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;color:var(--c-text-muted,#94a3b8);margin-top:2px}
+@media (max-width:1100px){.cli-dash{grid-template-columns:repeat(3,1fr)}.cli-dash-card--novos{grid-column:span 3}}
+@media (max-width:640px){.cli-dash{grid-template-columns:repeat(2,1fr)}.cli-dash-card--novos{grid-column:span 2}}
+</style>
 
 <script>
   $(document).on('click', '.btn-sync-bling', function () {
