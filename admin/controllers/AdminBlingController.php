@@ -60,62 +60,7 @@ class AdminBlingController extends Controller
         }
     }
 
-    // ── POST /admin/configuracoes/bling/sync-contatos ─────
-    // Enfileira TODOS os clientes elegíveis (verificados, sem bling_id).
-    // NÃO sincroniza inline — marca 'pendente' e a fila (processarFila)
-    // drena respeitando o rate limit. Resposta imediata.
-    public function syncContatos(): void
-    {
-        $this->verifyCsrf();
-        try {
-            $n = (new BlingContatoService())->enfileirarTodos();
-            $this->json([
-                'ok'  => true,
-                'msg' => $n > 0
-                    ? "{$n} cliente(s) enfileirado(s). A sincronização roda em segundo plano — "
-                    . "acompanhe pelos badges na lista de clientes."
-                    : 'Nenhum cliente novo para sincronizar — todos já estão no Bling.',
-            ]);
-        } catch (\Throwable $e) {
-            $this->json(['ok' => false, 'msg' => $e->getMessage()]);
-        }
-    }
 
-    // ── POST /admin/configuracoes/bling/processar-contatos ────
-    // Processa um LOTE pequeno da fila AGORA (síncrono) — carga
-    // inicial com feedback imediato. Lote fixo baixo p/ não estourar
-    // o timeout do PHP-FPM/Nginx. Admin clica de novo p/ o próximo.
-    public function processarContatos(): void
-    {
-        $this->verifyCsrf();
-        set_time_limit(120);
-        try {
-            $r = (new BlingContatoService())->processarFila(30);
-            $restam = $this->contatosPendentes();
-            $this->json([
-                'ok'  => true,
-                'msg' => "Lote processado: {$r['ok']} ok, {$r['falhas']} falha(s). "
-                       . ($restam > 0
-                           ? "Ainda faltam {$restam} — clique novamente."
-                           : "Fila vazia — todos sincronizados."),
-                'restam'   => $restam,
-                'detalhes' => $r['detalhes'] ?? [],
-            ]);
-        } catch (\Throwable $e) {
-            $this->json(['ok' => false, 'msg' => $e->getMessage()]);
-        }
-    }
-
-    /** Conta clientes ainda pendentes na fila. */
-    private function contatosPendentes(): int
-    {
-        $db = Database::getInstance()->getConnection();
-        return (int)$db->query(
-            "SELECT COUNT(*) FROM clientes
-             WHERE bling_sync_status = 'pendente' AND bling_sync_tentativas < 3"
-        )->fetchColumn();
-    }
- 
     // ── POST /admin/configuracoes/bling/credenciais ───────
     public function salvarCredenciais(): void
     {
@@ -316,26 +261,6 @@ class AdminBlingController extends Controller
         }
     }
 
-    // ── POST /admin/configuracoes/bling/sync-clientes ─────
-    // Enfileira todos os clientes elegíveis; o cron drena a fila.
-    // NÃO sincroniza inline — evita timeout e estouro de rate
-    // limit numa request web (pode haver centenas de clientes).
-    public function syncClientes(): void
-    {
-        $this->verifyCsrf();
-        try {
-            $n = (new BlingContatoService())->enfileirarTodos();
-            $this->json([
-                'ok'  => true,
-                'msg' => $n > 0
-                    ? "{$n} cliente(s) enfileirado(s). A sincronização ocorre em segundo plano (cron)."
-                    : 'Nenhum cliente novo para sincronizar — todos já estão no Bling.',
-            ]);
-        } catch (\Throwable $e) {
-            $this->json(['ok' => false, 'msg' => $e->getMessage()]);
-        }
-    }
-
     // ── POST /admin/configuracoes/bling/sync-depositos ────
     public function syncDepositos(): void
     {
@@ -372,6 +297,23 @@ class AdminBlingController extends Controller
             }
 
             $this->json(['ok' => true, 'msg' => "{$n} depósito(s) sincronizado(s)."]);
+        } catch (\Throwable $e) {
+            $this->json(['ok' => false, 'msg' => $e->getMessage()]);
+        }
+    }
+
+    // ── POST /admin/configuracoes/bling/vincular-contatos ─────
+    public function vincularContatos(): void
+    {
+        $this->verifyCsrf();
+        set_time_limit(300);
+        try {
+            $r = (new BlingVinculoService())->vincularContatos();
+            $this->json([
+                'ok'  => true,
+                'msg' => "Vinculação concluída: {$r['vinculados']} cliente(s) vinculados. "
+                       . "Bling: {$r['contatos_bling']} contatos em {$r['paginas']} páginas.",
+            ]);
         } catch (\Throwable $e) {
             $this->json(['ok' => false, 'msg' => $e->getMessage()]);
         }

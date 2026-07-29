@@ -12,11 +12,13 @@
         <?= IconLibrary::render('sync') ?>
         Sync estoque agora
       </button>
-      <button type="button" class="btn btn-outline btn-sm" id="btn-sync-clientes">
+
+      <button type="button" class="btn btn-primary btn-sm" id="btn-vincular-contatos">
         <?= IconLibrary::render('person-serach') ?>
-        Sincronizar clientes
+        Vincular contatos
       </button>
       <button type="button" class="btn btn-outline btn-sm btn-danger" id="btn-desconectar">
+        <?= IconLibrary::render('sync-disabled') ?>
         Desconectar
       </button>
     </div>
@@ -222,24 +224,6 @@
             que casam por código. Operação única — rode após importar da Tray.
             Não estoura o limite: usa listagem em lote, não busca item a item.
           </p>
-        </div>
-      </div>
-
-      <div class="admin-card" style="margin-bottom:14px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 0;">
-          <h3 class="ap-card-title" style="margin:0;">Sincronizar contatos</h3>
-          <div style="display:flex;gap:8px;">
-            <button type="button" class="btn btn-outline btn-sm" id="btn-sync-contatos">Enfileirar todos</button>
-            <button type="button" class="btn btn-primary btn-sm" id="btn-processar-contatos">Processar lote</button>
-          </div>
-        </div>
-        <div style="padding:14px 20px 18px;">
-          <p style="font-size:13px;color:var(--c-text-muted);line-height:1.6;margin:0 0 8px;">
-            <strong>1.</strong> "Enfileirar todos" marca os clientes verificados para sincronizar.
-            <strong>2.</strong> "Processar lote" envia 30 por vez ao Bling (clique repetido até zerar).
-            O restante também é drenado pelo processamento em segundo plano.
-          </p>
-          <div id="contatos-progresso" style="font-size:13px;font-weight:700;color:#16a34a;"></div>
         </div>
       </div>
       
@@ -491,16 +475,6 @@ $('#btn-desconectar').on('click', function() {
   });
 });
 
-$('#btn-sync-clientes').on('click', function() {
-  var $btn = $(this);
-  CK.btnLoading($btn);
-  $.post(ADMIN_URL + '/configuracoes/bling/sync-clientes', { _token: CSRF_TOKEN })
-  .done(function(r) {
-    CK.btnLoading($btn, false);
-    showToast(r.msg, r.ok ? 'success' : 'error');
-  })
-  .fail(function() { CK.btnLoading($btn, false); showToast('Erro.', 'error'); });
-});
 
 $('#btn-sync-depositos').on('click', function () {
   var $btn = $(this);
@@ -534,37 +508,15 @@ $('#btn-vincular-produtos').on('click', function () {
   });
 });
 
-$('#btn-sync-contatos').on('click', function () {
-  var $btn = $(this);
-  CK.btnLoading($btn);
-  $.post(ADMIN_URL + '/configuracoes/bling/sync-contatos', { _token: CSRF_TOKEN })
-    .done(function (r) {
-      CK.btnLoading($btn, false);
-      showToast(r.msg, r.ok ? 'success' : 'error');
-    })
-    .fail(function () { CK.btnLoading($btn, false); showToast('Erro de rede.', 'error'); });
-});
 
-$('#btn-processar-contatos').on('click', function () {
+$('#btn-vincular-contatos').on('click', function () {
   var $btn = $(this);
+  if (!confirm('Vincular contatos ao Bling por CPF? Pode levar alguns minutos.')) return;
   CK.btnLoading($btn);
-  $.ajax({
-    url: ADMIN_URL + '/configuracoes/bling/processar-contatos',
-    method: 'POST', data: { _token: CSRF_TOKEN }, timeout: 120000
-  })
-  .done(function (r) {
-    CK.btnLoading($btn, false);
-    showToast(r.msg, r.ok ? 'success' : 'error');
-    if (r.ok) {
-      $('#contatos-progresso').text(
-        r.restam > 0 ? ('Faltam ' + r.restam + ' — clique "Processar lote" novamente.')
-                     : 'Todos os contatos sincronizados ✓'
-      );
-    }
-  })
-  .fail(function (xhr, status) {
-    CK.btnLoading($btn, false);
-    showToast(status === 'timeout' ? 'Lote demorou demais — reduza o tamanho.' : 'Erro de rede.', 'error');
-  });
+  $.ajax({ url: ADMIN_URL + '/configuracoes/bling/vincular-contatos',
+           method: 'POST', data: { _token: CSRF_TOKEN }, timeout: 300000 })
+  .done(function (r) { CK.btnLoading($btn, false); showToast(r.msg, r.ok ? 'success' : 'error'); })
+  .fail(function (xhr, s) { CK.btnLoading($btn, false);
+    showToast(s === 'timeout' ? 'Demorou demais — veja os logs.' : 'Erro de rede.', 'error'); });
 });
 </script>

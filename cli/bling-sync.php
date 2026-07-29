@@ -21,30 +21,13 @@ require_once __DIR__ . '/../bootstrap-cli.php';
 $ts = static fn(): string => date('Y-m-d H:i:s');
 $falhou = false;
 
-// ── 1. Estoque (produtos) ─────────────────────────────
-try {
-    // era: (new BlingEstoqueService())->sincronizarTudo();
-    $r = (new BlingEstoqueService())->sincronizarEstoque();
-    echo "{$ts()} | estoque | total={$r['total']} atualizados={$r['atualizados']} erros={$r['erros']}\n";
-} catch (\Throwable $e) {
-    // NÃO aborta: a fila de clientes é independente e precisa rodar
-    echo "{$ts()} | estoque ERRO | {$e->getMessage()}\n";
-    $falhou = true;
-}
 
-// ── 2. Clientes (fila de contatos) ────────────────────
+// Rede de segurança: clientes novos cujo gatilho de criação falhou
 try {
-    $r = (new BlingContatoService())->processarFila(50);
-    echo "{$ts()} | clientes OK | total={$r['total']} "
-       . "ok={$r['ok']} falhas={$r['falhas']}\n";
-    foreach ($r['detalhes'] as $d) {
-        echo "  x cliente {$d['cliente_id']}: {$d['msg']}\n";
-    }
-    if ($r['falhas'] > 0) {
-        $falhou = true;
-    }
+    $r = (new BlingContatoService())->processarFila(30);
+    echo "{$ts()} | contatos-fila | ok={$r['ok']} falhas={$r['falhas']}\n";
 } catch (\Throwable $e) {
-    echo "{$ts()} | clientes ERRO | {$e->getMessage()}\n";
+    echo "{$ts()} | contatos-fila ERRO | {$e->getMessage()}\n";
     $falhou = true;
 }
 

@@ -319,12 +319,10 @@ AdminRouter::get ('/configuracoes/bling/status-map',               'AdminBlingCo
 AdminRouter::post('/configuracoes/bling/status-map',               'AdminBlingController@salvarStatusMap');
 AdminRouter::get ('/configuracoes/bling/situacoes',                'AdminBlingController@getSituacoesBling');
 
-AdminRouter::post('/configuracoes/bling/sync-clientes', 'AdminBlingController@syncClientes');
 AdminRouter::post('/configuracoes/bling/sync-depositos', 'AdminBlingController@syncDepositos');
 AdminRouter::post('/configuracoes/bling/vincular-produtos', 'AdminBlingController@vincularProdutos');
 
-
-AdminRouter::post('/configuracoes/bling/sync-contatos',      'AdminBlingController@syncContatos');
+AdminRouter::post('/configuracoes/bling/vincular-contatos', 'AdminBlingController@vincularContatos');
 AdminRouter::post('/configuracoes/bling/processar-contatos', 'AdminBlingController@processarContatos');
 
 AdminRouter::get('/logs',          'AdminLogsController@index');

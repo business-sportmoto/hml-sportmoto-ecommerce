@@ -237,7 +237,7 @@ final class BlingContatoService {
                     if ($cpfBling === $cpfLimpo) { $contatoId = (string)$ct['id']; break; }
                 }
             } catch (\Throwable $e) {
-                error_log('[BlingContato] busca CPF: ' . $e->getMessage());
+                LogService::error('[BlingContato] busca CPF: ' . $e->getMessage());
             }
         }
 
@@ -253,7 +253,7 @@ final class BlingContatoService {
                     }
                 }
             } catch (\Throwable $e) {
-                error_log('[BlingContato] busca e-mail: ' . $e->getMessage());
+                LogService::error('[BlingContato] busca e-mail: ' . $e->getMessage());
             }
         }
 
@@ -275,10 +275,11 @@ final class BlingContatoService {
 
         // 3. Atualiza se achou
         if ($contatoId) {
+            return $contatoId; //Estou apenas retornando o id contato;
             try {
                 $this->api->put("/contatos/{$contatoId}", $dados);
             } catch (\Throwable $e) {
-                error_log('[BlingContato] update: ' . $e->getMessage());
+                LogService::error('[BlingContato] update: ' . $e->getMessage());
             }
             return $contatoId;
         }
@@ -302,5 +303,26 @@ final class BlingContatoService {
             $lista = $lista[0];
         }
         return is_array($lista) ? $lista : [];
+    }
+
+
+    /**
+     * Cria/atualiza o contato de um usuário (por usuario_id).
+     * Usado no gatilho pós-ativação, que tem usuario_id, não cliente_id.
+     *
+     * @return array{ok:bool, bling_id?:string, msg:string}
+     */
+    public function sincronizarPorUsuario(int $usuarioId): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT id FROM clientes WHERE usuario_id = ? LIMIT 1"
+        );
+        $stmt->execute([$usuarioId]);
+        $clienteId = (int)$stmt->fetchColumn();
+
+        if ($clienteId <= 0) {
+            return ['ok' => false, 'msg' => 'Cliente não encontrado para o usuário.'];
+        }
+        return $this->sincronizarCliente($clienteId);
     }
 }

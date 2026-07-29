@@ -955,9 +955,11 @@ $('#btn-sync-bling-cliente').on('click', function() {
   $.post(ADMIN_URL + '/clientes/' + id + '/sync-bling', { _token: CSRF_TOKEN })
   .done(function(r) {
     CK.btnLoading($btn, false);
-    adminToast(r.msg, r.ok ? 'success' : 'error');
-    if (r.ok) setTimeout(function() { location.reload(); }, 1500);
+    showToast(r.msg, r.ok ? 'success' : 'error');
+    if (r.ok) setTimeout(function() { 
+      location.reload();
+     }, 1500);
   })
-  .fail(function() { CK.btnLoading($btn, false); adminToast('Erro de rede.', 'error'); });
+  .fail(function() { CK.btnLoading($btn, false); showToast('Erro de rede.', 'error'); });
 });
 </script>

@@ -174,4 +174,68 @@ final class BlingVinculoService
         }
         return $out;
     }
+    /**
+     * Vincula clientes locais aos contatos do Bling (cliente.bling_id),
+     * casando por CPF (numeroDocumento). Mesma estratégia dos produtos:
+     * LISTA /contatos paginado e casa LOCAL — sem 1-call-por-cliente.
+     *
+     * @return array{paginas:int, contatos_bling:int, vinculados:int}
+     */
+    public function vincularContatos(): array
+    {
+        $idx = [];   // cpf_limpo => bling_id
+        $pagina = 1;
+        $contatosBling = 0;
+
+        while ($pagina <= self::MAX_PAGINAS) {
+            $lista = $this->api->get('/contatos', [
+                'pagina' => $pagina,
+                'limite' => self::POR_PAGINA,
+            ]);
+            if (empty($lista) || !is_array($lista)) break;
+
+            foreach ($lista as $contato) {
+                $doc     = preg_replace('/\D/', '', (string)($contato['numeroDocumento'] ?? ''));
+                $blingId = (string)($contato['id'] ?? '');
+                if ($doc !== '' && $blingId !== '') {
+                    $idx[$doc] = $blingId;
+                    $contatosBling++;
+                }
+            }
+
+            if (count($lista) < self::POR_PAGINA) break;
+            $pagina++;
+        }
+
+        $vinculados = $this->casarContatos($idx);
+
+        LogService::info('Vinculação de contatos Bling concluída', [
+            'paginas'        => $pagina,
+            'contatos_bling' => $contatosBling,
+            'vinculados'     => $vinculados,
+        ], 'bling');
+
+        return ['paginas' => $pagina, 'contatos_bling' => $contatosBling, 'vinculados' => $vinculados];
+    }
+
+    /** Casa clientes locais (cpf) com o índice do Bling. Normaliza CPF
+     *  dos DOIS lados (só dígitos) — cliente.cpf pode ter máscara e o
+     *  numeroDocumento do Bling também. (string)$cpf: chave numérica
+     *  vira int no PHP → cast evita TypeError. */
+    private function casarContatos(array $idx): int
+    {
+        if (!$idx) return 0;
+        $stmt = $this->db->prepare(
+            "UPDATE clientes
+             SET bling_id = ?, bling_sincronizado_em = NOW()
+             WHERE REPLACE(REPLACE(REPLACE(cpf,'.',''),'-',''),'/','') = ?
+               AND bling_id IS NULL"
+        );
+        $n = 0;
+        foreach ($idx as $cpf => $blingId) {
+            $stmt->execute([$blingId, (string)$cpf]);
+            $n += $stmt->rowCount();
+        }
+        return $n;
+    }
 }

@@ -608,9 +608,18 @@ class AuthController extends Controller {
         // Sem isto, quem ativa pelo CÓDIGO fica com email_verificado = 0
         // para sempre — só o clique no link (verifyEmail) marcava.
         if (empty($user['email_verificado'])) {
-            (new User())->markEmailVerified((int)$user['id']);
-            $user['email_verificado'] = 1;   // finalizeLogin recebe o valor certo
-            (new BlingContatoService())->enfileirarPorUsuario((int)$user['id']);
+            // Cliente novo ativou → cria contato no Bling AGORA (best-effort).
+            // Bling fora NÃO trava o login: cai na fila e o cron cria depois.
+            try {
+                $svc = new BlingContatoService();
+                $r   = $svc->sincronizarPorUsuario((int)$user['id']);
+                if (!$r['ok']) {
+                    $svc->enfileirarPorUsuario((int)$user['id']);   // fallback → fila
+                }
+            } catch (\Throwable $e) {
+                error_log('[ativacao] sync Bling falhou, enfileirado: ' . $e->getMessage());
+                (new BlingContatoService())->enfileirarPorUsuario((int)$user['id']);
+            }
         }
 
         // Gate de 2FA também no login por código de e-mail
