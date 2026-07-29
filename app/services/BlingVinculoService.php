@@ -133,9 +133,6 @@ final class BlingVinculoService
         ];
     }
 
-    /** Casa produtos locais (sku_legado) com o índice do Bling.
-     *  TRIM + comparação case-insensitive: sku_legado com espaço ou
-     *  caixa diferente do código Bling casaria a zero sem isto. */
     private function casarProdutos(array $idx): int
     {
         if (!$idx) return 0;
@@ -146,7 +143,7 @@ final class BlingVinculoService
         );
         $n = 0;
         foreach ($idx as $codigo => $blingId) {
-            $stmt->execute([$blingId, trim($codigo)]);
+            $stmt->execute([$blingId, trim((string)$codigo)]);   // ← (string)
             $n += $stmt->rowCount();
         }
         return $n;
@@ -162,7 +159,7 @@ final class BlingVinculoService
         );
         $n = 0;
         foreach ($idx as $codigo => $blingId) {
-            $stmt->execute([$blingId, trim($codigo)]);
+            $stmt->execute([$blingId, trim((string)$codigo)]);   // ← (string)
             $n += $stmt->rowCount();
         }
         return $n;

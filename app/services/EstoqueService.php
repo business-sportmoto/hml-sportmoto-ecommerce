@@ -541,10 +541,10 @@ class EstoqueService {
                         (new ProdutoGatilhoService())
                             ->verificarVoltaEstoque($produtoId, $saldoAnterior, $novoSaldo, $skuId);
 
-                            LogService::info('gatilho volta_estoque: ' . $novoSaldo);
+                            // LogService::info('gatilho volta_estoque: ' . $novoSaldo);
                     }
                 } catch (\Throwable $e) {
-                    LogService::error('gatilho volta_estoque: ' . $e->getMessage());
+                    // LogService::error('gatilho volta_estoque: ' . $e->getMessage());
                 }
             }
 
