@@ -4222,6 +4222,7 @@ $(document).on('change', '#pe-categoria', function () {
           }
 
           showToast(res.msg, 'success');
+          setTimeout(() => window.location.reload(), 800);
 
           // Atualiza preview
           if (res.slug && slugInput) slugInput.value = res.slug;
