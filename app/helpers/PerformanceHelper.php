@@ -59,20 +59,21 @@ class PerformanceHelper {
     public static function assetVersion(string $path, bool $adm = false): string
     {
         $path    = '/' . ltrim($path, '/');
-        $version = self::resolverHash($path);
+        $version = self::resolverHash($path, $adm);
         return (!$adm ? ASSET_URL : ADMIN_ASSET_URL) . $path . '?v=' . $version;
     }
 
     private static $assetManifest = null;
 
-    private static function resolverHash(string $path): string
+    private static function resolverHash(string $path, bool $adm = false): string
     {
         $env = defined('APP_ENV') ? APP_ENV : 'development';
+
         if ($env === 'production') {
             return self::carregarManifest()[$path] ?? '1';
         }
-        $fullPath = ASSET_PATH . $path;
-        return file_exists($fullPath) ? substr(md5_file($fullPath), 0, 8) : '1';
+        $fullPath = (!$adm ? ASSET_PATH : ADMIN_PATH.'/assets') . $path;
+        return file_exists($fullPath) ? substr(md5_file($fullPath), 0, 8) :  1;
     }
 
     private static function carregarManifest(): array
