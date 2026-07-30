@@ -572,25 +572,25 @@ class ProdutosController extends Controller {
             }
 
             // Características (relacionamento)
-            // if (!empty($caracteristicas)) {
-            //     $stmtDel = $db->prepare(
-            //         "DELETE FROM produto_caracteristicas WHERE produto_id = ?"
-            //     );
-            //     $stmtDel->execute([$id]);
+            if (!empty($caracteristicas)) {
+                $stmtDel = $db->prepare(
+                    "DELETE FROM produto_caracteristicas WHERE produto_id = ?"
+                );
+                $stmtDel->execute([$id]);
 
-            //     $stmtIns = $db->prepare(
-            //         "INSERT INTO produto_caracteristicas
-            //         (produto_id, caracteristica_id, valor)
-            //         VALUES (?, ?, ?)"
-            //     );
-            //     foreach ($caracteristicas as $charId => $valor) {
-            //         $charId = (int)$charId;
-            //         $valor  = trim((string)$valor);
-            //         if ($charId && $valor !== '') {
-            //             $stmtIns->execute([$id, $charId, $valor]);
-            //         }
-            //     }
-            // }
+                $stmtIns = $db->prepare(
+                    "INSERT INTO produto_caracteristicas
+                    (produto_id, caracteristica_id, valor)
+                    VALUES (?, ?, ?)"
+                );
+                foreach ($caracteristicas as $charId => $valor) {
+                    $charId = (int)$charId;
+                    $valor  = trim((string)$valor);
+                    if ($charId && $valor !== '') {
+                        $stmtIns->execute([$id, $charId, $valor]);
+                    }
+                }
+            }
 
             // ── Compatibilidades ──────────────────────────────────────
             $compat = new MotoCompatibilidade();

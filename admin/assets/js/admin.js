@@ -4234,7 +4234,7 @@ $(document).on('change', '#pe-categoria', function () {
         });
     }
 
-    document.querySelector('.btn-salvar-produto')?.addEventListener('click', () => salvarProduto(true));
+    document.querySelector('.btn-salvar-produto').addEventListener('click', () => salvarProduto(true));
     document.getElementById('btn-salvar-produto')?.addEventListener('click', () => salvarProduto(true));
     document.getElementById('btn-salvar-rascunho')?.addEventListener('click', () => {
       if (quickAtivo) quickAtivo.checked = false;
