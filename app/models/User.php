@@ -185,9 +185,12 @@ class User extends Model {
     // ── Senha ─────────────────────────────────────────────────
 
     public function updatePassword(int $userId, string $novaSenha): void {
+        $verificado = 1;
         $this->db->prepare(
-            "UPDATE usuarios SET senha_hash = ? WHERE id = ?"
-        )->execute([password_hash($novaSenha, PASSWORD_ALGO), $userId]);
+            "UPDATE usuarios SET senha_hash = ?, senha_definida = ?, email_verificado = ? WHERE id = ?"
+        )->execute([password_hash($novaSenha, PASSWORD_ALGO), $verificado, $verificado, $userId]);
+
+        LogService::audit('Recuperação de conta/senha', ['date'=>date('Y-m-d H:i:s', time()), 'usuario_id'=>$userId]);
     }
 
     public function verifyCurrentPassword(int $userId, string $senha): bool {

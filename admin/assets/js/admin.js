@@ -857,7 +857,7 @@ $(document).on('change', '#pe-categoria', function () {
           if (!res.ok) { showToast(res.msg, 'error'); return; }
           showToast(res.msg, 'success');
           drawer.close();
-          // setTimeout(() => window.location.reload(), 500);
+          setTimeout(() => window.location.reload(), 500);
         },
         dataType: 'json',
       });
