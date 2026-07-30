@@ -35,10 +35,26 @@ spl_autoload_register(function (string $class): void {
 // $svc = new EmailMarketingService();
 
 Session::start();
+// Session::logoutAdmin();
+// var_dump($_SESSION); exit;
 
 View::setBasePath(ROOT_PATH . '/admin/views');
 View::setAssetPath(BASE_URL . '/admin/assets');
 
+if (!Session::isAdminLogado()) {
+    $dados = (new AdminTokenService())->validarCookie();
+    if ($dados) {
+        Session::loginAdmin($dados['user'], $dados['admin']);
+    }
+}
+if (Session::isAdminLogado()) {
+    $ok = (new AdminTokenService())->revalidarRequest(Session::get('admin_user_id'));
+    if (!$ok) {
+        Session::logoutAdmin(); 
+        (new AdminTokenService())->revogarAtual();
+        // redirect pro login
+    }
+}
 // Dados globais compartilhados em todas as views do admin
 if (Session::isAdminLogado()) {
     View::share('admin_nome',  Session::get('admin_nome'));

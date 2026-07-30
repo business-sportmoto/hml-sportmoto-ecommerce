@@ -25,6 +25,10 @@ class ProdutosController extends Controller {
         $estoque = SecurityHelper::sanitizeString($_GET['estoque']      ?? '');
         $temVar  = $_GET['tem_variacao'] ?? '';
 
+        $fotos = SecurityHelper::sanitizeString($_GET['fotos']      ?? '');
+        $seo = SecurityHelper::sanitizeString($_GET['seo']      ?? '');
+        $editados = SecurityHelper::sanitizeString($_GET['editados']      ?? '');
+
         // Atributos dinâmicos: attr_{tipo_id} => valor
         $atributosFiltros = [];
         foreach ($_GET as $key => $val) {
@@ -153,7 +157,7 @@ class ProdutosController extends Controller {
             $where .= " AND p.estoque_total > 0
                         AND p.estoque_total <= COALESCE(p.estoque_minimo, 0)";
         } elseif ($estoque === 'zero') {
-            $where .= " AND p.estoque_total = 0";
+            $where .= " AND p.estoque_total <= 0";
         }
 
         // Tipo
@@ -162,6 +166,26 @@ class ProdutosController extends Controller {
             $params[] = (int)$temVar;
         }
 
+        if ($fotos === 'poucas') {
+            $where .= " AND (
+                SELECT COUNT(*) FROM produto_imagens pi_f
+                WHERE pi_f.produto_id = p.id
+            ) < 2";
+        }
+        
+         // Sem SEO (falta meta_title OU meta_description)
+        if ($seo === 'sem') {
+            $where .= " AND (
+                p.meta_title IS NULL OR p.meta_title = ''
+                OR p.meta_description IS NULL OR p.meta_description = ''
+            )";
+        }
+        // Editados pós-importação (aproximação: veio da Tray e foi
+        // atualizado depois de criado, com folga de 60s p/ ignorar o insert)
+        if ($editados === '1') {
+            $where .= " AND p.tray_id IS NOT NULL
+                        AND p.atualizado_em > DATE_ADD(p.criado_em, INTERVAL 60 SECOND)";
+        }
 
         // ── Count ─────────────────────────────────────────────
         $stmtCount = $db->prepare(
@@ -218,7 +242,7 @@ class ProdutosController extends Controller {
             ORDER BY at.papel ASC, at.ordenacao ASC, at.nome ASC"
         )->fetchAll();
 
-        
+        $stats = $this->getProdutoDashboardStats();
 
         // Monta filtros ativos para exibição de tags
         $filtrosAtivos = array_filter([
@@ -228,6 +252,9 @@ class ProdutosController extends Controller {
             'status'       => $status,
             'estoque'      => $estoque,
             'bling_sync'   => $_GET['bling_sync']   ?? '',
+            'fotos'        => $_GET['fotos']      ?? '',   // ← novo
+            'seo'          => $_GET['seo']        ?? '',   // ← novo
+            'editados'     => $_GET['editados']   ?? '',   // ← novo
             'tem_variacao' => $temVar,
             ...(array_map(fn($v) => $v, $atributosFiltros)),
         ]);
@@ -235,6 +262,7 @@ class ProdutosController extends Controller {
         $this->render('produtos/index', [
             'produtos'      => $produtos,
             'total'         => $total,
+            'stats'        => $stats,
             'page'          => $page,
             'perPage'       => $perPage,
             'marcas'        => $marcas,
@@ -1135,5 +1163,97 @@ class ProdutosController extends Controller {
 
         $r = (new BlingVinculoService())->vincularUmProduto($id);
         $this->json($r);
+    }
+
+
+    
+// ════════════════════════════════════════════════════════
+// MÉTODO para ProdutosController (ou Product model)
+// Dashboard de produtos — 7 métricas viáveis com o schema atual.
+// Acessos por período (30d/3d) FORA: exigem log de visitas com
+// timestamp, que não existe (só há o contador total visualizacoes).
+//
+// Uma query principal com agregação condicional + subconsultas
+// correlacionadas para fotos e estoque. Índices em produto_id
+// (que existem) mantêm performático.
+// ════════════════════════════════════════════════════════
+
+    /**
+     * @return array{
+     *   total:int, ativos:int, inativos:int, sem_estoque:int,
+     *   poucas_fotos:int, sem_bling:int, sem_seo:int, editados:int,
+     *   mais_vistos:array
+     * }
+     */
+    public function getProdutoDashboardStats(): array
+    {
+        $db = Database::getInstance()->getConnection();
+
+        // ── Bloco 1: contagens agregadas (1 query) ──
+        $sql = "
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN p.ativo = 1 THEN 1 ELSE 0 END) AS ativos,
+                SUM(CASE WHEN p.ativo = 0 THEN 1 ELSE 0 END) AS inativos,
+
+                -- Sem vínculo Bling (pai sem bling_id)
+                SUM(CASE WHEN p.bling_id IS NULL THEN 1 ELSE 0 END) AS sem_bling,
+
+                -- Sem SEO (falta meta_title OU meta_description)
+                SUM(CASE WHEN p.meta_title IS NULL OR p.meta_title = ''
+                          OR p.meta_description IS NULL OR p.meta_description = ''
+                         THEN 1 ELSE 0 END) AS sem_seo,
+
+                -- Editados pós-importação (APROXIMAÇÃO): veio da Tray e
+                -- foi atualizado depois de criado. Ressalva: updates
+                -- automáticos (estoque) também mexem em atualizado_em →
+                -- pode haver falso-positivo. Folga de 60s evita contar
+                -- o próprio insert como edição.
+                SUM(CASE WHEN p.tray_id IS NOT NULL
+                          AND p.atualizado_em > DATE_ADD(p.criado_em, INTERVAL 60 SECOND)
+                         THEN 1 ELSE 0 END) AS editados,
+
+                -- Poucas fotos (0 ou 1 imagem) — subconsulta correlacionada
+                SUM(CASE WHEN (
+                        SELECT COUNT(*) FROM produto_imagens pi
+                        WHERE pi.produto_id = p.id
+                    ) < 2 THEN 1 ELSE 0 END) AS poucas_fotos,
+
+                -- Sem estoque: nenhuma linha de estoque_saldo com
+                -- disponível real (saldo - reservado > 0). Cobre
+                -- produto simples E com variação (fonte única: ledger).
+                SUM(CASE WHEN NOT EXISTS (
+                        SELECT 1 FROM estoque_saldo es
+                        WHERE es.produto_id = p.id
+                          AND (es.saldo - es.reservado) > 0
+                    ) THEN 1 ELSE 0 END) AS sem_estoque
+
+            FROM produtos p
+            WHERE p.deleted_at IS NULL
+        ";
+        $row = $db->query($sql)->fetch() ?: [];
+
+        // ── Bloco 2: top 5 mais vistos (contador acumulado) ──
+        // NÃO é 'últimos 30 dias' (impossível sem log temporal) —
+        // é o total acumulado de visualizacoes. Rotular como tal.
+        $maisVistos = $db->query(
+            "SELECT id, nome, visualizacoes
+             FROM produtos
+             WHERE deleted_at IS NULL AND visualizacoes > 0
+             ORDER BY visualizacoes DESC
+             LIMIT 5"
+        )->fetchAll();
+
+        return [
+            'total'        => (int)($row['total']        ?? 0),
+            'ativos'       => (int)($row['ativos']       ?? 0),
+            'inativos'     => (int)($row['inativos']     ?? 0),
+            'sem_estoque'  => (int)($row['sem_estoque']  ?? 0),
+            'poucas_fotos' => (int)($row['poucas_fotos'] ?? 0),
+            'sem_bling'    => (int)($row['sem_bling']    ?? 0),
+            'sem_seo'      => (int)($row['sem_seo']      ?? 0),
+            'editados'     => (int)($row['editados']     ?? 0),
+            'mais_vistos'  => $maisVistos,
+        ];
     }
 }

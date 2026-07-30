@@ -10,7 +10,9 @@ class User extends Model {
 
     public function findByEmail(string $email): ?array {
         $stmt = $this->db->prepare(
-            "SELECT u.*, c.id AS cliente_id, c.cpf, c.telefone, c.celular, c.nascimento,
+            "SELECT u.*, 
+                    c.usuario_id AS usuario_id,
+                    c.id AS cliente_id, c.cpf, c.telefone, c.celular, c.nascimento,
                     c.genero, c.avatar, c.newsletter,
                     a.id AS admin_id, a.nivel, a.permissoes
              FROM usuarios u

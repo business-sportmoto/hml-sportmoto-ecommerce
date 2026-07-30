@@ -151,6 +151,10 @@
             </div>
           </div>
 
+          <div>Lembrar senha: 
+            <input type="checkbox" name="lembrar">
+          </div>
+
           <button type="submit" class="login-submit" id="loginSubmit">
             <span class="login-submit__label">Entrar no painel</span>
             <span class="login-submit__spinner" aria-hidden="true"></span>

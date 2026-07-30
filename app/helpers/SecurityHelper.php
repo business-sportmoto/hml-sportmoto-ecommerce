@@ -418,4 +418,32 @@ class SecurityHelper {
 
         return false;
     }
+
+    /**
+     * IP real do cliente, confiável atrás do Cloudflare.
+     *
+     * SEGURANÇA: confia APENAS em CF-Connecting-IP, porque o tráfego
+     * passa obrigatoriamente pela Cloudflare (UFW só libera IPs da CF).
+     * NUNCA usa X-Forwarded-For — é forjável por qualquer cliente e
+     * permitiria falsificar IP (burlar rate limit, poluir logs, evadir
+     * bloqueios). REMOTE_ADDR é o fallback (será o IP da CF, mas é real).
+     */
+    public static function clientIp(): string
+    {
+        // Cloudflare: só a CF consegue setar este header, e todo
+        // tráfego passa por ela → confiável.
+        $cf = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? '';
+        if ($cf !== '' && filter_var($cf, FILTER_VALIDATE_IP)) {
+            return $cf;
+        }
+
+        // Fallback: REMOTE_ADDR. Atrás da CF, será o IP da CF —
+        // mas é um IP REAL (não forjável), então é seguro como base.
+        $remote = $_SERVER['REMOTE_ADDR'] ?? '';
+        if ($remote !== '' && filter_var($remote, FILTER_VALIDATE_IP)) {
+            return $remote;
+        }
+
+        return '0.0.0.0';
+    }
 }

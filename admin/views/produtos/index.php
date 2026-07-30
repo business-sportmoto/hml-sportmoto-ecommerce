@@ -33,6 +33,98 @@ $totalFiltros = count($filtrosAtivos);
 ?>
 
 <div class="admin-page prod-list-page">
+  <?php
+  // ════════════════════════════════════════════════════════
+  // HEADER DASHBOARD — topo de admin/views/produtos/index.php
+  // Requer $stats (do controller: getProdutoDashboardStats()).
+  // Cards clicáveis: cada um leva ao filtro correspondente da
+  // listagem (reusa os filtros que já existem via querystring).
+  // ════════════════════════════════════════════════════════
+  $pct = fn($n, $t) => $t > 0 ? round($n / $t * 100) : 0;
+  ?>
+  
+  <div class="pd-dash">
+  
+    <div class="pd-dash-card pd-dash-card--primary">
+      <div class="pd-dash-ic">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7 12 3 4 7l8 4 8-4Z"/><path d="M4 7v10l8 4 8-4V7"/><path d="M12 11v10"/></svg>
+      </div>
+      <div class="pd-dash-body">
+        <div class="pd-dash-value"><?= number_format($stats['total'],0,',','.') ?></div>
+        <div class="pd-dash-label">Produtos no total</div>
+      </div>
+    </div>
+  
+    <a href="?status=ativo" class="pd-dash-card">
+      <div class="pd-dash-body">
+        <div class="pd-dash-value pd-ok"><?= number_format($stats['ativos'],0,',','.') ?></div>
+        <div class="pd-dash-label">Ativos</div>
+      </div>
+      <div class="pd-dash-side"><?= $pct($stats['ativos'],$stats['total']) ?>%</div>
+    </a>
+  
+    <a href="?status=inativo" class="pd-dash-card">
+      <div class="pd-dash-body">
+        <div class="pd-dash-value"><?= number_format($stats['inativos'],0,',','.') ?></div>
+        <div class="pd-dash-label">Inativos</div>
+      </div>
+    </a>
+  
+    <a href="?estoque=zero" class="pd-dash-card <?= $stats['sem_estoque']>0?'pd-alert':'' ?>">
+      <div class="pd-dash-body">
+        <div class="pd-dash-value <?= $stats['sem_estoque']>0?'pd-danger':'' ?>"><?= number_format($stats['sem_estoque'],0,',','.') ?></div>
+        <div class="pd-dash-label">Sem estoque</div>
+      </div>
+    </a>
+  
+    <a href="?fotos=poucas" class="pd-dash-card <?= $stats['poucas_fotos']>0?'pd-alert':'' ?>">
+      <div class="pd-dash-body">
+        <div class="pd-dash-value <?= $stats['poucas_fotos']>0?'pd-warn':'' ?>"><?= number_format($stats['poucas_fotos'],0,',','.') ?></div>
+        <div class="pd-dash-label">Poucas fotos (&lt;2)</div>
+      </div>
+    </a>
+  
+    <a href="?bling_sync=pai_nao_sync" class="pd-dash-card <?= $stats['sem_bling']>0?'pd-alert':'' ?>">
+      <div class="pd-dash-body">
+        <div class="pd-dash-value <?= $stats['sem_bling']>0?'pd-warn':'' ?>"><?= number_format($stats['sem_bling'],0,',','.') ?></div>
+        <div class="pd-dash-label">Sem Bling</div>
+      </div>
+    </a>
+  
+    <a href="?seo=sem" class="pd-dash-card <?= $stats['sem_seo']>0?'pd-alert':'' ?>">
+      <div class="pd-dash-body">
+        <div class="pd-dash-value <?= $stats['sem_seo']>0?'pd-warn':'' ?>"><?= number_format($stats['sem_seo'],0,',','.') ?></div>
+        <div class="pd-dash-label">Sem SEO</div>
+      </div>
+    </a>
+  
+    <a href="?editados=1" class="pd-dash-card">
+      <div class="pd-dash-body">
+        <div class="pd-dash-value"><?= number_format($stats['editados'],0,',','.') ?></div>
+        <div class="pd-dash-label">Editados pós-import</div>
+      </div>
+    </a>
+  
+  </div>
+  
+  <?php if (!empty($stats['mais_vistos'])): ?>
+  <div class="pd-dash-vistos">
+    <div class="pd-dash-vistos-head">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+      Mais vistos <span>(total acumulado)</span>
+    </div>
+    <div class="pd-dash-vistos-list">
+      <?php foreach ($stats['mais_vistos'] as $i => $mv): ?>
+      <a href="<?= BASE_URL ?>/admin/produtos/editar/<?= (int)$mv['id'] ?>" class="pd-visto-item">
+        <span class="pd-visto-rank"><?= $i + 1 ?></span>
+        <span class="pd-visto-nome"><?= View::e($mv['nome']) ?></span>
+        <span class="pd-visto-num"><?= number_format((int)$mv['visualizacoes'],0,',','.') ?> views</span>
+      </a>
+      <?php endforeach; ?>
+    </div>
+  </div>
+  <?php endif; ?>
+
 
   <!-- ── Topbar ─────────────────────────────────────────── -->
   <div class="prod-list-topbar">

@@ -11,73 +11,6 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
 <!-- navegação de seções fixa à esquerda -->
 <div class="pe-layout">
 
-  <!-- ── Sidebar de navegação ─────────────────────────── -->
-  <nav class="pe-nav" id="peNav">
-    <div class="pe-nav-logo">
-      <a href="<?= BASE_URL ?>/admin/produtos" class="pe-nav-back">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-             stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-          <polyline points="15 18 9 12 15 6"/>
-        </svg>
-        Produtos 
-      </a>
-    </div>
-
-    <ul class="pe-nav-list">
-      <?php
-      $sections = [
-        'geral'      => ['icon' => 'info',     'label' => 'Informações gerais'],
-        'categorias' => ['icon' => 'categorias',   'label' => 'Categorias'],
-        'midia'      => ['icon' => 'midia',    'label' => 'Mídia'],
-        'caracteristicas' => ['icon' => 'caracteristicas',     'label' => 'Características'],
-        'compatibilidade' => ['icon' => 'motos',    'label' => 'Compatibilidade'],
-        'preco'      => ['icon' => 'price',   'label' => 'Preço & estoque'],
-        'variacao'   => ['icon' => 'stacks',   'label' => 'Variações'],
-        'shipping'   => ['icon' => 'truck',    'label' => 'Frete & dimensões'],
-        'seo'        => ['icon' => 'search',   'label' => 'SEO'],
-        'config'     => ['icon' => 'settings', 'label' => 'Configurações'],
-      ];
-      $icons = [
-        'info'          => IconLibrary::render('info', 'icon icon--md'),
-        'categorias'    => IconLibrary::render('category', 'icon icon--md'),
-        'midia'      => IconLibrary::render('gallery', 'icon icon--md'),
-        'caracteristicas' => IconLibrary::render('format-list-bulleted', 'icon icon--md'),
-        'motos'   => IconLibrary::render('motorcycle', 'icon icon--md'),
-        'price'    => IconLibrary::render('payments', 'icon icon--md'),
-        'stacks'   => IconLibrary::render('stacks', 'icon icon--md'),
-        'truck'    => IconLibrary::render('truck', 'icon icon--md'),
-        'search'   => IconLibrary::render('search', 'icon icon--md'),
-        'settings' =>  IconLibrary::render('settings', 'icon icon--md'),
-      ];
-      foreach ($sections as $key => $s): ?>
-      <li>
-        <a href="#pe-<?= $key ?>" class="pe-nav-item" data-section="<?= $key ?>">
-          <span class="pe-nav-icon">
-            <!-- <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="2" stroke-linecap="round"> -->
-              <?= $icons[$s['icon']] ?>
-            <!-- </svg> -->
-          </span>
-          <?= $s['label'] ?>
-        </a>
-      </li>
-      <?php endforeach; ?>
-    </ul>
-
-    <!-- Status quick -->
-    <div class="pe-nav-status">
-      <span class="pe-nav-status-label">Status</span>
-      <div class="pe-status-toggle">
-        <label class="pe-toggle-pill">
-          <input type="checkbox" id="quick-ativo" name="ativo" value="1"
-                 <?= ($p['ativo'] ?? 1) ? 'checked' : '' ?>>
-          <span class="pe-toggle-thumb"></span>
-        </label>
-        <span id="quick-ativo-label"><?= ($p['ativo'] ?? 1) ? 'Ativo' : 'Inativo' ?></span>
-      </div>
-    </div>
-  </nav>
-
   <!-- ── Editor principal ──────────────────────────────── -->
   <div class="pe-main">
 
@@ -1660,6 +1593,81 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
         
     </form>
   </div><!-- /.pe-main -->
+
+  <!-- ── Sidebar de navegação ─────────────────────────── -->
+  <nav class="pe-nav" id="peNav">
+    <div class="pe-nav-logo">
+      <a href="<?= BASE_URL ?>/admin/produtos" class="pe-nav-back">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+        Produtos 
+      </a>
+    </div>
+
+    <ul class="pe-nav-list">
+      <?php
+      $sections = [
+        'geral'      => ['icon' => 'info',     'label' => 'Informações gerais'],
+        'categorias' => ['icon' => 'categorias',   'label' => 'Categorias'],
+        'midia'      => ['icon' => 'midia',    'label' => 'Mídia'],
+        'caracteristicas' => ['icon' => 'caracteristicas',     'label' => 'Características'],
+        'compatibilidade' => ['icon' => 'motos',    'label' => 'Compatibilidade'],
+        'preco'      => ['icon' => 'price',   'label' => 'Preço & estoque'],
+        'variacao'   => ['icon' => 'stacks',   'label' => 'Variações'],
+        'shipping'   => ['icon' => 'truck',    'label' => 'Frete & dimensões'],
+        'seo'        => ['icon' => 'search',   'label' => 'SEO'],
+        'config'     => ['icon' => 'settings', 'label' => 'Configurações'],
+      ];
+      $icons = [
+        'info'          => IconLibrary::render('info', 'icon icon--md'),
+        'categorias'    => IconLibrary::render('category', 'icon icon--md'),
+        'midia'      => IconLibrary::render('gallery', 'icon icon--md'),
+        'caracteristicas' => IconLibrary::render('format-list-bulleted', 'icon icon--md'),
+        'motos'   => IconLibrary::render('motorcycle', 'icon icon--md'),
+        'price'    => IconLibrary::render('payments', 'icon icon--md'),
+        'stacks'   => IconLibrary::render('stacks', 'icon icon--md'),
+        'truck'    => IconLibrary::render('truck', 'icon icon--md'),
+        'search'   => IconLibrary::render('search', 'icon icon--md'),
+        'settings' =>  IconLibrary::render('settings', 'icon icon--md'),
+      ];
+      foreach ($sections as $key => $s): ?>
+      <li>
+        <a href="#pe-<?= $key ?>" class="pe-nav-item" data-section="<?= $key ?>">
+          <span class="pe-nav-icon">
+            <!-- <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round"> -->
+              <?= $icons[$s['icon']] ?>
+            <!-- </svg> -->
+          </span>
+          <?= $s['label'] ?>
+        </a>
+      </li>
+      <?php endforeach; ?>
+    </ul>
+    <button type="button" class="btn btn-primary btn-sm btn-salvar-produto" id="btn-salvar-produto">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+        <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
+        <polyline points="17 21 17 13 7 13 7 21"/>
+        <polyline points="7 3 7 8 15 8"/>
+      </svg>
+      <?= $isEdit ? 'Salvar alterações' : 'Publicar produto' ?>
+    </button>
+    <!-- Status quick -->
+    <div class="pe-nav-status">
+      <span class="pe-nav-status-label">Status</span>
+      <div class="pe-status-toggle">
+        <label class="pe-toggle-pill">
+          <input type="checkbox" id="quick-ativo" name="ativo" value="1"
+                 <?= ($p['ativo'] ?? 1) ? 'checked' : '' ?>>
+          <span class="pe-toggle-thumb"></span>
+        </label>
+        <span id="quick-ativo-label"><?= ($p['ativo'] ?? 1) ? 'Ativo' : 'Inativo' ?></span>
+      </div>
+    </div>
+  </nav>
 </div><!-- /.pe-layout -->
 
 <!-- Modal de atributo agrupador -->

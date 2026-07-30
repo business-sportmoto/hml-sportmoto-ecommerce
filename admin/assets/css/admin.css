@@ -1276,7 +1276,7 @@ select.form-control { cursor: pointer; }
 /* ── Layout ───────────────────────────────────────────── */
 .pe-layout {
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 1fr 280px;
   min-height: 100vh;
   background: var(--bg);
   margin: -28px -32px;
@@ -1293,7 +1293,14 @@ select.form-control { cursor: pointer; }
   display: flex;
   flex-direction: column;
   padding: 0;
+  margin: 14px;
+  border-radius: 9px;
+  -webkit-border-radius: 9px;
+  -moz-border-radius: 9px;
+  -ms-border-radius: 9px;
+  -o-border-radius: 9px;
 }
+.pe-nav .btn-salvar-produto { width: calc(100% - 20px); margin-left: 10px; margin-bottom: 10px;}
 .pe-nav::-webkit-scrollbar { width: 3px; }
 .pe-nav::-webkit-scrollbar-thumb { background: var(--border2); }
 
@@ -1355,7 +1362,7 @@ select.form-control { cursor: pointer; }
 /* ── Main ─────────────────────────────────────────────── */
 .pe-main {
   display: flex; flex-direction: column;
-  min-height: 100vh;
+  min-height: 100vh; align-items: center;
 }
 
 /* ── Topbar ───────────────────────────────────────────── */
@@ -1365,6 +1372,8 @@ select.form-control { cursor: pointer; }
   border-bottom: 1px solid var(--border);
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 28px; gap: 16px;
+  border-bottom-left-radius: 9px;
+  border-bottom-right-radius: 9px;
 }
 .pe-topbar.scrolled {
   box-shadow: 0 2px 12px rgba(0,0,0,.06);
@@ -2742,6 +2751,33 @@ input:checked + .pe-toggle-track .pe-toggle-thumb-inner { left: 21px; }
 
 /* ── Layout ───────────────────────────────────────────── */
 .prod-list-page { padding-bottom: 40px; }
+
+.pd-dash{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.pd-dash-card{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid var(--c-border,#e6e9ef);border-radius:12px;padding:14px 16px;text-decoration:none;transition:box-shadow .18s,transform .18s,border-color .18s}
+a.pd-dash-card:hover{box-shadow:0 8px 22px rgba(15,23,42,.07);transform:translateY(-1px);border-color:#cbd5e1}
+.pd-dash-card--primary{background:linear-gradient(135deg,#1e293b,#0f172a);border-color:#0f172a}
+.pd-dash-card--primary .pd-dash-value{color:#fff}
+.pd-dash-card--primary .pd-dash-label{color:#94a3b8}
+.pd-dash-ic{width:38px;height:38px;flex-shrink:0;display:grid;place-items:center;border-radius:10px;background:rgba(255,255,255,.1)}
+.pd-dash-ic svg{width:20px;height:20px;color:#fff}
+.pd-dash-body{flex:1;min-width:0}
+.pd-dash-value{font-size:24px;font-weight:800;line-height:1.1;color:var(--c-dark,#0f172a);font-variant-numeric:tabular-nums}
+.pd-dash-label{font-size:11px;font-weight:600;color:var(--c-text-muted,#64748b);margin-top:2px}
+.pd-dash-side{font-size:12px;font-weight:700;color:#16a34a;background:#f0fdf4;padding:3px 8px;border-radius:20px}
+.pd-ok{color:#16a34a}.pd-warn{color:#d97706}.pd-danger{color:#dc2626}
+.pd-dash-card.pd-alert{border-color:#fde68a}
+.pd-dash-vistos{background:#fff;border:1px solid var(--c-border,#e6e9ef);border-radius:12px;padding:14px 16px;margin-bottom:20px}
+.pd-dash-vistos-head{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800;color:var(--c-dark,#0f172a);margin-bottom:10px}
+.pd-dash-vistos-head svg{width:16px;height:16px;color:#64748b}
+.pd-dash-vistos-head span{font-weight:500;color:#94a3b8;font-size:11px}
+.pd-dash-vistos-list{display:flex;flex-direction:column;gap:2px}
+.pd-visto-item{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:8px;text-decoration:none;transition:background .15s}
+.pd-visto-item:hover{background:#f8fafc}
+.pd-visto-rank{width:20px;height:20px;flex-shrink:0;display:grid;place-items:center;background:#f1f5f9;border-radius:6px;font-size:11px;font-weight:800;color:#475569}
+.pd-visto-nome{flex:1;min-width:0;font-size:13px;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pd-visto-num{font-size:11px;font-weight:700;color:#64748b;flex-shrink:0}
+@media (max-width:1100px){.pd-dash{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:560px){.pd-dash{grid-template-columns:1fr}}
 
 /* ── Topbar ───────────────────────────────────────────── */
 .prod-list-topbar {

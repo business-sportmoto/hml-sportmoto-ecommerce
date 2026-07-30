@@ -84,11 +84,16 @@ final class AdminAuthController extends Controller
             ['admin_id' => (int) $user['admin_id'], 'email' => $user['email'], 'ip_real' => $ip]
         );
 
+        if (!empty($_POST['lembrar'])) {
+            (new AdminTokenService())->emitir((int)$user['admin_id'] /* ou usuario_id */);
+        }
+
         $this->normalizeTiming($startedAt);
         $this->redirect(ADMIN_URL . '/dashboard');
+        // var_dump($result);
     }
 
-    public function logout(): void
+    public function logout(): void 
     {
         $adminId = Session::getAdminId();
         Session::logoutAdmin();
@@ -96,6 +101,9 @@ final class AdminAuthController extends Controller
             null, 'admin_logout', 'success', 'local',
             ['admin_id' => $adminId, 'ip_real' => AuthLogService::clientIp()]
         );
+
+        (new AdminTokenService())->revogarAtual();
+
         $this->redirect(ADMIN_URL . '/login');
     }
 

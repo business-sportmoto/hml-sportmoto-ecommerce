@@ -152,6 +152,7 @@ class Session {
 
         self::set('admin_logado', true);
         self::set('admin_id', $admin['id']);
+        self::set('admin_user_id', $usuario['usuario_id']);
         self::set('admin_nivel', $admin['nivel']);
         self::set('admin_permissoes', json_decode($admin['permissoes'] ?? '{}', true));
         self::set('admin_nome', $usuario['nome']);
@@ -178,6 +179,7 @@ class Session {
     public static function logoutAdmin(): void {
         self::remove('admin_logado');
         self::remove('admin_id');
+        self::remove('admin_user_id');
         self::remove('admin_nivel');
         self::remove('admin_permissoes');
         self::remove('admin_nome');
