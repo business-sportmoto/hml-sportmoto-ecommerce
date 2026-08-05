@@ -341,3 +341,107 @@
     transition-duration: 0.001ms !important;
   }
 }
+
+/* =============================================================================
+   SPORTMOTO ADMIN LOGIN — DARK HARDENING LAYER
+   Mantém a identidade original e reforça acessibilidade, autofill, contraste e
+   estados nativos sem alterar a estrutura HTML.
+   ============================================================================= */
+
+:root {
+  color-scheme: dark;
+  --bg-0: #07090d;
+  --bg-1: #0d1118;
+  --surface: rgba(18, 23, 32, .78);
+  --surface-hi: rgba(27, 34, 46, .94);
+  --line: rgba(255,255,255,.09);
+  --line-hi: rgba(255,255,255,.17);
+  --text-0: #f8fafc;
+  --text-1: #c7d0dc;
+  --text-2: #7f8b9d;
+  --accent: #f25261;
+  --accent-hi: #ff7380;
+  --accent-dim: rgba(242,82,97,.16);
+  --accent-ring: rgba(242,82,97,.30);
+  --shadow: 0 30px 80px -24px rgba(0,0,0,.82);
+}
+
+html { color-scheme: dark; background: var(--bg-0); }
+
+::selection {
+  background: rgba(242,82,97,.30);
+  color: #fff;
+}
+
+.login-card {
+  isolation: isolate;
+  border-color: rgba(255,255,255,.10);
+}
+.login-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(145deg, rgba(255,255,255,.035), transparent 42%);
+}
+
+.login-field__input {
+  color-scheme: dark;
+  caret-color: var(--accent-hi);
+}
+.login-field__input:disabled {
+  opacity: .62;
+  cursor: not-allowed;
+}
+.login-field__input[aria-invalid="true"] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 4px rgba(248,113,113,.18);
+}
+
+.login-field__input:-webkit-autofill,
+.login-field__input:-webkit-autofill:hover,
+.login-field__input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text-0) !important;
+  -webkit-box-shadow: 0 0 0 1000px #111722 inset !important;
+  box-shadow: 0 0 0 1000px #111722 inset !important;
+  caret-color: var(--text-0);
+  border-color: var(--line-hi);
+}
+
+.login-submit:disabled {
+  opacity: .58;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+:where(.login-field__input, .login-field__toggle, .login-submit, .login-card__back):focus-visible {
+  outline: 2px solid var(--accent-hi);
+  outline-offset: 3px;
+}
+
+.login-body {
+  scrollbar-color: #364154 transparent;
+}
+
+@media (max-height: 680px) and (min-width: 861px) {
+  .login-brand { padding-block: 2rem; }
+  .login-brand__headline { font-size: clamp(1.85rem, 3vw, 2.65rem); }
+  .login-card { padding-block: 1.55rem; }
+}
+
+@media (max-width: 420px) {
+  .login-panel { padding: 16px; }
+  .login-card { border-radius: 16px; padding: 22px 18px; }
+}
+
+@media (forced-colors: active) {
+  .login-card,
+  .login-field__input,
+  .login-submit,
+  .login-field__toggle {
+    forced-color-adjust: auto;
+  }
+}
+

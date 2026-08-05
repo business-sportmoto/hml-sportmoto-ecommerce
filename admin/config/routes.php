@@ -539,5 +539,6 @@ AdminRouter::post('/vida-util/excluir',  'VidaUtilAdminController@excluir');
 
 require __DIR__ . '/routes.email-marketing.php';
 require __DIR__ . '/routes.ia.php';
+require __DIR__ . '/routes.logistic.php';
 
 

@@ -5366,3 +5366,477 @@ a.pd-dash-card:hover{box-shadow:0 8px 22px rgba(15,23,42,.07);transform:translat
 .cl-filters .cl-input-wide{max-width:100%}
 .cl-filters-spacer{margin-left:0}
 }
+
+/* =============================================================================
+   SPORTMOTO ADMIN — DARK THEME COMPATIBILITY LAYER
+   Gerado em 2026-08-05
+   Estratégia: preserva 100% do CSS original e aplica o tema escuro no fim da
+   cascata. Nenhuma classe, ID, breakpoint ou animação existente foi removida.
+   ============================================================================= */
+
+:root {
+  color-scheme: dark;
+
+  /* Brand */
+  --grad-primary: linear-gradient(135deg, #3b82f6 0%, #10b981 100%);
+  --grad-primary-soft: linear-gradient(135deg, rgba(59,130,246,.16) 0%, rgba(16,185,129,.13) 100%);
+  --grad-hero: linear-gradient(135deg, #172554 0%, #064e3b 100%);
+  --blue: #60a5fa;
+  --green: #34d399;
+  --blue-lt: #172554;
+  --green-lt: #052e24;
+
+  /* Core surfaces */
+  --bg: #080c12;
+  --surface: #111821;
+  --surface2: #182230;
+  --border: #263244;
+  --border2: #3a4960;
+  --text: #f8fafc;
+  --text-2: #cbd5e1;
+  --text-3: #8190a5;
+
+  /* Semantic surfaces */
+  --success: #34d399;
+  --success-lt: #063c2e;
+  --warning: #fbbf24;
+  --warning-lt: #422006;
+  --danger: #fb7185;
+  --danger-lt: #4c101c;
+  --info: #38bdf8;
+  --info-lt: #082f49;
+  --muted-lt: #182230;
+  --dartk: #090d14;
+
+  /* Elevated shadows for dark surfaces */
+  --shadow-xs: 0 1px 2px rgba(0,0,0,.28);
+  --shadow-sm: 0 2px 10px rgba(0,0,0,.30), 0 1px 2px rgba(0,0,0,.22);
+  --shadow-md: 0 10px 30px rgba(0,0,0,.34), 0 2px 8px rgba(0,0,0,.24);
+  --shadow-lg: 0 22px 60px rgba(0,0,0,.46), 0 8px 22px rgba(0,0,0,.30);
+
+  /* Legacy aliases used by older admin modules */
+  --c-bg: var(--bg);
+  --c-surface: var(--surface);
+  --c-border: var(--border);
+  --c-dark: var(--text);
+  --c-text: var(--text-2);
+  --c-text-muted: var(--text-3);
+  --c-muted: var(--text-3);
+  --c-primary: var(--blue);
+  --c-primary-l: var(--blue-lt);
+  --c-primary-rgb: 96, 165, 250;
+  --c-accent: var(--blue);
+  --c-accent-l: var(--blue-lt);
+  --c-success: var(--success);
+
+  /* Customer-list namespace */
+  --cl-blue: #60a5fa;
+  --cl-blue-bg: #172554;
+  --cl-blue-text: #bfdbfe;
+  --cl-green-bg: #064e3b;
+  --cl-green-text: #a7f3d0;
+  --cl-amber-bg: #451a03;
+  --cl-amber-text: #fde68a;
+  --cl-red-bg: #4c0519;
+  --cl-red-text: #fecdd3;
+  --cl-gray-bg: #182230;
+  --cl-gray-text: #a8b5c7;
+  --cl-border: #2b394c;
+  --cl-border-dark: #465872;
+  --cl-bg: #111821;
+  --cl-bg-surface: #080c12;
+  --cl-text: #f8fafc;
+  --cl-text-muted: #a8b5c7;
+  --cl-text-hint: #718096;
+  --cl-shadow: 0 10px 30px rgba(0,0,0,.30);
+}
+
+html,
+body,
+body.admin-body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+html { color-scheme: dark; }
+
+::selection {
+  background: rgba(96,165,250,.30);
+  color: #fff;
+}
+
+body.admin-body,
+.admin-sidebar,
+.admin-topbar,
+.admin-card,
+.admin-stat-card,
+.admin-empty-state,
+.admin-confirm-box,
+.admin-toast,
+.pe-nav,
+.pe-topbar,
+.pe-card,
+.pe-modal,
+.attr-papel-card,
+.benefit-admin-item {
+  background-color: var(--surface);
+}
+
+.admin-topbar,
+.admin-sidebar,
+.admin-sidebar-logo,
+.admin-sidebar-footer,
+.admin-card,
+.admin-card-header,
+.admin-stat-card,
+.admin-empty-state,
+.admin-confirm-box,
+.admin-toast,
+.pe-nav,
+.pe-topbar,
+.pe-card,
+.pe-modal,
+.pe-modal-header,
+.pe-modal-footer {
+  border-color: var(--border);
+}
+
+/* Native controls */
+input,
+select,
+textarea,
+button {
+  color-scheme: dark;
+}
+
+input,
+select,
+textarea,
+.form-control,
+.admin-search-input,
+.admin-topbar-search input,
+.color-picker-hex,
+.pe-price-input,
+.pe-estoque-input {
+  caret-color: var(--blue);
+}
+
+select option {
+  color: var(--text);
+  background: var(--surface);
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: var(--text) !important;
+  -webkit-box-shadow: 0 0 0 1000px var(--surface) inset !important;
+  box-shadow: 0 0 0 1000px var(--surface) inset !important;
+  caret-color: var(--text);
+}
+
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+/* Scrollbars */
+* {
+  scrollbar-color: var(--border2) transparent;
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--border2);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background-color: #52637c; }
+
+/* Topbar, search and navigation */
+.admin-topbar-search,
+.admin-topbar-btn,
+.input-prefix,
+.pe-input-prefix,
+.pe-slug-regen,
+.pe-price-prefix,
+.pe-estoque-btn,
+.pe-unit,
+.pe-promo-periodo,
+.pe-frete-preview,
+.pe-audit-card,
+.attr-display-preview,
+.modal-ag-opcoes-grid,
+.attr-valores-panel,
+.pe-sku-card {
+  background: var(--bg);
+  border-color: var(--border);
+}
+
+.admin-nav-item:hover,
+.admin-user-card:hover,
+.admin-topbar-btn:hover,
+.admin-toast-close:hover,
+.pe-nav-item:hover,
+.pe-modal-close:hover,
+.benefit-admin-drag:hover,
+.admin-drag-handle:hover {
+  background: var(--surface2);
+}
+
+.admin-nav-item.active,
+.pe-nav-item.active {
+  background: var(--grad-primary-soft);
+  color: var(--blue);
+}
+
+.admin-nav-item:hover .admin-nav-icon,
+.admin-nav-item.active .admin-nav-icon {
+  background: rgba(96,165,250,.14);
+}
+
+/* Notifications */
+.ntf-modal {
+  background: #111821;
+  border-color: #2b394c;
+  box-shadow: var(--shadow-lg);
+}
+.ntf-modal-head,
+.ntf-filtros,
+.ntf-modal-foot { border-color: #263244; }
+.ntf-modal-title,
+.ntf-item-titulo { color: var(--text); }
+.ntf-item { border-color: #202b3a; }
+.ntf-item:hover { background: #182230; }
+.ntf-item-naolida { background: #10233d; }
+.ntf-item-naolida:hover { background: #142b49; }
+.ntf-item-msg { color: #a8b5c7; }
+.ntf-item-tempo,
+.ntf-vazio { color: #718096; }
+.ntf-chip { background: #202b3a; color: #a8b5c7; }
+.ntf-chip-ativa { background: #e5e7eb; color: #0b111b; }
+.ntf-bell:hover { background: rgba(255,255,255,.07); }
+
+/* Tables */
+.admin-table th,
+.pe-skus-table th {
+  background: #0c121b;
+  color: var(--text-3);
+  border-color: var(--border);
+}
+.admin-table td,
+.pe-skus-table td { border-color: var(--border); }
+.admin-table tbody tr:hover td,
+.pe-skus-table tbody tr:hover td,
+.admin-top-item:hover { background: #151f2c; }
+.admin-codigo,
+.pe-sku-badge,
+.attr-display-pill,
+.attr-valor-preview-btn,
+.coupon-code-badge,
+.badge-gray,
+.status-badge--gray,
+.prod-badge--bling-off,
+.pd-visto-rank {
+  background: var(--surface2);
+  border-color: var(--border);
+  color: var(--text-2);
+}
+
+/* Forms and uploads */
+.form-control,
+.input-with-prefix,
+.pe-input-prefix-wrap,
+.pe-price-input-wrap,
+.pe-estoque-wrap,
+.color-picker-input,
+.color-picker-clear,
+.pe-color-swatch-input,
+.pe-color-swatch-input-lg,
+.benefit-icon-select {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border2);
+}
+.form-control::placeholder,
+.admin-search-input::placeholder,
+.admin-topbar-search input::placeholder { color: #66768c; }
+.form-control:disabled,
+.form-control[readonly] {
+  background: #0c121b;
+  color: var(--text-3);
+  opacity: 1;
+}
+.admin-upload-area,
+.pe-upload-area,
+.clip-upload-area {
+  background: #0c121b;
+  border-color: var(--border2);
+}
+.admin-upload-area:hover,
+.admin-upload-area.upload-area--over,
+.pe-upload-area:hover,
+.pe-upload-area.drag-over,
+.clip-upload-area:hover,
+.clip-upload-area.is-dragover {
+  background: #10233d;
+  border-color: var(--blue);
+}
+
+/* Cards, editor and nested surfaces */
+.cat-row--child { background: rgba(12,18,27,.55); }
+.pe-gallery-skeleton,
+.ac-skeleton {
+  background: linear-gradient(90deg, #182230 25%, #253247 50%, #182230 75%);
+  background-size: 200% 100%;
+}
+.pe-google-preview {
+  background: #0c121b;
+  border-color: var(--border);
+}
+.pe-google-url { color: #6ee7b7; }
+.pe-google-title { color: #8ab4f8; }
+.pe-google-desc { color: #bdc7d5; }
+.pe-danger-zone { border-color: rgba(251,113,133,.35); }
+.pe-midia-alert,
+.pe-estoque-sku-info,
+.pe-estoque-variacao-aviso {
+  background: #10233d;
+  color: #93c5fd;
+}
+.pe-discount-badge {
+  background: var(--success-lt);
+  color: var(--success);
+  border-color: #0d6047;
+}
+
+/* Hardcoded surfaces from dashboard/product/moto/banner/clip/coupon modules */
+.pd-dash-card,
+.pd-dash-vistos,
+.moto-montadora-card,
+.moto-sidebar-card,
+.banner-preview-toolbar,
+.mod-btn--rejeitar,
+.btn-cancel,
+.rv-btn--aprovar,
+.rv-btn--rejeitar,
+.rv-btn--destaque,
+.rv-btn--excluir,
+.stat-card {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+.pd-visto-item:hover,
+.moto-montadora-logo,
+.moto-moto-resumo-logo,
+.moto-trocar-btn,
+.moto-sidebar-search-wrap,
+.moto-modelo-thumb-empty,
+.mod-card-img,
+.uso-bar {
+  background: var(--surface2);
+}
+.moto-modelo-item:hover,
+.moto-ano-item:hover { background: #1b2736; }
+
+.pd-dash-value,
+.pd-dash-vistos-head,
+.pd-visto-nome,
+.moto-section-header h2,
+.moto-montadora-nome,
+.moto-breadcrumb span,
+.moto-moto-resumo-nome,
+.moto-sidebar-search-wrap input,
+.moto-modelo-nome,
+.moto-ano-num,
+.moto-catalogo-titulo,
+.coupon-code-badge {
+  color: var(--text);
+}
+.pd-dash-label,
+.pd-dash-vistos-head svg,
+.pd-visto-num,
+.moto-section-header p,
+.moto-montadora-meta span,
+.moto-breadcrumb,
+.moto-sidebar-titulo,
+.moto-moto-resumo-nome em,
+.moto-moto-resumo-count,
+.moto-trocar-btn,
+.moto-modelo-count,
+.moto-catalogo-sub {
+  color: var(--text-3);
+}
+
+.clip-produto-search-input:focus { background: var(--surface); }
+.form-toggle:has(input:checked),
+.clip-admin-action--edit:hover {
+  background: var(--blue-lt);
+}
+
+/* Semantic badges in dark mode */
+.admin-badge--success,
+.badge-green,
+.status-badge--green { background: var(--success-lt); color: #6ee7b7; }
+.admin-badge--warning,
+.badge-orange,
+.status-badge--orange,
+.prod-badge--bling-parcial,
+.pe-sku-bling.is-nosync { background: var(--warning-lt); color: #fcd34d; }
+.admin-badge--danger,
+.badge-red,
+.status-badge--red { background: var(--danger-lt); color: #fda4af; }
+.admin-badge--info,
+.badge-blue,
+.status-badge--blue { background: var(--blue-lt); color: #93c5fd; }
+
+/* Buttons */
+.btn-outline {
+  background: transparent;
+  color: var(--text-2);
+  border-color: var(--border2);
+}
+.btn-outline:hover {
+  background: var(--blue-lt);
+  color: #bfdbfe;
+  border-color: var(--blue);
+}
+.btn-ghost:hover { background: var(--surface2); }
+.btn-danger { background: var(--danger-lt); color: #fda4af; }
+.btn-danger:hover { background: #be123c; color: #fff; }
+
+/* Keep switch thumbs and media overlay controls bright for contrast */
+.admin-toggle-thumb,
+.pe-toggle-thumb-inner,
+.pe-toggle-mini-track::after,
+.pe-toggle-thumb::after,
+.toggle-slider::after,
+.pe-gallery-btn {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+/* Improve image preview contrast without altering images */
+:where(.cat-thumb, .marca-logo-thumb, .pe-gallery-item, .moto-montadora-logo img) {
+  border-color: var(--border2);
+}
+
+/* Compatibility classes for a future JS theme switch */
+html[data-theme="dark"],
+html.theme-dark,
+body.dark-mode { color-scheme: dark; }
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-content,
+  .admin-page > *,
+  .admin-stat-card,
+  .admin-card,
+  .pe-section {
+    animation: none !important;
+  }
+}
+

@@ -17,6 +17,15 @@ Router::post('/webhooks/ia/replicate', 'IAWebhookController@replicate');
 
 Router::get('/dica/{id}', 'DicaCuidadoController@abrir');
 
+// API pública (sem sessão — autentica pela chave). {param} depois dos literais.
+Router::post('/api/logistica/v1/cotacoes',           'ApiLogisticaController@cotar');
+Router::post('/api/logistica/v1/etiquetas',          'ApiLogisticaController@criarEtiqueta');
+Router::get ('/api/logistica/v1/etiquetas/{id}',     'ApiLogisticaController@obterEtiqueta');
+Router::get ('/api/logistica/v1/rastreios/{codigo}', 'ApiLogisticaController@rastrear');
+
+Router::get ('/frete/produto', 'FreteVitrineController@produto');
+Router::post('/frete/produto', 'FreteVitrineController@produto');
+
 // Catálogo
 Router::get('/categoria/{slug}',          'CategoryController@show');
 Router::get('/busca',                     'SearchController@results');
@@ -34,6 +43,8 @@ Router::post('/notificacoes/marcar-todas', 'NotificacaoController@marcarTodas');
 
 // ROTA — config/routes.php (área pública)   
 Router::post('/track', 'TrackController@registrar');
+// Público (sem autenticação) — o token vem na rota
+Router::get('/rastreio/{token}', 'RastreioPublicoController@rastrear');
 
 // Banner
 Router::post('/banner/impressao', 'BannerController@impressao');
@@ -133,7 +144,7 @@ Router::get ('/checkout/success/{codigo}',        'CheckoutController@success');
 Router::get ('/checkout/cep',                     'CheckoutController@fetchCep');
 
 // 1. Calcular fretes disponíveis (chamado após salvar endereço)
-Router::post('/checkout/frete/calcular', 'CheckoutController@calcularFrete');
+Router::post('/checkout/frete/calcular', 'CheckoutController@calcShipping');
 
 // 2. Confirmar escolha de frete (já existe como selectShipping)
 Router::post('/checkout/frete', 'CheckoutController@selectShipping');
@@ -276,6 +287,7 @@ Router::get('/newsletter/cancelar/{token}', 'HomeController@unsubscribe');
 
 // Adicionar em config/routes.php
 Router::post('/carrinho/frete/selecionar', 'CartController@selectShipping');
+Router::get('/carrinho/frete',             'CartController@calcShipping');
 // Router::post('/carrinho/vendedor',         'CartController@applyVendor');
 Router::get('/carrinho/mini',              'CartController@mini');
 Router::post('/carrinho/compartilhar',     'CartController@share');

@@ -391,12 +391,12 @@ class Cart extends Model {
             }
         }
 
-        $frete = 0;
-        // Frete grátis por configuração
-        $getFrete = $state->getFrete();
-        if ($getFrete) {
-            $frete = $getFrete['valor'] ?? $frete;
-        }
+        // $frete = 0;
+        // // Frete grátis por configuração
+        // $getFrete = $state->getFrete();
+        // if ($getFrete) {
+        //     $frete = $getFrete['valor'] ?? $frete;
+        // }
 
         $data = [];
         // $data['checkoutFrete'] = $state->getFrete();
@@ -1125,4 +1125,68 @@ class Cart extends Model {
             ];
         }, $itens);
     }    
+
+    /**
+     * Retorna o ID do carrinho ativo da sessão ou do banco.
+     * Se $criarSeNaoExistir = true, cria um novo carrinho.
+     */
+    public function getCarrinhoId(bool $criarSeNaoExistir = false): ?int {
+        $carrinhoId = Session::get('carrinho_id');
+        if ($carrinhoId) return (int) $carrinhoId;
+
+        $db = Database::getInstance()->getConnection();
+
+        // Cliente logado
+        if (Session::isClienteLogado()) {
+            $clienteId = (int) Session::getClienteId();
+            $stmt = $db->prepare(
+                "SELECT id FROM carrinhos
+                WHERE cliente_id = ? AND status <> 'finalizado'
+                ORDER BY atualizado_em DESC
+                LIMIT 1"
+            );
+            $stmt->execute([$clienteId]);
+            $id = $stmt->fetchColumn();
+
+            if ($id) {
+                Session::set('carrinho_id', $id);
+                return (int) $id;
+            }
+        }
+
+        // Visitante — pelo session_id
+        $sessaoId = session_id();
+        $stmt = $db->prepare(
+            "SELECT id FROM carrinhos
+            WHERE sessao_id = ? AND cliente_id IS NULL
+            ORDER BY atualizado_em DESC
+            LIMIT 1"
+        );
+        $stmt->execute([$sessaoId]);
+        $id = $stmt->fetchColumn();
+
+        if ($id) {
+            Session::set('carrinho_id', $id);
+            return (int) $id;
+        }
+
+        // Cria novo se solicitado
+        if ($criarSeNaoExistir) {
+            $clienteId = Session::isClienteLogado()
+                        ? (int) Session::getClienteId()
+                        : null;
+
+            $db->prepare(
+                "INSERT INTO carrinhos (cliente_id, sessao_id, criado_em, atualizado_em)
+                VALUES (?, ?, NOW(), NOW())"
+            )->execute([$clienteId, $sessaoId]);
+
+            $novoId = (int) $db->lastInsertId();
+            Session::set('carrinho_id', $novoId);
+            return $novoId;
+        }
+
+        return null;
+    }
+
 }

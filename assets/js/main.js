@@ -1,6 +1,6 @@
 // assets/js/main.js
 // Inicializações e comportamentos globais da loja.
-(function(){
+(function(){  
   function notifyToast(msg, type, opts) {
     msg  = msg || '';
     type = type || 'info';
@@ -5095,3 +5095,5 @@
   }(jQuery));
 
 }())
+
+

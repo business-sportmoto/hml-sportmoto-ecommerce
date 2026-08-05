@@ -24,7 +24,13 @@ function adminIsActive(string $path): string {
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('/css/toast.css', false) ?>">
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('/css/lightbox.css', false) ?>">
 
+  <?php if(trim(adminIsActive('/admin/fluxos')) == 'active'){ ?>
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/fluxo-canvas.css', true) ?>">
+  <?php } ?>
+
+  <?php if(trim(adminIsActive('/admin/logistica')) == 'active'){ ?>
+  <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/logistica.css', true) ?>">
+  <?php } ?>
 
   <script src="<?= BASE_URL ?>/assets/js/jquery.min.js"></script>
 </head>
@@ -262,10 +268,56 @@ function adminIsActive(string $path): string {
         Central de Automações
       </a>
     </div>
+    
+    <div class="admin-nav-section">
+      <span class="admin-nav-section-title">Logistica</span>
+      <a href="<?= BASE_URL ?>/admin/logistica" class="admin-nav-item<?= adminIsActive('/admin/logistica/torre') ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('tower-control'); ?> 
+        </span>
+        Torre de controle
+      </a>
+      <a href="<?= BASE_URL ?>/admin/logistica/transportadoras" class="admin-nav-item<?= adminIsActive('/admin/logistica/transportadoras') ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('delivery-truck-speed'); ?> 
+        </span>
+        Transportadoras
+      </a>
+      <a href="<?= BASE_URL ?>/admin/logistica/regras" class="admin-nav-item<?= adminIsActive('/admin/logistica/regras') ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('rule'); ?> 
+        </span>
+        Regras
+      </a>
+      <a href="<?= BASE_URL ?>/admin/logistica/simulador" class="admin-nav-item<?= adminIsActive('/admin/logistica/simulador') ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('drone'); ?> 
+        </span>
+        Simulador
+      </a>
+      <a href="<?= BASE_URL ?>/admin/logistica/reversas" class="admin-nav-item<?= adminIsActive('/admin/logistica/reversas') ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('returned'); ?> 
+        </span>
+        Reversas
+      </a>
+      <a href="<?= BASE_URL ?>/admin/logistica/divergencias" class="admin-nav-item<?= adminIsActive('/admin/logistica/divergencias') ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('divergencia'); ?> 
+        </span>
+        Divergencias
+      </a>
+      <a href="<?= BASE_URL ?>/admin/logistica/frete-fallback" class="admin-nav-item<?= adminIsActive('/admin/logistica/frete-fallback') ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('divergencia'); ?> 
+        </span>
+        Fallback
+      </a>
+    </div>
 
     <div class="admin-nav-section">
       <span class="admin-nav-section-title">Sistema</span>
-      <a href="<?= BASE_URL ?>/admin/configuracoes" class="admin-nav-item<?= adminIsActive('/admin/configurac') ?>">
+      <a href="<?= BASE_URL ?>/admin/configuracoes" class="admin-nav-item<?= adminIsActive('/admin/configuracoes') ?>">
         <span class="admin-nav-icon">
           <?= IconLibrary::render('settings'); ?> 
         </span>
@@ -469,6 +521,18 @@ function adminIsActive(string $path): string {
 
 <?php if(trim(adminIsActive('/admin/fluxos')) == 'active'){ ?>
 <script src="<?= PerformanceHelper::assetVersion('js/fluxo-canvas.js', true) ?>"></script>
+<?php } ?>
+
+<?php if(trim(adminIsActive('/admin/logistica')) == 'active'){ ?>
+<script src="<?= PerformanceHelper::assetVersion('js/logistica.js', true) ?>"></script>
+<script src="<?= PerformanceHelper::assetVersion('js/transportadoras.js', true) ?>"></script>
+<script src="<?= PerformanceHelper::assetVersion('js/frete.js', true) ?>"></script>
+<script src="<?= PerformanceHelper::assetVersion('js/etiquetas.js', true) ?>"></script>
+<script src="<?= PerformanceHelper::assetVersion('js/rastreios.js', true) ?>"></script>
+<script src="<?= PerformanceHelper::assetVersion('js/reversas.js', true) ?>"></script>
+<script src="<?= PerformanceHelper::assetVersion('js/divergencias.js', true) ?>"></script>
+<script src="<?= PerformanceHelper::assetVersion('js/api-keys.js', true) ?>"></script>
+<script src="<?= PerformanceHelper::assetVersion('js/frete-fallback.js', true) ?>"></script>
 <?php } ?>
 </body>
 </html>

@@ -387,6 +387,7 @@ $(function () {
 
     // ── Atualiza o resumo ─────────────────────────────────
     function atualizarResumo() {
+      calcularFrete();
       CartPromoPreview.atualizar();
       
       const selecionados  = itensSelecionados();
@@ -1144,6 +1145,7 @@ $(function () {
       if (res.ok) {
         const vazio = !res.items || res.items.length === 0;
         atualizarBadge(res.count || 0);
+        calcularFrete();
         if (vazio) {
           $('#mc-empty').show();
           $('#mc-content, #mc-footer').hide();
@@ -1196,11 +1198,12 @@ $(function () {
 
   // ── Acordeões ─────────────────────────────────────────────
   $(document).on('click', '.mc-accordion-btn', function () {
+    const acord = $(this);
     const target   = $(this).data('target');
     const $body    = $('#' + target);
     const $chevron = $(this).find('.mc-accordion-chevron');
     const isOpen   = $body.is(':visible');
-
+    
     // Fecha outros abertos
     $('.mc-accordion-body').not($body).slideUp(180);
     $('.mc-accordion-chevron').not($chevron).css('transform', 'rotate(0deg)');
@@ -1212,12 +1215,16 @@ $(function () {
     if (target === 'mc-shipping' && !isOpen) {
       const cep = getCookieCep();
       if (cep && !$('#mc-cep-input').val()) {
+        $body.find('.mc-link-btn').text('Carregando...').prop('disabled', true);
         $('#mc-cep-input').val(cep.substring(0,5) + '-' + cep.substring(5));
         $('#mc-cep-display').text(
           cep.substring(0,5) + '-' + cep.substring(5)
         );
         $('#mc-cep-row').show();
         $('#mc-cep-form').hide();
+        calcularFrete(function(){
+          $body.find('.mc-link-btn').text('Alterar').prop('disabled', false);
+        })
       }
     }
   });
@@ -1310,10 +1317,11 @@ $(function () {
     if (e.key === 'Enter') { e.preventDefault(); calcularFrete(); }
   });
 
-  function calcularFrete() {
-    const cep = $('#mc-cep-input').val().replace(/\D/g, '');
+  function calcularFrete(call) {
+    
+    let cep = $('#mc-cep-input').val().replace(/\D/g, '');
 
-    if (cep.length !== 8) {
+    if (cep.length !== 8 && !window.EC_CEP_ATIVO) {
       feedbackMc('mc-cep-fb', 'CEP inválido.', false);
       return;
     }
@@ -1322,7 +1330,15 @@ $(function () {
     $btn.prop('disabled', true).text('...');
     feedbackMc('mc-cep-fb', '', true);
 
-    $.get(BASE_URL + '/checkout/frete', { cep }, function (res) {
+    if(window.EC_CEP_ATIVO){
+      cep = window.EC_CEP_ATIVO;
+    }
+
+    $.get(BASE_URL + '/carrinho/frete', { cep:cep, _csrf_token: CSRF_TOKEN }, function (res) {
+      // console.log(res);
+      if(typeof call == 'function'){
+        call();
+      }
       $btn.prop('disabled', false).text('Calcular');
 
       if (!res.ok || !res.opcoes || !res.opcoes.length) {
@@ -1342,7 +1358,7 @@ $(function () {
       $('#mc-cep-form').hide();
 
       // Ordena por preço
-      freteDados = res.opcoes.sort((a, b) => a.preco - b.preco);
+      freteDados = res.opcoes.sort((a, b) => a.valor - b.valor);
       fretesAll  = false;
       renderFretes(freteDados);
 
@@ -1378,12 +1394,12 @@ $(function () {
   }
 
   function buildFreteOpcao(op, isMelhor) {
-    const precoHtml = op.preco <= 0
+    const precoHtml = op.valor <= 0
       ? '<strong class="mc-frete-gratis">Grátis</strong>'
-      : `<strong>${op.preco_fmt}</strong>`;
+      : `<strong>${op.valor}</strong>`;
 
-    const prazoHtml = op.prazo
-      ? `<small>${op.prazo} dia${op.prazo !== 1 ? 's' : ''} úteis</small>`
+    const prazoHtml = op.prazo_dias
+      ? `<small>${op.prazo_dias} dia${op.prazo_dias !== 1 ? 's' : ''} úteis</small>`
       : '';
 
     const tag = isMelhor
@@ -1393,8 +1409,8 @@ $(function () {
     return `
       <div class="mc-frete-opcao ${isMelhor ? 'mc-frete-opcao--melhor' : ''}"
            data-servico="${esc(op.servico)}"
-           data-preco="${op.preco}"
-           data-prazo="${op.prazo || 0}">
+           data-preco="${op.valor}"
+           data-prazo="${op.prazo_dias || 0}">
         <div class="mc-frete-esq">
           <span class="mc-frete-nome">${esc(op.servico)}</span>
           ${prazoHtml}
@@ -1415,7 +1431,7 @@ $(function () {
     $('.mc-frete-opcao').removeClass('mc-frete-opcao--selecionado');
     $(this).addClass('mc-frete-opcao--selecionado');
 
-    $.post(BASE_URL + '/carrinho/frete', {
+    $.post(BASE_URL + '/carrinho/frete/selecionar', {
       servico, preco, prazo, _csrf_token: CSRF_TOKEN,
     }, function (res) {
       if (res.ok) {

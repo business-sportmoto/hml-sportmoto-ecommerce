@@ -60,7 +60,8 @@ $categoryModel    = new Category();
 
   <!-- Scripts carregados de forma assíncrona para melhor performance -->
   <script src="<?= PerformanceHelper::assetVersion('js/jquery.min.js') ?>"></script>
-  <script src="<?= PerformanceHelper::assetVersion('js/mask.js') ?>" defer></script>
+  
+  <script src="<?= PerformanceHelper::assetVersion('js/toast.js') ?>" defer></script>
   <script src="<?= PerformanceHelper::assetVersion('js/main.js') ?>" defer></script>
   <script src="<?= PerformanceHelper::assetVersion('js/checkout.js') ?>" defer></script>
   <script src="<?= PerformanceHelper::assetVersion('js/master.js') ?>" defer></script>

@@ -47,94 +47,6 @@ $(function () {
     }
   });
 
-  // ── Variações de produto ─────────────────────────────────
-  const $varContainer = $('#product-variations');
-  if ($varContainer.length) {
-    const variationsData = JSON.parse($varContainer.data('variations') || '[]');
-    const stockData      = JSON.parse($varContainer.data('stock')      || '[]');
-
-    // Estado atual das seleções: { variacao_id: opcao_id }
-    const selected = {};
-
-    $(document).on('click', '.var-option', function () {
-      const $btn   = $(this);
-      const varId  = $btn.data('variation-id');
-      const optId  = $btn.data('option-id');
-      const value  = $btn.data('value');
-
-      // Deseleciona opções da mesma variação
-      $(`.var-option[data-variation-id="${varId}"]`).removeClass('selected');
-      $btn.addClass('selected');
-      selected[varId] = optId;
-
-      // Atualiza label "Selecionado: X"
-      $(`#sel-var-${varId}`).text(value);
-
-      // Troca imagem se a opção tiver imagem própria
-      if ($btn.hasClass('var-option--color') && $btn.data('imagem')) {
-        // (implementar se houver imagem por variação)
-      }
-
-      updateStockAndPrice();
-      $('#variation-alert').hide();
-    });
-
-    function getCurrentCombination() {
-      return Object.values(selected).sort().join('-');
-    }
-
-    function updateStockAndPrice() {
-      const allSelected = variationsData.every(v => selected[v.id]);
-      if (!allSelected) return;
-
-      const combo = getCurrentCombination();
-      const stock = stockData.find(s => {
-        // Compara independente da ordem dos IDs
-        const a = s.combinacao_opcoes.split('-').map(Number).sort().join('-');
-        const b = combo.split('-').map(Number).sort().join('-');
-        return a === b;
-      });
-
-      const $stockInfo  = $('#stock-info');
-      const $qtyInput   = $('#product-qty');
-      const $btnBuy     = $('#btn-buynow, #btn-add-cart');
-
-      if (!stock || stock.quantidade === 0) {
-        $stockInfo.html('<span class="stock-badge stock-badge--out">Esgotado</span>');
-        $btnBuy.prop('disabled', true).addClass('btn-soldout');
-        $qtyInput.attr('max', 0);
-      } else {
-        const qty = stock.quantidade;
-        $qtyInput.attr('max', qty).val(Math.min(parseInt($qtyInput.val()), qty));
-
-        if (qty <= 5) {
-          $stockInfo.html(`<span class="stock-badge stock-badge--low">Últimas ${qty} unidades</span>`);
-        } else {
-          $stockInfo.html('<span class="stock-badge stock-badge--in">Em estoque</span>');
-        }
-
-        $btnBuy.prop('disabled', false).removeClass('btn-soldout');
-
-        // Ajusta preço se houver preço extra na variação
-        if (parseFloat(stock.preco_extra) > 0) {
-          const basePrice = parseFloat($('#product-info').data('base-price') || 0);
-          // (atualizar bloco de preço se necessário)
-        }
-      }
-    }
-
-    // Bloqueia ação se variação não selecionada
-    $('#btn-buynow, #btn-add-cart').on('click', function (e) {
-      const allSelected = variationsData.every(v => selected[v.id]);
-      if (!allSelected) {
-        e.stopImmediatePropagation();
-        $('#variation-alert').show();
-        $varContainer[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
-        return false;
-      }
-    });
-  }
-
   if (window.AVISO_PRODUTO_ID) {
     $('#aviso-estoque-box').show();
     if (window.AVISO_EMAIL) $('#aviso-email').val(window.AVISO_EMAIL);
@@ -186,68 +98,6 @@ $(function () {
     else showToast(`Máximo disponível: ${max} unidades.`, 'warning');
   });
 
-  // ── Adicionar ao carrinho (página de produto) ────────────
-  $('#btn-add-cart').on('click', function () {
-    const productId  = $(this).data('product-id');
-    const qty        = parseInt($('#product-qty').val()) || 1;
-    const variations = getSelectedVariations();
-
-    $(this).prop('disabled', true).text('Adicionando...');
-
-    $.post(BASE_URL + '/carrinho/adicionar', {
-      produto_id:  productId,
-      quantidade:  qty,
-      variacoes:   variations,
-      _csrf_token: CSRF_TOKEN
-    }, function (res) {
-      if (res.ok) {
-        updateCartCount(res.cart_count);
-        showToast('Produto adicionado ao carrinho!', 'success');
-        // Abre mini-cart
-        setTimeout(() => $('#btn-open-cart').trigger('click'), 400);
-      } else {
-        showToast(res.msg || 'Não foi possível adicionar.', 'error');
-      }
-      $('#btn-add-cart').prop('disabled', false).html(`
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-             stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-          <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
-          <path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/>
-        </svg>
-        Adicionar ao carrinho`);
-    }, 'json').fail(function () {
-      showToast('Erro de conexão.', 'error');
-      $('#btn-add-cart').prop('disabled', false);
-    });
-  });
-
-  // Comprar agora: adiciona e redireciona para checkout
-  $('#btn-buynow').on('click', function () {
-    const productId  = $(this).data('product-id');
-    const qty        = parseInt($('#product-qty').val()) || 1;
-    const variations = getSelectedVariations();
-
-    $.post(BASE_URL + '/carrinho/adicionar', {
-      produto_id:  productId,
-      quantidade:  qty,
-      variacoes:   variations,
-      _csrf_token: CSRF_TOKEN
-    }, function (res) {
-      if (res.ok) {
-        window.location.href = BASE_URL + '/checkout';
-      } else {
-        showToast(res.msg || 'Não foi possível continuar.', 'error');
-      }
-    }, 'json');
-  });
-
-  function getSelectedVariations() {
-    const result = {};
-    $('.var-option.selected').each(function () {
-      result[$(this).data('variation-id')] = $(this).data('option-id');
-    });
-    return result;
-  }
 
   // ── Abas (Descrição / Ficha / Avaliações) ────────────────
   $(document).on('click', '.tab-btn', function () {
@@ -271,15 +121,18 @@ $(function () {
     $drop.is(':visible') ? $drop.slideUp(200) : $drop.slideDown(200);
     $(this).text($drop.is(':visible') ? 'Ver parcelamento completo' : 'Ocultar parcelamento');
   });
-
+  console.log('cep');
   // ── Cálculo de frete ─────────────────────────────────────
-  $('#btn-calc-shipping').on('click', calcShipping);
+  $('#btn-calc-shipping').on('click', calcShipping2);
   $('#shipping-cep').on('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); calcShipping(); }
+    if (e.key === 'Enter') { e.preventDefault(); calcShipping2(); }
   });
 
-  function calcShipping() {
+  function calcShipping2() {
+    
     const cep = $('#shipping-cep').val().replace(/\D/g, '');
+    
+    
     if (cep.length !== 8) {
       showToast('Informe um CEP válido com 8 dígitos.', 'warning');
       return;
@@ -341,6 +194,8 @@ $(function () {
       $btn.prop('disabled', false).text('Calcular');
     });
   }
+
+  
 
   // ── Copiar link ──────────────────────────────────────────
   $('#btn-copy-link').on('click', function () {
@@ -469,6 +324,235 @@ $(function () {
   
 });
 
+/**
+ * Frete na página de produto (vitrine) — layout clean. jQuery v4.
+ *
+ * Primeira dobra: se é grátis e o prazo. Modal "Opções de frete e retirada"
+ * mostra o destino + as opções em FOCO (mais barato e mais rápido — 1 só quando
+ * o mais barato já é o mais rápido).
+ *
+ * Requer: window.BASE_URL.
+ * Opcionais:
+ *   - window.EC_CART_SUBTOTAL  → subtotal do carrinho (para o selo/limiar)
+ *   - window.EC_ENDERECO_TXT   → endereço completo do cliente (mostrado no modal)
+ * Hook no seu fluxo de CEP (opcional):
+ *   ao salvar:  window.FreteProduto && FreteProduto.atualizar(res.cep);
+ *   ao remover: window.FreteProduto && FreteProduto.atualizar(null);
+ */
+(function ($) {
+    'use strict';
+
+    var URL_FRETE = (window.BASE_URL || '') + '/frete/produto';
+    var DIAS = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+
+    // Ponto de extensão: transportadoras futuras (tele-entrega, D+1 em cidades
+    // próximas) podem chegar marcadas com o.categoria. Opções com categoria
+    // "especial" são SEMPRE exibidas, além do mais barato/rápido, e continuam
+    // passando pelas regras (frete grátis etc.) porque vêm do mesmo backend.
+    var CATEGORIAS_ESPECIAIS = ['d1', 'tele_entrega', 'expressa_local', 'retirada'];
+
+    var $box, PRODUTO_ID = 0, PRECO = 0, cepAtual = null, ultima = null;
+
+    var ICO = {
+        truck: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7z"/><circle cx="5.5" cy="18.5" r="2"/><circle cx="18.5" cy="18.5" r="2"/></svg>',
+        pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
+        econ: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 12 22l-8.6-8.6A5 5 0 0 1 2 9.9V4h5.9a5 5 0 0 1 3.5 1.4l9.2 9.2a1.8 1.8 0 0 1 0 2.6z"/><circle cx="7" cy="9" r="1.3"/></svg>',
+        fast: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg>',
+        star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.9 6.3 6.6.6-5 4.4 1.5 6.6L12 17l-6 3.5L7.5 14l-5-4.4 6.6-.6L12 2z"/></svg>'
+    };
+
+    /* ---------- utils ---------- */
+    function cookieCep() { var m = document.cookie.match(/(?:^|;\s*)ec_cep=([^;]+)/); return m ? m[1].replace(/\D/g, '') : ''; }
+    function cepAtivo() { var c = cookieCep(); if (c.length === 8) return c; var g = (window.EC_CEP_ATIVO || '').toString().replace(/\D/g, ''); return g.length === 8 ? g : ''; }
+    function fmtCep(c) { c = (c || '').replace(/\D/g, ''); return c.length === 8 ? c.slice(0, 5) + '-' + c.slice(5) : c; }
+    function reais(v) { return 'R$ ' + (Number(v) || 0).toFixed(2).replace('.', ','); }
+    function esc(s) { return $('<i>').text(s == null ? '' : String(s)).html(); }
+    function subtotalCarrinho() { return Number(window.EC_CART_SUBTOTAL || 0) || 0; }
+
+    function maisDiasUteis(n) { var d = new Date(), add = 0; while (add < n) { d.setDate(d.getDate() + 1); var w = d.getDay(); if (w !== 0 && w !== 6) add++; } return d; }
+
+    // Regra do prazo: dentro de 6 dias -> nome do dia da semana; senão -> data.
+    // (7 dias cairia no mesmo dia de hoje — ex.: hoje segunda, "segunda-feira" —
+    // e ficaria ambíguo; por isso o corte é <= 6 e acima disso mostra dd/mm.)
+    function chegada(prazo) {
+        prazo = Math.max(1, parseInt(prazo, 10) || 1);
+        var d = maisDiasUteis(prazo), hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+        var dias = Math.round((d - hoje) / 86400000);
+        if (dias <= 6) return DIAS[d.getDay()];
+        return ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2);
+    }
+
+    function ehGratis(r) { var ops = r.opcoes || [], cta = r.cta || {}; return !!(ops[0] && ops[0].frete_gratis) || cta.tipo === 'ja_tem'; }
+    function limiarDe(cta) { if (!cta) return null; if (cta.limiar != null) return Number(cta.limiar); if (cta.faltam != null) return Number(cta.faltam) + subtotalCarrinho(); return null; }
+    function seloHtml(free, cta) {
+        if (free) return '<span class="fp_selo">Frete grátis</span>';
+        var lim = limiarDe(cta);
+        if (lim != null && lim > 0) return '<span class="fp_selo">Frete grátis acima de ' + reais(lim) + '</span>';
+        return '';
+    }
+
+    /* ---------- estados do widget ---------- */
+    function skeleton() { $box.html('<div class="fp_frete fp_frete--loading"><div class="fp_sk fp_sk--a"></div><div class="fp_sk fp_sk--b"></div><div class="fp_sk fp_sk--c"></div></div>'); }
+
+    function estadoSemCep() {
+        $box.html('<div class="fp_frete fp_frete--cep">' +
+            '<span class="fp_cep_ic">' + ICO.truck + '</span>' +
+            '<span class="fp_cep_txt"><strong>Frete e prazo de entrega</strong><span>Informe seu CEP para calcular</span></span>' +
+            '<button type="button" class="fp_cep_btn" data-fp-cep>Calcular</button>' +
+        '</div>');
+    }
+
+    function estadoErro(msg) {
+        $box.html('<div class="fp_frete fp_frete--cep">' +
+            '<span class="fp_cep_ic">' + ICO.truck + '</span>' +
+            '<span class="fp_cep_txt"><strong>Não foi possível calcular</strong><span class="fp_erro_txt">' + esc(msg || 'Tente novamente.') + '</span></span>' +
+            '<button type="button" class="fp_cep_btn" data-fp-cep>Alterar</button>' +
+        '</div>');
+    }
+
+    function estadoResultado(r) {
+        var ops = r.opcoes || [];
+        if (!ops.length) { estadoErro('Sem entrega para este CEP.'); return; }
+        var best = ops[0], free = ehGratis(r), dia = chegada(best.prazo_dias);
+        var linha = free
+            ? 'Chegará <span class="fp_g">grátis</span> até <strong>' + dia + '</strong>'
+            : 'Chegará até <strong>' + dia + '</strong> · a partir de ' + reais(best.valor);
+        $box.html('<div class="fp_frete">' +
+            seloHtml(free, r.cta) +
+            '<p class="fp_prazo">' + linha + '</p>' +
+            '<button type="button" class="fp_detalhes" data-fp-more>Mais detalhes e formas de entrega</button>' +
+        '</div>');
+    }
+
+    /* ---------- seleção em foco (mais barato + mais rápido) ---------- */
+    function valorDe(o) { return o.frete_gratis ? 0 : (Number(o.valor) || 0); }
+    function cmpBarato(a, b) { var d = valorDe(a) - valorDe(b); return d !== 0 ? d : ((a.prazo_dias | 0) - (b.prazo_dias | 0)); }
+    function cmpRapido(a, b) { var d = (a.prazo_dias | 0) - (b.prazo_dias | 0); return d !== 0 ? d : (valorDe(a) - valorDe(b)); }
+    function menorPor(ops, cmp) { return ops.reduce(function (m, o) { return cmp(o, m) < 0 ? o : m; }, ops[0]); }
+
+    // Retorna [{op, tipo}] — no máximo: especiais (futuro) + mais barato + mais rápido.
+    // Quando o mais barato já é o mais rápido, devolve 1 só (tipo 'unica').
+    function selecionarOpcoes(ops) {
+        if (!ops.length) return [];
+        var especiais = ops.filter(function (o) { return CATEGORIAS_ESPECIAIS.indexOf(String(o.categoria || '').toLowerCase()) >= 0; });
+        var comuns = ops.filter(function (o) { return CATEGORIAS_ESPECIAIS.indexOf(String(o.categoria || '').toLowerCase()) < 0; });
+
+        var lista = especiais.map(function (o) { return { op: o, tipo: 'especial' }; });
+
+        if (comuns.length) {
+            var barato = menorPor(comuns, cmpBarato);
+            var rapido = menorPor(comuns, cmpRapido);
+            if (barato === rapido) lista.push({ op: rapido, tipo: 'unica' });
+            else { lista.push({ op: barato, tipo: 'barato' }); lista.push({ op: rapido, tipo: 'rapido' }); }
+        }
+        return lista;
+    }
+
+    var ROTULO_CATEGORIA = { d1: 'Entrega rápida', tele_entrega: 'Tele-entrega', expressa_local: 'Entrega expressa', retirada: 'Retirar na loja' };
+
+    function cardOpcao(item, free) {
+        console.log(item, free);
+        
+        var o = item.op;
+        var gr = o.frete_gratis || (free && (item.tipo === 'barato' || item.tipo === 'unica'));
+        var val = gr ? '<span class="fp_c_val is-gratis">Grátis</span>' : '<span class="fp_c_val">' + reais(o.valor) + '</span>';
+        var rotEsp = o.servico || ROTULO_CATEGORIA[String(o.categoria || '').toLowerCase()] || 'Entrega expressa';
+        var meta = ({
+            barato: { ic: ICO.econ, rot: 'Mais econômica' },
+            rapido: { ic: ICO.fast, rot: 'Mais rápida' },
+            unica: { ic: ICO.fast, rot: gr ? 'Frete grátis' : 'Entrega' },
+            especial: { ic: ICO.star, rot: rotEsp }
+        })[item.tipo] || { ic: ICO.truck, rot: 'Entrega' };
+        return '<div class="fp_card">' +
+            '<span class="fp_c_ic">' + meta.ic + '</span>' +
+            '<div class="fp_c_info"><span class="fp_c_rot">' + esc(meta.rot) + '</span>' +
+                '<span class="fp_c_prazo">Chegará até ' + chegada(o.prazo_dias) + '</span></div>' +
+            val +
+        '</div>';
+    }
+
+    function destinoHtml(r) {
+        var full = String(window.EC_ENDERECO_TXT || '').trim();
+        var loc = r.localidade ? esc(r.localidade) + '/' + esc(r.uf) : '';
+        var linha2 = full ? esc(full) : (loc || 'Endereço de entrega');
+        return '<div class="fp_dest">' +
+            '<span class="fp_dest_ic">' + ICO.pin + '</span>' +
+            '<div class="fp_dest_info">' +
+                '<span class="fp_dest_cep">CEP ' + esc(fmtCep(cepAtual)) + '</span>' +
+                '<span class="fp_dest_loc">' + linha2 + '</span>' +
+                '<button type="button" class="fp_dest_link" data-fp-cep>Trocar CEP</button>' +
+            '</div>' +
+        '</div>';
+    }
+
+    /* ---------- modal ---------- */
+    function abrirModal() {
+        if (!ultima || !(ultima.opcoes || []).length) return;
+        fecharModal();
+        var free = ehGratis(ultima);
+        // curadoria vem do BACKEND (mesma usada em carrinho/checkout/pedido manual);
+        // fallback para a seleção no cliente se a resposta não trouxer destaques.
+        var itens = (ultima.destaques && ultima.destaques.length)
+            ? ultima.destaques.map(function (d) { return { op: d.opcao, tipo: d.tipo }; })
+            : selecionarOpcoes(ultima.opcoes);
+        var cards = itens.map(function (it) { return cardOpcao(it, free); }).join('');
+        var selo = seloHtml(free, ultima.cta);
+
+        var $bg = $('<div class="fp_modal_bg" id="fpModal">' +
+            '<div class="fp_modal" role="dialog" aria-modal="true" aria-label="Opções de frete e retirada">' +
+                '<div class="fp_modal_head"><h3>Opções de frete e retirada</h3>' +
+                    '<button type="button" class="fp_modal_x" data-fp-close aria-label="Fechar">&times;</button></div>' +
+                '<p class="fp_modal_sub">Calculamos os custos e prazos para este endereço:</p>' +
+                destinoHtml(ultima) +
+                (selo ? '<div class="fp_modal_selo">' + selo + '</div>' : '') +
+                '<div class="fp_cards">' + cards + '</div>' +
+                (ultima.estimativa ? '<p class="fp_modal_nota">Prazos e valores estimados — a cotação em tempo real está indisponível no momento.</p>' : '') +
+            '</div>' +
+        '</div>');
+        $('body').append($bg).addClass('fp_no_scroll');
+        requestAnimationFrame(function () { $bg.addClass('is-open'); });
+    }
+    function fecharModal() { var $m = $('#fpModal'); if (!$m.length) return; $m.removeClass('is-open'); $('body').removeClass('fp_no_scroll'); setTimeout(function () { $m.remove(); }, 170); }
+
+    /* ---------- fluxo ---------- */
+    function buscar() {
+        var cep = cepAtivo();
+        if (!cep) { estadoSemCep(); return; }
+        cepAtual = cep; skeleton();
+        $.get(URL_FRETE, { cep: cep, produto_id: PRODUTO_ID, subtotal_atual: subtotalCarrinho() }, function (r) {
+            if (!r || !r.ok) { estadoErro(r && r.erro); return; }
+            r.cep_usado = cep; ultima = r; estadoResultado(r);
+        }, 'json').fail(function () { estadoErro('Erro de comunicação.'); });
+    }
+    function abrirModalCep() { var $b = $('.btn-open-location'); if ($b.length) $b.first().trigger('click'); }
+
+    /* ---------- API + auto-refresh ---------- */
+    window.FreteProduto = {
+        atualizar: function (cep) { if (cep === null || cep === false) { ultima = null; estadoSemCep(); return; } buscar(); },
+        recarregar: buscar
+    };
+
+    $(function () {
+        $box = $('#fpFrete'); if (!$box.length) return;
+        PRODUTO_ID = parseInt($box.data('produto-id'), 10) || 0;
+        PRECO = parseFloat($box.data('preco')) || 0;
+        if (!PRODUTO_ID) return;
+
+        // "Calcular"/"Trocar CEP" (widget ou modal) abrem a sua modal de localização
+        $(document).on('click', '[data-fp-cep]', function () { if ($('#fpModal').length) fecharModal(); abrirModalCep(); });
+        $box.on('click', '[data-fp-more]', abrirModal);
+        $(document).on('click', '[data-fp-close]', fecharModal);
+        $(document).on('click', '#fpModal', function (e) { if (e.target === this) fecharModal(); });
+        $(document).on('keydown', function (e) { if (e.key === 'Escape') fecharModal(); });
+
+        $(document).on('submit', '#form-cep', function () { setTimeout(buscar, 900); });
+        $(document).on('click', '#btn-remove-cep', function () { setTimeout(function () { window.FreteProduto.atualizar(null); }, 500); });
+
+        buscar();
+    });
+})(jQuery);
+
+
 $(function () {
   if (typeof window.PV === 'undefined') return;
 
@@ -531,37 +615,13 @@ $(function () {
 
   // ── Resolve SKU pela combinação atual ────────────────────
   
-  // ── Aplica os dados do SKU na UI ─────────────────────────
-  function aplicarSkuNaUI(sku) {
-    // Preço
-    mostrarPrecoSku(sku.preco_fmt, sku.sem_estoque);
-
-    // Botão de comprar
-    const $btn = $('#btn-comprar, .btn-add-cart-detail').first();
-    if (!$btn.length) return;
-
-    if (sku.sem_estoque) {
-      $btn.prop('disabled', true)
-          .text('Sem estoque')
-          .removeClass('btn-primary')
-          .addClass('btn-disabled');
-    } else {
-      $btn.prop('disabled', false)
-          .text('Adicionar ao carrinho')
-          .removeClass('btn-disabled')
-          .addClass('btn-primary');
-
-      if (sku.sku_id) {
-        $btn.attr('data-sku-id', sku.sku_id).data('sku-id', sku.sku_id);
-      }
-    }
-  }
 
   // Handler unificado para adicionar ao carrinho da página de produto
-  $(document).on('click', '#btn-comprar, .btn-add-cart-detail', function (e) {
+  $(document).on('click', '#btn-comprar, .btn-add-cart-detail, #btn-buynow', function (e) {
       e.preventDefault();
 
       const $btn      = $(this);
+      const isBuyNow  = $btn.is('#btn-buynow');   // Comprar agora → checkout
       const produtoId = parseInt($btn.data('product-id') || $btn.attr('data-product-id'));
 
       // Lê o sku_id de ambas as fontes (jQuery data e atributo HTML)
@@ -593,7 +653,7 @@ $(function () {
 
       const dados = {
           produto_id  : produtoId,
-          quantidade  : 1,
+          quantidade  : parseInt($('#product-qty').val()) || 1,
           _csrf_token : CSRF_TOKEN,
       };
 
@@ -618,6 +678,9 @@ $(function () {
               $('#cart-count, #mc-badge').text(res.count).show();
           }
 
+          // Comprar agora vai direto ao checkout
+          if (isBuyNow) { window.location.href = BASE_URL + '/checkout'; return; }
+
           // Abre mini cart
           if (typeof abrirMiniCart === 'function') abrirMiniCart();
 
@@ -631,8 +694,6 @@ $(function () {
       });
   });
 
-  // Substituir a função atualizarURL
-  // Substituir a função aplicarSkuNaUI e adicionar restaurarPrecoBase
 
   function aplicarSkuNaUI(sku) {
     $('#price-range-wrapper').hide();
@@ -659,7 +720,7 @@ $(function () {
     }
 
     // Botão de comprar
-    const $btn = $('#btn-comprar, .btn-add-cart-detail').first();
+    const $btn = $('#btn-comprar, .btn-add-cart-detail, #btn-buynow').first();
     if (!$btn.length) return;
 
     if (sku.sem_estoque) {
@@ -675,11 +736,6 @@ $(function () {
             .attr('data-sku-id', sku.sku_id)
             .data('sku-id', sku.sku_id);
     }
-  }
-
-  function restaurarPrecoBase() {
-      $('#sku-preco-wrapper').hide();
-      $('#price-range-wrapper').show();
   }
 
   // Calcula o parcelamento no JS com as mesmas regras do PHP
@@ -715,31 +771,6 @@ $(function () {
       $('#price-range-wrapper').show();
   }
 
-  // Na função resolverSku, chamar restaurarPrecoBase quando faltam seleções:
-  function resolverSku() {
-      const faltando = tiposOrdenados.filter(t => !selecoes[t]);
-      atualizarBotoesDisponiveis();
-
-      if (faltando.length > 0) {
-          restaurarPrecoBase(); // ← volta para o range/preço base
-          esconderAviso();
-          return;
-      }
-
-      const chave = tiposOrdenados.map(t => selecoes[t]).join('|');
-      const sku   = PV.matriz[chave];
-
-      if (!sku) {
-          mostrarAviso('Combinação não disponível.');
-          restaurarPrecoBase();
-          return;
-      }
-
-      esconderAviso();
-      skuAtual = sku;
-      aplicarSkuNaUI(sku);
-      atualizarURL(chave);
-  }
   function atualizarURL(chave) {
       if (!window.history || !window.history.pushState) return;
 
@@ -765,7 +796,6 @@ $(function () {
       console.log('[URL] Atualizada para:', url.toString());
   }
 
-  // E na função resolverSku, passar a chave diretamente:
   function resolverSku() {
       const faltando = tiposOrdenados.filter(t => !selecoes[t]);
       atualizarBotoesDisponiveis();
@@ -910,7 +940,6 @@ $(function () {
 
     // ── Carrega as listas do cliente ─────────────────────
     
-    // Substituir a função carregarListas() no product.js
 
     function carregarListas() {
         // Usa dados já carregados pelo PHP (sem Ajax extra)
@@ -1241,6 +1270,65 @@ $(function () {
   });
 
   })();  
+  
+
+  $(function(){
+    // ── LIGHTBOX ──
+    var $lb = $('#pdx-lb');
+    if ($lb.length) {
+      var imgs = window.PDX_IMAGES || [];
+      var cur = 0;
+      var $lbImg = $('#pdx-lb-img'), $lbCount = $('#pdx-lb-count');
+      function lbGo(i){
+        if(!imgs.length) return;
+        cur = (i + imgs.length) % imgs.length;
+        $lbImg.attr('src', imgs[cur]);
+        $lbCount.text((cur+1) + ' / ' + imgs.length);
+        $('#pdx-lb-strip .pdx-lb-thumb').removeClass('active').eq(cur).addClass('active');
+      }
+      function lbOpen(i){ lbGo(i); $lb.addClass('open'); $('body').css('overflow','hidden'); }
+      function lbClose(){ $lb.removeClass('open'); $('body').css('overflow',''); }
+
+      // Abre: clique na imagem principal ou no tile "+N"
+      $('#zoom-wrapper').on('click', function(){ lbOpen(0); });
+      $(document).on('click', '.pdx-thumb-more', function(e){
+        e.preventDefault(); e.stopPropagation();
+        lbOpen(parseInt($(this).data('index'), 10) || 0);
+      });
+      $('#pdx-lb-strip').on('click', '.pdx-lb-thumb', function(){ lbGo(parseInt($(this).data('index'),10)); });
+      $('#pdx-lb-prev').on('click', function(){ lbGo(cur-1); });
+      $('#pdx-lb-next').on('click', function(){ lbGo(cur+1); });
+      $('#pdx-lb-close').on('click', lbClose);
+      $lb.on('click', function(e){ if(e.target === this || $(e.target).hasClass('pdx-lb-main')) lbClose(); });
+      $(document).on('keydown', function(e){
+        if(!$lb.hasClass('open')) return;
+        if(e.key === 'Escape') lbClose();
+        if(e.key === 'ArrowLeft') lbGo(cur-1);
+        if(e.key === 'ArrowRight') lbGo(cur+1);
+      });
+    }
+
+    // ── MODAL DE PAGAMENTO ──
+    var $pay = $('#pdx-pay-modal');
+    function payOpen(){ $pay.addClass('open'); $('body').css('overflow','hidden'); }
+    function payClose(){ $pay.removeClass('open'); $('body').css('overflow',''); }
+    $('#pdx-open-pay').on('click', payOpen);
+    $('#pdx-pay-x').on('click', payClose);
+    $('#pdx-pay-back').on('click', payClose);
+    $(document).on('keydown', function(e){ if(e.key === 'Escape' && $pay.hasClass('open')) payClose(); });
+
+    // ── VER MAIS (descrição) ──
+    var $coll = $('#pdx-desc-collapse'), $more = $('#pdx-desc-more');
+    if ($coll.length) {
+      // esconde o botão se a descrição já couber
+      if ($coll[0].scrollHeight <= $coll[0].clientHeight + 8) {
+        $more.hide(); $coll.find('.pdx-collapse-fade').hide();
+      }
+      $more.on('click', function(){
+        var open = $coll.toggleClass('open').hasClass('open');
+        $more.toggleClass('open', open);
+        $more.contents().first()[0].nodeValue = open ? 'Ver menos ' : 'Ver descrição completa';
+      });
+    }
+  });
 });
-
-

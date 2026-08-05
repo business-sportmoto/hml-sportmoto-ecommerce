@@ -263,6 +263,8 @@ class ProductController extends Controller {
         $this->json(['ok' => true]);
     }
 
+    
+
     // ── Salvar avaliação ──────────────────────────────────────
 
     public function saveReview(): void {

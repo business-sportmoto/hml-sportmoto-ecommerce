@@ -1120,7 +1120,7 @@
 /* ── Product Stories (bolinhas) ──────────────────────── */
 .product-clips-stories {
   margin: 0 0;
-  padding: 18px 0;
+  padding: 0;
   border-top: 1px solid #f1f5f9;
 }
 
@@ -1155,12 +1155,12 @@
   /* Gradiente estilo Instagram */
   width: 68px; height: 68px;
   border-radius: 50%;
-  background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
+  background: linear-gradient(135deg, #6dbdf5, #398de6, #1f6fc4);
   padding: 2.5px;
   transition: transform .2s;
 }
 .product-story-circle.is-seen .product-story-ring {
-  background: #cbd5e1; /* Visto = cinza */
+  background: #d9dde3; /* Visto = cinza */
 }
 
 .product-story-thumb {

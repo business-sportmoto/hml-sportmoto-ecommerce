@@ -417,32 +417,67 @@ class CartController extends Controller {
 
     // ── Calcular frete ────────────────────────────────────────
 
+    // public function calcShipping(): void {
+    //     $cep      = preg_replace('/\D/', '', $_POST['cep'] ?? $_GET['cep'] ?? '');
+    //     $productId = SecurityHelper::sanitizeInt($_GET['produto_id'] ?? 0);
+
+    //     if (strlen($cep) !== 8) {
+    //         $this->json(['ok' => false, 'msg' => 'CEP inválido.']);
+    //     }
+
+    //     $carrinho   = $this->cartModel->getOrCreate();
+    //     $totals     = $this->cartModel->getTotals((int)$carrinho['id']);
+    //     $shippingSvc = new ShippingService();
+
+    //     // Agrega dimensões e peso dos itens
+    //     $pesoTotal = 0;
+    //     foreach ($totals['items'] as $item) {
+    //         $product = (new Product())->find($item['produto_id']);
+    //         $pesoTotal += (float)($product['peso_kg'] ?? 0.5) * $item['quantidade'];
+    //     }
+
+    //     $result = $shippingSvc->calculate($cep, [
+    //         'peso_kg'         => max(0.3, $pesoTotal),
+    //         'valor_carrinho'  => $totals['subtotal'],
+    //         'produto_id'      => $productId,
+    //     ]);
+
+    //     $this->json($result);
+    // }
+
     public function calcShipping(): void {
-        $cep      = preg_replace('/\D/', '', $_POST['cep'] ?? $_GET['cep'] ?? '');
-        $productId = SecurityHelper::sanitizeInt($_GET['produto_id'] ?? 0);
+        $cep = preg_replace('/\D/', '', $_POST['cep'] ?? $_GET['cep'] ?? '');
+        if (strlen($cep) !== 8) { $this->json(['ok' => false, 'erro' => 'CEP inválido.']); return; }
 
-        if (strlen($cep) !== 8) {
-            $this->json(['ok' => false, 'msg' => 'CEP inválido.']);
-        }
+        $carrinho = $this->cartModel->getOrCreate();
+        $totals   = $this->cartModel->getTotals((int)$carrinho['id']);
 
-        $carrinho   = $this->cartModel->getOrCreate();
-        $totals     = $this->cartModel->getTotals((int)$carrinho['id']);
-        $shippingSvc = new ShippingService();
-
-        // Agrega dimensões e peso dos itens
-        $pesoTotal = 0;
+        $itens = [];
         foreach ($totals['items'] as $item) {
-            $product = (new Product())->find($item['produto_id']);
-            $pesoTotal += (float)($product['peso_kg'] ?? 0.5) * $item['quantidade'];
+            $p = (new Product())->find($item['produto_id']);
+            if (!$p) continue;
+            $itens[] = [
+                'produto_id'     => (int)$item['produto_id'],
+                'quantidade'     => (int)$item['quantidade'],
+                'valor'          => (float)($p['preco_final'] ?? $p['preco'] ?? 0),
+                'peso_g'         => max(1, (int)round((float)($p['peso_kg'] ?? 0.5) * 1000)),
+                'altura_cm'      => (float)($p['altura_cm'] ?? 0),
+                'largura_cm'     => (float)($p['largura_cm'] ?? 0),
+                'comprimento_cm' => (float)($p['comprimento_cm'] ?? 0),
+                'categoria_id'   => $p['categoria_id'] ?? null,
+                'marca_id'       => $p['marca_id'] ?? null,
+            ];
         }
 
-        $result = $shippingSvc->calculate($cep, [
-            'peso_kg'         => max(0.3, $pesoTotal),
-            'valor_carrinho'  => $totals['subtotal'],
-            'produto_id'      => $productId,
+        $res = (new FreteVitrineService())->cotar([
+            'cep_destino'      => $cep,
+            'itens'            => $itens,
+            'valor_mercadoria' => $totals['subtotal'],
+            // CTA no carrinho: "você já tem frete grátis?" (preco_produto=0)
+            'cta'              => ['subtotal_atual' => (float)$totals['subtotal'], 'preco_produto' => 0],
         ]);
 
-        $this->json($result);
+        $this->json($res);
     }
 
     // ── Selecionar frete ──────────────────────────────────────
@@ -453,7 +488,7 @@ class CartController extends Controller {
         $carrinho = $this->cartModel->getOrCreate();
         $frete = [
             'servico' => SecurityHelper::sanitizeString($_POST['servico'] ?? ''),
-            'valor'   => SecurityHelper::sanitizeFloat( $_POST['valor']   ?? 0),
+            'valor'   => SecurityHelper::sanitizeFloat( $_POST['preco']   ?? 0),
             'prazo'   => SecurityHelper::sanitizeInt(   $_POST['prazo']   ?? 0),
             'cep'     => $_POST['cep'] ?? '',
         ];
@@ -461,12 +496,10 @@ class CartController extends Controller {
         $this->cartModel->saveShipping((int)$carrinho['id'], $frete);
 
         $totals = $this->cartModel->getTotals((int)$carrinho['id']);
-        $this->json([
-            'ok'           => true,
-            'frete_fmt'    => $totals['frete_fmt'],
-            'total_fmt'    => $totals['total_fmt'],
-            'desconto_fmt' => $totals['desconto_fmt'],
-        ]);
+        $totals['ok'] = true;
+        $totals['items'] = null;
+        $totals['deg2'] = $frete;
+        $this->json($totals);
     }
 
     // ── Mini-cart (Ajax drawer) ───────────────────────────────

@@ -41,6 +41,7 @@ $statusLabels = [
         <?= (int)$totais['pedidos_pendentes'] ?> pedido(s) pendente(s)
       </a>
       <?php endif; ?>
+      <?php include ADMIN_PATH . '/views/dashboard/logistica-badges.php'; ?>
       <?php if (($pedidos_nao_pagos_10d ?? 0) > 0): ?>
       <a href="<?= BASE_URL ?>/admin/payment/transacoes?status=pendente"
          class="admin-alert-badge admin-alert-badge--warning"
@@ -69,6 +70,7 @@ $statusLabels = [
   </div>
 
   <?php include ADMIN_PATH . '/views/dashboard/log-widget.php'; ?>
+  
 
   <!-- ── Stats cards ──────────────────────────────────────── -->
   <div class="admin-stats-grid">

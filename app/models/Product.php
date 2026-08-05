@@ -131,6 +131,21 @@ class Product extends Model {
         return $stmt->fetch() ?: null;
     }
 
+    public function findById(string $slug): ?array {
+        $stmt = $this->db->prepare(
+            "SELECT p.*,
+                    c.nome AS categoria_nome, c.slug AS categoria_slug,
+                    m.nome AS marca_nome, m.slug AS marca_slug
+             FROM produtos p
+             LEFT JOIN categorias c ON c.id = p.categoria_id
+             LEFT JOIN marcas m     ON m.id  = p.marca_id
+             WHERE p.id = ? AND p.ativo = 1 AND p.deleted_at IS NULL
+             LIMIT 1"
+        );
+        $stmt->execute([$slug]);
+        return $stmt->fetch() ?: null;
+    }
+
     // private function getList(array $opts = [], int $limit = 8): array {
     //     $where  = "p.ativo = 1 AND p.deleted_at IS NULL";
     //     $params = [];

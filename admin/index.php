@@ -23,6 +23,8 @@ spl_autoload_register(function (string $class): void {
         ROOT_PATH . '/app/services/email/providers/',
         ROOT_PATH . '/app/services/ia/',
         ROOT_PATH . '/app/services/ia/providers/',
+        ROOT_PATH . '/app/services/logistica/',
+        ROOT_PATH . '/app/services/logistica/transportadoras/',
         ROOT_PATH . '/app/services/payment/',
         ROOT_PATH . '/admin/controllers/',
     ];

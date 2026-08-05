@@ -17,7 +17,7 @@ $carrinhoCount = $cartService->getTotalItensCart();
         <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
         <path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/>
       </svg>
-      <h2>Meu carrinho <?php var_dump(Session::getClienteId()); ?></h2>
+      <h2>Meu carrinho</h2>
       <span class="mc-badge" id="mc-badge"><?= $carrinhoCount > 99 ? '99+' : $carrinhoCount ?></span>
     </div>
     <button class="mc-close" id="mc-close" aria-label="Fechar carrinho">

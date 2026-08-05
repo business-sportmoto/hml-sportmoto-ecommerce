@@ -183,8 +183,8 @@ class SearchController extends Controller {
                                     : null,
                 'categoria'       => $item['categoria'] ?? '',
                 'imagem'          => !empty($item['imagem'])
-                                    ? UPLOAD_URL . '/products/' . $item['imagem']
-                                    : null,
+                                    ? $item['imagem']
+                                    : BASE_URL . '/assets/images/placeholder.jpg',
             ];
         }, $items);
 
