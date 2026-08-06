@@ -49,14 +49,21 @@ if (!Session::isAdminLogado()) {
         Session::loginAdmin($dados['user'], $dados['admin']);
     }
 }
+
 if (Session::isAdminLogado()) {
-    $ok = (new AdminTokenService())->revalidarRequest(Session::get('admin_user_id'));
+    $uid = (int) Session::get('admin_user_id');
+    if ($uid <= 0) {                        // sessão antiga / shape ruim
+        $uid = AuthHelper::usuarioId();     // bridge admin_id → usuarios.id
+        if ($uid > 0) Session::set('admin_user_id', $uid);
+    }
+    $ok = $uid > 0 && (new AdminTokenService())->revalidarRequest($uid);
     if (!$ok) {
-        Session::logoutAdmin(); 
+        Session::logoutAdmin();
         (new AdminTokenService())->revogarAtual();
         // redirect pro login
     }
 }
+
 // Dados globais compartilhados em todas as views do admin
 if (Session::isAdminLogado()) {
     View::share('admin_nome',  Session::get('admin_nome'));

@@ -85,7 +85,12 @@ final class AdminAuthController extends Controller
         );
 
         if (!empty($_POST['lembrar'])) {
-            (new AdminTokenService())->emitir((int)$user['admin_id'] /* ou usuario_id */);
+            // emitir() grava sessoes_persistentes.usuario_id = usuarios.id, NÃO admins.id.
+            // Reusa o usuarios.id já resolvido por loginAdmin (Fix A) — fonte única.
+            $usuarioId = (int) Session::get('admin_user_id');
+            if ($usuarioId > 0) {
+                (new AdminTokenService())->emitir($usuarioId);
+            }
         }
 
         $this->normalizeTiming($startedAt);

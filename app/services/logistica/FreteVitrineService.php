@@ -275,6 +275,7 @@ class FreteVitrineService
                 'categoria'      => strtolower((string)($o['categoria'] ?? 'padrao')),
                 'prazo_dias'     => (int)($o['prazo_dias'] ?? 0),
                 'valor'          => round((float)($o['valor_final'] ?? $o['valor'] ?? 0), 2),
+                'valor_fmt'      => PriceHelper::format(round((float)($o['valor_final'] ?? $o['valor'] ?? 0), 2)),
                 'frete_gratis'   => !empty($o['frete_gratis']),
                 'mais_barato'    => $i === $barato,
                 'mais_rapido'    => $i === $rapido,

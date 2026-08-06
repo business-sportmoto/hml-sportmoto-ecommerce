@@ -32,12 +32,23 @@ class Session {
         self::$started = true;
 
         // Regenera o ID de sessão periodicamente para evitar session fixation
+        // if (!self::has('_session_init')) {
+        //     session_regenerate_id(true);
+        //     self::set('_session_init', time());
+        // } elseif ((time() - self::get('_session_init')) > 1800) {
+        //     // Regenera a cada 30 minutos
+        //     session_regenerate_id(true);
+        //     self::set('_session_init', time());
+        // }
+        // Anti-session-fixation: regenera UMA vez ao nascer a sessão.
+        // - false (não true): NÃO apaga a sessão antiga na hora. Com true,
+        //   um request AJAX que regenerava apagava a sessão enquanto outros
+        //   requests paralelos ainda mandavam o cookie antigo → logout.
+        // - Regeneração PERIÓDICA (30min) REMOVIDA: era a causa do logout
+        //   aleatório em uso ativo. O fixation já é tratado no login
+        //   (loginAdmin/loginCliente usam true, e lá NÃO há concorrência).
         if (!self::has('_session_init')) {
-            session_regenerate_id(true);
-            self::set('_session_init', time());
-        } elseif ((time() - self::get('_session_init')) > 1800) {
-            // Regenera a cada 30 minutos
-            session_regenerate_id(true);
+            session_regenerate_id(false);
             self::set('_session_init', time());
         }
 
@@ -152,7 +163,8 @@ class Session {
 
         self::set('admin_logado', true);
         self::set('admin_id', $admin['id']);
-        self::set('admin_user_id', $usuario['usuario_id']);
+        // self::set('admin_user_id', $usuario['usuario_id']);
+        self::set('admin_user_id', (int)($usuario['id'] ?? $admin['usuario_id'] ?? $usuario['usuario_id'] ?? 0));
         self::set('admin_nivel', $admin['nivel']);
         self::set('admin_permissoes', json_decode($admin['permissoes'] ?? '{}', true));
         self::set('admin_nome', $usuario['nome']);

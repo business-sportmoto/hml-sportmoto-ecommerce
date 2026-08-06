@@ -107,6 +107,7 @@ class CalculadoraService
                     'servico_nome'        => (string)($op['servico_nome'] ?? ''),
                     'prazo_dias'          => (int)($op['prazo_dias'] ?? 0),
                     'valor'               => (float)($op['valor'] ?? 0),
+                    'valor_fmt'           => PriceHelper::format((float)($op['valor'] ?? 0)),
                     'tipo_postagem'       => (string)($op['tipo_postagem'] ?? 'postagem'),
                     'categoria'           => strtolower((string)($op['categoria'] ?? 'padrao')),
                     'avisos'              => $op['avisos'] ?? [],

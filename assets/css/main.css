@@ -9407,10 +9407,10 @@ input:checked + .cart-check-custom::after {
 .qa-empty strong { display: block; color: #475569; font-size: 15px; margin-bottom: 4px; font-weight: 800; }
 
 .qa-item {
-  background: #fff;
+  /* background: #fff;
   border: 1.5px solid #e2e8f0;
   border-radius: 14px;
-  padding: 18px 20px;
+  padding: 18px 20px; */
   animation: qa-fade-in .3s ease both;
 }
 @keyframes qa-fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -11024,15 +11024,15 @@ to{opacity:1;transform:scale(1)}
 .pdx #sku-preco-valor{font-size:36px;font-weight:800;color:var(--pdx-ink);letter-spacing:-.02em;line-height:1}
 
 /* ═══ VARIAÇÕES (hooks reais, re-vestidas) ═══ */
-.pdx .product-variations{margin-bottom:4px}
-.pdx .variation-group{margin-bottom:18px}
-.pdx .variation-label{font-size:13px;font-weight:600;color:var(--pdx-ink);margin-bottom:9px;display:flex;align-items:baseline;gap:6px}
+.pdx .product-variations{margin-bottom:7px; margin-top: 7px;}
+.pdx .variation-group{margin-bottom:7px}
+.pdx .variation-label{font-size:13px;font-weight:600;color:var(--pdx-ink);margin-bottom:3px;display:flex;align-items:baseline;gap:6px}
 .pdx .variation-label small{color:var(--pdx-muted);font-weight:500}
 .pdx .variation-valor-atual{font-weight:700;color:var(--pdx-ink)}
 .pdx .variation-opcoes{display:flex;gap:8px;flex-wrap:wrap}
 
 /* swatch de família (agrupador) — cor / imagem / texto */
-.pdx .variation-swatch--agrupador{width:40px;height:40px;border-radius:9px;position:relative;padding:0;border:1.5px solid var(--pdx-line);overflow:hidden;display:inline-flex;align-items:center;justify-content:center;transition:transform .16s var(--pdx-ease),border-color .16s;text-decoration:none}
+.pdx .variation-swatch--agrupador{width:38px;height:38px;border-radius:9px;position:relative;padding:0;border:1.5px solid var(--pdx-line);overflow:hidden;display:inline-flex;align-items:center;justify-content:center;transition:transform .16s var(--pdx-ease),border-color .16s;text-decoration:none}
 .pdx .variation-swatch--agrupador:hover{transform:translateY(-2px);border-color:var(--pdx-faint)}
 .pdx .variation-swatch--agrupador.active{border-color:var(--pdx-accent)}
 .pdx .variation-swatch--agrupador.active::after{content:"";position:absolute;inset:-1.5px;box-shadow:0 0 0 1.5px var(--pdx-accent);border-radius:inherit;pointer-events:none}

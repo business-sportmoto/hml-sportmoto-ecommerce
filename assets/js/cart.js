@@ -1396,7 +1396,7 @@ $(function () {
   function buildFreteOpcao(op, isMelhor) {
     const precoHtml = op.valor <= 0
       ? '<strong class="mc-frete-gratis">Grátis</strong>'
-      : `<strong>${op.valor}</strong>`;
+      : `<strong>${op.valor_fmt}</strong>`;
 
     const prazoHtml = op.prazo_dias
       ? `<small>${op.prazo_dias} dia${op.prazo_dias !== 1 ? 's' : ''} úteis</small>`
