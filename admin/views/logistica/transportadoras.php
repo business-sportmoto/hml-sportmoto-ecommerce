@@ -27,21 +27,21 @@ $ambBadge = static function (string $a): array {
     };
 };
 ?>
-<link rel="stylesheet" href="/assets/css/logistica.css">
+
 
 <div class="log_shell" id="logTransp" data-base="/admin/logistica/transportadoras">
 
     <div class="log_head">
         <div>
-            <h1><i class="bi bi-truck"></i> Transportadoras</h1>
+            <h1><?= IconLibrary::render('truck') ?> Transportadoras</h1>
             <p>Integrações, credenciais, serviços e prioridade de cotação.</p>
         </div>
         <div class="log_head_actions">
             <a href="/admin/logistica" class="log_btn log_btn--sm">
-                <i class="bi bi-broadcast-pin"></i> Torre
+                <?= IconLibrary::render('tower-control') ?> Torre
             </a>
             <button type="button" class="log_btn log_btn--primary log_btn--sm" id="logTranspNova">
-                <i class="bi bi-plus-lg"></i> Nova transportadora
+                <?= IconLibrary::render('add') ?> Nova transportadora
             </button>
         </div>
     </div>
@@ -98,8 +98,8 @@ $ambBadge = static function (string $a): array {
                     <tr data-id="<?= (int)$t['id'] ?>" data-status="<?= $e($t['status']) ?>">
                         <td>
                             <div class="log_ordem">
-                                <button type="button" class="log_btn log_btn--icon log_btn--xs js-mover" data-dir="cima" title="Subir prioridade"><i class="bi bi-chevron-up"></i></button>
-                                <button type="button" class="log_btn log_btn--icon log_btn--xs js-mover" data-dir="baixo" title="Descer prioridade"><i class="bi bi-chevron-down"></i></button>
+                                <button type="button" class="log_btn log_btn--icon log_btn--xs js-mover" data-dir="cima" title="Subir prioridade"><?= IconLibrary::render('arrow-up') ?></button>
+                                <button type="button" class="log_btn log_btn--icon log_btn--xs js-mover" data-dir="baixo" title="Descer prioridade"><?= IconLibrary::render('arrow-down') ?></i></button>
                             </div>
                         </td>
                         <td>
@@ -107,7 +107,7 @@ $ambBadge = static function (string $a): array {
                                 <?php if (!empty($t['logo_url'])): ?>
                                     <img class="log_transp_logo" src="<?= $e($t['logo_url']) ?>" alt="">
                                 <?php else: ?>
-                                    <span class="log_transp_ph"><i class="bi bi-truck"></i></span>
+                                    <span class="log_transp_ph"><?= IconLibrary::render('truck') ?></span>
                                 <?php endif; ?>
                                 <div class="log_transp_info">
                                     <strong><?= $e($t['nome']) ?></strong>
@@ -126,9 +126,9 @@ $ambBadge = static function (string $a): array {
                         </td>
                         <td class="log_muted"><?= $e($sync) ?></td>
                         <td class="log_col_acoes">
-                            <button type="button" class="log_btn log_btn--icon js-testar" title="Testar conexão"><i class="bi bi-plug"></i></button>
-                            <button type="button" class="log_btn log_btn--icon js-logs" title="Ver logs"><i class="bi bi-list-columns-reverse"></i></button>
-                            <button type="button" class="log_btn log_btn--icon js-editar" title="Editar"><i class="bi bi-pencil"></i></button>
+                            <button type="button" class="log_btn log_btn--icon js-testar" title="Testar conexão"><?= IconLibrary::render('plug-connect') ?></button>
+                            <button type="button" class="log_btn log_btn--icon js-logs" title="Ver logs"><?= IconLibrary::render('history-toggle-off') ?></button>
+                            <button type="button" class="log_btn log_btn--icon js-editar" title="Editar"><?= IconLibrary::render('edit') ?></button>
                         </td>
                     </tr>
                 <?php endforeach; endif; ?>
@@ -143,4 +143,4 @@ $ambBadge = static function (string $a): array {
     window.LOG_TRANSP_BASE = '/admin/logistica/transportadoras';
     window.LOG_CATALOGO    = <?= json_encode($catalogo ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 </script>
-<script src="/assets/js/transportadoras.js" defer></script>
+

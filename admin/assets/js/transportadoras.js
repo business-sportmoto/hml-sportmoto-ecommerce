@@ -323,7 +323,10 @@
 
         function carregar(pagina) {
             api('GET', '/logs', { id: id, pagina: pagina }).done(function (r) {
-                if (!r || !r.ok) { $(drawer.corpo()).find('#logLogsBox').html('<p class="log_muted">Falha ao carregar.</p>'); return; }
+                drawer.setConteudo('<div id="logLogsBox"></div>')
+                if (!r || !r.ok) { 
+                    $(drawer.corpo()).find('#logLogsBox').html('<p class="log_muted">Falha ao carregar.</p>'); return; 
+                }
                 renderLogs($(drawer.corpo()), r, carregar);
             }).fail(function () {
                 $(drawer.corpo()).find('#logLogsBox').html('<p class="log_muted">Erro de comunicação.</p>');
