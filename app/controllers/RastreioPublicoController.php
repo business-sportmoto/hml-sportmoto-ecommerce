@@ -32,7 +32,7 @@ class RastreioPublicoController extends Controller
         $dados = $token !== '' ? $this->rastreios->porToken($token) : null;
 
         // Página autossuficiente (não passa pelo layout admin).
-        $view = __DIR__ . '/../views/logistica/rastreio-publico.php';
+        $view = __DIR__ . '/../../views/logistica/rastreio-publico.php';
         $rastreio = $dados;                 // disponível na view
         header('Content-Type: text/html; charset=UTF-8');
         include $view;

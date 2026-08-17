@@ -17,8 +17,8 @@ $f = $filtros ?? [];
             <p>Devoluções e trocas: autorização, etiqueta de retorno, instruções e vínculo com reembolso.</p>
         </div>
         <div class="log_head_actions">
-            <a href="/admin/logistica" class="log_btn log_btn--sm"><?= $ico('caminhao', 15) ?> Torre</a>
-            <button type="button" class="log_btn log_btn--primary log_btn--sm" id="logRevNova"><i class="bi bi-plus-lg"></i> Nova solicitação</button>
+            <a href="/admin/logistica" class="log_btn log_btn--sm"><?= $ico('tower-control', 15) ?> Torre</a>
+            <button type="button" class="log_btn log_btn--primary log_btn--sm" id="logRevNova"><?= $ico('add', 15) ?> Nova solicitação</button>
         </div>
     </div>
 

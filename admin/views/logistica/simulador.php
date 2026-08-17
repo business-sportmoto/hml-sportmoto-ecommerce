@@ -6,7 +6,7 @@
  */
 $ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">' . (class_exists('IconLibrary') ? IconLibrary::render($n) : '') . '</span>';
 ?>
-<link rel="stylesheet" href="/assets/css/logistica.css">
+
 
 <div class="log_shell" id="logSim" data-base="/admin/logistica/simulador">
 
@@ -16,7 +16,7 @@ $ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int
             <p>Cotação real das transportadoras ativas, com o motor de regras aplicado.</p>
         </div>
         <div class="log_head_actions">
-            <a href="/admin/logistica/regras" class="log_btn log_btn--sm"><?= $ico('regras', 15) ?> Regras</a>
+            <a href="/admin/logistica/regras" class="log_btn log_btn--sm"><?= $ico('rule', 25) ?> Regras</a>
         </div>
     </div>
 
@@ -83,4 +83,4 @@ $ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int
 </div>
 
 <script>window.LOG_SIM_BASE = '/admin/logistica/simulador';</script>
-<script src="/assets/js/frete.js" defer></script>
+

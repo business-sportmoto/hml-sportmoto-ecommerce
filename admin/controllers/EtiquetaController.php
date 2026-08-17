@@ -179,4 +179,31 @@ class EtiquetaController extends Controller
         if (!empty($_SESSION['admin']['id'])) return (int)$_SESSION['admin']['id'];
         return null;
     }
+
+    /** Busca de endereço por CEP (ViaCEP) para autopreencher destinatário/remetente. */
+    public function buscarCep(): void
+    {
+        $cep = preg_replace('/\D/', '', (string)($_GET['cep'] ?? '')) ?? '';
+        if (strlen($cep) !== 8) { $this->json(['ok' => false, 'erro' => 'CEP inválido.']); return; }
+        try {
+            $ctx = stream_context_create(['http' => ['timeout' => 5, 'ignore_errors' => true]]);
+            $res = @file_get_contents("https://viacep.com.br/ws/{$cep}/json/", false, $ctx);
+            $d = $res ? json_decode($res, true) : null;
+            if (!$d || !empty($d['erro'])) { $this->json(['ok' => false, 'erro' => 'CEP não encontrado.']); return; }
+            $this->json(['ok' => true, 'endereco' => [
+                'cep' => $cep, 'logradouro' => $d['logradouro'] ?? '', 'complemento' => $d['complemento'] ?? '',
+                'bairro' => $d['bairro'] ?? '', 'cidade' => $d['localidade'] ?? '', 'uf' => $d['uf'] ?? '',
+            ]]);
+        } catch (\Throwable $e) {
+            $this->json(['ok' => false, 'erro' => 'Falha ao consultar o CEP.']);
+        }
+    }
+
+    /** Busca cliente por CPF (mesmo mecanismo da reversa) para autopreencher os dados. */
+    public function buscarCliente(): void
+    {
+        $cpf = trim((string)($_GET['cpf'] ?? ''));
+        $clientes = $cpf !== '' && class_exists('ClienteBuscaService') ? (new ClienteBuscaService())->buscarPorCpf($cpf) : [];
+        $this->json(['ok' => true, 'clientes' => $clientes]);
+    }
 }

@@ -514,3 +514,825 @@ to{opacity:1;transform:translateY(0) scale(1)}
     .em_table tr{border-radius:18px;background:rgba(255,255,255,.82)}
     .em_btn{padding:10px 16px}
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SPORTMOTO ADMIN — EMAIL MARKETING / DARK THEME
+   Camada não destrutiva: preserva integralmente o CSS original acima.
+   A interface administrativa fica escura; o canvas do e-mail permanece claro
+   para representar com fidelidade o conteúdo recebido pelo cliente.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  color-scheme: dark;
+
+  --em-bg: #080c14;
+  --em-bg-elev: #111827;
+  --em-bg-subtle: #0d1420;
+  --em-bg-hover: #182234;
+  --em-border: #273449;
+  --em-border-soft: #1c293b;
+  --em-divider: #202d40;
+
+  --em-text: #f1f5f9;
+  --em-text-soft: #cbd5e1;
+  --em-text-muted: #94a3b8;
+  --em-text-faint: #64748b;
+
+  --em-blue: #60a5fa;
+  --em-blue-hover: #93c5fd;
+  --em-blue-soft: rgba(59, 130, 246, .22);
+  --em-blue-tint: rgba(37, 99, 235, .13);
+  --em-blue-ring: rgba(96, 165, 250, .24);
+
+  --em-yellow: #fbbf24;
+  --em-yellow-soft: rgba(245, 158, 11, .16);
+  --em-yellow-text: #fcd34d;
+  --em-green: #4ade80;
+  --em-green-soft: rgba(34, 197, 94, .16);
+  --em-green-text: #86efac;
+  --em-red: #fb7185;
+  --em-red-soft: rgba(239, 68, 68, .16);
+  --em-red-text: #fca5a5;
+  --em-orange-soft: rgba(249, 115, 22, .16);
+  --em-orange-text: #fdba74;
+
+  --em-shadow-xs: 0 1px 2px rgba(0, 0, 0, .28);
+  --em-shadow-sm: 0 1px 2px rgba(0, 0, 0, .30), 0 8px 20px rgba(0, 0, 0, .20);
+  --em-shadow-md: 0 18px 45px rgba(0, 0, 0, .34), 0 4px 12px rgba(0, 0, 0, .22);
+  --em-shadow-lg: 0 36px 90px rgba(0, 0, 0, .52), 0 14px 34px rgba(0, 0, 0, .30);
+}
+
+html,
+body {
+  color-scheme: dark;
+}
+
+.em_wrapper {
+  color: var(--em-text);
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, .15), transparent 30%),
+    radial-gradient(circle at top right, rgba(14, 165, 233, .08), transparent 26%),
+    linear-gradient(180deg, #0a101b 0%, var(--em-bg) 58%, #070b12 100%);
+}
+
+.em_wrapper::before {
+  background-image:
+    linear-gradient(rgba(96, 165, 250, .035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(96, 165, 250, .035) 1px, transparent 1px);
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, .65), transparent 72%);
+}
+
+.em_wrapper h1,
+.em_wrapper h2,
+.em_wrapper h3,
+.em_modal_box h3 {
+  color: var(--em-text);
+}
+
+.em_header > h1::after {
+  background: linear-gradient(90deg, var(--em-blue), #38bdf8);
+  box-shadow: 0 0 18px rgba(96, 165, 250, .28);
+}
+
+.em_wrapper ::selection {
+  color: #fff;
+  background: rgba(37, 99, 235, .65);
+}
+
+/* ── Ações e botões ───────────────────────────────────────────────────── */
+.em_btn {
+  color: var(--em-text-soft);
+  background: linear-gradient(180deg, #172235 0%, #101827 100%);
+  border-color: var(--em-border);
+  box-shadow: var(--em-shadow-xs);
+}
+
+.em_btn:hover {
+  color: var(--em-text);
+  background: #1a2639;
+  border-color: #3b4b63;
+  box-shadow: var(--em-shadow-sm);
+}
+
+.em_btn_primary,
+.em_pag a.em_pag_atual {
+  color: #fff;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 52%, #1d4ed8 100%);
+  border-color: #3b82f6;
+  box-shadow: 0 14px 34px rgba(37, 99, 235, .28), 0 4px 12px rgba(0, 0, 0, .24);
+}
+
+.em_btn_primary:hover {
+  color: #fff;
+  background: linear-gradient(135deg, #60a5fa 0%, #2563eb 52%, #1e40af 100%);
+  border-color: #60a5fa;
+  box-shadow: 0 22px 48px rgba(37, 99, 235, .34), 0 8px 18px rgba(0, 0, 0, .28);
+}
+
+.em_link:hover,
+.em_tab:hover {
+  background: var(--em-blue-tint);
+  color: var(--em-blue-hover);
+}
+
+.em_link.em_warn:hover,
+.em_regra .em_rm:hover {
+  color: #fecaca;
+  background: rgba(239, 68, 68, .20);
+}
+
+/* ── Cards, KPIs e atalhos ────────────────────────────────────────────── */
+.em_card,
+.em_shortcut,
+.em_ab_card,
+.em_steps {
+  color: var(--em-text);
+  background: linear-gradient(180deg, rgba(20, 30, 47, .96) 0%, rgba(14, 22, 36, .98) 100%);
+  border-color: var(--em-border);
+  box-shadow: var(--em-shadow-sm);
+  backdrop-filter: blur(14px);
+}
+
+.em_card::before {
+  background: linear-gradient(90deg, transparent, rgba(96, 165, 250, .42), transparent);
+}
+
+.em_card::after {
+  background: radial-gradient(circle, rgba(37, 99, 235, .18), transparent 68%);
+}
+
+.em_card:hover,
+.em_shortcut:hover,
+.em_ab_card:hover {
+  border-color: rgba(96, 165, 250, .52);
+  background: linear-gradient(180deg, #18243a 0%, #111a2b 100%);
+  box-shadow: 0 26px 54px rgba(0, 0, 0, .36), 0 0 0 1px rgba(96, 165, 250, .06);
+}
+
+.em_card_label,
+.em_card small {
+  color: var(--em-text-muted);
+}
+
+.em_card_value,
+.em_kpi_mini strong,
+.em_form_meta strong {
+  color: var(--em-text);
+}
+
+.em_card_hl {
+  background: linear-gradient(180deg, rgba(37, 99, 235, .20), rgba(15, 23, 42, .92));
+  border-color: rgba(96, 165, 250, .45);
+}
+
+.em_kpi_mini,
+.em_form_meta {
+  color: var(--em-text-muted);
+  background: var(--em-bg-subtle);
+  border: 1px solid var(--em-border-soft);
+}
+
+.em_ab_card.em_ab_winner {
+  border-color: rgba(74, 222, 128, .70);
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, .10), var(--em-shadow-md);
+}
+
+.em_ab_card.em_ab_winner h2 {
+  color: var(--em-green-text);
+}
+
+/* ── Tabelas ───────────────────────────────────────────────────────────── */
+.em_table {
+  color: var(--em-text-soft);
+  background: rgba(15, 23, 38, .94);
+  border-color: var(--em-border);
+  box-shadow: var(--em-shadow-sm);
+  backdrop-filter: blur(18px);
+}
+
+.em_table th,
+.em_table td {
+  color: var(--em-text-soft);
+  border-bottom-color: var(--em-divider);
+}
+
+.em_table thead th {
+  color: var(--em-text-muted);
+  background: linear-gradient(180deg, #151f31 0%, #111a29 100%);
+  border-bottom-color: var(--em-border);
+}
+
+.em_table tbody tr:hover {
+  background: rgba(96, 165, 250, .07);
+}
+
+.em_table tbody td:first-child,
+.em_table td.em_url a:hover {
+  color: var(--em-text);
+}
+
+.em_table td.em_url a {
+  color: var(--em-text-soft);
+}
+
+.em_empty {
+  color: var(--em-text-faint) !important;
+  background: linear-gradient(180deg, #101827, #0d1420) !important;
+}
+
+/* ── Badges e estados semânticos ───────────────────────────────────────── */
+.em_badge {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
+  border-color: rgba(255, 255, 255, .06);
+}
+
+.em_st_rascunho,
+.em_st_fila,
+.em_st_ignorado,
+.em_st_arquivado,
+.em_st_descadastrado,
+.em_or_cliente,
+.em_or_newsletter,
+.em_or_checkout,
+.em_or_importacao,
+.em_or_admin,
+.em_or_api,
+.em_or_legado,
+.em_pv_smtp {
+  color: #cbd5e1;
+  background: rgba(100, 116, 139, .17);
+  border-color: rgba(148, 163, 184, .18);
+}
+
+.em_st_agendada,
+.em_st_enfileirando,
+.em_st_pendente {
+  color: #fcd34d;
+  background: rgba(245, 158, 11, .16);
+  border-color: rgba(245, 158, 11, .27);
+}
+
+.em_st_enviando,
+.em_st_processando,
+.em_st_enviado,
+.em_pv_sendgrid {
+  color: #93c5fd;
+  background: rgba(59, 130, 246, .17);
+  border-color: rgba(96, 165, 250, .24);
+}
+
+.em_st_concluida,
+.em_st_entregue,
+.em_st_aberto,
+.em_st_clicado,
+.em_st_ativo,
+.em_pv_brevo {
+  color: #86efac;
+  background: rgba(34, 197, 94, .16);
+  border-color: rgba(74, 222, 128, .24);
+}
+
+.em_st_pausada,
+.em_st_bounce,
+.em_pv_ses,
+.em_pv_mailgun {
+  color: #fdba74;
+  background: rgba(249, 115, 22, .16);
+  border-color: rgba(251, 146, 60, .24);
+}
+
+.em_st_cancelada,
+.em_st_erro,
+.em_st_complaint,
+.em_st_falhou,
+.em_st_bloqueado {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, .17);
+  border-color: rgba(248, 113, 113, .25);
+}
+
+/* ── Filtros, formulários, busca e regras ──────────────────────────────── */
+.em_filtros,
+.em_form,
+.em_modal_box fieldset,
+.em_form fieldset,
+.em_regra,
+.em_busca_lista,
+.em_aviso {
+  color: var(--em-text-soft);
+  background: rgba(15, 23, 38, .94);
+  border-color: var(--em-border);
+  box-shadow: var(--em-shadow-sm);
+  backdrop-filter: blur(14px);
+}
+
+.em_form {
+  background: linear-gradient(180deg, rgba(17, 27, 43, .98), rgba(12, 19, 31, .98));
+}
+
+.em_form label,
+.em_modal_box label,
+.em_form legend,
+.em_modal_box fieldset legend {
+  color: var(--em-text-muted);
+}
+
+.em_form label.em_inline,
+.em_modal_box label.em_inline {
+  color: var(--em-text-soft);
+}
+
+.em_form label small code,
+.em_aviso code,
+.em_wrapper code {
+  color: #bfdbfe;
+  background: rgba(37, 99, 235, .16);
+  border: 1px solid rgba(96, 165, 250, .12);
+}
+
+.em_filtros input,
+.em_filtros select,
+.em_regra select,
+.em_regra input,
+.em_form input[type=text],
+.em_form input[type=email],
+.em_form input[type=password],
+.em_form input[type=number],
+.em_form input[type=datetime-local],
+.em_form select,
+.em_form textarea,
+.em_modal_box input[type=text],
+.em_modal_box input[type=email],
+.em_modal_box input[type=password],
+.em_modal_box input[type=number],
+.em_modal_box input[type=tel],
+.em_modal_box input[type=url],
+.em_modal_box input[type=datetime-local],
+.em_modal_box input[type=date],
+.em_modal_box select,
+.em_modal_box textarea {
+  color: var(--em-text);
+  caret-color: var(--em-blue);
+  background: linear-gradient(180deg, #121c2c 0%, #0e1725 100%);
+  border-color: #314057;
+  color-scheme: dark;
+}
+
+.em_filtros input:hover,
+.em_filtros select:hover,
+.em_regra input:hover,
+.em_regra select:hover,
+.em_form input:hover,
+.em_form select:hover,
+.em_form textarea:hover,
+.em_modal_box input:hover,
+.em_modal_box select:hover,
+.em_modal_box textarea:hover {
+  border-color: #465a76;
+}
+
+.em_filtros input:focus,
+.em_filtros select:focus,
+.em_regra select:focus,
+.em_regra input:focus,
+.em_modal_box input:focus,
+.em_modal_box select:focus,
+.em_modal_box textarea:focus,
+.em_form input:focus,
+.em_form select:focus,
+.em_form textarea:focus {
+  color: var(--em-text);
+  background: #131f31;
+  border-color: var(--em-blue);
+  box-shadow: 0 0 0 4px var(--em-blue-ring), 0 10px 28px rgba(0, 0, 0, .22);
+}
+
+.em_filtros input::placeholder,
+.em_form input::placeholder,
+.em_form textarea::placeholder,
+.em_modal_box input::placeholder,
+.em_modal_box textarea::placeholder {
+  color: var(--em-text-faint);
+  opacity: 1;
+}
+
+.em_filtros select,
+.em_form select,
+.em_modal_box select {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.em_form input:disabled,
+.em_form select:disabled,
+.em_form textarea:disabled,
+.em_modal_box input:disabled,
+.em_modal_box select:disabled,
+.em_modal_box textarea:disabled {
+  color: #64748b;
+  background: #0b121e;
+  border-color: #202d40;
+  cursor: not-allowed;
+}
+
+.em_form input:-webkit-autofill,
+.em_form input:-webkit-autofill:hover,
+.em_form input:-webkit-autofill:focus,
+.em_modal_box input:-webkit-autofill,
+.em_modal_box input:-webkit-autofill:hover,
+.em_modal_box input:-webkit-autofill:focus,
+.em_filtros input:-webkit-autofill,
+.em_filtros input:-webkit-autofill:hover,
+.em_filtros input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--em-text) !important;
+  caret-color: var(--em-text);
+  box-shadow: 0 0 0 1000px #121c2c inset !important;
+  transition: background-color 9999s ease-out 0s;
+}
+
+.em_form textarea.em_code {
+  color: #dbeafe;
+  background: #08101c;
+  border-color: #263750;
+}
+
+.em_form_meta,
+.em_form fieldset,
+.em_modal_box fieldset,
+.em_regra {
+  background: var(--em-bg-subtle);
+}
+
+.em_regra:hover {
+  background: #121d2d;
+  border-color: rgba(96, 165, 250, .42);
+}
+
+.em_busca_item {
+  color: var(--em-text-soft);
+  border-bottom-color: var(--em-divider);
+}
+
+.em_busca_item:hover {
+  background: rgba(96, 165, 250, .08);
+}
+
+.em_busca_email {
+  color: var(--em-text);
+}
+
+.em_busca_nome {
+  color: var(--em-text-muted);
+}
+
+.em_aviso {
+  color: var(--em-text-soft);
+  background: linear-gradient(180deg, rgba(37, 99, 235, .14), rgba(15, 23, 42, .96));
+  border-color: rgba(96, 165, 250, .30);
+}
+
+.em_aviso strong {
+  color: var(--em-text);
+}
+
+.em_modal_box input[type=file] {
+  color: var(--em-text-soft);
+  background: #0e1725;
+  border-color: #314057;
+}
+
+.em_modal_box input[type=file]:hover {
+  background: rgba(37, 99, 235, .12);
+  border-color: var(--em-blue);
+}
+
+.em_modal_box input[type=file]::file-selector-button {
+  color: #fff;
+  background: #2563eb;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 13px;
+  margin-right: 12px;
+  cursor: pointer;
+}
+
+/* ── Modal ─────────────────────────────────────────────────────────────── */
+.em_modal {
+  background: rgba(2, 6, 13, .76);
+  backdrop-filter: saturate(140%) blur(18px);
+}
+
+.em_modal_box {
+  color: var(--em-text-soft);
+  background: linear-gradient(180deg, #151f31 0%, #0e1725 100%);
+  border: 1px solid #2b3a50;
+  box-shadow: var(--em-shadow-lg), inset 0 1px 0 rgba(255, 255, 255, .04);
+}
+
+.em_modal_box .em_form_actions,
+.em_form_actions {
+  border-top-color: var(--em-divider);
+}
+
+/* ── Paginação, abas e etapas ──────────────────────────────────────────── */
+.em_pag a {
+  color: var(--em-text-soft);
+  background: linear-gradient(180deg, #172235, #101827);
+  border-color: var(--em-border);
+  box-shadow: var(--em-shadow-xs);
+}
+
+.em_pag a:hover {
+  color: var(--em-text);
+  background: #1a2639;
+  border-color: #465a76;
+  box-shadow: var(--em-shadow-sm);
+}
+
+.em_tabs {
+  border-bottom-color: var(--em-border);
+}
+
+.em_tab {
+  color: var(--em-text-muted);
+}
+
+.em_tab.em_tab_ativa {
+  color: var(--em-blue-hover);
+  background: rgba(37, 99, 235, .13);
+  border-bottom-color: var(--em-blue);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .025);
+}
+
+.em_step {
+  color: var(--em-text-muted);
+}
+
+.em_step span {
+  color: var(--em-text-muted);
+  background: #1b2638;
+}
+
+.em_step.em_step_ativo {
+  color: #bfdbfe;
+  background: linear-gradient(180deg, rgba(37, 99, 235, .22), rgba(37, 99, 235, .12));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .035);
+}
+
+.em_step.em_step_ativo span {
+  color: #fff;
+  background: linear-gradient(135deg, #60a5fa, #2563eb);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, .28);
+}
+
+.em_step.em_step_completo {
+  color: var(--em-green-text);
+}
+
+.em_step.em_step_completo span {
+  color: var(--em-green-text);
+  background: var(--em-green-soft);
+}
+
+.em_progress {
+  background: #101a29;
+  border-color: #26364c;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .42);
+}
+
+.em_progress_bar {
+  background: linear-gradient(90deg, #38bdf8 0%, #3b82f6 50%, #2563eb 100%);
+  box-shadow: 0 0 18px rgba(59, 130, 246, .38);
+}
+
+/* ── Alertas ───────────────────────────────────────────────────────────── */
+.em_alerta {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+}
+
+.em_alerta_alerta {
+  color: #fde68a;
+  background: rgba(245, 158, 11, .14);
+  border-color: rgba(245, 158, 11, .35);
+}
+
+.em_alerta_critico {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, .14);
+  border-color: rgba(248, 113, 113, .38);
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, .07);
+}
+
+/* ── Preview e editor GrapesJS ─────────────────────────────────────────── */
+.em_preview {
+  background: #0b1220;
+  border-color: var(--em-border);
+  box-shadow: var(--em-shadow-sm);
+}
+
+.em_grapes_box {
+  background: #0b1220;
+  border-color: var(--em-border);
+  box-shadow: var(--em-shadow-md);
+}
+
+#em_grapes_editor {
+  background: #0b1220;
+}
+
+/* Chrome do editor escuro */
+.gjs-pn-panels,
+.gjs-pn-panel,
+.gjs-blocks-c,
+.gjs-sm-sectors,
+.gjs-trt-traits,
+.gjs-layers,
+.gjs-clm-tags {
+  color: #cbd5e1 !important;
+  background: #111827 !important;
+  border-color: #273449 !important;
+}
+
+.gjs-pn-panels {
+  border-bottom: 1px solid #273449 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .28) !important;
+}
+
+.gjs-pn-btn,
+.gjs-block,
+.gjs-sm-sector-title,
+.gjs-layer-title,
+.gjs-category-title,
+.gjs-trt-header,
+.gjs-clm-tags #gjs-clm-new {
+  color: #cbd5e1 !important;
+}
+
+.gjs-pn-btn:hover,
+.gjs-pn-btn.gjs-pn-active,
+.gjs-pn-btn.gjs-pn-active:hover {
+  color: #fff !important;
+  background: rgba(37, 99, 235, .24) !important;
+  box-shadow: none !important;
+}
+
+.gjs-block {
+  color: #cbd5e1 !important;
+  background: linear-gradient(180deg, #172235, #101827) !important;
+  border: 1px solid #2d3b50 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 5px 16px rgba(0, 0, 0, .22) !important;
+}
+
+.gjs-block:hover {
+  color: #fff !important;
+  border-color: #60a5fa !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .30) !important;
+}
+
+.gjs-sm-sector,
+.gjs-layer,
+.gjs-trt-tr,
+.gjs-clm-tag {
+  color: #cbd5e1 !important;
+  background: #121b2a !important;
+  border-color: #273449 !important;
+}
+
+.gjs-sm-sector-title,
+.gjs-layer-title,
+.gjs-category-title,
+.gjs-trt-header {
+  background: #172235 !important;
+  border-color: #273449 !important;
+}
+
+.gjs-field,
+.gjs-sm-field,
+.gjs-input-holder input,
+.gjs-input-holder select,
+.gjs-sm-input-holder input,
+.gjs-sm-input-holder select,
+.gjs-trt-trait input,
+.gjs-trt-trait select {
+  color: #f1f5f9 !important;
+  background: #0d1624 !important;
+  border-color: #314057 !important;
+}
+
+.gjs-field:focus-within,
+.gjs-input-holder:focus-within,
+.gjs-sm-input-holder:focus-within {
+  border-color: #60a5fa !important;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, .16) !important;
+}
+
+.gjs-cv-canvas {
+  /* Área externa escura; o documento do e-mail dentro do iframe continua branco. */
+  background:
+    radial-gradient(circle, rgba(100, 116, 139, .32) 1px, transparent 1px),
+    #080d16 !important;
+  background-size: 20px 20px !important;
+}
+
+.gjs-frame,
+.gjs-frame-wrapper {
+  background: #fff !important;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .40) !important;
+}
+
+.gjs-resizer-h,
+.gjs-highlighter,
+.gjs-selected {
+  outline-color: #60a5fa !important;
+}
+
+/* ── ACE / edição de código ────────────────────────────────────────────── */
+.em_wrapper .ace_editor {
+  color: #dbeafe;
+  background: #08101c !important;
+  border: 1px solid #263750;
+}
+
+.em_wrapper .ace_gutter {
+  color: #64748b;
+  background: #0b1422 !important;
+}
+
+.em_wrapper .ace_gutter-active-line,
+.em_wrapper .ace_marker-layer .ace_active-line {
+  background: rgba(96, 165, 250, .08) !important;
+}
+
+.em_wrapper .ace_print-margin {
+  background: #273449 !important;
+}
+
+.em_wrapper .ace_cursor {
+  color: #93c5fd !important;
+}
+
+.em_wrapper .ace_selection {
+  background: rgba(37, 99, 235, .34) !important;
+}
+
+/* ── Scrollbars ────────────────────────────────────────────────────────── */
+.em_wrapper,
+.em_busca_lista,
+.em_modal,
+.gjs-blocks-c,
+.gjs-sm-sectors,
+.gjs-layers {
+  scrollbar-width: thin;
+  scrollbar-color: #3a4a62 transparent;
+}
+
+.em_wrapper ::-webkit-scrollbar,
+.em_modal::-webkit-scrollbar,
+.gjs-blocks-c::-webkit-scrollbar,
+.gjs-sm-sectors::-webkit-scrollbar,
+.gjs-layers::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.em_wrapper ::-webkit-scrollbar-thumb,
+.em_modal::-webkit-scrollbar-thumb,
+.gjs-blocks-c::-webkit-scrollbar-thumb,
+.gjs-sm-sectors::-webkit-scrollbar-thumb,
+.gjs-layers::-webkit-scrollbar-thumb {
+  background: #3a4a62;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+
+.em_wrapper ::-webkit-scrollbar-thumb:hover,
+.em_modal::-webkit-scrollbar-thumb:hover {
+  background: #526680;
+  background-clip: content-box;
+}
+
+/* ── Mobile ────────────────────────────────────────────────────────────── */
+@media (max-width: 560px) {
+  .em_table tr {
+    background: rgba(15, 23, 38, .96);
+    border-color: var(--em-border);
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --em-border: #475569;
+    --em-text-soft: #e2e8f0;
+    --em-text-muted: #cbd5e1;
+  }
+
+  .em_btn,
+  .em_card,
+  .em_table,
+  .em_filtros,
+  .em_form,
+  .em_modal_box {
+    border-width: 1.5px;
+  }
+}

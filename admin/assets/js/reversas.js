@@ -108,7 +108,7 @@
     /* ------------------------------------------------ endereço / volumes (compartilhado) */
     function endFields(pref) {
         function fld(k, label) { return '<div class="log_field"><label>' + label + '</label><input class="log_input" data-e="' + pref + '.' + k + '"></div>'; }
-        return '<div class="log_form_grid">' + fld('nome', 'Nome') + fld('telefone', 'Telefone') + fld('cep', 'CEP') + fld('logradouro', 'Logradouro') + fld('numero', 'Número') + fld('complemento', 'Complemento') + fld('bairro', 'Bairro') + fld('cidade', 'Cidade') +
+        return '<div class="log_form_grid">' + fld('nome', 'Nome') + fld('cpf', 'CPF/CNPJ') + fld('email', 'E-mail') + fld('telefone', 'Telefone') + fld('cep', 'CEP') + fld('logradouro', 'Logradouro') + fld('numero', 'Número') + fld('complemento', 'Complemento') + fld('bairro', 'Bairro') + fld('cidade', 'Cidade') +
             '<div class="log_field"><label>UF</label><input class="log_input" data-e="' + pref + '.uf" maxlength="2"></div></div>';
     }
     function preencherEndereco($b, pref, dados) {
@@ -198,7 +198,7 @@
             var $b = $(dr.corpo());
             var end = c.endereco || {};
             preencherEndereco($b, 'endereco_coleta', {
-                nome: c.nome, telefone: c.telefone,
+                nome: c.nome, cpf: c.cpf_formatado || c.cpf, email: c.email, telefone: c.telefone,
                 cep: end.cep, logradouro: end.logradouro, numero: end.numero,
                 complemento: end.complemento, bairro: end.bairro, cidade: end.cidade, uf: end.uf
             });
@@ -241,8 +241,9 @@
                     '<div class="log_field"><label>Valor declarado (R$)</label><input class="log_input" name="valor_declarado" type="number" step="0.01"></div>' +
                     '<div class="log_field"><label>Formato</label><select class="log_select" name="formato"><option value="pdf">PDF</option><option value="termica">Térmica</option><option value="a4">A4</option></select></div>' +
                 '</div></div>' +
-                '<div class="log_fieldset"><h4>Remetente (cliente) <span class="log_muted">— confira o endereço da volta</span></h4>' + endFields('remetente') + '</div>' +
+                '<div class="log_fieldset"><h4>Remetente (cliente) <span class="log_muted">— confira/complete: CPF e e-mail são obrigatórios para os Correios</span></h4>' + endFields('remetente') + '</div>' +
                 '<div class="log_fieldset"><h4>Volumes <button type="button" class="log_btn log_btn--sm js-vol-add"><i class="bi bi-plus-lg"></i> Adicionar</button></h4><div id="revVolumes">' + volRow() + '</div></div>' +
+                '<div class="log_fieldset"><h4>Observação <span class="log_muted">(opcional)</span></h4><textarea class="log_input" name="observacao" rows="2" placeholder="Instruções à transportadora / motivo da devolução"></textarea></div>' +
             '</form>';
 
             var drawer = adminDrawer({ titulo: 'Gerar etiqueta de retorno', subtitulo: 'Reversa #' + id, tamanho: 'lg', conteudo: html,
@@ -270,6 +271,7 @@
                     valor_declarado: $c.find('[name=valor_declarado]').val(),
                     formato: $c.find('[name=formato]').val(),
                     remetente: coletarEnd($c, 'remetente'),
+                    observacao: $c.find('[name=observacao]').val() || '',
                     volumes: coletarVols($c)
                 });
                 if (!dados.transportadora_id) { Toast.warning('Escolha a transportadora.'); return; }

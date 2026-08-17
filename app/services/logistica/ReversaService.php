@@ -196,8 +196,12 @@ class ReversaService
         $transportadoraId = (int)($extras['transportadora_id'] ?? 0);
         $servico = trim((string)($extras['servico_codigo'] ?? ''));
         $volumes = is_array($extras['volumes'] ?? null) ? array_values($extras['volumes']) : [];
-        $cliente = is_array($extras['remetente'] ?? null) && $extras['remetente']
-            ? $extras['remetente'] : ($rev['endereco_coleta_json'] ?? []);
+        // Remetente (cliente): parte do endereço salvo na criação e aplica por cima
+        // o que veio EDITADO no formulário de gerar (CPF, e-mail, correções…).
+        $baseEnd = is_array($rev['endereco_coleta_json'] ?? null) ? $rev['endereco_coleta_json'] : [];
+        $manual  = is_array($extras['remetente'] ?? null)
+            ? array_filter($extras['remetente'], static fn($v) => $v !== '' && $v !== null) : [];
+        $cliente = array_merge($baseEnd, $manual);
 
         if ($transportadoraId <= 0) return ['ok' => false, 'erro' => 'Selecione a transportadora.'];
         if ($servico === '')       return ['ok' => false, 'erro' => 'Selecione o serviço da transportadora.'];
@@ -206,13 +210,17 @@ class ReversaService
 
         $adapter = $this->resolverAdapter($transportadoraId);
         if (!$adapter) return ['ok' => false, 'erro' => 'Transportadora indisponível.'];
+        if (method_exists($adapter, 'suportaReversa') && !$adapter->suportaReversa()) {
+            return ['ok' => false, 'erro' => 'Esta transportadora não opera logística reversa aqui. Use o Melhor Envio para gerar a etiqueta de retorno.'];
+        }
 
         $res = $adapter->gerarReversa([
             'servico_codigo' => $servico,
             'cliente'        => $cliente,          // remetente da volta
             'volumes'        => $volumes,
             'valor'          => (float)($extras['valor_declarado'] ?? 0),
-            'produtos'       => [],
+            'produtos'       => is_array($extras['produtos'] ?? null) ? $extras['produtos'] : [],
+            'comentarios'    => (string)($extras['observacao'] ?? ''),
         ]);
         if (empty($res['ok'])) {
             return ['ok' => false, 'erro' => $res['erro'] ?? 'Falha ao gerar a etiqueta reversa.', 'etapa' => $res['etapa'] ?? null];
@@ -267,7 +275,7 @@ class ReversaService
                 ':etq' => $etiquetaId ?: null,
                 ':tid' => $transportadoraId,
                 ':cod' => $res['codigo_rastreio'] ?? null,
-                ':val' => !empty($res['validade']) ? substr((string)$res['validade'], 0, 10) : null,
+                ':val' => self::dataValidadeMysql($res['validade'] ?? null),
                 ':ins' => $instrucoes,
                 ':id'  => $id,
             ]);
@@ -287,11 +295,24 @@ class ReversaService
         if (!self::transicaoValida((string)$rev['status'], 'cancelada')) {
             return ['ok' => false, 'erro' => 'Reversa não pode ser cancelada neste estado.'];
         }
-        // Cancela a etiqueta reversa junto, se já emitida.
+        // Cancela a etiqueta reversa junto (transportadora + status local).
+        $aviso = null;
         if (!empty($rev['etiqueta_id'])) {
-            try { $this->etiquetas->cancelar((int)$rev['etiqueta_id'], $usuarioId); } catch (\Throwable $e) { /* não bloqueia */ }
+            try {
+                $rc = $this->etiquetas->cancelar((int)$rev['etiqueta_id'], $usuarioId);
+                if (empty($rc['ok'])) {
+                    $this->etiquetas->forcarCancelamentoLocal((int)$rev['etiqueta_id'], $usuarioId, 'Cancelada junto da reversa (confirmar na transportadora)');
+                    $aviso = 'Reversa e etiqueta canceladas no sistema, mas a transportadora retornou: '
+                        . ($rc['erro'] ?? 'falha no cancelamento') . '. Confirme no painel da transportadora.';
+                }
+            } catch (\Throwable $e) {
+                try { $this->etiquetas->forcarCancelamentoLocal((int)$rev['etiqueta_id'], $usuarioId, 'Cancelada junto da reversa'); } catch (\Throwable $e2) { /* ignora */ }
+                $aviso = 'Reversa cancelada; não foi possível confirmar o cancelamento na transportadora.';
+            }
         }
-        return $this->transicionar($id, 'cancelada', $usuarioId, 'Reversa cancelada', false);
+        $out = $this->transicionar($id, 'cancelada', $usuarioId, 'Reversa cancelada', false);
+        if ($aviso && !empty($out['ok'])) $out['aviso'] = $aviso;
+        return $out;
     }
 
     public function marcarRecebida(int $id, ?int $usuarioId = null): array
@@ -426,6 +447,32 @@ class ReversaService
     /* =================================================================
        Internos
        ================================================================= */
+
+    /**
+     * Converte a validade retornada pela transportadora para DATE do MySQL (Y-m-d).
+     * Aceita dd/mm/aaaa (Correios), aaaa-mm-dd (com/sem hora), nº de dias, ou
+     * qualquer coisa que o strtotime entenda. Não parseável -> null (não quebra).
+     */
+    public static function dataValidadeMysql($valor): ?string
+    {
+        if ($valor === null) return null;
+        $s = trim((string)$valor);
+        if ($s === '') return null;
+
+        if (preg_match('#^(\d{2})[/-](\d{2})[/-](\d{4})#', $s, $m)) {          // dd/mm/aaaa
+            return checkdate((int)$m[2], (int)$m[1], (int)$m[3])
+                ? sprintf('%04d-%02d-%02d', (int)$m[3], (int)$m[2], (int)$m[1]) : null;
+        }
+        if (preg_match('#^(\d{4})-(\d{2})-(\d{2})#', $s, $m)) {                // aaaa-mm-dd (com/sem hora)
+            return checkdate((int)$m[2], (int)$m[3], (int)$m[1])
+                ? sprintf('%04d-%02d-%02d', (int)$m[1], (int)$m[2], (int)$m[3]) : null;
+        }
+        if (ctype_digit($s)) {                                                // nº de dias a partir de hoje
+            return date('Y-m-d', strtotime("+{$s} days"));
+        }
+        $ts = strtotime($s);                                                  // último recurso
+        return $ts ? date('Y-m-d', $ts) : null;
+    }
 
     protected function resolverAdapter(int $transportadoraId): ?TransportadoraInterface
     {

@@ -32,7 +32,7 @@ $icons = [
 
   <div class="admin-page-header">
     <div>
-      <h1 class="admin-page-title">Configurações</h1>
+      <h1 class="admin-page-title">Configurações <?= ConfigHelper::get('site_email'); ?></h1>
       <p class="admin-page-sub">Gerencie todas as configurações do sistema.</p>
     </div>
   </div>

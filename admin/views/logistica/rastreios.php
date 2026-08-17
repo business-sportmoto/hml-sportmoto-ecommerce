@@ -7,13 +7,13 @@ $e = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 $ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">' . (class_exists('IconLibrary') ? IconLibrary::render($n) : '') . '</span>';
 $f = $filtros ?? [];
 ?>
-<link rel="stylesheet" href="/assets/css/logistica.css">
+
 
 <div class="log_shell" id="logRas" data-base="/admin/logistica/rastreios">
 
     <div class="log_head">
         <div>
-            <h1><?= $ico('localizacao', 22) ?> Rastreios</h1>
+            <h1><?= $ico('globe-location', 22) ?> Rastreios</h1>
             <p>Timeline normalizada dos envios, atualização automática e link público para o cliente.</p>
         </div>
         <div class="log_head_actions">
@@ -78,4 +78,4 @@ $f = $filtros ?? [];
     window.LOG_RAS_BASE = '/admin/logistica/rastreios';
     window.LOG_RAS_PUBLICO = '/rastreio/';
 </script>
-<script src="/assets/js/rastreios.js" defer></script>
+

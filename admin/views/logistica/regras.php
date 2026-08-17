@@ -8,7 +8,7 @@ $e = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 $ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">' . (class_exists('IconLibrary') ? IconLibrary::render($n) : '') . '</span>';
 $f = $filtros ?? [];
 ?>
-<link rel="stylesheet" href="/assets/css/logistica.css">
+
 
 <div class="log_shell" id="logRegras" data-base="/admin/logistica/regras">
 
@@ -20,7 +20,7 @@ $f = $filtros ?? [];
         <div class="log_head_actions">
             <a href="/admin/logistica/simulador" class="log_btn log_btn--sm"><?= $ico('simulador', 15) ?> Simulador</a>
             <a href="/admin/logistica" class="log_btn log_btn--sm"><?= $ico('caminhao', 15) ?> Torre</a>
-            <button type="button" class="log_btn log_btn--primary log_btn--sm" id="logRegraNova"><i class="bi bi-plus-lg"></i> Nova regra</button>
+            <button type="button" class="log_btn log_btn--primary log_btn--sm" id="logRegraNova"><?= $ico('add', 15) ?> Nova regra</button>
         </div>
     </div>
 
@@ -72,14 +72,14 @@ $f = $filtros ?? [];
                 ?>
                     <tr data-id="<?= (int)$r['id'] ?>">
                         <td><div class="log_ordem">
-                            <button type="button" class="log_btn log_btn--icon log_btn--xs js-mover" data-dir="cima" title="Subir"><i class="bi bi-chevron-up"></i></button>
-                            <button type="button" class="log_btn log_btn--icon log_btn--xs js-mover" data-dir="baixo" title="Descer"><i class="bi bi-chevron-down"></i></button>
+                            <button type="button" class="log_btn log_btn--icon log_btn--xs js-mover" data-dir="cima" title="Subir"><?= $ico('arrow-up', 15) ?></button>
+                            <button type="button" class="log_btn log_btn--icon log_btn--xs js-mover" data-dir="baixo" title="Descer"><?= $ico('arrow-down', 15) ?></button>
                         </div></td>
                         <td>
                             <div class="log_transp_info">
                                 <strong><?= $e($r['nome']) ?><?= !empty($r['acumulativa']) ? ' <span class="log_badge is-info log_badge--plain">acumulativa</span>' : '' ?></strong>
                                 <?php if (!empty($r['descricao'])): ?><span class="log_muted"><?= $e($r['descricao']) ?></span><?php endif; ?>
-                                <?php if ($ag): ?><span class="log_muted"><i class="bi bi-calendar-event"></i> <?= $e($ag) ?></span><?php endif; ?>
+                                <?php if ($ag): ?><span class="log_muted"><?= $ico('calendar-today', 15) ?> <?= $e($ag) ?></span><?php endif; ?>
                             </div>
                         </td>
                         <td><span class="log_mono"><?= (int)($r['condicoes_qtd'] ?? 0) ?></span></td>
@@ -98,8 +98,8 @@ $f = $filtros ?? [];
                             </label>
                         </td>
                         <td class="log_col_acoes">
-                            <button type="button" class="log_btn log_btn--icon js-editar" title="Editar"><i class="bi bi-pencil"></i></button>
-                            <button type="button" class="log_btn log_btn--icon js-remover" title="Remover"><i class="bi bi-trash"></i></button>
+                            <button type="button" class="log_btn log_btn--icon js-editar" title="Editar"><?= $ico('edit', 15) ?></button>
+                            <button type="button" class="log_btn log_btn--icon js-remover" title="Remover"><?= $ico('trash', 15) ?></button>
                         </td>
                     </tr>
                 <?php endforeach; endif; ?>
@@ -114,4 +114,4 @@ $f = $filtros ?? [];
     window.LOG_REGRAS_CAMPOS = <?= json_encode($campos ?? [], JSON_UNESCAPED_UNICODE) ?>;
     window.LOG_REGRAS_OPERS  = <?= json_encode($opers ?? [], JSON_UNESCAPED_UNICODE) ?>;
 </script>
-<script src="/assets/js/frete.js" defer></script>
+

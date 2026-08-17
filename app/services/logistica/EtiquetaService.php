@@ -278,7 +278,7 @@ class EtiquetaService
         }
 
         $this->evento($id, 'erro', ($r['etapa'] ?? '') . ': ' . ($r['erro'] ?? 'falha'), $usuarioId);
-        return ['ok' => false, 'status' => $upd['status'], 'erro' => $r['erro'] ?? 'Falha ao gerar etiqueta.', 'etapa' => $r['etapa'] ?? null];
+        return ['ok' => false, 'status' => $upd['status'], 'erro' => $r['erro'] ?? 'Falha ao gerar etiqueta.', 'etapa' => $r['etapa'] ?? null, 'debug' =>$e];
     }
 
     public function comprarLote(array $ids, ?int $usuarioId = null): array
@@ -344,16 +344,18 @@ class EtiquetaService
         if (!$adapter) return ['ok' => false, 'erro' => 'Transportadora indisponível para cancelamento.'];
 
         $r = $adapter->cancelarEtiqueta((string)$e['external_id']);
+        LogService::debug('cancelar', [$e]);
         if (empty($r['ok'])) {
             $this->evento($id, 'erro', 'Cancelamento: ' . ($r['erro'] ?? 'falha'), $usuarioId);
             return ['ok' => false, 'erro' => $r['erro'] ?? 'Falha ao cancelar na transportadora.'];
         }
+        
         $this->aplicarUpdate($id, ['status' => 'cancelada']);
         $this->evento($id, 'cancelada', 'Cancelada na transportadora', $usuarioId);
         LogService::audit('Etiqueta cancelada', ['etiqueta_id' => $id, 'external_id' => $e['external_id'], 'usuario_id' => $usuarioId]);
         return ['ok' => true];
     }
-
+    
     /* =================================================================
        MANIFESTO / PLP (lote de impressão)
        ================================================================= */

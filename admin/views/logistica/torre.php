@@ -30,22 +30,22 @@ if (!function_exists('view_logistica_kpis')):
 function view_logistica_kpis(array $k, bool $podeCustos, callable $int, callable $brl, callable $pct): string
 {
     $cards = [
-        ['bi-box-seam',            '',          $int($k['total_envios']),          'Total de envios',                 true],
-        ['bi-check2-circle',       'is-ok',     $int($k['entregues']),             'Entregues',                       false],
-        ['bi-truck',               'is-info',   $int($k['em_transito']),           'Em trânsito',                     false],
-        ['bi-clock-history',       'is-ok',     $pct($k['no_prazo_pct']) . '<small>%</small>', 'No prazo',            false],
-        ['bi-exclamation-triangle','is-danger', $int($k['atrasados']),             'Atrasados',                       false],
-        ['bi-flag',                'is-warn',   $int($k['ocorrencias']),           'Com ocorrências',                 false],
-        ['bi-printer',             'is-neutral',$int($k['etiquetas_aguardando']),  'Etiquetas aguardando postagem',   false],
-        ['bi-arrow-return-left',   '',          $int($k['reversas_abertas']),      'Solicitações de reversa',         false],
-        ['bi-calendar-check',      'is-neutral',$pct($k['prazo_medio']) . '<small>d</small>', 'Prazo médio de entrega', false],
-        ['bi-wifi-off',            'is-warn',   $int($k['falhas_integracao']),     'Falhas de integração',            false],
+        ['torre-pack',            '',          $int($k['total_envios']),          'Total de envios',                 true],
+        ['check-circle',       'is-ok',     $int($k['entregues']),             'Entregues',                       false],
+        ['truck',               'is-info',   $int($k['em_transito']),           'Em trânsito',                     false],
+        ['relogio',       'is-ok',     $pct($k['no_prazo_pct']) . '<small>%</small>', 'No prazo',            false],
+        ['alert-triangle','is-danger', $int($k['atrasados']),             'Atrasados',                       false],
+        ['flag',                'is-warn',   $int($k['ocorrencias']),           'Com ocorrências',                 false],
+        ['printer',             'is-neutral',$int($k['etiquetas_aguardando']),  'Etiquetas aguardando postagem',   false],
+        ['reversa',   '',          $int($k['reversas_abertas']),      'Solicitações de reversa',         false],
+        ['calendar-today',      'is-neutral',$pct($k['prazo_medio']) . '<small>d</small>', 'Prazo médio de entrega', false],
+        ['wifi-off',            'is-warn',   $int($k['falhas_integracao']),     'Falhas de integração',            false],
     ];
 
     $html = '';
     foreach ($cards as [$ico, $cls, $val, $lbl, $accent]) {
         $html .= '<div class="log_kpi' . ($accent ? ' log_kpi--accent' : '') . '">'
-               . '<div class="log_kpi_ico ' . $cls . '"><i class="bi ' . $ico . '"></i></div>'
+               . '<div class="log_kpi_ico ' . $cls . '"><span class="log_iw">'.IconLibrary::render($ico).'</span></div>'
                . '<div class="log_kpi_val">' . $val . '</div>'
                . '<div class="log_kpi_lbl">' . htmlspecialchars($lbl, ENT_QUOTES, 'UTF-8') . '</div>'
                . '</div>';
@@ -53,8 +53,8 @@ function view_logistica_kpis(array $k, bool $podeCustos, callable $int, callable
 
     // Cards de custo — só para autorizados
     if ($podeCustos) {
-        $html .= view_logistica_kpi_custo('bi-cash-stack', 'is-info', $brl($k['gasto_fretes']), 'Gasto com fretes');
-        $html .= view_logistica_kpi_custo('bi-scale', 'is-danger', $brl($k['divergencias_valor']), 'Divergências acumuladas');
+        $html .= view_logistica_kpi_custo('price-check', 'is-info', $brl($k['gasto_fretes']), 'Gasto com fretes');
+        $html .= view_logistica_kpi_custo('scale-check', 'is-danger', $brl($k['divergencias_valor']), 'Divergências acumuladas');
     } else {
         $html .= view_logistica_kpi_bloqueado('Gasto com fretes');
         $html .= view_logistica_kpi_bloqueado('Divergências acumuladas');
@@ -64,14 +64,14 @@ function view_logistica_kpis(array $k, bool $podeCustos, callable $int, callable
 
 function view_logistica_kpi_custo(string $ico, string $cls, string $val, string $lbl): string
 {
-    return '<div class="log_kpi"><div class="log_kpi_ico ' . $cls . '"><i class="bi ' . $ico . '"></i></div>'
+    return '<div class="log_kpi"><div class="log_kpi_ico ' . $cls . '"><span class="log_iw">'.IconLibrary::render($ico).'</span></div>'
          . '<div class="log_kpi_val">' . $val . '</div>'
          . '<div class="log_kpi_lbl">' . htmlspecialchars($lbl, ENT_QUOTES, 'UTF-8') . '</div></div>';
 }
 
 function view_logistica_kpi_bloqueado(string $lbl): string
 {
-    return '<div class="log_kpi"><div class="log_kpi_ico is-neutral"><i class="bi bi-lock"></i></div>'
+    return '<div class="log_kpi"><div class="log_kpi_ico is-neutral"><span class="log_iw">'.IconLibrary::render('lock').'</span</div>'
          . '<div class="log_kpi_val log_muted" style="font-size:16px">restrito</div>'
          . '<div class="log_kpi_lbl">' . htmlspecialchars($lbl, ENT_QUOTES, 'UTF-8') . '</div></div>';
 }
@@ -80,7 +80,7 @@ function view_logistica_alertas(array $alertas): string
 {
     if (empty($alertas)) {
         return '<div class="log_state" style="padding:28px 12px">'
-             . '<div class="log_state_ico"><i class="bi bi-check2-circle"></i></div>'
+             . '<div class="log_state_ico"><span class="log_iw">'.IconLibrary::render('check-circle').'</span</div>'
              . '<div class="log_state_title">Tudo sob controle</div>'
              . '<div class="log_state_desc">Nenhum alerta operacional no momento.</div></div>';
     }
@@ -88,12 +88,12 @@ function view_logistica_alertas(array $alertas): string
     foreach ($alertas as $a) {
         $nivel = htmlspecialchars($a['nivel'] ?? 'info', ENT_QUOTES, 'UTF-8');
         $html .= '<div class="log_alert is-' . $nivel . '">'
-               . '<div class="log_alert_ico"><i class="bi ' . htmlspecialchars($a['icone'] ?? 'bi-info-circle', ENT_QUOTES, 'UTF-8') . '"></i></div>'
+               . '<div class="log_alert_ico"><span class="log_iw">'.IconLibrary::render('info').'</span></div>'
                . '<div class="log_alert_body">'
                . '<div class="log_alert_title">' . htmlspecialchars($a['titulo'] ?? '', ENT_QUOTES, 'UTF-8') . '</div>'
                . '<div class="log_alert_desc">' . htmlspecialchars($a['descricao'] ?? '', ENT_QUOTES, 'UTF-8') . '</div>'
                . '</div>'
-               . '<a href="' . htmlspecialchars($a['link'] ?? '#', ENT_QUOTES, 'UTF-8') . '" class="log_btn log_btn--sm"><i class="bi bi-arrow-right"></i> Ver</a>'
+               . '<a href="' . htmlspecialchars($a['link'] ?? '#', ENT_QUOTES, 'UTF-8') . '" class="log_btn log_btn--sm"><span class="log_iw">'.IconLibrary::render('arrow-up').'</span> Ver</a>'
                . '</div>';
     }
     return $html;
@@ -101,24 +101,25 @@ function view_logistica_alertas(array $alertas): string
 
 endif; // function_exists guard
 
+$ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">' . (class_exists('IconLibrary') ? IconLibrary::render($n) : '') . '</span>';
 ?>
 
 <div class="log_shell" id="logTorre" data-endpoint="/admin/logistica/torre/dados">
 
     <div class="log_head">
         <div>
-            <h1><i class="bi bi-broadcast-pin"></i> Torre de Controle</h1>
+            <h1><?= $ico('tower-control', 22) ?> Torre de Controle</h1>
             <p>Visão geral da operação logística · <span id="logAtualizado"><?= $e($periodo ?? '') ?></span></p>
         </div>
         <div class="log_head_actions">
             <button type="button" class="log_btn log_btn--icon" id="logRefresh" title="Atualizar">
-                <i class="bi bi-arrow-clockwise"></i>
+                <?= $ico('reload', 20) ?>
             </button>
             <a href="/admin/logistica/rastreios" class="log_btn log_btn--sm">
-                <i class="bi bi-geo-alt"></i> Rastreios
+                <?= $ico('globe-location', 20) ?> Rastreios
             </a>
             <a href="/admin/logistica/etiquetas" class="log_btn log_btn--primary log_btn--sm">
-                <i class="bi bi-printer"></i> Etiquetas
+                <?= $ico('etiqueta', 20) ?> Etiquetas
             </a>
         </div>
     </div>
@@ -172,7 +173,7 @@ endif; // function_exists guard
         </div>
         <div class="log_filters_spacer"></div>
         <button type="button" class="log_btn log_btn--primary" id="logAplicar" style="align-self:flex-end">
-            <i class="bi bi-funnel"></i> Aplicar
+            <?= $ico('check', 22) ?> Aplicar
         </button>
     </form>
 
@@ -188,7 +189,7 @@ endif; // function_exists guard
             <div class="log_card">
                 <div class="log_card_head">
                     <h2>Distribuição das entregas por prazo</h2>
-                    <span class="log_badge is-brand log_badge--plain"><i class="bi bi-check2"></i> <?= $int($kpis['entregues']) ?> entregues</span>
+                    <span class="log_badge is-brand log_badge--plain"><?= $ico('torre-pack', 22) ?> <?= $int($kpis['entregues']) ?> entregues</span>
                 </div>
                 <div class="log_card_body">
                     <div class="log_dist" id="logDist">

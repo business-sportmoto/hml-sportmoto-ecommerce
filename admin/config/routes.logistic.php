@@ -95,3 +95,6 @@ AdminRouter::get ('/logistica/frete-fallback/dados',    'FreteFallbackController
 AdminRouter::post('/logistica/frete-fallback/salvar',   'FreteFallbackController@salvar');
 AdminRouter::post('/logistica/frete-fallback/remover',  'FreteFallbackController@remover');
 AdminRouter::post('/logistica/frete-fallback/alternar', 'FreteFallbackController@alternar');
+
+AdminRouter::get('/logistica/etiquetas/buscar-cep',     'EtiquetaController@buscarCep');
+AdminRouter::get('/logistica/etiquetas/buscar-cliente', 'EtiquetaController@buscarCliente');

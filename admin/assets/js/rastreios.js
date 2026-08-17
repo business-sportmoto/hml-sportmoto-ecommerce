@@ -68,9 +68,9 @@
             '<td><span class="log_badge ' + st[0] + ' log_badge--plain">' + esc(st[1]) + '</span>' + flags + '</td>' +
             '<td class="log_muted">' + esc(it.ultima_atualizacao || '—') + '</td>' +
             '<td class="log_col_acoes">' +
-                '<button type="button" class="log_btn log_btn--icon js-atualizar" title="Atualizar agora"><i class="bi bi-arrow-clockwise"></i></button> ' +
-                '<button type="button" class="log_btn log_btn--icon js-link" title="Copiar link público"><i class="bi bi-link-45deg"></i></button> ' +
-                '<button type="button" class="log_btn log_btn--icon js-detalhe" title="Timeline"><i class="bi bi-list-ul"></i></button>' +
+                '<button type="button" class="log_btn log_btn--icon js-atualizar" title="Atualizar agora"><span class="log_iw"><svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="m19 8-4 4h3c0 3.31-2.69 6-6 6-1.01 0-1.97-.25-2.8-.7l-1.46 1.46C8.97 19.54 10.43 20 12 20c4.42 0 8-3.58 8-8h3l-4-4zM6 12c0-3.31 2.69-6 6-6 1.01 0 1.97.25 2.8.7l1.46-1.46C15.03 4.46 13.57 4 12 4c-4.42 0-8 3.58-8 8H1l4 4 4-4H6z"/></svg></span</button> ' +
+                '<button type="button" class="log_btn log_btn--icon js-link" title="Copiar link público"><span class="log_iw"><svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#e3e3e3"><path d="M360-240q-33 0-56.5-23.5T280-320v-480q0-33 23.5-56.5T360-880h360q33 0 56.5 23.5T800-800v480q0 33-23.5 56.5T720-240H360Zm0-80h360v-480H360v480ZM200-80q-33 0-56.5-23.5T120-160v-560h80v560h440v80H200Zm160-240v-480 480Z"/></svg></span></button> ' +
+                '<button type="button" class="log_btn log_btn--icon js-detalhe" title="Timeline"><span class="log_iw"><svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#e3e3e3"><path d="M120-240q-33 0-56.5-23.5T40-320q0-33 23.5-56.5T120-400h10.5q4.5 0 9.5 2l182-182q-2-5-2-9.5V-600q0-33 23.5-56.5T400-680q33 0 56.5 23.5T480-600q0 2-2 20l102 102q5-2 9.5-2h21q4.5 0 9.5 2l142-142q-2-5-2-9.5V-640q0-33 23.5-56.5T840-720q33 0 56.5 23.5T920-640q0 33-23.5 56.5T840-560h-10.5q-4.5 0-9.5-2L678-420q2 5 2 9.5v10.5q0 33-23.5 56.5T600-320q-33 0-56.5-23.5T520-400v-10.5q0-4.5 2-9.5L420-522q-5 2-9.5 2H400q-2 0-20-2L198-340q2 5 2 9.5v10.5q0 33-23.5 56.5T120-240Z"/></svg></span></button>' +
             '</td>' +
         '</tr>';
     }
@@ -124,13 +124,13 @@
                     '<p><span class="log_badge ' + st[0] + ' log_badge--plain">' + esc(st[1]) + '</span> ' + esc(e.transportadora_nome || '') + '</p>' +
                     '<p class="log_muted">Código: <span class="log_mono">' + esc(e.codigo_rastreio || '—') + '</span>' +
                     (e.previsao_entrega ? ' · Previsão: ' + esc(e.previsao_entrega) : '') + '</p>' +
-                    '<div class="log_copybox"><input class="log_input log_mono" readonly value="' + attr(url) + '"><button type="button" class="log_btn log_btn--sm js-copy" data-url="' + attr(url) + '"><i class="bi bi-clipboard"></i> Copiar</button></div>' +
+                    '<div class="log_copybox"><input class="log_input log_mono" readonly value="' + attr(url) + '"><button type="button" class="log_btn log_btn--sm js-copy" data-url="' + attr(url) + '"><span class="log_iw"><svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M360-240q-33 0-56.5-23.5T280-320v-480q0-33 23.5-56.5T360-880h360q33 0 56.5 23.5T800-800v480q0 33-23.5 56.5T720-240H360Zm0-80h360v-480H360v480ZM200-80q-33 0-56.5-23.5T120-160v-560h80v560h440v80H200Zm160-240v-480 480Z"/></svg></span> Copiar</button></div>' +
                 '</div>' +
                 '<div class="log_fieldset"><h4>Timeline</h4><ul class="log_timeline">' + linha + '</ul></div>' +
             '</div>';
 
             var drawer = adminDrawer({ titulo: 'Rastreio #' + id, subtitulo: e.pedido_id ? 'Pedido #' + e.pedido_id : '', conteudo: html, tamanho: 'md',
-                acoes: '<a href="' + attr(url) + '" target="_blank" class="log_btn log_btn--sm"><i class="bi bi-box-arrow-up-right"></i> Abrir link</a> <button type="button" class="log_btn log_btn--primary log_btn--sm js-atu"><i class="bi bi-arrow-clockwise"></i> Atualizar</button>' });
+                acoes: '<a href="' + attr(url) + '" target="_blank" class="log_btn log_btn--sm"><span class="log_iw"><svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h280v80H200v560h560v-280h80v280q0 33-23.5 56.5T760-120H200Zm188-212-56-56 372-372H560v-80h280v280h-80v-144L388-332Z"/></svg></span> Abrir link</a> <button type="button" class="log_btn log_btn--primary log_btn--sm js-atu"><span class="log_iw"><svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="m19 8-4 4h3c0 3.31-2.69 6-6 6-1.01 0-1.97-.25-2.8-.7l-1.46 1.46C8.97 19.54 10.43 20 12 20c4.42 0 8-3.58 8-8h3l-4-4zM6 12c0-3.31 2.69-6 6-6 1.01 0 1.97.25 2.8.7l1.46-1.46C15.03 4.46 13.57 4 12 4c-4.42 0-8 3.58-8 8H1l4 4 4-4H6z"/></svg></span> Atualizar</button>' });
             drawer.escutar('click', '.js-copy', function (ev) { copiar($(ev.target).closest('[data-url]').data('url')); });
             drawer.escutar('click', '.js-atu', function () {
                 api('POST', '/atualizar', comCsrf({ id: id })).done(function (rr) {

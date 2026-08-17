@@ -143,7 +143,7 @@ abstract class TransportadoraBase implements TransportadoraInterface
         } catch (\Throwable $e) {
             // Silencioso por design; LogService (arquivo) é a rede de segurança.
             if (class_exists('LogService')) {
-                LogService::warning('Falha ao gravar log_comunicacoes', ['erro' => $e->getMessage()]);
+                LogService::warning('Falha ao gravar log_comunicacoes -> '.$tipo, ['erro' => $e->getMessage()]);
             }
         }
     }
