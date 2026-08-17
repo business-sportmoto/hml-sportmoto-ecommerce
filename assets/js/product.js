@@ -1273,6 +1273,7 @@ $(function () {
   
 
   $(function(){
+    console.log('LIGHTBOX');
     // ── LIGHTBOX ──
     var $lb = $('#pdx-lb');
     if ($lb.length) {

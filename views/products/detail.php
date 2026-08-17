@@ -16,6 +16,19 @@ $descPct   = $temPromo ? PriceHelper::discountPercent($precoOrig, $preco) : 0;
 $semEstoque = (int)($product['estoque_total']) === 0;
 $mainImage  = !empty($images) ? $images[0] : null;
 
+$resumo = (new Review())->getResumo((int)$product['id']);
+
+// var_dump($images);
+
+View::partial('products/schema-jsonld',
+[
+  'product'=> $product,
+  'semEstoque'=>$semEstoque,
+  'preco'=>$preco,
+  'images'=>$images,
+  'resumo'=>$resumo,
+]);
+
 $favoritado  = false;
 $listasProduto = [];
 
@@ -72,7 +85,7 @@ function swatchTipo(array $membro, string $atributoSlug): string {
 }
 ?>
 
-<?= $jsonLd ?>
+<!-- <?= $jsonLd ?> -->
 
 <!-- Breadcrumb -->
 <nav class="breadcrumb-nav">
@@ -100,7 +113,7 @@ function swatchTipo(array $membro, string $atributoSlug): string {
 
 <?php
   // Resumo de avaliações (para o cabeçalho)
-  $resumo = (new Review())->getResumo((int)$product['id']);
+  
 ?>
 
 <div class="pdx">
