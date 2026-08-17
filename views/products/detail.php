@@ -86,8 +86,6 @@ function swatchTipo(array $membro, string $atributoSlug): string {
 }
 ?>
 
-<!-- <?= $jsonLd ?> -->
-
 <!-- Breadcrumb -->
 <nav class="breadcrumb-nav">
   <div class="container">
@@ -104,6 +102,9 @@ function swatchTipo(array $membro, string $atributoSlug): string {
     </ol>
   </div>
 </nav>
+<?php View::partial('products/schema-breadcrumb', [
+  'breadcrumb'=> $breadcrumb
+]) ?>
 <?php
   if(CONF_BAR_VEICLE) {
     if(Product::temBuscaMoto((int)$product['id'])) {

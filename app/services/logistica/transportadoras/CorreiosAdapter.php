@@ -418,17 +418,18 @@ class CorreiosAdapter extends TransportadoraBase
     {
         $loja = $this->reversaConfig()['loja']; // reusa endereço/CNPJ da loja
         $dim  = $this->dimensoesDe($params);
-        $telL = self::dividirTelefone($loja['telefone'] ?? '');
-        $telD = self::dividirTelefone($dest['telefone'] ?? $dest['phone'] ?? '');
-        $celD = self::dividirTelefone($dest['celular'] ?? $dest['telefone'] ?? $dest['phone'] ?? '');
+        $telL = self::telefonesCorreios($loja['telefone'] ?? $loja['celular'] ?? '');
+        $telD = self::telefonesCorreios($dest['celular'] ?? $dest['telefone'] ?? $dest['phone'] ?? '');
         $so   = static fn($v) => preg_replace('/\D/', '', (string)$v) ?? '';
 
         return [
             'codigoServico' => (string)($params['servico_codigo'] ?? ''),
             'remetente' => [
                 'nome'        => mb_substr((string)($loja['nome'] ?? ''), 0, 50),
-                'dddTelefone' => $telL['ddd'],
-                'telefone'    => $telL['numero'],
+                'dddTelefone' => $telL['dddTelefone'],
+                'telefone'    => $telL['telefone'],
+                'dddCelular'  => $telL['dddCelular'],
+                'celular'     => $telL['celular'],
                 'email'       => (string)($loja['email'] ?? ''),
                 'cpfCnpj'     => $so($loja['documento'] ?? ''),
                 'endereco'    => [
@@ -443,10 +444,10 @@ class CorreiosAdapter extends TransportadoraBase
             ],
             'destinatario' => [
                 'nome'        => mb_substr((string)($dest['nome'] ?? $dest['name'] ?? ''), 0, 50),
-                'dddTelefone' => $telD['ddd'],
-                'telefone'    => $telD['numero'],
-                'dddCelular'  => $celD['ddd'],
-                'celular'     => $celD['numero'],
+                'dddTelefone' => $telD['dddTelefone'],
+                'telefone'    => $telD['telefone'],
+                'dddCelular'  => $telD['dddCelular'],
+                'celular'     => $telD['celular'],
                 'email'       => (string)($dest['email'] ?? ''),
                 'cpfCnpj'     => $so($dest['cpf'] ?? $dest['documento'] ?? $dest['cpf_cnpj'] ?? ''),
                 'endereco'    => [
@@ -459,6 +460,8 @@ class CorreiosAdapter extends TransportadoraBase
                     'uf'          => (string)($dest['uf'] ?? $dest['state_abbr'] ?? ''),
                 ],
             ],
+            // Declaração de Conteúdo (obrigatória quando não há NF — erro PPN-347).
+            'itensDeclaracaoConteudo' => self::itensDeclaracao($params),
             'codigoFormatoObjetoInformado' => (string)($this->config['tp_objeto'] ?? '2'), // 1=env,2=caixa,3=rolo
             'pesoInformado'        => (string)max(1, (int)round($dim['peso_g'])),           // GRAMAS
             'alturaInformada'      => (string)(int)round($dim['altura_cm']),                // cm
@@ -810,6 +813,44 @@ class CorreiosAdapter extends TransportadoraBase
         if (strlen($d) > 11 && str_starts_with($d, '55')) $d = substr($d, 2); // tira DDI
         if (strlen($d) >= 10) return ['ddd' => substr($d, 0, 2), 'numero' => substr($d, 2)];
         return ['ddd' => '', 'numero' => $d];
+    }
+
+    /**
+     * Separa um telefone nos campos que os Correios esperam: número de 9 dígitos
+     * vai em celular/dddCelular; de 8 dígitos em telefone/dddTelefone. Evita o erro
+     * "Telefone do remetente inválido" (celular no campo de telefone fixo).
+     */
+    public static function telefonesCorreios(string $telefone): array
+    {
+        $t = self::dividirTelefone($telefone);
+        $ddd = $t['ddd'];
+        $num = $t['numero'];
+        $out = ['dddTelefone' => '', 'telefone' => '', 'dddCelular' => '', 'celular' => ''];
+        if (strlen($num) === 8) {
+            $out['dddTelefone'] = $ddd; $out['telefone'] = $num;
+        } elseif (strlen($num) >= 9) {
+            $out['dddCelular'] = $ddd; $out['celular'] = substr($num, -9);
+        }
+        return $out;
+    }
+
+    /** Monta os itens da Declaração de Conteúdo a partir dos produtos do pedido. */
+    public static function itensDeclaracao(array $params): array
+    {
+        $produtos = is_array($params['produtos'] ?? null) ? $params['produtos'] : [];
+        $itens = [];
+        foreach ($produtos as $p) {
+            $itens[] = [
+                'conteudo'   => mb_substr((string)($p['descricao'] ?? $p['nome'] ?? 'Produto'), 0, 60),
+                'quantidade' => (string)max(1, (int)($p['quantidade'] ?? 1)),
+                'valor'      => number_format((float)($p['valor'] ?? $p['preco'] ?? 0), 2, '.', ''),
+            ];
+        }
+        if (!$itens) {
+            $valor = (float)($params['valor_declarado'] ?? $params['valor'] ?? 1);
+            $itens[] = ['conteudo' => 'Peças e acessórios', 'quantidade' => '1', 'valor' => number_format($valor > 0 ? $valor : 1, 2, '.', '')];
+        }
+        return $itens;
     }
 
     /** Abrevia o nome respeitando o limite dos Correios (~50 chars). */
