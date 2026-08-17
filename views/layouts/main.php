@@ -76,7 +76,7 @@ $categoryModel    = new Category();
 
 <!-- Adicionar após os scripts principais -->
 <?php if (($page ?? '') === 'cart/shared'): ?>
-<script src="<?= View::asset('js/shared-cart.js') ?>" defer></script>
+<script src="<?= PerformanceHelper::assetVersion('js/shared-cart.js') ?>" defer></script>
 <?php endif; ?>
 
   <?php if (!empty($extraJs)): ?>
@@ -87,7 +87,7 @@ $categoryModel    = new Category();
   
   <!-- JS extras de páginas customizadas -->
   <?php foreach ((array)($extra_js ?? []) as $jsUrl): ?>
-    <script src="<?= View::e($jsUrl) ?>" defer></script>
+    <script src="<?= PerformanceHelper::assetVersion($jsUrl) ?>" defer></script>
   <?php endforeach; ?>
 
   <!-- Backdrop do modal de variações do card -->

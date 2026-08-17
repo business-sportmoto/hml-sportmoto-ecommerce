@@ -178,7 +178,7 @@ class ProductController extends Controller {
             'installments' => $installments,
             'breadcrumb'   => $breadcrumb,
             'jsonLd'       => $jsonLd,            
-            'extra_js' => [BASE_URL . '/assets/js/product.js'], // ← adicionar
+            'extra_js' => ['js/product.js'], // ← adicionar
 
             'produtos_destaque'  => $sections['sectionDestaque'] ?? [],
             'produtos_promocao'  => $sections['sectionPromocoes'] ?? [], //$productModel->getOnSale(15),
