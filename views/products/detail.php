@@ -1,4 +1,5 @@
 <?php
+$cepInfoData       = CepController::getCepAtivo();
 // views/products/detail.php — Página de produto (REDESIGN)
 // ─────────────────────────────────────────────────────────────
 // Preserva TODOS os hooks do product.js e bindings do controller.
@@ -827,7 +828,13 @@ function swatchTipo(array $membro, string $atributoSlug): string {
 window.PDX_IMAGES = <?= json_encode(array_map(function($im){
   return View::uploadR2($im['arquivo']);
 }, $images ?? []), JSON_UNESCAPED_SLASHES) ?>;
+
+<?php if ($cepInfoData['tem_cep']): ?>
+    window.EC_CEP_ATIVO = "<?= View::e($cepInfoData['cep']) ?>";
+    <?php endif; ?>
 </script>
+
+
 
 <!-- ═══ JS do redesign (jQuery) — lightbox, modal pagamento, ver-mais ═══ -->
 <!-- NÃO duplica o product.js: variações/cart/galeria-thumbs continuam nele. -->

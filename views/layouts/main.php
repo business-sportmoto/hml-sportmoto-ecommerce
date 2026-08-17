@@ -2,6 +2,7 @@
 // views/layouts/main.php — versão final com SEO e performance
 SeoHelper::setWebSite(); // JSON-LD de WebSite apenas na home
 $categoryModel    = new Category();
+
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -56,6 +57,8 @@ $categoryModel    = new Category();
     const BASE_URL   = '<?= BASE_URL ?>';
     const UPLOAD_URL = '<?= UPLOAD_URL ?>';
     const CSRF_TOKEN = '<?= $csrf_token ?? '' ?>';
+    
+    
   </script>
 
   <!-- Scripts carregados de forma assíncrona para melhor performance -->
@@ -98,6 +101,7 @@ $categoryModel    = new Category();
     window.AUTO_OPEN_CLIP_ID   = <?= (int)$autoOpenClipId ?>;
     window.AUTO_OPEN_CLIP_DATA = <?= $autoOpenClipData ?? 'null' ?>;
   </script>
+  
   <?php endif; ?>
   <?php 
   if(isset($paginaAtual)){

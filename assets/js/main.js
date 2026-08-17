@@ -3750,6 +3750,7 @@
 
     // Expõe o CEP ativo para outros scripts (cálculo de frete, produto, etc.)
     window.EC_CEP_ATIVO = (function () {
+      if(window.EC_CEP_ATIVO.length >= 8) return window.EC_CEP_ATIVO;
       const match = document.cookie.match(/(?:^|;\s*)ec_cep=([^;]+)/);
       return match ? match[1] : null;
     })();

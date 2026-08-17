@@ -116,30 +116,28 @@ class CorreiosAdapter extends TransportadoraBase
         }
 
         // 2) Preço em lote (/preco/v1/nacional) — psObjeto em GRAMAS, dimensões em cm.
-        $payload = ['idLote' => 'L1', 'parametrosProduto' => []];
+        $payload = ['idLote' => '1', 'parametrosProduto' => []];
         foreach ($servicos as $i => $s) {
-            // A API de preço espera o peso em QUILOS (ex.: 0.562), mín. 0,1 kg.
-            $pesoKg = self::pesoKgDe($dim['peso_g']);
+            // Manual oficial v2.4: valores como STRING; psObjeto em GRAMAS (ex.: "300").
             $item = [
-                'coProduto'   => substr((string)$s['codigo'], 0, 10),
-                'nuRequisicao' => 'R' . ($i + 1),
-                'nuContrato'  => $contrato,
-                'nuDR'        => $dr,
-                'cepOrigem'   => $cepOrigem,
-                'cepDestino'  => $cepDestino,
-                'psObjeto'    => $pesoKg,
-                'comprimento' => (float)$dim['comprimento_cm'],
-                'largura'     => (float)$dim['largura_cm'],
-                'altura'      => (float)$dim['altura_cm'],
-                'diametro'    => 0,
-                'psCubico'    => 0,
-                'vlDeclarado' => $vlDeclarado > 0 ? $vlDeclarado : 0,
-                'tpObjeto'    => $tpObjeto,
-                'criterios'   => [],
-                'dtEvento'    => date('d-m-Y'),
-                'dtArmazenagem' => date('d-m-Y'),
+                'coProduto'    => substr((string)$s['codigo'], 0, 10),
+                'nuRequisicao' => (string)($i + 1),
+                'nuContrato'   => (string)$contrato,
+                'nuDR'         => (int)$dr,
+                'cepOrigem'    => $cepOrigem,
+                'cepDestino'   => $cepDestino,
+                'psObjeto'     => (string)max(1, (int)round($dim['peso_g'])),  // GRAMAS
+                'tpObjeto'     => (string)$tpObjeto,
+                'comprimento'  => (string)(int)round($dim['comprimento_cm']),
+                'largura'      => (string)(int)round($dim['largura_cm']),
+                'altura'       => (string)(int)round($dim['altura_cm']),
+                'dtEvento'     => date('d/m/Y'),
             ];
-            // Remove só strings vazias/null (mantém 0 e [], como na classe de origem).
+            // Valor declarado só quando informado (serviço adicional 019 = valor declarado).
+            if ($vlDeclarado > 0) {
+                $item['vlDeclarado'] = number_format($vlDeclarado, 2, '.', '');
+                $item['servicosAdicionais'] = [['coServAdicional' => '019']];
+            }
             foreach ($item as $k => $v) { if ($v === '' || $v === null) unset($item[$k]); }
             $payload['parametrosProduto'][] = $item;
         }
@@ -222,12 +220,6 @@ class CorreiosAdapter extends TransportadoraBase
         $j = $r['json'] ?? [];
         $pz = $j['prazoEntrega'] ?? ($j[0]['prazoEntrega'] ?? null);
         return $pz !== null ? (int)$pz : null;
-    }
-
-    /** Peso em gramas -> quilos para a API de preço (mínimo 0,1 kg). */
-    public static function pesoKgDe($pesoG): float
-    {
-        return round(max(0.1, (float)$pesoG / 1000), 3);
     }
 
     /** Extrai o preço final (Correios manda string BR: "1.234,56"). */

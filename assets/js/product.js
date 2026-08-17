@@ -363,7 +363,16 @@ $(function () {
 
     /* ---------- utils ---------- */
     function cookieCep() { var m = document.cookie.match(/(?:^|;\s*)ec_cep=([^;]+)/); return m ? m[1].replace(/\D/g, '') : ''; }
-    function cepAtivo() { var c = cookieCep(); if (c.length === 8) return c; var g = (window.EC_CEP_ATIVO || '').toString().replace(/\D/g, ''); return g.length === 8 ? g : ''; }
+
+    function cepAtivo() { 
+      var c = cookieCep(); 
+      if (c.length === 8) return c; 
+      console.log(window);
+      
+      var g = (window.EC_CEP_ATIVO || '').toString().replace(/\D/g, ''); 
+      return g.length === 8 ? g : ''; 
+    }
+
     function fmtCep(c) { c = (c || '').replace(/\D/g, ''); return c.length === 8 ? c.slice(0, 5) + '-' + c.slice(5) : c; }
     function reais(v) { return 'R$ ' + (Number(v) || 0).toFixed(2).replace('.', ','); }
     function esc(s) { return $('<i>').text(s == null ? '' : String(s)).html(); }
@@ -517,6 +526,8 @@ $(function () {
     /* ---------- fluxo ---------- */
     function buscar() {
         var cep = cepAtivo();
+        console.log(cep);
+        
         if (!cep) { estadoSemCep(); return; }
         cepAtual = cep; skeleton();
         $.get(URL_FRETE, { cep: cep, produto_id: PRODUTO_ID, subtotal_atual: subtotalCarrinho() }, function (r) {
@@ -533,13 +544,15 @@ $(function () {
     };
 
     $(function () {
+      
         $box = $('#fpFrete'); if (!$box.length) return;
+        
         PRODUTO_ID = parseInt($box.data('produto-id'), 10) || 0;
         PRECO = parseFloat($box.data('preco')) || 0;
-        if (!PRODUTO_ID) return;
+        if (!PRODUTO_ID) return;        
 
         // "Calcular"/"Trocar CEP" (widget ou modal) abrem a sua modal de localização
-        $(document).on('click', '[data-fp-cep]', function () { if ($('#fpModal').length) fecharModal(); abrirModalCep(); });
+        $(document).on('click', '[data-fp-cep]', function (e) { e.stopPropagation(); if ($('#fpModal').length) fecharModal(); abrirModalCep(); });
         $box.on('click', '[data-fp-more]', abrirModal);
         $(document).on('click', '[data-fp-close]', fecharModal);
         $(document).on('click', '#fpModal', function (e) { if (e.target === this) fecharModal(); });
@@ -1273,7 +1286,7 @@ $(function () {
   
 
   $(function(){
-    console.log('LIGHTBOX');
+    
     // ── LIGHTBOX ──
     var $lb = $('#pdx-lb');
     if ($lb.length) {
