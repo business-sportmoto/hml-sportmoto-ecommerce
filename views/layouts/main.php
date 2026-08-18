@@ -12,9 +12,7 @@ $categoryModel    = new Category();
   <?php View::partial('partials/seo-tags') ?>
   <?php include VIEW_PATH . '/partials/schema-organization.php'; ?>
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/main.css') ?>">
-  <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/mototv-busca.css') ?>">
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/clips.css') ?>">
-  <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/pwa-native.css') ?>">
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/lightbox.css') ?>">
   <!-- CSS extras de páginas customizadas -->
   <?php foreach ((array)($extra_css ?? []) as $cssUrl): ?>
