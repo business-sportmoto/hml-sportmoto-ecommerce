@@ -1,6 +1,7 @@
 <?php
 // views/layouts/main.php — versão final com SEO e performance
 SeoHelper::setWebSite(); // JSON-LD de WebSite apenas na home
+SeoHelper::setOrganization();
 $categoryModel    = new Category();
 
 ?>
@@ -9,7 +10,7 @@ $categoryModel    = new Category();
 <head>  
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <?php View::partial('partials/seo-tags') ?>
-  
+  <?php include VIEW_PATH . '/partials/schema-organization.php'; ?>
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/main.css') ?>">
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/mototv-busca.css') ?>">
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/clips.css') ?>">

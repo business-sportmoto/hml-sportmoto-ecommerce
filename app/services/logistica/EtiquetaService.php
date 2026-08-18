@@ -304,7 +304,10 @@ class EtiquetaService
 
         $jaImpressa = !empty($e['url_pdf']);
         $adapter = $this->resolverAdapter((int)$e['transportadora_id']);
+        if (!$adapter) return ['ok' => false, 'erro' => 'Transportadora indisponível para emissão.'];
+
         $urlNova = null;
+        $r = null;
         if ($adapter) {
             $modo = 'private';
             $r = $adapter->imprimirEtiqueta([(string)$e['external_id']], $modo);
@@ -314,7 +317,7 @@ class EtiquetaService
             }
         }
         $url = $urlNova ?? ($e['url_pdf'] ?? null);
-        if (!$url) return ['ok' => false, 'erro' => 'Não foi possível obter o PDF da etiqueta.'];
+        if (!$url) return ['ok' => false, 'erro' => 'Não foi possível obter o PDF da etiqueta.', 'debug'=>$r];
 
         $this->evento($id, $jaImpressa ? 'reimpressa' : 'impressa', null, $usuarioId);
         return ['ok' => true, 'url_pdf' => $url];
@@ -508,6 +511,7 @@ class EtiquetaService
     protected function resolverAdapter(int $transportadoraId): ?TransportadoraInterface
     {
         $row = TransportadoraManager::porId($transportadoraId);
+        // LogService::debug('teste de resolverAdapter', $row);
         if (!$row) return null;
         try {
             return TransportadoraManager::resolver($row);

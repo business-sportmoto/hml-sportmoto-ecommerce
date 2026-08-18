@@ -139,6 +139,9 @@ class SettingsAdminController extends Controller {
         $ordemGrupos = [
             'geral'     => ['label' => 'Geral',           'icon' => 'settings'],
             'loja'      => ['label' => 'Loja',            'icon' => 'shopping-bag'],
+            'social'    => ['label' => 'Redes Sociais',   'icon' => 'social'],
+            'hour'      => ['label' => 'Horário de atendimento',   'icon' => 'hour'],
+            'address'      => ['label' => 'Endereço',   'icon' => 'address'],
             'contato'   => ['label' => 'Contato',         'icon' => 'mail'],
             'frete'     => ['label' => 'Frete',           'icon' => 'truck'],
             'email'     => ['label' => 'E-mail',          'icon' => 'send'],

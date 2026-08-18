@@ -152,28 +152,89 @@ class SeoHelper {
 
     /**
      * JSON-LD da organização (colocar na home).
+     * Tipo "Store": loja física + online → Knowledge Panel E Local Pack.
      */
     public static function setOrganization(): void {
         $siteName = ConfigHelper::get('site_nome', '');
-        $logo     = ConfigHelper::get('site_logo', '');
+        $logo     = ConfigHelper::get('site_logo_vetor', '');
+
         $ld = [
             '@context' => 'https://schema.org',
-            '@type'    => 'Organization',
+            '@type'    => 'Store',                       // era Organization
+            '@id'      => BASE_URL . '/#organization',
             'name'     => $siteName,
             'url'      => BASE_URL,
-            'logo'     => !empty($logo) ? BASE_URL . $logo : '',
+            'logo'     => !empty($logo) ? BASE_URL. '/uploads' . $logo : '',
+            'image'    => !empty($logo) ? BASE_URL . '/uploads' . $logo : '',
+            'description' => ConfigHelper::get('site_descricao', ''),
             'contactPoint' => [
                 '@type'             => 'ContactPoint',
                 'telephone'         => ConfigHelper::get('site_telefone', ''),
                 'contactType'       => 'customer service',
                 'availableLanguage' => 'Portuguese',
+                'areaServed'        => 'BR',
             ],
             'sameAs' => array_filter([
                 ConfigHelper::get('social_instagram', ''),
                 ConfigHelper::get('social_facebook',  ''),
                 ConfigHelper::get('social_youtube',   ''),
+                ConfigHelper::get('social_tiktok',    ''),   // novo
             ]),
         ];
+
+        // E-mail (se configurado)
+        $email = ConfigHelper::get('site_email', '');
+        if (!empty($email)) {
+            $ld['email'] = $email;
+        }
+
+        // Endereço físico — só monta se houver logradouro configurado
+        $logradouro = ConfigHelper::get('endereco_logradouro', '');
+        if (!empty($logradouro)) {
+            $ld['address'] = [
+                '@type'           => 'PostalAddress',
+                'streetAddress'   => $logradouro,
+                'addressLocality' => ConfigHelper::get('endereco_cidade', ''),
+                'addressRegion'   => ConfigHelper::get('endereco_uf', ''),
+                'postalCode'      => ConfigHelper::get('endereco_cep', ''),
+                'addressCountry'  => 'BR',
+            ];
+        }
+
+        // CNPJ (se configurado)
+        $cnpj = ConfigHelper::get('empresa_cnpj', '');
+        if (!empty($cnpj)) {
+            $ld['identifier'] = [
+                '@type' => 'PropertyValue',
+                'name'  => 'CNPJ',
+                'value' => $cnpj,
+            ];
+        }
+
+        // Horário — só monta se as configs de horário existirem.
+        // Formato: "08:00" / "19:00" por bloco. Domingo omitido.
+        $abreSemana = ConfigHelper::get('horario_semana_abre', '');
+        if (!empty($abreSemana)) {
+            $ld['openingHoursSpecification'] = [
+                [
+                    '@type'     => 'OpeningHoursSpecification',
+                    'dayOfWeek' => ['Monday','Tuesday','Wednesday','Thursday','Friday'],
+                    'opens'     => $abreSemana,
+                    'closes'    => ConfigHelper::get('horario_semana_fecha', ''),
+                ],
+            ];
+            // Sábado (se configurado)
+            $abreSab = ConfigHelper::get('horario_sabado_abre', '');
+            if (!empty($abreSab)) {
+                $ld['openingHoursSpecification'][] = [
+                    '@type'     => 'OpeningHoursSpecification',
+                    'dayOfWeek' => 'Saturday',
+                    'opens'     => $abreSab,
+                    'closes'    => ConfigHelper::get('horario_sabado_fecha', ''),
+                ];
+            }
+        }
+
         self::$meta['jsonld'][] = $ld;
     }
 
@@ -272,4 +333,5 @@ class SeoHelper {
 
         return $html;
     }
+    
 }

@@ -399,6 +399,9 @@ class CorreiosAdapter extends TransportadoraBase
             'external_id'     => $id,                       // id da pré-postagem (PR...)
             'codigo_rastreio' => $codObj !== '' ? $codObj : $id,
             'url_pdf'         => $rot['url'] ?? null,
+            'pdf_base64'      => $rot['pdf_base64'] ?? null, // quando o PDF vem em bytes
+            'id_recibo'       => $rot['id_recibo'] ?? null,  // p/ baixar o rótulo depois
+            'aviso'           => $rot['aviso'] ?? null,
             'valor'           => (float)($j['precoPostagem'] ?? $params['valor_frete'] ?? 0),
         ];
     }
@@ -410,7 +413,8 @@ class CorreiosAdapter extends TransportadoraBase
         $token = $this->tokenCorreios();
         if (!$token) return ['ok' => false, 'erro' => 'Não foi possível autenticar nos Correios.'];
         $rot = $this->rotuloPdf($ids, $token, $modo === 'private' ? 'P' : 'R');
-        return !empty($rot['ok']) ? ['ok' => true, 'url_pdf' => $rot['url'] ?? null] : ['ok' => false, 'erro' => $rot['erro'] ?? 'Falha ao gerar rótulo.'];
+        if (empty($rot['ok'])) return ['ok' => false, 'erro' => $rot['erro'] ?? 'Falha ao gerar rótulo.'];
+        return ['ok' => true, 'url_pdf' => $rot['url'] ?? null, 'pdf_base64' => $rot['pdf_base64'] ?? null, 'id_recibo' => $rot['id_recibo'] ?? null, 'aviso' => $rot['aviso'] ?? null];
     }
 
     /** Monta o corpo da pré-postagem (remetente = LOJA, destinatário = CLIENTE). */
@@ -474,19 +478,54 @@ class CorreiosAdapter extends TransportadoraBase
     }
 
     /** POST do rótulo assíncrono em PDF; devolve URL/código do objeto quando disponível. */
+    /**
+     * Rótulo assíncrono em 2 etapas: POST solicita (recebe idRecibo) e GET baixa o PDF.
+     * Trata também o caso do PDF vir direto na 1ª resposta. Devolve url OU pdf_base64.
+     */
     private function rotuloPdf(array $ids, string $token, string $tipo = 'P'): array
     {
+        // 1) Solicita o rótulo.
         $body = ['idsPrePostagem' => array_values($ids), 'tipoRotulo' => $tipo, 'formatoRotulo' => 'ET'];
-        $r = $this->reqCorreios('POST', '/prepostagem/v1/prepostagens/rotulo/assincrono/pdf', $body, $token, 'rotulo');
-        if (!$this->okHttp($r)) return ['ok' => false, 'erro' => $this->erroCorreios($r, 'Falha ao gerar rótulo')];
+        $r = $this->reqCorreios('POST', '/prepostagem/v1/prepostagens/rotulo/assincrono/pdf', $body, $token, 'rotulo_solicita');
+        if (!$this->okHttp($r)) return ['ok' => false, 'erro' => $this->erroCorreios($r, 'Falha ao solicitar rótulo')];
         $j = is_array($r['json'] ?? null) ? $r['json'] : [];
-        // Resposta assíncrona: pode trazer idRotulo p/ consulta, ou dados/base64 do PDF.
-        return [
-            'ok'            => true,
-            'url'           => $j['dados'] ?? $j['url'] ?? $j['pdf'] ?? null,
-            'id_rotulo'     => $j['idRotulo'] ?? $j['id'] ?? null,
-            'codigo_objeto' => $j['codigoObjeto'] ?? ($j['objetos'][0]['codigoObjeto'] ?? null),
-        ];
+
+        // PDF já veio direto? (url/base64)
+        $url = $j['dados'] ?? $j['url'] ?? $j['pdf'] ?? null;
+        if ($url) return ['ok' => true, 'url' => $url, 'id_recibo' => $j['idRecibo'] ?? $j['id'] ?? null];
+
+        $idRecibo = $j['idRecibo'] ?? $j['id'] ?? $j['recibo'] ?? null;
+        if ($idRecibo === null) {
+            return ['ok' => true, 'url' => null, 'raw' => $j, 'aviso' => 'Rótulo solicitado; retorno sem idRecibo/URL conhecidos (confira o corpo em log_comunicacoes).'];
+        }
+
+        // 2) Baixa o PDF pelo idRecibo (assíncrono: tenta algumas vezes).
+        for ($i = 0; $i < 5; $i++) {
+            usleep(700000); // 0,7s entre tentativas
+            $d = $this->baixarRotulo((string)$idRecibo, $token);
+            if (!empty($d['ok'])) return $d + ['id_recibo' => $idRecibo];
+            if (!empty($d['processando'])) continue;
+            break;
+        }
+        return ['ok' => true, 'url' => null, 'id_recibo' => $idRecibo, 'aviso' => 'Rótulo em processamento. Baixe depois pelo idRecibo ' . $idRecibo . '.'];
+    }
+
+    /** Baixa o PDF do rótulo pelo idRecibo (GET). Devolve url ou pdf_base64. */
+    private function baixarRotulo(string $idRecibo, string $token): array
+    {
+        $d = $this->reqCorreios('GET', '/prepostagem/v1/prepostagens/rotulo/download/' . rawurlencode($idRecibo), null, $token, 'rotulo_download');
+        $s = (int)($d['status'] ?? 0);
+        if ($s === 202 || $s === 425) return ['ok' => false, 'processando' => true]; // ainda gerando
+        if (!$this->okHttp($d)) return ['ok' => false, 'erro' => $this->erroCorreios($d, 'Falha ao baixar rótulo')];
+        $dj = is_array($d['json'] ?? null) ? $d['json'] : [];
+        $url = $dj['dados'] ?? $dj['url'] ?? $dj['pdf'] ?? null;
+        if ($url) return ['ok' => true, 'url' => $url];
+        // Corpo binário/base64 do PDF?
+        $body = (string)($d['body'] ?? '');
+        if ($body !== '' && (str_starts_with($body, '%PDF') || strlen($body) > 200)) {
+            return ['ok' => true, 'pdf_base64' => str_starts_with($body, '%PDF') ? base64_encode($body) : $body];
+        }
+        return ['ok' => false, 'processando' => true];
     }
 
     public function cancelarEtiqueta(string $externalId): array
