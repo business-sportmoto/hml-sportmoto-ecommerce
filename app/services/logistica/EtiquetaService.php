@@ -213,6 +213,7 @@ class EtiquetaService
 
         $volumes = is_array($d['volumes'] ?? null) ? array_values($d['volumes']) : [];
         $peso = 0; foreach ($volumes as $v) $peso += (int)($v['peso_cobranca_g'] ?? $v['peso_g'] ?? 0);
+        if ($peso <= 0) $peso = 300; // reversa é pesada na agência; evita registro com peso zero
         $volPayload = ['volumes' => $volumes, 'produtos' => [], 'valor_declarado' => round((float)($d['valor_declarado'] ?? 0), 2)];
 
         try {
@@ -278,7 +279,7 @@ class EtiquetaService
         }
 
         $this->evento($id, 'erro', ($r['etapa'] ?? '') . ': ' . ($r['erro'] ?? 'falha'), $usuarioId);
-        return ['ok' => false, 'status' => $upd['status'], 'erro' => $r['erro'] ?? 'Falha ao gerar etiqueta.', 'etapa' => $r['etapa'] ?? null, 'debug' =>$e];
+        return ['ok' => false, 'status' => $upd['status'], 'erro' => $r['erro'] ?? 'Falha ao gerar etiqueta.', 'etapa' => $r['etapa'] ?? null];
     }
 
     public function comprarLote(array $ids, ?int $usuarioId = null): array
@@ -302,30 +303,90 @@ class EtiquetaService
         if (!$e) return ['ok' => false, 'erro' => 'Etiqueta não encontrada.'];
         if (empty($e['external_id'])) return ['ok' => false, 'erro' => 'Etiqueta ainda não emitida.'];
 
-        $jaImpressa = !empty($e['url_pdf']);
-        $adapter = $this->resolverAdapter((int)$e['transportadora_id']);
-        if (!$adapter) return ['ok' => false, 'erro' => 'Transportadora indisponível para emissão.'];
-
-        $urlNova = null;
-        $r = null;
-        if ($adapter) {
-            $modo = 'private';
-            $r = $adapter->imprimirEtiqueta([(string)$e['external_id']], $modo);
-            if (!empty($r['ok']) && !empty($r['url_pdf'])) {
-                $urlNova = $r['url_pdf'];
-                $this->aplicarUpdate($id, ['url_pdf' => $urlNova]);
-            }
+        // Já tem PDF salvo? devolve (reimpressão).
+        if (!empty($e['url_pdf'])) {
+            $this->evento($id, 'reimpressa', null, $usuarioId);
+            return ['ok' => true, 'url_pdf' => $e['url_pdf']];
         }
-        $url = $urlNova ?? ($e['url_pdf'] ?? null);
-        if (!$url) return ['ok' => false, 'erro' => 'Não foi possível obter o PDF da etiqueta.', 'debug'=>$r];
 
-        $this->evento($id, $jaImpressa ? 'reimpressa' : 'impressa', null, $usuarioId);
-        return ['ok' => true, 'url_pdf' => $url];
+        $adapter = $this->resolverAdapter((int)$e['transportadora_id']);
+        if (!$adapter) return ['ok' => false, 'erro' => 'Transportadora indisponível.'];
+
+        // 2ª ETAPA: já existe um recibo pendente -> baixa o PDF por ele.
+        if (!empty($e['id_recibo']) && method_exists($adapter, 'rotuloPorRecibo')) {
+            $d = $adapter->rotuloPorRecibo((string)$e['id_recibo']);
+            if (!empty($d['ok'])) {
+                $url = $this->urlDoRotulo($id, $d);
+                if ($url) {
+                    $this->aplicarUpdate($id, ['url_pdf' => $url]);
+                    $this->evento($id, 'impressa', null, $usuarioId);
+                    return ['ok' => true, 'url_pdf' => $url];
+                }
+            }
+            return ['ok' => false, 'debug'=>$d, 'processando' => !empty($d['processando']),
+                    'erro' => $d['erro'] ?? 'Rótulo ainda em processamento. Tente novamente em instantes.',
+                    'id_recibo' => $e['id_recibo']];
+        }
+
+        // 1ª ETAPA: solicita o rótulo (assíncrono).
+        $r = $adapter->imprimirEtiqueta([(string)$e['external_id']], 'private');
+        if (empty($r['ok'])) return ['ok' => false, 'erro' => $r['erro'] ?? 'Falha ao solicitar o rótulo.'];
+
+        // PDF já veio na hora?
+        $url = $this->urlDoRotulo($id, $r);
+        if ($url) {
+            $this->aplicarUpdate($id, ['url_pdf' => $url]);
+            $this->evento($id, 'impressa', null, $usuarioId);
+            return ['ok' => true, 'url_pdf' => $url];
+        }
+
+        // Guarda o recibo para a 2ª etapa.
+        if (!empty($r['id_recibo'])) {
+            $this->aplicarUpdate($id, ['id_recibo' => (string)$r['id_recibo']]);
+            return ['ok' => false, 'processando' => true, 'id_recibo' => $r['id_recibo'],
+                    'erro' => 'Rótulo solicitado. Clique em "Baixar etiqueta" em alguns segundos.'];
+        }
+        return ['ok' => false, 'erro' => 'Não foi possível obter o PDF da etiqueta.'];
+    }
+
+    /** Resolve a URL do rótulo a partir do retorno do adapter (URL direta ou PDF base64 salvo em arquivo). */
+    private function urlDoRotulo(int $id, array $r): ?string
+    {
+        if (!empty($r['url_pdf'])) return (string)$r['url_pdf'];
+        if (!empty($r['pdf_base64'])) return $this->salvarPdfBase64($id, (string)$r['pdf_base64']);
+        return null;
+    }
+
+    /** Salva um PDF em base64 em storage e devolve a URL pública servível. */
+    private function salvarPdfBase64(int $id, string $base64): ?string
+    {
+        $bin = base64_decode($base64, true);
+        if ($bin === false || $bin === '') return null;
+        $dir = defined('ROOT_PATH') ? ROOT_PATH . '/storage/logistica/rotulos' : (__DIR__ . '/../../../storage/logistica/rotulos');
+        if (!is_dir($dir)) @mkdir($dir, 0775, true);
+        $nome = 'etiqueta_' . $id . '_' . date('YmdHis') . '.pdf';
+        if (@file_put_contents($dir . '/' . $nome, $bin) === false) return null;
+        // URL pública (ajuste BASE_URL/rota conforme o projeto).
+        $base = defined('BASE_URL') ? rtrim(BASE_URL, '/') : '';
+        return $base . '/storage/logistica/rotulos/' . $nome;
     }
 
     /* =================================================================
        CANCELAMENTO
        ================================================================= */
+
+    /**
+     * Cancela a etiqueta APENAS localmente (status -> cancelada), sem chamar a
+     * transportadora. Fallback para quando o cancelamento remoto falha/indisponível,
+     * evitando que a etiqueta fique presa em 'emitida'. Registra que foi forçado.
+     */
+    public function forcarCancelamentoLocal(int $id, ?int $usuarioId = null, string $motivo = 'Cancelamento forçado localmente'): array
+    {
+        $this->aplicarUpdate($id, ['status' => 'cancelada']);
+        $this->evento($id, 'cancelada', $motivo, $usuarioId);
+        LogService::audit('Etiqueta cancelada localmente (forçado)', ['etiqueta_id' => $id, 'usuario_id' => $usuarioId]);
+        return ['ok' => true];
+    }
 
     public function cancelar(int $id, ?int $usuarioId = null): array
     {
@@ -347,18 +408,16 @@ class EtiquetaService
         if (!$adapter) return ['ok' => false, 'erro' => 'Transportadora indisponível para cancelamento.'];
 
         $r = $adapter->cancelarEtiqueta((string)$e['external_id']);
-        LogService::debug('cancelar', [$e]);
         if (empty($r['ok'])) {
             $this->evento($id, 'erro', 'Cancelamento: ' . ($r['erro'] ?? 'falha'), $usuarioId);
             return ['ok' => false, 'erro' => $r['erro'] ?? 'Falha ao cancelar na transportadora.'];
         }
-        
         $this->aplicarUpdate($id, ['status' => 'cancelada']);
         $this->evento($id, 'cancelada', 'Cancelada na transportadora', $usuarioId);
         LogService::audit('Etiqueta cancelada', ['etiqueta_id' => $id, 'external_id' => $e['external_id'], 'usuario_id' => $usuarioId]);
         return ['ok' => true];
     }
-    
+
     /* =================================================================
        MANIFESTO / PLP (lote de impressão)
        ================================================================= */
@@ -511,7 +570,6 @@ class EtiquetaService
     protected function resolverAdapter(int $transportadoraId): ?TransportadoraInterface
     {
         $row = TransportadoraManager::porId($transportadoraId);
-        // LogService::debug('teste de resolverAdapter', $row);
         if (!$row) return null;
         try {
             return TransportadoraManager::resolver($row);
@@ -524,7 +582,7 @@ class EtiquetaService
     /** UPDATE com allowlist de colunas. */
     private function aplicarUpdate(int $id, array $campos): void
     {
-        $permitidos = ['status', 'external_id', 'codigo_rastreio', 'url_pdf', 'valor', 'contrato', 'erro', 'plp_id'];
+        $permitidos = ['status', 'external_id', 'codigo_rastreio', 'url_pdf', 'id_recibo', 'valor', 'contrato', 'erro', 'plp_id'];
         $sets = []; $vals = [':id' => $id];
         foreach ($campos as $k => $v) {
             if (!in_array($k, $permitidos, true)) continue;

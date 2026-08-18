@@ -499,15 +499,26 @@ class CorreiosAdapter extends TransportadoraBase
             return ['ok' => true, 'url' => null, 'raw' => $j, 'aviso' => 'Rótulo solicitado; retorno sem idRecibo/URL conhecidos (confira o corpo em log_comunicacoes).'];
         }
 
-        // 2) Baixa o PDF pelo idRecibo (assíncrono: tenta algumas vezes).
-        for ($i = 0; $i < 5; $i++) {
-            usleep(700000); // 0,7s entre tentativas
-            $d = $this->baixarRotulo((string)$idRecibo, $token);
-            if (!empty($d['ok'])) return $d + ['id_recibo' => $idRecibo];
-            if (!empty($d['processando'])) continue;
-            break;
-        }
-        return ['ok' => true, 'url' => null, 'id_recibo' => $idRecibo, 'aviso' => 'Rótulo em processamento. Baixe depois pelo idRecibo ' . $idRecibo . '.'];
+        // Assíncrono: 1 tentativa rápida (caso já esteja pronto). Senão, devolve o
+        // idRecibo para a 2ª etapa (baixar depois) — ver rotuloPorRecibo().
+        usleep(500000);
+        $d = $this->baixarRotulo((string)$idRecibo, $token);
+        if (!empty($d['ok'])) return $d + ['id_recibo' => $idRecibo];
+
+        return ['ok' => true, 'url' => null, 'id_recibo' => $idRecibo, 'aviso' => 'Rótulo em processamento. Baixe pelo idRecibo ' . $idRecibo . '.'];
+    }
+
+    /** 2ª etapa do rótulo: baixa o PDF já solicitado, pelo idRecibo. */
+    public function rotuloPorRecibo(string $idRecibo): array
+    {
+        $idRecibo = trim($idRecibo);
+        if ($idRecibo === '') return ['ok' => false, 'erro' => 'idRecibo vazio.'];
+        $token = $this->tokenCorreios();
+        if (!$token) return ['ok' => false, 'erro' => 'Não foi possível autenticar nos Correios.'];
+        $d = $this->baixarRotulo($idRecibo, $token);
+        if (!empty($d['ok'])) return ['ok' => true, 'url_pdf' => $d['url'] ?? null, 'pdf_base64' => $d['pdf_base64'] ?? null];
+        if (!empty($d['processando'])) return ['ok' => false, 'processando' => true, 'erro' => 'Rótulo ainda em processamento. Tente novamente em instantes.'];
+        return ['ok' => false, 'erro' => $d['erro'] ?? 'Falha ao baixar o rótulo.'];
     }
 
     /** Baixa o PDF do rótulo pelo idRecibo (GET). Devolve url ou pdf_base64. */

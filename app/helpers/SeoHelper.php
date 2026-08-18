@@ -174,13 +174,18 @@ class SeoHelper {
                 'availableLanguage' => 'Portuguese',
                 'areaServed'        => 'BR',
             ],
-            'sameAs' => array_filter([
+            'sameAs' => array_values(array_filter([
                 ConfigHelper::get('social_instagram', ''),
                 ConfigHelper::get('social_facebook',  ''),
                 ConfigHelper::get('social_youtube',   ''),
-                ConfigHelper::get('social_tiktok',    ''),   // novo
-            ]),
+                ConfigHelper::get('social_tiktok',    ''),
+            ])),
         ];
+
+        $priceRange = ConfigHelper::get('site_price_range', '');
+        if (!empty($priceRange)) {
+            $ld['priceRange'] = $priceRange;
+        }
 
         // E-mail (se configurado)
         $email = ConfigHelper::get('site_email', '');
