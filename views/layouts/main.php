@@ -43,10 +43,7 @@ $categoryModel    = new Category();
 
   <main id="main-content">    
     
-    <?php 
-    echo HashingService::email('test@example.com');
-   // deve começar com: 55502f40dc8b7c769880b10874abc9d0...
-    View::partial('partials/flash-message') ?>
+    <?php View::partial('partials/flash-message') ?>
     <?= $content ?>
   </main>
 
