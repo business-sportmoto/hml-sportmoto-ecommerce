@@ -1743,7 +1743,7 @@ html { color-scheme: dark; }
 .pgto_janela_form select { background-color: var(--pgto-surface); }
 
 /* Customer module */
-.admin-page.cfg-page { background: var(--ac-bg); color: var(--ac-dark); }
+.admin-page.cfg-page { background: transparent; color: var(--ac-dark); }
 .cfg-nav,
 .cfg-card,
 .stat-card,

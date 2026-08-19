@@ -6,6 +6,8 @@ AdminRouter::get('/logistica',              'LogisticaController@torre');
 // AdminRouter::get('/admin/logistica/torre',        'LogisticaController@torre');
 AdminRouter::get('/logistica/torre/dados',  'LogisticaController@torreDados');
 
+AdminRouter::get('/logistica/etiquetas/rotulo', 'EtiquetaController@rotulo');
+
 AdminRouter::get ('/logistica/transportadoras',          'TransportadoraController@index');
 AdminRouter::get ('/logistica/transportadoras/dados',    'TransportadoraController@dados');
 AdminRouter::get ('/logistica/transportadoras/obter',    'TransportadoraController@obter');

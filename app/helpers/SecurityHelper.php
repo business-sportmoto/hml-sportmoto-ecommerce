@@ -419,6 +419,8 @@ class SecurityHelper {
         return false;
     }
 
+    
+
     /**
      * IP real do cliente, confiável atrás do Cloudflare.
      *

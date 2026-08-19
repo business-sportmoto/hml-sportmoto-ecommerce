@@ -524,18 +524,27 @@ class CorreiosAdapter extends TransportadoraBase
     /** Baixa o PDF do rótulo pelo idRecibo (GET). Devolve url ou pdf_base64. */
     private function baixarRotulo(string $idRecibo, string $token): array
     {
-        $d = $this->reqCorreios('GET', '/prepostagem/v1/prepostagens/rotulo/download/' . rawurlencode($idRecibo), null, $token, 'rotulo_download');
+        // Endpoint oficial (OpenAPI v3): /rotulo/download/assincrono/{idRecibo}
+        $d = $this->reqCorreios('GET', '/prepostagem/v1/prepostagens/rotulo/download/assincrono/' . rawurlencode($idRecibo), null, $token, 'rotulo_download');
         $s = (int)($d['status'] ?? 0);
         if ($s === 202 || $s === 425) return ['ok' => false, 'processando' => true]; // ainda gerando
-        if (!$this->okHttp($d)) return ['ok' => false, 'erro' => $this->erroCorreios($d, 'Falha ao baixar rótulo')];
-        $dj = is_array($d['json'] ?? null) ? $d['json'] : [];
-        $url = $dj['dados'] ?? $dj['url'] ?? $dj['pdf'] ?? null;
-        if ($url) return ['ok' => true, 'url' => $url];
-        // Corpo binário/base64 do PDF?
-        $body = (string)($d['body'] ?? '');
-        if ($body !== '' && (str_starts_with($body, '%PDF') || strlen($body) > 200)) {
-            return ['ok' => true, 'pdf_base64' => str_starts_with($body, '%PDF') ? base64_encode($body) : $body];
+        if (!$this->okHttp($d)) {
+            // 400/500 costuma significar "recibo ainda processando" logo após solicitar.
+            if ($s === 400 || $s === 404) return ['ok' => false, 'processando' => true];
+            return ['ok' => false, 'erro' => $this->erroCorreios($d, 'Falha ao baixar rótulo')];
         }
+        $dj = is_array($d['json'] ?? null) ? $d['json'] : [];
+        // A resposta traz o PDF em base64 (campo "dados"/"rotulo"/"pdf") ou uma URL.
+        $b64 = $dj['dados'] ?? $dj['rotulo'] ?? $dj['pdf'] ?? $dj['arquivo'] ?? null;
+        if (is_string($b64) && $b64 !== '') {
+            if (str_starts_with($b64, 'http')) return ['ok' => true, 'url' => $b64];
+            return ['ok' => true, 'pdf_base64' => $b64];
+        }
+        $url = $dj['url'] ?? null;
+        if ($url) return ['ok' => true, 'url' => $url];
+        // Corpo binário do PDF?
+        $body = (string)($d['body'] ?? '');
+        if ($body !== '' && str_starts_with($body, '%PDF')) return ['ok' => true, 'pdf_base64' => base64_encode($body)];
         return ['ok' => false, 'processando' => true];
     }
 

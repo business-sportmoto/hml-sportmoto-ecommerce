@@ -25,6 +25,43 @@
     function attr(s) { return esc(s).replace(/"/g, '&quot;'); }
     function moeda(v) { return 'R$ ' + (parseFloat(v) || 0).toFixed(2).replace('.', ','); }
 
+    // Fluxo de 2 etapas do rótulo (Correios): solicita e depois baixa; abre no modal.
+    function imprimirEtiqueta(id, tentativa) {
+        var tid = Toast.loading(tentativa ? 'Gerando etiqueta...' : 'Solicitando rótulo...');
+        api('POST', '/imprimir', comCsrf({ id: id })).done(function (r) {
+            if (r && r.ok && r.url_pdf) { Toast.dismiss(tid); abrirPdfModal(r.url_pdf); carregar(); return; }
+            if (r && r.processando) {
+                if (tentativa < 6) {
+                    Toast.update(tid, { type: 'loading', message: 'Rótulo em processamento... aguarde' });
+                    setTimeout(function () { Toast.dismiss(tid); imprimirEtiqueta(id, tentativa + 1); }, 3000);
+                } else {
+                    Toast.update(tid, { type: 'warning', message: 'Rótulo ainda gerando. Clique em PDF de novo em instantes.', duration: 5000 });
+                }
+                return;
+            }
+            Toast.update(tid, { type: 'error', message: (r && r.erro) || 'Sem PDF disponível.', duration: 4000 });
+        }).fail(function () { Toast.update(tid, { type: 'error', message: 'Erro ao imprimir.', duration: 3500 }); });
+    }
+
+    // Visualizador de PDF embutido no site (modal com iframe) — não abre nova aba.
+    function abrirPdfModal(url) {
+        var $m = $('#logPdfModal');
+        if (!$m.length) {
+            $m = $('<div id="logPdfModal" class="log_pdf_modal"><div class="log_pdf_box">' +
+                '<div class="log_pdf_head"><span class="log_pdf_ttl">Etiqueta</span>' +
+                '<span class="log_pdf_acts"><a class="log_pdf_open" target="_blank" rel="noopener" title="Abrir em nova aba"><i class="bi bi-box-arrow-up-right"></i></a>' +
+                '<button type="button" class="log_pdf_x" title="Fechar"><i class="bi bi-x-lg"></i></button></span></div>' +
+                '<iframe class="log_pdf_frame" title="Etiqueta"></iframe></div></div>').appendTo('body');
+            function fechar() { $m.removeClass('show'); $m.find('.log_pdf_frame').attr('src', 'about:blank'); }
+            $m.on('click', '.log_pdf_x', fechar);
+            $m.on('click', function (ev) { if (ev.target === $m[0]) fechar(); });
+            $(document).on('keydown.logpdf', function (ev) { if (ev.key === 'Escape') fechar(); });
+        }
+        $m.find('.log_pdf_open').attr('href', url);
+        $m.find('.log_pdf_frame').attr('src', url);
+        $m.addClass('show');
+    }
+
     /* ------------------------------------------------ listagem */
     function carregar() {
         var f = {
@@ -120,23 +157,7 @@
         });
 
         // Fluxo de 2 etapas do rótulo assíncrono (Correios): solicita e depois baixa.
-        function imprimirEtiqueta(id, tentativa) {
-            var tid = Toast.loading(tentativa ? 'Gerando etiqueta...' : 'Solicitando rótulo...');
-            api('POST', '/imprimir', comCsrf({ id: id })).done(function (r) {
-                if (r && r.ok && r.url_pdf) { Toast.dismiss(tid); window.open(r.url_pdf, '_blank'); carregar(); return; }
-                if (r && r.processando) {
-                    // 1ª etapa OK: o rótulo está sendo gerado. Tenta baixar em alguns segundos.
-                    if (tentativa < 6) {
-                        Toast.update(tid, { type: 'loading', message: 'Rótulo em processamento... aguarde' });
-                        setTimeout(function () { Toast.dismiss(tid); imprimirEtiqueta(id, tentativa + 1); }, 3000);
-                    } else {
-                        Toast.update(tid, { type: 'warning', message: 'Rótulo ainda gerando. Clique em Imprimir de novo em instantes.', duration: 5000 });
-                    }
-                    return;
-                }
-                Toast.update(tid, { type: 'error', message: (r && r.erro) || 'Sem PDF disponível.', duration: 4000 });
-            }).fail(function () { Toast.update(tid, { type: 'error', message: 'Erro ao imprimir.', duration: 3500 }); });
-        }
+        // (imprimirEtiqueta e abrirPdfModal estão no escopo do módulo, abaixo.)
 
         $t.on('click', '.js-cancelar', function () {
             var $tr = $(this).closest('tr');
@@ -223,10 +244,11 @@
             '</div>';
 
             var acoesHtml = '';
-            if (e.url_pdf) acoesHtml += '<a href="' + attr(e.url_pdf) + '" target="_blank" class="log_btn log_btn--sm"><i class="bi bi-printer"></i> PDF</a> ';
+            if (e.url_pdf || (e.acoes || []).indexOf('imprimir') >= 0) acoesHtml += '<button type="button" class="log_btn log_btn--sm js-d-pdf" data-id="' + id + '"><i class="bi bi-printer"></i> PDF</button> ';
             if ((e.acoes || []).indexOf('comprar') >= 0) acoesHtml += '<button type="button" class="log_btn log_btn--primary log_btn--sm js-d-comprar"><i class="bi bi-bag-check"></i> Comprar</button>';
 
             var drawer = adminDrawer({ titulo: 'Etiqueta #' + id, subtitulo: e.pedido_id ? 'Pedido #' + e.pedido_id : 'Avulsa', conteudo: html, acoes: acoesHtml, tamanho: 'md' });
+            drawer.escutar('click', '.js-d-pdf', function () { imprimirEtiqueta(id, 0); });
             drawer.escutar('click', '.js-d-comprar', function () {
                 api('POST', '/comprar', comCsrf({ id: id })).done(function (rr) {
                     if (rr && rr.ok) { Toast.success('Etiqueta emitida.'); drawer.fechar(); carregar(); }

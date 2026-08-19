@@ -303,10 +303,20 @@ class EtiquetaService
         if (!$e) return ['ok' => false, 'erro' => 'Etiqueta não encontrada.'];
         if (empty($e['external_id'])) return ['ok' => false, 'erro' => 'Etiqueta ainda não emitida.'];
 
-        // Já tem PDF salvo? devolve (reimpressão).
-        if (!empty($e['url_pdf'])) {
+        // Rótulo já salvo localmente (Correios)? Serve SEMPRE pela rota — corrige
+        // URLs antigas que apontavam direto para /storage (caminho não público).
+        if ($this->pdfDoRotulo($id) !== null) {
+            $url = $this->urlRotaRotulo($id);
+            if (($e['url_pdf'] ?? '') !== $url) $this->aplicarUpdate($id, ['url_pdf' => $url]);
             $this->evento($id, 'reimpressa', null, $usuarioId);
-            return ['ok' => true, 'url_pdf' => $e['url_pdf']];
+            return ['ok' => true, 'url_pdf' => $url];
+        }
+
+        // PDF externo já salvo (ex.: Melhor Envio) — mas ignora caminho velho de /storage.
+        $urlSalva = (string)($e['url_pdf'] ?? '');
+        if ($urlSalva !== '' && str_starts_with($urlSalva, 'http') && !str_contains($urlSalva, '/storage/logistica/rotulos/')) {
+            $this->evento($id, 'reimpressa', null, $usuarioId);
+            return ['ok' => true, 'url_pdf' => $urlSalva];
         }
 
         $adapter = $this->resolverAdapter((int)$e['transportadora_id']);
@@ -323,7 +333,7 @@ class EtiquetaService
                     return ['ok' => true, 'url_pdf' => $url];
                 }
             }
-            return ['ok' => false, 'debug'=>$d, 'processando' => !empty($d['processando']),
+            return ['ok' => false, 'processando' => !empty($d['processando']),
                     'erro' => $d['erro'] ?? 'Rótulo ainda em processamento. Tente novamente em instantes.',
                     'id_recibo' => $e['id_recibo']];
         }
@@ -357,18 +367,35 @@ class EtiquetaService
         return null;
     }
 
-    /** Salva um PDF em base64 em storage e devolve a URL pública servível. */
+    /** Diretório (NÃO público) onde os rótulos ficam guardados. */
+    private function dirRotulos(): string
+    {
+        return defined('ROOT_PATH') ? ROOT_PATH . '/storage/logistica/rotulos' : (__DIR__ . '/../../../storage/logistica/rotulos');
+    }
+
+    /** URL da rota que faz o stream do rótulo (abre pelo controller, sem pasta pública). */
+    private function urlRotaRotulo(int $id): string
+    {
+        $base = defined('BASE_URL') ? rtrim(BASE_URL, '/') : '';
+        return $base . '/admin/logistica/etiquetas/rotulo?id=' . $id;
+    }
+
+    /** Salva o PDF (base64) em storage e devolve a URL da ROTA que faz o stream. */
     private function salvarPdfBase64(int $id, string $base64): ?string
     {
         $bin = base64_decode($base64, true);
         if ($bin === false || $bin === '') return null;
-        $dir = defined('ROOT_PATH') ? ROOT_PATH . '/storage/logistica/rotulos' : (__DIR__ . '/../../../storage/logistica/rotulos');
+        $dir = $this->dirRotulos();
         if (!is_dir($dir)) @mkdir($dir, 0775, true);
-        $nome = 'etiqueta_' . $id . '_' . date('YmdHis') . '.pdf';
-        if (@file_put_contents($dir . '/' . $nome, $bin) === false) return null;
-        // URL pública (ajuste BASE_URL/rota conforme o projeto).
-        $base = defined('BASE_URL') ? rtrim(BASE_URL, '/') : '';
-        return $base . '/storage/logistica/rotulos/' . $nome;
+        if (@file_put_contents($dir . '/etiqueta_' . $id . '.pdf', $bin) === false) return null;
+        return $this->urlRotaRotulo($id);
+    }
+
+    /** Lê o PDF do rótulo já salvo (para o controller fazer o stream). */
+    public function pdfDoRotulo(int $id): ?string
+    {
+        $f = $this->dirRotulos() . '/etiqueta_' . $id . '.pdf';
+        return is_file($f) ? ((@file_get_contents($f)) ?: null) : null;
     }
 
     /* =================================================================

@@ -8,6 +8,8 @@ Router::get('/',                          'HomeController@index');
 
 Router::get('/manifest.json',               'AdminPwaController@manifest');
 
+Router::post('/consent/salvar', 'ConsentController@salvar');
+
 Router::post('/webhooks/malga',          'WebhookController@malga');
 Router::get( '/webhooks/malga/diagnose', 'WebhookController@diagnose');
 // Webhook público (sem auth) — ANTES das rotas admin

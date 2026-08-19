@@ -1,0 +1,43 @@
+<!-- ════════════════════════════════════════════════════════
+     CONSENT MODE v2 — INICIALIZAÇÃO (Modo Avançado)
+     ⚠️ POSIÇÃO CRÍTICA: este bloco vai no <head> ANTES de
+     QUALQUER tag do Google (gtag, GA4, Ads) e antes do GTM.
+     Os 4 sinais nascem 'denied' — nada de dado pessoal sai
+     antes do usuário aceitar. Modo Avançado: as tags carregam
+     e mandam pings SEM cookie (modelagem), mas só viram
+     'granted' após o consentimento.
+
+     A ORDEM importa: 'default denied' PRIMEIRO, sempre. Se uma
+     tag do Google carregar antes deste bloco, a implementação
+     está errada (o Tag Assistant acusa).
+     ════════════════════════════════════════════════════════ -->
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){ dataLayer.push(arguments); }
+
+  // Os 4 sinais do Consent Mode v2 — TODOS 'denied' por padrão.
+  // Sem os 4, a medição na prática é tratada como negada.
+  gtag('consent', 'default', {
+    'ad_storage':         'denied',
+    'analytics_storage':  'denied',
+    'ad_user_data':       'denied',   // v2 — controla envio de PII p/ Ads
+    'ad_personalization': 'denied',   // v2 — controla personalização
+    // wait_for_update: dá tempo do banner responder antes das tags
+    // dispararem em 'denied' (evita race condition banner vs tag)
+    'wait_for_update': 500
+  });
+
+  // Modo Avançado: url_passthrough preserva o gclid entre páginas
+  // mesmo sem cookie (ajuda a atribuição de Ads quando negado)
+  gtag('set', 'url_passthrough', true);
+
+  // Reaplica o consentimento JÁ decidido em visitas anteriores.
+  // O banner (peça 2) lê o cookie e, se houver escolha salva,
+  // dispara o 'update' correspondente no load — pro usuário que
+  // já aceitou não ver o banner de novo nem perder a medição.
+</script>
+
+<!-- DEPOIS deste bloco (não antes!) entram gtag.js / GA4 / GTM.
+     Ex., quando você for ligar (Fase 1):
+     <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXX"></script>
+-->
