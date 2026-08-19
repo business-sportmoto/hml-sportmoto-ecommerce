@@ -42,7 +42,12 @@ spl_autoload_register(function (string $class): void {
         ROOT_PATH . '/app/services/',
         ROOT_PATH . '/app/services/payment/',
         ROOT_PATH . '/app/services/email/',
-        ROOT_PATH . '/app/services/email/providers/',
+        ROOT_PATH . '/app/services/email/providers/',        
+        ROOT_PATH . '/app/services/email/',
+        ROOT_PATH . '/app/services/email/providers/',       
+        ROOT_PATH . '/app/services/logistica/',
+        ROOT_PATH . '/app/services/logistica/transportadoras/', 
+        ROOT_PATH . '/app/services/conversion/',        
     ];
     foreach ($paths as $path) {
         $file = $path . $class . '.php';
