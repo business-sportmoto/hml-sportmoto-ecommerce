@@ -71,7 +71,7 @@ class ProductController extends Controller {
         (new History())->record('produto', (int)$product['id']);
 
         // Incrementa visualizações de forma assíncrona-like (ignora erros)
-        try { $this->productModel->incrementViews((int)$product['id']); } catch (Exception) {}
+        // try { $this->productModel->incrementViews((int)$product['id']); } catch (Exception) {}
 
         $images         = $this->productModel->getImages((int)$product['id']);
         $caracteristicas = $this->productModel->getCaracteristicas((int)$product['id']);
@@ -255,11 +255,100 @@ class ProductController extends Controller {
 
     // ── Registrar visualização (Ajax) ─────────────────────────
 
-    public function registerView(): void {
-        $id = SecurityHelper::sanitizeInt($_POST['product_id'] ?? 0);
-        if ($id > 0) {
-            try { $this->productModel->incrementViews($id); } catch (Exception) {}
+    // public function registerView(): void {
+    //     $id = SecurityHelper::sanitizeInt($_POST['product_id'] ?? 0);
+    //     if ($id > 0) {
+    //         try { $this->productModel->incrementViews($id); } catch (Exception) {}
+    //     }
+    //     $this->json(['ok' => true]);
+    // }
+
+    /**
+     * Coletor de eventos client-side. Aceita SÓ eventos seguros
+     * para origem no navegador (whitelist). Eventos de conversão
+     * (Purchase, AddToCart, Checkout) NUNCA vêm daqui — nascem
+     * server-side, onde o valor é confiável.
+     *
+     * SEGURANÇA:
+     *  - Whitelist de tipos (cliente não escolhe evento arbitrário)
+     *  - Valor/nome do produto buscados NO SERVIDOR (cliente manda
+     *    só o id; preço vem do banco, nunca do POST)
+     *  - CSRF obrigatório
+     *  - Rate limit por IP (anti-flood/inflar métricas)
+     */
+    public function beacon(): void
+    {
+        // CSRF — mesmo padrão do projeto
+        $this->verifyCsrf();
+ 
+        // Rate limit simples: conta eventos deste visitante no último
+        // minuto direto na tracking_events (sem serviço novo). Barra
+        // flood sem poluir login_attempts (que é de autenticação).
+        // NOTA: query extra por evento — se virar gargalo com volume,
+        // migrar p/ Valkey (contador em memória) quando ele entrar.
+        try {
+            $vt = $_COOKIE['sm_vt'] ?? '';
+            if ($vt !== '' && preg_match('/^[a-f0-9]{32}$/', $vt)) {
+                $dbRl = Database::getInstance()->getConnection();
+                $stRl = $dbRl->prepare(
+                    "SELECT COUNT(*) FROM tracking_events
+                     WHERE visitante_token = ?
+                       AND criado_em >= (NOW() - INTERVAL 60 SECOND)"
+                );
+                $stRl->execute([$vt]);
+                if ((int)$stRl->fetchColumn() >= 60) {
+                    $this->json(['ok' => true]); // responde ok mas ignora
+                    return;
+                }
+            }
+        } catch (\Throwable $e) {
+            // rate limit é best-effort — não bloqueia o fluxo
         }
+ 
+        $tipo = SecurityHelper::sanitizeString($_POST['tipo'] ?? '');
+ 
+        // WHITELIST — só estes eventos podem vir do client.
+        // Purchase/AddToCart/InitiateCheckout NÃO estão aqui: são
+        // server-side (valor confiável). Isto é a proteção central.
+        $permitidos = ['ViewContent', 'Search'];
+        if (!in_array($tipo, $permitidos, true)) {
+            $this->json(['ok' => false, 'msg' => 'tipo']);
+            return;
+        }
+ 
+        try {
+            $conv = new ConversionService();
+ 
+            if ($tipo === 'ViewContent') {
+                $id = SecurityHelper::sanitizeInt($_POST['product_id'] ?? 0);
+                if ($id <= 0) { $this->json(['ok' => false]); return; }
+ 
+                // Incrementa a visualização (movido do detail() pra cá,
+                // via JS = filtra bots que não executam JavaScript)
+                try { $this->productModel->incrementViews($id); } catch (\Exception) {}
+ 
+                // Busca o produto NO SERVIDOR — o preço vem do banco,
+                // nunca do cliente (não confiável)
+                $produto = $this->productModel->find($id);
+                if ($produto) {
+                    $conv->viewContent([
+                        'id'    => $id,
+                        'nome'  => $produto['nome'] ?? '',
+                        'preco' => (float)PriceHelper::currentPrice($produto),
+                    ]);
+                }
+ 
+            } elseif ($tipo === 'Search') {
+                $termo = SecurityHelper::sanitizeString($_POST['q'] ?? '');
+                if ($termo !== '') {
+                    $conv->search(mb_substr($termo, 0, 100));
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[beacon] ' . $e->getMessage());
+        }
+ 
+        // Sempre responde ok (não vaza se o evento foi aceito ou não)
         $this->json(['ok' => true]);
     }
 

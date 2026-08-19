@@ -119,7 +119,7 @@ function swatchTipo(array $membro, string $atributoSlug): string {
 ?>
 
 <div class="pdx">
-<div class="product-page">
+<div class="product-page" id="product-detail" data-product-id="<?= (int)$product['id'] ?>">
   <div class="container">
 
     <!-- ═══ CABEÇALHO FULL-WIDTH ═══ -->

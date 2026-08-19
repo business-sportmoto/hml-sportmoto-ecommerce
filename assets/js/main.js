@@ -49,6 +49,8 @@
   }
 
   $(function () {
+
+    
     
     // ── Header inteligente (sticky + hide on scroll down) ────
     const $header  = $('#site-header');
@@ -3803,6 +3805,56 @@
     
   });
 
+  /* ════════════════════════════════════════════════════════
+    beacon.js — dispara eventos client-side pro /beacon
+    Incluir no layout (ou no bundle de produto). Requer
+    window.BASE_URL e window.CSRF_TOKEN (já existem no main.php).
+
+    Usa navigator.sendBeacon quando possível (sobrevive à
+    navegação, não atrasa a página); fallback fetch.
+    ════════════════════════════════════════════════════════ */
+  (function () {
+    'use strict';
+
+    function enviarBeacon(dados) {
+      dados._csrf_token = CSRF_TOKEN || '';
+      var url = (window.BASE_URL || '') + '/beacon';
+
+      // sendBeacon: assíncrono, não bloqueia, sobrevive ao unload
+      if (navigator.sendBeacon) {
+        var fd = new FormData();
+        Object.keys(dados).forEach(function (k) { fd.append(k, dados[k]); });
+        navigator.sendBeacon(url, fd);
+        return;
+      }
+      // Fallback
+      fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: Object.keys(dados).map(function (k) {
+          return encodeURIComponent(k) + '=' + encodeURIComponent(dados[k]);
+        }).join('&')
+      }).catch(function () {});
+    }
+
+    // ── ViewContent: dispara ao abrir página de produto ──
+    // O elemento da página de produto expõe o id via data-attribute.
+    // Ex: <div id="product-detail" data-product-id="123">
+    document.addEventListener('DOMContentLoaded', function () {
+      var el = document.getElementById('product-detail');
+      if (el && el.dataset.productId) {
+        enviarBeacon({
+          tipo: 'ViewContent',
+          product_id: el.dataset.productId
+        });
+      }
+    });
+
+    // Expõe pra outros usos (ex: Search dispara no submit da busca)
+    window.smBeacon = enviarBeacon;
+  })();
+
   /**
    * catalog.js — Catálogo de produtos
    * ════════════════════════════════════════════════════════
@@ -5094,6 +5146,8 @@
     };
 
   }(jQuery));
+
+  
 
 }())
 

@@ -130,6 +130,13 @@ class AdminPedidoService {
                     $pedidoId, 'aprovado', null, null, null,
                     date('Y-m-d H:i:s')
                 );
+
+                // ── CONVERSÃO: Purchase (Fase 1) ──────────────────
+                // Dispara AQUI porque é o momento exato do pagamento
+                // confirmado — uma vez só (o guard status_pagamento
+                // !== 'aprovado' garante que não duplica). Valor vem
+                // do pedido no servidor, nunca do client.
+                $this->registrarConversaoPurchase($pedidoId, $pedido);
             } catch (\Throwable $e) {
                 error_log('[AdminPedidoService] updateStatusPagamento: ' . $e->getMessage());
             }
@@ -651,6 +658,34 @@ class AdminPedidoService {
 
         } catch (\Throwable $e) {
             error_log("[AdminPedidoService] revalidarCupom: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Registra o evento de conversão Purchase no ledger (Fase 1).
+     * Cobre painel + webhook (ambos passam por mudarStatus).
+     * À prova de falha: tracking quebrado não afeta o pedido.
+    */
+    private function registrarConversaoPurchase(int $pedidoId, array $pedido): void
+    {
+        try {
+            $itens = $this->model->getItens($pedidoId);
+            $contentIds = [];
+            $numItems = 0;
+            foreach ($itens as $item) {
+                $contentIds[] = (string)($item['produto_id'] ?? '');
+                $numItems += (int)($item['qtd'] ?? $item['quantidade'] ?? 1);
+            }
+
+            (new ConversionService())->purchase([
+                'id'          => $pedidoId,
+                'total'       => (float)($pedido['total'] ?? 0),
+                'content_ids' => $contentIds,
+                'num_items'   => $numItems,
+            ], (int)($pedido['cliente_id'] ?? 0) ?: null);
+
+        } catch (Throwable $e) {
+            error_log('[AdminPedidoService] Purchase tracking: ' . $e->getMessage());
         }
     }
 }

@@ -299,6 +299,28 @@ class CheckoutController extends Controller {
 
         $this->state->setUltimaEtapa('payment');
 
+        // ── CONVERSÃO: InitiateCheckout (Fase 1) ──────────────
+        // Cliente passou por identify+address e entra no pagamento
+        // = sinal forte de intenção de compra. Dispara uma vez ao
+        // abrir a etapa. À prova de falha.
+        try {
+            $itensCk   = $this->cartService->getItensComVariacoes($clienteId);
+            $subtotalCk = array_sum(array_map(
+                fn($i) => (float)($i['preco_unitario'] ?? $i['preco'] ?? 0) * (int)($i['quantidade'] ?? 1),
+                $itensCk
+            ));
+            $contentIdsCk = array_map(fn($i) => (string)($i['produto_id'] ?? ''), $itensCk);
+            $numItemsCk   = array_sum(array_map(fn($i) => (int)($i['quantidade'] ?? 1), $itensCk));
+
+            (new ConversionService())->initiateCheckout([
+                'total'       => $subtotalCk,
+                'num_items'   => $numItemsCk,
+                'content_ids' => $contentIdsCk,
+            ], $clienteId);
+        } catch (\Throwable $e) {
+            error_log('[Checkout] InitiateCheckout tracking: ' . $e->getMessage());
+        }
+
         $this->renderCheckout('checkout/payment', [
             'metodoAtual' => Session::get('checkout_payment_method', 'cartao'),
             'observacaoAtual' => $this->state->getObservacao(),

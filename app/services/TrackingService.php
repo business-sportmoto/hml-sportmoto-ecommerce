@@ -38,6 +38,7 @@ class TrackingService
      * 0 = sem dedup (todo evento conta).
      * Tipos não listados usam DEDUP_PADRAO.
      */
+    // produto_visto, categoria_vista, catalogo_moto_visto, busca, banner_click, banner_visto, sessao_iniciada
     private const DEDUP = [
         'produto_visto'       => 1800,  // 30 min — refresh não conta de novo
         'categoria_vista'     => 1800,

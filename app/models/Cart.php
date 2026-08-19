@@ -311,6 +311,29 @@ class Cart extends Model {
             ]);
         }
 
+                // ── CONVERSÃO: AddToCart (Fase 1) ─────────────────────
+        // Após a adição confirmada (item novo OU soma no existente).
+        // À prova de falha: tracking não quebra a adição ao carrinho.
+        try {
+            // Garante que temos os dados do produto nos dois caminhos
+            // (no caminho "existente", $product não foi carregado)
+            if (!isset($product) || !$product) {
+                $product = (new Product())->find($productId);
+            }
+            if (!isset($preco)) {
+                $preco = PriceHelper::currentPrice($product);
+            }
+
+            (new ConversionService())->addToCart([
+                'produto_id' => $productId,
+                'nome'       => $product['nome'] ?? '',
+                'preco'      => (float)$preco,
+                'quantidade' => $qty,
+            ]);
+        } catch (\Throwable $e) {
+            error_log('[Cart] AddToCart tracking: ' . $e->getMessage());
+        }
+
         $this->touch($carrinhoId);
         return true;
     }

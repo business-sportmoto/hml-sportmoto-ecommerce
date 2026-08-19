@@ -71,6 +71,7 @@ Router::get('/produto/group-colors', 'ProductController@groupColors');
 Router::get('/produto/group-data',   'ProductController@groupData');
 // Router::get('/produto/variant-data', 'ProductController@variantData');
 Router::post('/produto/visualizacao',       'ProductController@registerView');
+Router::post('/beacon',                     'ProductController@beacon');
 Router::post('/produto/avisar-estoque',     'ProductController@avisarEstoque');
 
 Router::get('/produto/{slug}',            'ProductController@detail');
