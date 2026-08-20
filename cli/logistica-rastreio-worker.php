@@ -40,12 +40,7 @@ if (is_file($lockFile) && (time() - (int)@filemtime($lockFile)) < $maxRuntime) {
 register_shutdown_function(static function () use ($lockFile) { @unlink($lockFile); });
 
 /* ---------- bootstrap do app ---------- */
-$bootstrap = $RAIZ . '/config/config.php'; // <-- AJUSTE se necessário
-if (!is_file($bootstrap)) {
-    fwrite(STDERR, "Bootstrap não encontrado em $bootstrap. Ajuste o caminho no worker.\n");
-    exit(1);
-}
-require_once $bootstrap;
+require_once __DIR__ . '/../bootstrap-cli.php'; // ajustar ao seu bootstrap CLI
 
 if (!class_exists('RastreioService')) {
     fwrite(STDERR, "RastreioService indisponível após o bootstrap (verifique o autoloader).\n");
