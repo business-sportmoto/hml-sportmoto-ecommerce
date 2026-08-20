@@ -55,6 +55,7 @@ final class ConversionService
             'content_type' => 'product',
             'content_ids'  => [(string)($produto['id'] ?? '')],
             'content_name' => $produto['nome'] ?? '',
+            // 'content_category'=>'',
             'value'        => (float)($produto['preco'] ?? 0),
             'currency'     => 'BRL',
         ], $clienteId);
@@ -64,11 +65,11 @@ final class ConversionService
     {
         $this->registrar(self::ADD_TO_CART, [
             'content_type' => 'product',
-            'content_ids'  => [(string)($item['produto_id'] ?? '')],
-            'content_name' => $item['nome'] ?? '',
-            'value'        => (float)($item['preco'] ?? 0) * (int)($item['quantidade'] ?? 1),
+            // 'content_ids'  => [(string)($item['produto_id'] ?? '')],
+            // 'content_name' => $item['nome'] ?? '',
+            // 'value'        => (float)($item['preco'] ?? 0) * (int)($item['quantidade'] ?? 1),
             'currency'     => 'BRL',
-            'quantity'     => (int)($item['quantidade'] ?? 1),
+            // 'quantity'     => (int)($item['quantidade'] ?? 1),
         ], $clienteId);
     }
 
