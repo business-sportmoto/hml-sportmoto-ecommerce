@@ -115,6 +115,28 @@ class FreteCacheService
         }
     }
 
+    /**
+     * Invalida TODO o cache de cotações (mantém o cache de CEP, que não muda com
+     * transportadora/regra). Chamar sempre que alterar transportadoras ou regras.
+     */
+    public function invalidarCotacoes(): int
+    {
+        try {
+            $n = (int)$this->pdo->exec("DELETE FROM log_frete_cache WHERE tipo = 'cotacao'");
+            if ($n > 0) LogService::info('Cache de cotações invalidado', ['removidos' => $n]);
+            return $n;
+        } catch (\Throwable $e) {
+            LogService::warning('Falha ao invalidar cache de cotações', ['erro' => $e->getMessage()]);
+            return 0;
+        }
+    }
+
+    /** Atalho estático para invalidar o cache de cotações. */
+    public static function invalidar(): int
+    {
+        return (new self())->invalidarCotacoes();
+    }
+
     /* ---------------- internos ---------------- */
 
     private function linha(string $chave): ?array

@@ -114,6 +114,7 @@ class RegrasAdminService
         }
 
         LogService::audit($isUpdate ? 'Regra de frete atualizada' : 'Regra de frete criada', ['regra_id' => $id, 'usuario_id' => $usuarioId]);
+        FreteCacheService::invalidar(); // regra mudou -> limpa cache de cotações
         return ['ok' => true, 'id' => $id];
     }
 
@@ -142,6 +143,7 @@ class RegrasAdminService
             return ['ok' => false, 'erro' => 'Não foi possível reordenar.'];
         }
         LogService::audit('Regras de frete reordenadas', ['ordem' => $ids, 'usuario_id' => $usuarioId]);
+        FreteCacheService::invalidar();
         return ['ok' => true];
     }
 
@@ -158,6 +160,7 @@ class RegrasAdminService
             return ['ok' => false, 'erro' => 'Não foi possível remover.'];
         }
         LogService::audit('Regra de frete removida', ['regra_id' => $id, 'usuario_id' => $usuarioId]);
+        FreteCacheService::invalidar();
         return ['ok' => true];
     }
 
@@ -180,7 +183,7 @@ class RegrasAdminService
 
         // Precisa ter ao menos uma ação com efeito.
         $ac = self::sanitizarAcoes($d['acoes'] ?? []);
-        $temEfeito = $ac['frete_gratis'] || $ac['bloquear_frete_gratis']
+        $temEfeito = $ac['frete_gratis'] || $ac['bloquear_frete_gratis'] || $ac['bloquear_frete']
             || $ac['desconto_pct'] > 0 || $ac['desconto_fixo'] > 0 || $ac['acrescimo'] > 0
             || $ac['prazo_adicional'] > 0 || !empty($ac['ocultar_servicos'])
             || $ac['subsidio_max_valor'] !== null || $ac['subsidio_max_pct'] !== null;
@@ -225,8 +228,8 @@ class RegrasAdminService
         if (!is_array($ocultar)) $ocultar = array_filter(array_map('trim', explode(',', (string)$ocultar)));
         return [
             'frete_gratis'          => !empty($a['frete_gratis']),
-            'frete_gratis_mais_barato'          => !empty($a['frete_gratis_mais_barato']),
             'bloquear_frete_gratis' => !empty($a['bloquear_frete_gratis']),
+            'bloquear_frete'        => !empty($a['bloquear_frete']),
             'desconto_pct'          => max(0.0, (float)($a['desconto_pct'] ?? 0)),
             'desconto_fixo'         => max(0.0, (float)($a['desconto_fixo'] ?? 0)),
             'acrescimo'             => max(0.0, (float)($a['acrescimo'] ?? 0)),
@@ -251,6 +254,7 @@ class RegrasAdminService
         if (!empty($a['acrescimo']))       $r[] = '+R$ ' . number_format((float)$a['acrescimo'], 2, ',', '.');
         if (!empty($a['prazo_adicional'])) $r[] = '+' . (int)$a['prazo_adicional'] . 'd';
         if (!empty($a['bloquear_frete_gratis'])) $r[] = 'Bloqueia frete grátis';
+        if (!empty($a['bloquear_frete'])) $r[] = 'Bloqueia envio';
         if (!empty($a['ocultar_servicos'])) $r[] = 'Oculta ' . count((array)$a['ocultar_servicos']) . ' serviço(s)';
         return $r;
     }

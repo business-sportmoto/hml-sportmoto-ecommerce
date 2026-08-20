@@ -323,10 +323,7 @@
 
         function carregar(pagina) {
             api('GET', '/logs', { id: id, pagina: pagina }).done(function (r) {
-                drawer.setConteudo('<div id="logLogsBox"></div>')
-                if (!r || !r.ok) { 
-                    $(drawer.corpo()).find('#logLogsBox').html('<p class="log_muted">Falha ao carregar.</p>'); return; 
-                }
+                if (!r || !r.ok) { $(drawer.corpo()).find('#logLogsBox').html('<p class="log_muted">Falha ao carregar.</p>'); return; }
                 renderLogs($(drawer.corpo()), r, carregar);
             }).fail(function () {
                 $(drawer.corpo()).find('#logLogsBox').html('<p class="log_muted">Erro de comunicação.</p>');
@@ -428,6 +425,21 @@
     $(function () {
         // Nova
         $('#logTranspNova').on('click', function () { abrirForm(null); });
+
+        // Limpar cache de frete (invalida cotações; CEP é preservado)
+        $('#logLimparCache').on('click', function () {
+            var $btn = $(this).prop('disabled', true);
+            var tid = Toast.loading('Limpando cache de frete...');
+            api('POST', '/limpar-cache', comCsrf({})).done(function (r) {
+                if (r && r.ok) {
+                    Toast.update(tid, { type: 'success', message: 'Cache de frete limpo (' + (r.removidos || 0) + ' cotação(ões) removida(s)).', duration: 3500 });
+                } else {
+                    Toast.update(tid, { type: 'error', message: (r && r.erro) || 'Falha ao limpar o cache.', duration: 4000 });
+                }
+            }).fail(function () {
+                Toast.update(tid, { type: 'error', message: 'Erro ao limpar o cache.', duration: 3500 });
+            }).always(function () { $btn.prop('disabled', false); });
+        });
 
         // Editar (busca dados frescos, incl. quais segredos já existem)
         $('#logTranspTabela').on('click', '.js-editar', function () {

@@ -25,6 +25,33 @@
     function attr(s) { return esc(s).replace(/"/g, '&quot;'); }
     function moeda(v) { return 'R$ ' + (parseFloat(v) || 0).toFixed(2).replace('.', ','); }
 
+    // Busca o AR Eletrônico e abre a imagem (ou PDF) numa modal do adminDrawer.
+    function verAr(id) {
+        var tid = Toast.loading('Buscando AR...');
+        api('POST', '/ar', comCsrf({ id: id })).done(function (r) {
+            Toast.dismiss(tid);
+            if (!r || !r.ok || !r.imagem_base64) {
+                Toast.error((r && r.erro) || 'AR não disponível para este objeto.');
+                return;
+            }
+            var b64 = String(r.imagem_base64).replace(/\s/g, '');
+            var mime = b64.indexOf('iVBOR') === 0 ? 'image/png'
+                : (b64.indexOf('JVBER') === 0 ? 'application/pdf' : 'image/jpeg');
+            var src = 'data:' + mime + ';base64,' + b64;
+            var conteudo = mime === 'application/pdf'
+                ? '<iframe src="' + src + '" style="width:100%;height:72vh;border:0;background:#525659;border-radius:8px;"></iframe>'
+                : '<div style="text-align:center"><img src="' + src + '" alt="Aviso de Recebimento" style="max-width:100%;height:auto;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,.15)"></div>';
+            adminDrawer({
+                titulo: 'AR — Aviso de Recebimento',
+                subtitulo: r.codigo ? 'Objeto ' + r.codigo : '',
+                conteudo: conteudo,
+                tamanho: 'md'
+            });
+        }).fail(function () {
+            Toast.update(tid, { type: 'error', message: 'Erro ao buscar o AR.', duration: 3500 });
+        });
+    }
+
     // Fluxo de 2 etapas do rótulo (Correios): solicita e depois baixa; abre no modal.
     function imprimirEtiqueta(id, tentativa) {
         var tid = Toast.loading(tentativa ? 'Gerando etiqueta...' : 'Solicitando rótulo...');
@@ -96,6 +123,7 @@
         var btns = '';
         if (acoes.indexOf('comprar') >= 0) btns += '<button type="button" class="log_btn log_btn--sm js-comprar"><i class="bi bi-bag-check"></i> Comprar</button> ';
         if (it.url_pdf || acoes.indexOf('imprimir') >= 0) btns += '<button type="button" class="log_btn log_btn--icon js-imprimir" title="Imprimir PDF"><i class="bi bi-printer"></i></button> ';
+        if (acoes.indexOf('ver_ar') >= 0) btns += '<button type="button" class="log_btn log_btn--icon js-ar" title="Ver AR (Aviso de Recebimento)"><i class="bi bi-file-earmark-check"></i></button> ';
         if (acoes.indexOf('cancelar') >= 0) btns += '<button type="button" class="log_btn log_btn--icon js-cancelar" title="Cancelar"><i class="bi bi-x-circle"></i></button> ';
         if (acoes.indexOf('remover') >= 0) btns += '<button type="button" class="log_btn log_btn--icon js-remover" title="Remover"><i class="bi bi-trash"></i></button> ';
         btns += '<button type="button" class="log_btn log_btn--icon js-detalhe" title="Detalhes"><i class="bi bi-list-ul"></i></button>';
@@ -155,6 +183,8 @@
             var $tr = $(this).closest('tr');
             imprimirEtiqueta($tr.data('id'), 0);
         });
+
+        $t.on('click', '.js-ar', function () { verAr($(this).closest('tr').data('id')); });
 
         // Fluxo de 2 etapas do rótulo assíncrono (Correios): solicita e depois baixa.
         // (imprimirEtiqueta e abrirPdfModal estão no escopo do módulo, abaixo.)

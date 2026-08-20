@@ -48,6 +48,15 @@ class EtiquetaController extends Controller
         $this->json(['ok' => true, 'clientes' => $clientes]);
     }
 
+    /** POST /admin/logistica/etiquetas/ar — busca o AR Eletrônico (imagem) de um objeto entregue. */
+    public function ar(): void
+    {
+        $this->verifyCsrf();
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id <= 0) { $this->json(['ok' => false, 'erro' => 'Etiqueta inválida.']); return; }
+        $this->json($this->etiquetas->arDaEtiqueta($id));
+    }
+
     /**
      * Faz o stream do PDF do rótulo direto no navegador (Content-Disposition: inline),
      * sem depender de pasta pública. Requer permissão de logística (já no construtor).

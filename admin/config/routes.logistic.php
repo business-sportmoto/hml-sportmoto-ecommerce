@@ -7,6 +7,7 @@ AdminRouter::get('/logistica',              'LogisticaController@torre');
 AdminRouter::get('/logistica/torre/dados',  'LogisticaController@torreDados');
 
 AdminRouter::get('/logistica/etiquetas/rotulo', 'EtiquetaController@rotulo');
+AdminRouter::post('/logistica/transportadoras/limpar-cache', 'TransportadoraController@limparCache');
 
 AdminRouter::get ('/logistica/transportadoras',          'TransportadoraController@index');
 AdminRouter::get ('/logistica/transportadoras/dados',    'TransportadoraController@dados');

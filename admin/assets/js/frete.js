@@ -76,6 +76,7 @@
                     chk('frete_gratis', !!a.frete_gratis, 'Frete grátis') +
                     chk('frete_gratis_mais_barato', !!a.frete_gratis_mais_barato, 'Frete grátis mais barato') +
                     chk('bloquear_frete_gratis', !!a.bloquear_frete_gratis, 'Bloquear frete grátis') +
+                    chk('bloquear_frete', !!a.bloquear_frete_gratis, 'Bloquear frete') +
                 '</div>' +
                 '<div class="log_form_grid" style="margin-top:10px">' +
                     acaoNum('subsidio_max_valor', 'Teto do subsídio (R$)', 'acima disso, cobra a diferença') +

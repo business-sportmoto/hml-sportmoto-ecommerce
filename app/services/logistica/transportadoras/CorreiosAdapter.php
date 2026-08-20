@@ -522,6 +522,42 @@ class CorreiosAdapter extends TransportadoraBase
     }
 
     /**
+     * Consulta o AR Eletrônico (Aviso de Recebimento) de um objeto entregue.
+     * POST https://apps.correios.com.br/areletronico-rs/v1/ars/ultimoevento
+     * body {objetos:[codigo]} -> [AREletronico{codigo, imagemBase64, mensagem, ...}].
+     * Só há imagem se o objeto foi entregue COM AR contratado.
+     */
+    public function consultarAr(string $codigoObjeto): array
+    {
+        $codigoObjeto = strtoupper(trim($codigoObjeto));
+        if ($codigoObjeto === '') return ['ok' => false, 'erro' => 'Código do objeto vazio.'];
+        $token = $this->tokenCorreios();
+        if (!$token) return ['ok' => false, 'erro' => 'Não foi possível autenticar nos Correios.'];
+
+        $base = trim((string)($this->config['ar_base'] ?? '')) ?: 'https://apps.correios.com.br/areletronico-rs';
+        $url = rtrim($base, '/') . '/v1/ars/ultimoevento';
+        $r = $this->requisicaoHttp('POST', $url, ['objetos' => [$codigoObjeto]],
+            ['Authorization: Bearer ' . $token, 'Accept: application/json', 'Content-Type: application/json']);
+        $this->logComunicacao('ar_eletronico',
+            ['url' => $url, 'objeto' => $codigoObjeto],
+            $r['json'] ?? ['body' => mb_substr($r['body'] ?? '', 0, 300)],
+            $this->okHttp($r), $r['status'] ?? null, $r['ms'] ?? null);
+        if (!$this->okHttp($r)) return ['ok' => false, 'erro' => $this->erroCorreios($r, 'Falha ao consultar o AR')];
+
+        $j = $r['json'] ?? [];
+        $ar = null;
+        if (is_array($j)) {
+            if (isset($j['imagemBase64']) || isset($j['mensagem'])) $ar = $j;         // objeto único
+            elseif (isset($j[0]) && is_array($j[0])) $ar = $j[0];                       // array
+        }
+        if (!$ar) return ['ok' => false, 'erro' => 'AR não disponível para este objeto.'];
+
+        $img = (string)($ar['imagemBase64'] ?? '');
+        if ($img === '') return ['ok' => false, 'erro' => (string)($ar['mensagem'] ?? 'AR ainda não disponível para este objeto.')];
+        return ['ok' => true, 'imagem_base64' => $img, 'tipo' => (string)($ar['tipo'] ?? ''), 'mensagem' => (string)($ar['mensagem'] ?? '')];
+    }
+
+    /**
      * Consulta os dados da POSTAGEM real de um objeto já postado.
      * GET /prepostagem/v1/prepostagens/postada?codigoObjeto=... -> MovimentoPostagemDTO.
      * Retorna o valor cobrado (valorAtendimento), data e peso tarifado. Se ainda não

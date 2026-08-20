@@ -415,6 +415,21 @@ class EtiquetaService
         return ['ok' => true];
     }
 
+    /** Busca o AR Eletrônico (imagem) da etiqueta. Só Correios; erro se não houver AR. */
+    public function arDaEtiqueta(int $id): array
+    {
+        $e = $this->obter($id);
+        if (!$e) return ['ok' => false, 'erro' => 'Etiqueta não encontrada.'];
+        if (empty($e['codigo_rastreio'])) return ['ok' => false, 'erro' => 'Etiqueta sem código de rastreio.'];
+        $adapter = $this->resolverAdapter((int)$e['transportadora_id']);
+        if (!$adapter || !method_exists($adapter, 'consultarAr')) {
+            return ['ok' => false, 'erro' => 'AR disponível apenas para etiquetas dos Correios.'];
+        }
+        $res = $adapter->consultarAr((string)$e['codigo_rastreio']);
+        $res['codigo'] = $e['codigo_rastreio'];
+        return $res;
+    }
+
     /**
      * CRON: busca o preço/dados reais da POSTAGEM das etiquetas Correios já postadas
      * (GET /prepostagens/postada). Só toca em etiquetas Correios, com rastreio, ainda
@@ -578,9 +593,11 @@ class EtiquetaService
             $cnt->execute($p);
             $total = (int)$cnt->fetchColumn();
 
-            $sql = "SELECT e.*, t.nome AS transportadora_nome, t.slug AS transportadora_slug
+            $sql = "SELECT e.*, t.nome AS transportadora_nome, t.slug AS transportadora_slug,
+                           t.adapter AS transportadora_adapter, r.status_interno AS rastreio_status
                     FROM log_etiquetas e
                     LEFT JOIN log_transportadoras t ON t.id = e.transportadora_id
+                    LEFT JOIN log_rastreios r ON r.etiqueta_id = e.id
                     $sqlWhere ORDER BY e.id DESC LIMIT $porPagina OFFSET $off";
             $st = $this->pdo->prepare($sql);
             $st->execute($p);
@@ -592,6 +609,11 @@ class EtiquetaService
 
         foreach ($rows as &$r) {
             $r['acoes'] = self::acoesPermitidas((string)$r['status']);
+            $r['entregue'] = ($r['rastreio_status'] ?? '') === 'entregue';
+            // AR só faz sentido em objeto Correios entregue (e com rastreio).
+            if ($r['entregue'] && ($r['transportadora_adapter'] ?? '') === 'CorreiosAdapter' && !empty($r['codigo_rastreio'])) {
+                $r['acoes'][] = 'ver_ar';
+            }
         }
         return ['itens' => $rows, 'total' => $total, 'pagina' => $pagina, 'por_pagina' => $porPagina];
     }

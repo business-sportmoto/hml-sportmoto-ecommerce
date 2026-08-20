@@ -210,6 +210,7 @@ class TransportadoraAdminService
             return ['ok' => false, 'erro' => 'Erro inesperado ao salvar.'];
         }
 
+        FreteCacheService::invalidar(); // transportadora mudou -> limpa cache de cotações
         LogService::audit($isUpdate ? 'Transportadora atualizada' : 'Transportadora criada', [
             'transportadora_id' => $id, 'adapter' => $adapter, 'usuario_id' => $usuarioId,
         ]);
@@ -229,6 +230,7 @@ class TransportadoraAdminService
             LogService::error('Falha ao alterar status de transportadora', ['id' => $id, 'erro' => $e->getMessage()]);
             return ['ok' => false, 'erro' => 'Não foi possível alterar o status.'];
         }
+        FreteCacheService::invalidar();
         LogService::audit('Status de transportadora alterado', ['transportadora_id' => $id, 'status' => $status, 'usuario_id' => $usuarioId]);
         return ['ok' => true, 'status' => $status];
     }
@@ -250,6 +252,7 @@ class TransportadoraAdminService
             LogService::error('Falha ao reordenar transportadoras', ['erro' => $e->getMessage()]);
             return ['ok' => false, 'erro' => 'Não foi possível reordenar.'];
         }
+        FreteCacheService::invalidar();
         LogService::audit('Transportadoras reordenadas', ['ordem' => $ordemIds, 'usuario_id' => $usuarioId]);
         return ['ok' => true];
     }

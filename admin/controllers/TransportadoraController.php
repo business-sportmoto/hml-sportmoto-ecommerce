@@ -124,6 +124,15 @@ class TransportadoraController extends Controller
         $this->json($this->service->reordenar($ordem, $this->usuarioId()));
     }
 
+    /** POST /admin/logistica/transportadoras/limpar-cache — invalida o cache de cotações. */
+    public function limparCache(): void
+    {
+        $this->verifyCsrf();
+        $removidos = FreteCacheService::invalidar();
+        LogService::audit('Cache de frete limpo manualmente', ['removidos' => $removidos, 'usuario_id' => $this->usuarioId()]);
+        $this->json(['ok' => true, 'removidos' => $removidos]);
+    }
+
     /** POST /admin/logistica/transportadoras/testar */
     public function testar(): void
     {

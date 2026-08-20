@@ -104,7 +104,7 @@ class FreteVitrineService
             'localidade' => $loc['localidade'] ?? null,
             'uf'         => $uf ?: null,
             'peso_g'     => $pesoG,
-            'deg'=>$ctxBase
+            // 'deg'=>$ctxBase
         ];
     }
 

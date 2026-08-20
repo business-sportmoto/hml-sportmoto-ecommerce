@@ -14,7 +14,7 @@
  *    primeiro match; acumulativas empilham.
  *  - AÇÕES: frete_gratis, subsidio_max_valor/pct (teto do subsídio → "cobrar
  *    a diferença"), desconto_pct, desconto_fixo, acrescimo, prazo_adicional,
- *    ocultar_servicos, bloquear_frete_gratis.
+ *    ocultar_servicos, bloquear_frete_gratis, bloquear_frete (bloqueia envio p/ o escopo).
  */
 class MotorRegras
 {
@@ -89,6 +89,7 @@ class MotorRegras
         // Passo 2: aplica efeitos por opção (respeitando o escopo de cada regra).
         $out = [];
         $idsGlobais = [];
+        $bloqueadoGlobal = false;
         foreach ($opcoes as $op) {
             $base = (float)($op['valor'] ?? $op['valor_original'] ?? 0);
             $op['valor_original'] = round($base, 2);
@@ -97,6 +98,7 @@ class MotorRegras
             $op['erro'] = $op['erro'] ?? null;
 
             $freteGratisReq = false; $bloq = false; $gratisMaisBaratoReq = false;
+            $blkFrete = false;
             $tetoV = null; $tetoP = null;
             $dpct = 0.0; $dfix = 0.0; $acr = 0.0; $prazo = 0;
             $ocultar = []; $ids = [];
@@ -107,6 +109,7 @@ class MotorRegras
                 if ($a['frete_gratis'])           $freteGratisReq = true;
                 if ($a['frete_gratis_mais_barato']) { $freteGratisReq = true; $gratisMaisBaratoReq = true; }
                 if ($a['bloquear_frete_gratis'])  $bloq = true;
+                if ($a['bloquear_frete'])         $blkFrete = true;
                 if ($a['subsidio_max_valor'] !== null) $tetoV = self::menorNaoNulo($tetoV, $a['subsidio_max_valor']);
                 if ($a['subsidio_max_pct']   !== null) $tetoP = self::menorNaoNulo($tetoP, $a['subsidio_max_pct']);
                 $dpct += $a['desconto_pct'];
@@ -122,12 +125,13 @@ class MotorRegras
             $op['regra_id'] = $ids[0] ?? null;
             $idsGlobais = array_merge($idsGlobais, $ids);
 
-            // Ocultar serviço?
-            if (self::servicoOculto($op, $ocultar)) {
+            // Bloqueou o envio (faixa de CEP não atendida) ou ocultou o serviço?
+            if ($blkFrete || self::servicoOculto($op, $ocultar)) {
                 $op['oculto'] = true;
-                $op['erro'] = 'Ocultado por regra';
+                $op['erro'] = $blkFrete ? 'Envio indisponível para este CEP' : 'Ocultado por regra';
                 $op['valor_final'] = null;
                 $op['valor_ajuste'] = 0.0;
+                if ($blkFrete) $bloqueadoGlobal = true;
                 $out[] = $op;
                 continue;
             }
@@ -166,7 +170,7 @@ class MotorRegras
         return [
             'opcoes'           => $out,
             'frete_gratis'     => (bool)array_filter($out, static fn($o) => !empty($o['frete_gratis'])),
-            'bloqueado'        => false,
+            'bloqueado'        => $bloqueadoGlobal,
             'regras_aplicadas' => array_values(array_unique(array_map(static fn($r) => (int)($r['id'] ?? 0), $aplicadas))),
         ];
     }
@@ -365,6 +369,7 @@ class MotorRegras
             'frete_gratis'          => !empty($a['frete_gratis']),
             'frete_gratis_mais_barato' => !empty($a['frete_gratis_mais_barato']),
             'bloquear_frete_gratis' => !empty($a['bloquear_frete_gratis']),
+            'bloquear_frete'        => !empty($a['bloquear_frete']),
             'desconto_pct'          => (float)($a['desconto_pct'] ?? 0),
             'desconto_fixo'         => (float)($a['desconto_fixo'] ?? 0),
             'acrescimo'             => (float)($a['acrescimo'] ?? 0),
