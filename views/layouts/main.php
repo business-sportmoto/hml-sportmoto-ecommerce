@@ -1,5 +1,6 @@
 <?php
 // views/layouts/main.php — versão final com SEO e performance
+ClickCaptureService::capturar();
 SeoHelper::setWebSite(); // JSON-LD de WebSite apenas na home
 SeoHelper::setOrganization();
 $categoryModel    = new Category();

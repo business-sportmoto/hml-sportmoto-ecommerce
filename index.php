@@ -109,6 +109,8 @@ if (Session::isClienteLogado()) {
     }
 }
 
+// ClickCaptureService::capturar();
+
 // WhatsappService::sendSimples('5551994214617', 'Robert', 'tipo', "Mensagem *negrito*");
 
 // Adicionar no index.php após os blocos acima
