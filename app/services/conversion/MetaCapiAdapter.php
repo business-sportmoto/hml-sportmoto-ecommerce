@@ -74,7 +74,7 @@ final class MetaCapiAdapter implements ConversionAdapter
         $body = ['data' => [$eventoMeta]];
         if ($this->testCode) {
             $body['test_event_code'] = $this->testCode;
-        }
+        }        
 
         return $this->post($body);
     }

@@ -27,6 +27,17 @@ class CategoryController extends Controller {
         // Histórico de navegação
         (new History())->record('categoria', (int)$category['id']);
 
+        // ── CONVERSÃO: ViewCategory (Fase 1) ──────────────
+        try {
+            $cid = (int)(Session::get('cliente_id') ?? 0) ?: null;
+            (new ConversionService())->viewCategory([
+                'id'   => (int)$category['id'],
+                'nome' => $category['nome'] ?? '',
+            ], $cid);
+        } catch (\Throwable $e) {
+            LogService::error('[Category] ViewCategory tracking: ' . $e->getMessage(), [$e]);
+        }
+
         // ── Filtros padrão ────────────────────────────────────
         $filters               = $this->parseFilters();
         $filters['categoria_id'] = (int)$category['id'];

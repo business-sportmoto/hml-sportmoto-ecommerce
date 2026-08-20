@@ -335,6 +335,23 @@ class WishlistController extends Controller {
         $clienteId = (int)Session::get('cliente_id');
         $adicionou = $wishlist->favoritar($clienteId, $produtoId);
 
+        // ── CONVERSÃO: AddToWishlist (Fase 1) ─────────────
+        // Só dispara se REALMENTE adicionou (não se já estava)
+        if ($adicionou) {
+            try {
+                $produto = (new Product())->find($produtoId);
+                if ($produto) {
+                    (new ConversionService())->addToWishlist([
+                        'id'    => $produtoId,
+                        'nome'  => $produto['nome'] ?? '',
+                        'preco' => (float)PriceHelper::currentPrice($produto),
+                    ], $clienteId);
+                }
+            } catch (\Throwable $e) {
+                error_log('[Wishlist] AddToWishlist tracking: ' . $e->getMessage());
+            }
+        }
+
         $this->json([
             'ok'        => true,
             'favoritado'=> true,

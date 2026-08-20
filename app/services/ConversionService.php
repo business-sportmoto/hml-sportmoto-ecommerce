@@ -37,6 +37,8 @@ final class ConversionService
     public const PURCHASE          = 'Purchase';
     public const SEARCH            = 'Search';
 
+    public const ADD_TO_WISHLIST = 'AddToWishlist';
+
     public function __construct()
     {
         $this->db      = Database::getInstance()->getConnection();
@@ -100,6 +102,49 @@ final class ConversionService
     public function search(string $termo, ?int $clienteId = null): void
     {
         $this->registrar(self::SEARCH, ['search_string' => $termo], $clienteId);
+    }
+
+
+    /**
+     * Visita à HOME. ViewContent com content_type='home' — a Meta
+     * trata como evento padrão (cria público, otimiza), e o
+     * parâmetro distingue de visualização de produto.
+     */
+    public function viewHome(?int $clienteId = null): void
+    {
+        $this->registrar(self::VIEW_CONTENT, [
+            'content_type' => 'home',
+            'content_name' => 'Home',
+        ], $clienteId);
+    }
+
+    /**
+     * Visita a CATEGORIA. ViewContent com content_type=
+     * 'product_group' + id/nome da categoria. Permite público
+     * "quem viu a categoria X".
+     */
+    public function viewCategory(array $categoria, ?int $clienteId = null): void
+    {
+        $this->registrar(self::VIEW_CONTENT, [
+            'content_type' => 'product_group',
+            'content_ids'  => [(string)($categoria['id'] ?? '')],
+            'content_name' => $categoria['nome'] ?? '',
+        ], $clienteId);
+    }
+
+    /**
+     * AddToWishlist — evento PADRÃO da Meta (otimização e público
+     * prontos, entende nativamente).
+     */
+    public function addToWishlist(array $produto, ?int $clienteId = null): void
+    {
+        $this->registrar(self::ADD_TO_WISHLIST, [
+            'content_type' => 'product',
+            'content_ids'  => [(string)($produto['id'] ?? $produto['produto_id'] ?? '')],
+            'content_name' => $produto['nome'] ?? '',
+            'value'        => (float)($produto['preco'] ?? 0),
+            'currency'     => 'BRL',
+        ], $clienteId);
     }
 
     /** event_id do último evento — o front passa ao pixel p/ dedup. */

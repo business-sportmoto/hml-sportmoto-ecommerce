@@ -132,6 +132,14 @@ class SearchController extends Controller {
             'resultados' => (int)$total,
         ]);
 
+        // ── CONVERSÃO: Search (Fase 1) ────────────────────
+        // No controller (server-side) = mais preciso que via JS.
+        try {
+            (new ConversionService())->search(mb_substr($q, 0, 120));
+        } catch (\Throwable $e) {
+            LogService::error('[Search] Conversion tracking: ', [$e]);
+        }
+
         $this->render('products/catalog', array_merge($pag->toArray(), [
             'products'    => $products,
             'filters'     => $filters,

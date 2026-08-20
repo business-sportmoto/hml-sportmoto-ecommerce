@@ -8,7 +8,7 @@ declare(strict_types=1);
  * Roda via bootstrap CLI (mesma infra dos outros crons do projeto).
  *
  * Cron sugerido (a cada minuto):
- *   * * * * * cd /caminho/projeto && php cli/conversion-dispatch.php >> storage/logs/conversion.log 2>&1
+ *   * * * * * cd /home/ploi/hml.sportmoto.com.br && php cli/conversion-dispatch.php >> storage/logs/conversion.log 2>&1
  *
  * NUNCA LIGAR EM PRODUÇÃO até a política de privacidade estar
  * publicada. Em homologação, com META_TEST_EVENT_CODE setado,

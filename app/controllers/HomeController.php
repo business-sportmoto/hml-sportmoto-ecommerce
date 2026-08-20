@@ -42,6 +42,14 @@ class HomeController extends Controller {
             getenv('CF_STREAM_CUSTOMER_CODE') ?? ''
         );
 
+        // ── CONVERSÃO: ViewHome (Fase 1) ──────────────────
+        try {
+            $cid = (int)(Session::get('cliente_id') ?? 0) ?: null;
+            (new ConversionService())->viewHome($cid);
+        } catch (\Throwable $e) {
+            LogService::error('[Home] ViewHome tracking: ', [$e]);
+        }
+
         $this->render('home/index', [            
             'categorias'         => $categoryModelHome,
             

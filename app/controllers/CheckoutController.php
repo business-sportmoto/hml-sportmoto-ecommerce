@@ -292,7 +292,7 @@ class CheckoutController extends Controller {
         $endereco  = $this->enderecoModel->findOwned($this->state->getEnderecoId(), $clienteId);
         if (!$endereco) {
             $this->state->clear();
-            $this->redirect('/checkout/address');
+            $this->redirect('/checkout/address');            
         }
 
         $cartoesSalvos =  $this->CartaoSalvo->listarPorCliente($clienteId);
@@ -318,7 +318,7 @@ class CheckoutController extends Controller {
                 'content_ids' => $contentIdsCk,
             ], $clienteId);
         } catch (\Throwable $e) {
-            error_log('[Checkout] InitiateCheckout tracking: ' . $e->getMessage());
+            LogService::error('ConversionService -> initiateCheckout', [$e]);
         }
 
         $this->renderCheckout('checkout/payment', [

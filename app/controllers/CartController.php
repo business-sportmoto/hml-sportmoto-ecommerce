@@ -179,6 +179,29 @@ class CartController extends Controller {
         $count = (int)$stmt->fetchColumn();
         Session::set('carrinho_count', $count);
 
+        // ── CONVERSÃO: AddToCart (Fase 1) ─────────────────────
+        // Após a adição confirmada (item novo OU soma no existente).
+        // À prova de falha: tracking não quebra a adição ao carrinho.
+        try {
+            // Garante que temos os dados do produto nos dois caminhos
+            // (no caminho "existente", $product não foi carregado)
+            if (!isset($product) || !$product) {
+                $product = (new Product())->find($produtoId);
+            }
+            if (!isset($preco)) {
+                $preco = PriceHelper::currentPrice($product);
+            }
+
+            (new ConversionService())->addToCart([
+                'produto_id' => $produtoId,
+                'nome'       => $product['nome'] ?? '',
+                'preco'      => (float)$preco,
+                'quantidade' => $quantidade,
+            ]);
+        } catch (\Throwable $e) {
+            error_log('[Cart] AddToCart tracking: ' . $e->getMessage());
+        }
+
         $this->json([
             'ok'    => true,
             'msg'   => 'Produto adicionado ao carrinho!',
