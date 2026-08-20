@@ -521,7 +521,39 @@ class CorreiosAdapter extends TransportadoraBase
         return ['ok' => false, 'erro' => $d['erro'] ?? 'Falha ao baixar o rótulo.'];
     }
 
-    /** Baixa o PDF do rótulo pelo idRecibo (GET). Devolve url ou pdf_base64. */
+    /**
+     * Consulta os dados da POSTAGEM real de um objeto já postado.
+     * GET /prepostagem/v1/prepostagens/postada?codigoObjeto=... -> MovimentoPostagemDTO.
+     * Retorna o valor cobrado (valorAtendimento), data e peso tarifado. Se ainda não
+     * foi postado, devolve ['ok'=>false,'nao_postada'=>true] (sem erro).
+     */
+    public function consultarPostagem(string $codigoObjeto): array
+    {
+        $codigoObjeto = strtoupper(trim($codigoObjeto));
+        if ($codigoObjeto === '') return ['ok' => false, 'erro' => 'Código do objeto vazio.'];
+        $token = $this->tokenCorreios();
+        if (!$token) return ['ok' => false, 'erro' => 'Não foi possível autenticar nos Correios.'];
+
+        $r = $this->reqCorreios('GET', '/prepostagem/v1/prepostagens/postada?codigoObjeto=' . rawurlencode($codigoObjeto), null, $token, 'postada');
+        $s = (int)($r['status'] ?? 0);
+        if ($s === 404 || $s === 400) return ['ok' => false, 'nao_postada' => true]; // ainda não postado
+        if (!$this->okHttp($r)) return ['ok' => false, 'erro' => $this->erroCorreios($r, 'Falha ao consultar a postagem')];
+
+        $j = is_array($r['json'] ?? null) ? $r['json'] : [];
+        if (($j['codigoObjeto'] ?? '') === '' && !isset($j['valorAtendimento'])) {
+            return ['ok' => false, 'nao_postada' => true];
+        }
+        $pesoTar = $j['pesoTarifadoObjeto'] ?? null;
+        return [
+            'ok'              => true,
+            'valor'           => (float)($j['valorAtendimento'] ?? 0),
+            'data_postagem'   => self::dataSro((string)($j['dataPostagem'] ?? $j['dataHoraAtendimento'] ?? '')),
+            'peso_tarifado_g' => ($pesoTar !== null && $pesoTar !== '') ? (int)round((float)str_replace(',', '.', (string)$pesoTar)) : null,
+            'plp'             => $j['numeroPlp'] ?? null,
+            'servico'         => $j['codigoServico'] ?? null,
+            'nome_servico'    => $j['nomeServico'] ?? null,
+        ];
+    }
     private function baixarRotulo(string $idRecibo, string $token): array
     {
         // Endpoint oficial (OpenAPI v3): /rotulo/download/assincrono/{idRecibo}

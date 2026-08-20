@@ -415,6 +415,66 @@ class EtiquetaService
         return ['ok' => true];
     }
 
+    /**
+     * CRON: busca o preço/dados reais da POSTAGEM das etiquetas Correios já postadas
+     * (GET /prepostagens/postada). Só toca em etiquetas Correios, com rastreio, ainda
+     * sem valor_postado, não canceladas e recentes. Se o objeto ainda não foi postado,
+     * a API responde "não postada" e a etiqueta é tentada de novo na próxima rodada.
+     *
+     * @return array{ok:bool, consultadas:int, atualizadas:int, pendentes:int}
+     */
+    public function atualizarPrecosPostagem(int $limite = 50): array
+    {
+        $limite = max(1, min(200, $limite));
+        try {
+            $st = $this->pdo->prepare(
+                "SELECT e.id, e.codigo_rastreio, e.transportadora_id
+                   FROM log_etiquetas e
+                   JOIN log_transportadoras t ON t.id = e.transportadora_id
+                  WHERE t.adapter = 'CorreiosAdapter'
+                    AND e.canal <> 'reversa'
+                    AND e.valor_postado IS NULL
+                    AND e.codigo_rastreio IS NOT NULL AND e.codigo_rastreio <> ''
+                    AND e.status NOT IN ('cancelada', 'erro')
+                    AND e.criado_em >= (NOW() - INTERVAL 120 DAY)
+                  ORDER BY e.id DESC
+                  LIMIT " . $limite
+            );
+            $st->execute();
+            $linhas = $st->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+        } catch (\Throwable $e) {
+            LogService::error('Falha ao listar etiquetas para preço de postagem', ['erro' => $e->getMessage()]);
+            return ['ok' => false, 'consultadas' => 0, 'atualizadas' => 0, 'pendentes' => 0];
+        }
+
+        $consultadas = 0; $atualizadas = 0; $pendentes = 0;
+        $adapters = [];
+        foreach ($linhas as $e) {
+            $tid = (int)$e['transportadora_id'];
+            if (!array_key_exists($tid, $adapters)) $adapters[$tid] = $this->resolverAdapter($tid);
+            $adapter = $adapters[$tid];
+            if (!$adapter || !method_exists($adapter, 'consultarPostagem')) continue;
+
+            $consultadas++;
+            try {
+                $res = $adapter->consultarPostagem((string)$e['codigo_rastreio']);
+            } catch (\Throwable $ex) {
+                LogService::warning('Erro ao consultar postagem', ['etiqueta_id' => $e['id'], 'erro' => $ex->getMessage()]);
+                continue;
+            }
+            if (!empty($res['nao_postada'])) { $pendentes++; continue; }
+            if (empty($res['ok'])) continue;
+
+            $campos = ['valor_postado' => round((float)($res['valor'] ?? 0), 2)];
+            if (!empty($res['data_postagem']))   $campos['data_postagem']   = $res['data_postagem'];
+            if (!empty($res['peso_tarifado_g'])) $campos['peso_tarifado_g'] = (int)$res['peso_tarifado_g'];
+            $this->aplicarUpdate((int)$e['id'], $campos);
+            LogService::audit('Preço de postagem atualizado', ['etiqueta_id' => $e['id'], 'valor_postado' => $campos['valor_postado'], 'codigo' => $e['codigo_rastreio']]);
+            $atualizadas++;
+        }
+        return ['ok' => true, 'consultadas' => $consultadas, 'atualizadas' => $atualizadas, 'pendentes' => $pendentes];
+    }
+
     public function cancelar(int $id, ?int $usuarioId = null): array
     {
         $e = $this->obter($id);
@@ -609,7 +669,7 @@ class EtiquetaService
     /** UPDATE com allowlist de colunas. */
     private function aplicarUpdate(int $id, array $campos): void
     {
-        $permitidos = ['status', 'external_id', 'codigo_rastreio', 'url_pdf', 'id_recibo', 'valor', 'contrato', 'erro', 'plp_id'];
+        $permitidos = ['status', 'external_id', 'codigo_rastreio', 'url_pdf', 'id_recibo', 'valor', 'valor_postado', 'data_postagem', 'peso_tarifado_g', 'contrato', 'erro', 'plp_id'];
         $sets = []; $vals = [':id' => $id];
         foreach ($campos as $k => $v) {
             if (!in_array($k, $permitidos, true)) continue;
