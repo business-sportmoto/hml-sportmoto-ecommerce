@@ -76,6 +76,8 @@ final class MetaCapiAdapter implements ConversionAdapter
             $body['test_event_code'] = $this->testCode;
         }
 
+        LogService::debug('enviar', $eventoMeta);
+
         return $this->post($body);
     }
 
