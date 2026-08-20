@@ -74,7 +74,7 @@ final class MetaCapiAdapter implements ConversionAdapter
         $body = ['data' => [$eventoMeta]];
         if ($this->testCode) {
             $body['test_event_code'] = $this->testCode;
-        }        
+        }
 
         return $this->post($body);
     }
@@ -111,7 +111,7 @@ final class MetaCapiAdapter implements ConversionAdapter
         $click = $this->buscarClickIds($evento['visitante_token'] ?? null);
         if (!empty($click['fbc'])) $ud['fbc'] = $click['fbc'];
         if (!empty($click['fbp'])) $ud['fbp'] = $click['fbp'];
-        LogService::debug('buscarClickIds', [$click, $evento, $contexto]);
+
         return $ud;
     }
 

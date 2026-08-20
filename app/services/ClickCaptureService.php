@@ -62,15 +62,11 @@ final class ClickCaptureService
                 return; // sem token de visitante, não liga a ninguém
             }
 
-            LogService::debug('[ClickCapture] ', [
-                $token, $fbclid, $gclid, $fbc, $fbp
-            ]);
-
             self::gravar($token, $fbclid, $gclid, $fbc, $fbp);
 
         } catch (\Throwable $e) {
             // captura NUNCA quebra a navegação
-            LogService::error('[ClickCapture] ' . $e->getMessage(), [$e]);
+            error_log('[ClickCapture] ' . $e->getMessage());
         }
     }
 
@@ -114,8 +110,9 @@ final class ClickCaptureService
 
     /**
      * Grava na tracking_clicks. Estratégia: 1 linha por chegada com
-     * click ID. Se a mesma request não tem click novo, não grava
-     * duplicado (evita encher a tabela em cada pageview).
+     * click ID. Dedup SEPARADA por plataforma — fbclid e gclid são
+     * independentes (vêm de anúncios diferentes, ciclos diferentes).
+     * Colar os dois num OR fazia um "sujar" a checagem do outro.
      */
     private static function gravar(
         string $token, ?string $fbclid, ?string $gclid,
@@ -123,20 +120,14 @@ final class ClickCaptureService
     ): void {
         $db = Database::getInstance()->getConnection();
 
-        // Evita duplicar: se já existe uma linha recente (última hora)
-        // com o MESMO fbclid/gclid pra este visitante, não regrava.
-        if ($fbclid !== null || $gclid !== null) {
-            $st = $db->prepare(
-                "SELECT id FROM tracking_clicks
-                 WHERE visitante_token = ?
-                   AND (fbclid <=> ? OR gclid <=> ?)
-                   AND criado_em >= (NOW() - INTERVAL 1 HOUR)
-                 LIMIT 1"
-            );
-            $st->execute([$token, $fbclid, $gclid]);
-            if ($st->fetchColumn()) {
-                return; // já capturado recentemente
-            }
+        // Dedup INDEPENDENTE: se ESTE fbclid específico já foi
+        // capturado pra este visitante na última hora, não regrava.
+        // Mesmo pro gclid, separadamente. Um não interfere no outro.
+        if ($fbclid !== null && self::jaCapturado($db, $token, 'fbclid', $fbclid)) {
+            return;
+        }
+        if ($gclid !== null && self::jaCapturado($db, $token, 'gclid', $gclid)) {
+            return;
         }
 
         $db->prepare(
@@ -157,6 +148,31 @@ final class ClickCaptureService
             self::param('utm_medium'),
             self::param('utm_campaign'),
         ]);
+    }
+
+    /**
+     * Este click ID específico já foi capturado pra este visitante
+     * na última hora? Checagem por UMA coluna só (fbclid OU gclid),
+     * nunca as duas juntas — é o que corrige o acoplamento.
+     *
+     * @param string $coluna 'fbclid' ou 'gclid' (whitelist interna)
+     */
+    private static function jaCapturado(PDO $db, string $token, string $coluna, string $valor): bool
+    {
+        // Whitelist da coluna (nunca interpola input do usuário em SQL)
+        if (!in_array($coluna, ['fbclid', 'gclid'], true)) {
+            return false;
+        }
+
+        $st = $db->prepare(
+            "SELECT id FROM tracking_clicks
+             WHERE visitante_token = ?
+               AND {$coluna} = ?
+               AND criado_em >= (NOW() - INTERVAL 1 HOUR)
+             LIMIT 1"
+        );
+        $st->execute([$token, $valor]);
+        return (bool)$st->fetchColumn();
     }
 
     private static function clienteId(): ?int
