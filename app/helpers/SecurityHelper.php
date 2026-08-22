@@ -269,7 +269,7 @@ class SecurityHelper {
                 "font-src 'self' https://fonts.gstatic.com data:;" .
                 
                 "img-src 'self' data: https:" . $baseImgSrc . " https://media.sportmoto.com.br {$stream}; " .
-                "connect-src 'self' https://accounts.google.com/gsi/ https://sandbox-api.malga.io https://api.malga.io {$stream};; " .
+                "connect-src 'self' https://connect.facebook.net https://accounts.google.com/gsi/ https://sandbox-api.malga.io https://api.malga.io {$stream};; " .
                 "frame-src 'self' https://accounts.google.com/gsi/ https://hosted-fields-sandbox.malga.io https://hosted-fields.malga.io https://iframe.cloudflarestream.com;" .
 
                 // --- HARDENING (faltavam) ------------------------------------------
