@@ -270,12 +270,12 @@ class SecurityHelper {
                 
                 "img-src 'self' data: https:" . $baseImgSrc . " https://media.sportmoto.com.br https://www.facebook.com {$stream}; " .
                 "connect-src 'self' https://accounts.google.com/gsi/ https://sandbox-api.malga.io https://api.malga.io https://www.facebook.com https://connect.facebook.net {$stream}; " .
-                "frame-src 'self' https://accounts.google.com/gsi/ https://hosted-fields-sandbox.malga.io https://hosted-fields.malga.io https://iframe.cloudflarestream.com;" .
+                "frame-src 'self' https://accounts.google.com/gsi/ https://hosted-fields-sandbox.malga.io https://hosted-fields.malga.io https://iframe.cloudflarestream.com https://www.facebook.com;" .
 
                 // --- HARDENING (faltavam) ------------------------------------------
                 "object-src 'none';".        // sem plugins/Flash como vetor
                 "base-uri 'self';".          // impede <base> injetado sequestrar URLs
-                "form-action 'self';".       // impede form injetado POSTar p/ atacante
+                "form-action 'self' https://www.facebook.com;".       // impede form injetado POSTar p/ atacante
                 "frame-ancestors 'none';".   // anti-clickjacking (já tinha, mantido)
                 "upgrade-insecure-requests;"
             );
