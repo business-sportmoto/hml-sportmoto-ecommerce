@@ -48,6 +48,8 @@
     return true;
   }
 
+  
+
   // ── Dispara um evento com eventID (a chave da dedup) ──
   // @param nome  string  ex: 'ViewContent', 'AddToCart', 'Purchase'
   // @param dados object  custom_data (value, currency, content_ids...)
