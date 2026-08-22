@@ -15,6 +15,8 @@
 (function () {
   'use strict';
 
+  window.META_PIXEL_ID = 4754718191415939;
+
   // ── Checa consentimento de marketing (lê o cookie sm_consent) ──
   function temConsentimentoMarketing() {
     var m = document.cookie.match(/(?:^|;\s*)sm_consent=([^;]+)/);

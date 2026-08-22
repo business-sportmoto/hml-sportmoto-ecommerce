@@ -60,7 +60,7 @@ $categoryModel    = new Category();
     const UPLOAD_URL = '<?= UPLOAD_URL ?>';
     const CSRF_TOKEN = '<?= $csrf_token ?? '' ?>';
     
-    window.META_PIXEL_ID = 4754718191415939;
+    
   </script>
 
   <!-- Scripts carregados de forma assíncrona para melhor performance -->
