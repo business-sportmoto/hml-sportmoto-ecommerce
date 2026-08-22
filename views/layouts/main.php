@@ -27,6 +27,7 @@ $categoryModel    = new Category();
   <noscript>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
   </noscript>
+  <script src="<?= PerformanceHelper::assetVersion('js/pixel.js') ?>"></script>
 </head>
 <body class="<?= isset($bodyClass) ? View::e($bodyClass) : '' ?>">
   <?php 
@@ -59,7 +60,7 @@ $categoryModel    = new Category();
     const UPLOAD_URL = '<?= UPLOAD_URL ?>';
     const CSRF_TOKEN = '<?= $csrf_token ?? '' ?>';
     
-    
+    window.META_PIXEL_ID = 4754718191415939;
   </script>
 
   <!-- Scripts carregados de forma assíncrona para melhor performance -->

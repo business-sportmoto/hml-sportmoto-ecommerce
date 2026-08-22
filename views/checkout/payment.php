@@ -177,6 +177,16 @@ $temCartoes       = !empty($cartoesSalvos);
   </button>
 </div>
 
-<style>
-
-</style>
+<?php if (!empty($checkoutEventId)): ?>
+<script>
+  (function () {
+    if (!window.smPixel) return;
+    window.smPixel.track('InitiateCheckout', {
+      value: <?= (float)($checkoutValue ?? 0) ?>,
+      currency: 'BRL',
+      num_items: <?= (int)($checkoutNumItems ?? 0) ?>,
+      content_ids: <?= json_encode(array_map('strval', $checkoutContentIds ?? [])) ?>
+    }, <?= json_encode($checkoutEventId) ?>); // ← MESMO event_id do CAPI
+  })();
+</script>
+<?php endif; ?>

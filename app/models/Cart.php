@@ -311,29 +311,6 @@ class Cart extends Model {
             ]);
         }
 
-        // ── CONVERSÃO: AddToCart (Fase 1) ─────────────────────
-        // Após a adição confirmada (item novo OU soma no existente).
-        // À prova de falha: tracking não quebra a adição ao carrinho.
-        try {
-            // Garante que temos os dados do produto nos dois caminhos
-            // (no caminho "existente", $product não foi carregado)
-            if (!isset($product) || !$product) {
-                $product = (new Product())->find($productId);
-            }
-            if (!isset($preco)) {
-                $preco = PriceHelper::currentPrice($product);
-            }
-
-            (new ConversionService())->addToCart([
-                'produto_id' => $productId,
-                'nome'       => $product['nome'] ?? '',
-                'preco'      => (float)$preco,
-                'quantidade' => $qty,
-            ]);
-        } catch (Throwable $e) {
-            LogService::error('addToCart - ConversionService - addItem | 334', [$e]);
-        }
-
         $this->touch($carrinhoId);
         return true;
     }
@@ -372,30 +349,7 @@ class Cart extends Model {
 
         $this->db->prepare(
             "UPDATE carrinho_itens SET quantidade = ? WHERE id = ? AND carrinho_id = ?"
-        )->execute([$qty, $itemId, $carrinhoId]);
-
-        // ── CONVERSÃO: AddToCart (Fase 1) ─────────────────────
-        // Após a adição confirmada (item novo OU soma no existente).
-        // À prova de falha: tracking não quebra a adição ao carrinho.
-        try {
-            // Garante que temos os dados do produto nos dois caminhos
-            // (no caminho "existente", $product não foi carregado)
-            if (!isset($product) || !$product) {
-                $product = (new Product())->find($itemId);
-            }
-            if (!isset($preco)) {
-                $preco = PriceHelper::currentPrice($product);
-            }
-
-            (new ConversionService())->addToCart([
-                'produto_id' => $itemId,
-                'nome'       => $product['nome'] ?? '',
-                'preco'      => (float)$preco,
-                'quantidade' => $qty,
-            ]);
-        } catch (Throwable $e) {
-            LogService::error('addToCart - ConversionService - updateItemQty | 397', [$e]);
-        }
+        )->execute([$qty, $itemId, $carrinhoId]);        
 
         $this->touch($carrinhoId);
         return true;

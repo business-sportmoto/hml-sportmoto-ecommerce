@@ -322,13 +322,9 @@ class ProductController extends Controller {
             if ($tipo === 'ViewContent') {
                 $id = SecurityHelper::sanitizeInt($_POST['product_id'] ?? 0);
                 if ($id <= 0) { $this->json(['ok' => false]); return; }
- 
-                // Incrementa a visualização (movido do detail() pra cá,
-                // via JS = filtra bots que não executam JavaScript)
+
                 try { $this->productModel->incrementViews($id); } catch (\Exception) {}
- 
-                // Busca o produto NO SERVIDOR — o preço vem do banco,
-                // nunca do cliente (não confiável)
+
                 $produto = $this->productModel->find($id);
                 if ($produto) {
                     $conv->viewContent([
@@ -336,12 +332,15 @@ class ProductController extends Controller {
                         'nome'  => $produto['nome'] ?? '',
                         'preco' => (float)PriceHelper::currentPrice($produto),
                     ]);
-                }
- 
-            } elseif ($tipo === 'Search') {
-                $termo = SecurityHelper::sanitizeString($_POST['q'] ?? '');
-                if ($termo !== '') {
-                    $conv->search(mb_substr($termo, 0, 100));
+                    // DEVOLVE o event_id + dados pro JS disparar o Pixel
+                    $this->json([
+                        'ok'       => true,
+                        'event_id' => $conv->getUltimoEventId(),
+                        'value'    => (float)PriceHelper::currentPrice($produto),
+                        'content_ids' => [(string)$id],
+                        'content_name' => $produto['nome'] ?? '',
+                    ]);
+                    return;
                 }
             }
         } catch (\Throwable $e) {

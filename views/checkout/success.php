@@ -535,6 +535,22 @@ $steps = array_map(function ($def) use ($nivelAtual, $isCancelado) {
 
 </div><!-- /.success-wrapper -->
 
+
+<?php if (!empty($purchasePixel)): ?>
+<script>
+  (function () {
+    if (!window.smPixel) return;
+    window.smPixel.track('Purchase', {
+      value: <?= (float)$purchasePixel['value'] ?>,
+      currency: 'BRL',
+      content_type: 'product',
+      num_items: <?= (int)$purchasePixel['num_items'] ?>,
+      content_ids: <?= json_encode(array_map('strval', $purchasePixel['content_ids'])) ?>
+    }, <?= json_encode($purchasePixel['event_id']) ?>); // ← codigo = dedup com CAPI
+  })();
+</script>
+<?php endif; ?>
+
 <script>
 $(function () {
   setTimeout(function () {
@@ -800,3 +816,4 @@ $(function () {
 
 });
 </script>
+

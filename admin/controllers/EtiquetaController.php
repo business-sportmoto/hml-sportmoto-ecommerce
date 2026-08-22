@@ -243,3 +243,26 @@ class EtiquetaController extends Controller
         return null;
     }
 }
+
+
+
+$data = array(
+    'cod' 			=> '41355', #STRING #Sku do produto
+    'data_time'   	=> '2024-09-14 10:03:25', #STRING #data no formato Y-m-d H:i:s
+    'tipo'     		=> 'AJUSTE DE ESTOQUE PRO',#STRING #Tipo de movimentação conforme syscar
+    'tipo_cod'      => 'entrada_nfe', //alteracao_estoque, pedido, ordem_servico
+	'cliente'     	=> [], #ARRAY #dados do cliente em array
+	#$['cliente']['nome']	= "Fulano de tal da silva"; //Específico do syscar - Max 150 caracteres
+	#$['cliente']['cpf'] 	= "88888888888"; //111.222.333-44 ou 11.222.333-4444/55
+	#$['cliente']['tipo'] 	= "F"; // F = Físico - J = Juridico
+	#$['cliente']['fone'] 	= "99999999999";
+	#$['cliente']['email'] 	= "email@email.com.br";
+	#$['cliente']['sexo'] 	= "M"; //M = Masculino - F = Feminino
+	's_anterior'    => 0, #INT //Saldo anterior
+	'movimento'     => 2, #INT //Saldo que foi movimentado
+	'n_saldo'     	=> 2, #INT //Novo saldo calculando o anterior e o movimentado
+	'lancamento'	=> 'E', #STRING // IMPORTANTE!! Preciso saber quando for um lançamento (E) ou remoção de esquete (S); E = Entrada - S = Saida; 
+	'preco_mov'		=> 'R$ 699,98', #STRING ('R$ 699,98') OU (699.98)INT//Valor da comppra/venda
+	'local'			=> '', //Local
+	'justifica'		=> '' //Justificativa	
+);

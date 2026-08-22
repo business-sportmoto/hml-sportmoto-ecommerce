@@ -32,22 +32,43 @@ class Clip extends Model {
 
     // ── Quais produto_ids têm pelo menos 1 clip ativo ───
     // Roda UMA query para toda a listagem — sem N+1.
+    //
+    // Memoização por request: a home monta várias seções e cada uma chama este
+    // método pelo Product::parseClips(). Sem o cache, uma home de 8 seções faz
+    // 8 queries idênticas em espírito, e os mesmos produtos aparecem em mais de
+    // uma seção. Aqui só os ids ainda não resolvidos vão ao banco; se todos já
+    // são conhecidos, a chamada não custa query nenhuma.
+    // O cache vive só no request — não há risco de servir dado velho.
+    private static array $cacheComClip = [];
+
     public static function produtosComClip(array $produtoIds): array
     {
-        if (empty($produtoIds)) return [];
+        $ids = array_values(array_unique(array_map('intval', $produtoIds)));
+        if (!$ids) return [];
 
-        $db   = Database::getInstance()->getConnection();
-        $in   = implode(',', array_fill(0, count($produtoIds), '?'));
-        $stmt = $db->prepare(
-            "SELECT DISTINCT cp.produto_id
-            FROM clip_produtos cp
-            INNER JOIN clips c ON c.id = cp.clip_id
-            WHERE cp.produto_id IN ({$in})
-                AND c.ativo   = 1
-                AND c.status  = 'ativo'"
-        );
-        $stmt->execute(array_values($produtoIds));
-        return array_map('intval', array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'produto_id'));
+        $faltando = array_values(array_diff($ids, array_keys(self::$cacheComClip)));
+
+        if ($faltando) {
+            $db   = Database::getInstance()->getConnection();
+            $in   = implode(',', array_fill(0, count($faltando), '?'));
+            $stmt = $db->prepare(
+                "SELECT DISTINCT cp.produto_id
+                FROM clip_produtos cp
+                INNER JOIN clips c ON c.id = cp.clip_id
+                WHERE cp.produto_id IN ({$in})
+                    AND c.ativo   = 1
+                    AND c.status  = 'ativo'"
+            );
+            $stmt->execute($faltando);
+            $comClip = array_flip(array_map('intval', array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'produto_id')));
+
+            // Grava inclusive os que NÃO têm clip: é o que evita reconsultá-los.
+            foreach ($faltando as $id) {
+                self::$cacheComClip[$id] = isset($comClip[$id]);
+            }
+        }
+
+        return array_values(array_filter($ids, static fn(int $id) => self::$cacheComClip[$id] ?? false));
     }
 
         public function countFeed(bool $apenasDestaque = false): int {

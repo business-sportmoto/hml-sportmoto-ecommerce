@@ -48,6 +48,8 @@
     }
   }
 
+  
+
   $(function () {
 
     
@@ -3816,43 +3818,40 @@
   (function () {
     'use strict';
 
-    function enviarBeacon(dados) {
-      dados._csrf_token = CSRF_TOKEN || '';
-      var url = (window.BASE_URL || '') + '/beacon';
+      // No enviarBeacon, troca o sendBeacon por fetch pra LER a resposta
+    // (sendBeacon não retorna corpo; pro ViewContent precisamos ler)
+    function enviarViewContent(productId) {
+      var fd = new FormData();
+      fd.append('tipo', 'ViewContent');
+      fd.append('product_id', productId);
+      fd.append('_csrf_token', CSRF_TOKEN || '');
 
-      // sendBeacon: assíncrono, não bloqueia, sobrevive ao unload
-      if (navigator.sendBeacon) {
-        var fd = new FormData();
-        Object.keys(dados).forEach(function (k) { fd.append(k, dados[k]); });
-        navigator.sendBeacon(url, fd);
-        return;
-      }
-      // Fallback
-      fetch(url, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: Object.keys(dados).map(function (k) {
-          return encodeURIComponent(k) + '=' + encodeURIComponent(dados[k]);
-        }).join('&')
-      }).catch(function () {});
+      fetch((window.BASE_URL || '') + '/beacon', {
+        method: 'POST', body: fd, credentials: 'same-origin'
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        // Dispara o Pixel com o MESMO event_id que o CAPI usou
+        if (d && d.ok && d.event_id && window.smPixel) {
+          window.smPixel.track('ViewContent', {
+            value: d.value,
+            currency: 'BRL',
+            content_type: 'product',
+            content_ids: d.content_ids,
+            content_name: d.content_name
+          }, d.event_id); // ← dedup
+        }
+      })
+      .catch(function () {});
     }
 
-    // ── ViewContent: dispara ao abrir página de produto ──
-    // O elemento da página de produto expõe o id via data-attribute.
-    // Ex: <div id="product-detail" data-product-id="123">
+    // No DOMContentLoaded, troca a chamada antiga por esta
     document.addEventListener('DOMContentLoaded', function () {
       var el = document.getElementById('product-detail');
       if (el && el.dataset.productId) {
-        enviarBeacon({
-          tipo: 'ViewContent',
-          product_id: el.dataset.productId
-        });
+        enviarViewContent(el.dataset.productId);
       }
     });
-
-    // Expõe pra outros usos (ex: Search dispara no submit da busca)
-    window.smBeacon = enviarBeacon;
   })();
 
   /**
@@ -4404,11 +4403,21 @@
     //   adicionarAoCarrinho(prodId, state.skuAtual.sku_id, state.skuAtual);
     // });
 
+    function uuidv4() {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        var r = Math.random() * 16 | 0;
+        var v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
+
     // ── Adicionar ao carrinho ────────────────────────────────
     function adicionarAoCarrinho(prodId, skuId, sku) {
-      
+      var eventId = uuidv4(); // ← gerado AQUI, vai pros 2 lados
       const $card = $(`.product-card[data-product-id="${prodId}"]`);
       const $btn  = $card.find('.pc-modal-confirm, .pc-btn-add').first();
+      const produtoNome = $card.find('.product-name').text();
+      const produtoPreco = $card.find('.price-main').text();
 
       $btn.prop('disabled', true).text('Adicionando...');
 
@@ -4419,8 +4428,19 @@
       };
       if (skuId) dados.sku_id = skuId;
       
+      // 1. Dispara o Pixel IMEDIATAMENTE (no clique) com o eventId
+      if (window.smPixel) {
+        window.smPixel.track('AddToCart', {
+          content_type: 'product',
+          content_ids: [String(skuId)],
+          content_name: produtoNome || '',
+          value: (produtoPreco || 0) * (dados.quantidade || 1),
+          currency: 'BRL'
+        }, eventId);
+      }
 
       $.post(BASE_URL + '/carrinho/adicionar', dados, function (res) {
+        
         if (res.ok) {
           fecharModal($card, prodId);
 
@@ -4446,7 +4466,7 @@
 
           notifyToast('Produto adicionado ao carrinho!', 'success');
 
-
+          
         } else {
           $btn.prop('disabled', false).text('Adicionar ao carrinho');
           notifyToast(res.msg || 'Erro ao adicionar.', 'error');

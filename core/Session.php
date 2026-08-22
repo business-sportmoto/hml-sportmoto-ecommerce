@@ -58,6 +58,14 @@ class Session {
 
     /** Verifica se a sessão pertence ao mesmo navegador */
     private static function validateFingerprint(): void {
+        // A API do app não tem navegador: o User-Agent varia entre WebView,
+        // Metro em dev e o runtime nativo, e o vínculo de confiança já é o
+        // Bearer token do dispositivo. Sem este guard, a sessão do app seria
+        // destruída e o carrinho perdido a cada troca de User-Agent.
+        if (defined('APP_API')) {
+            return;
+        }
+
         $fingerprint = hash('sha256', ($_SERVER['HTTP_USER_AGENT'] ?? '') . 'ec_salt_2024');
 
         if (!self::has('_fingerprint')) {

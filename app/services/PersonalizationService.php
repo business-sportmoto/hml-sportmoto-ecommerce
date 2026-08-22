@@ -447,8 +447,41 @@ class PersonalizationService {
         return $this->categoriasDosProdutos($ids);
     }
 
+    /**
+     * Existe QUALQUER histórico deste visitante na janela considerada?
+     *
+     * getHistoricoIds() é chamado 4 vezes (produto, categoria, marca, clip) e
+     * getBuscas() uma quinta, todas com o mesmo WHERE. Para quem chega pela
+     * primeira vez — o caso mais comum de todos, e o único que existe no
+     * primeiro acesso do app — as cinco voltam vazias. Uma checagem barata
+     * substitui as cinco. O resultado é memoizado por request.
+     *
+     * Não altera o que a home mostra: se não há histórico, as seções derivadas
+     * dele já não eram adicionadas.
+     */
+    private function temHistorico(): bool {
+        static $cache = null;
+        if ($cache !== null) return $cache;
+
+        $cond  = $this->clienteId ? "h.cliente_id = ?" : "h.sessao_id = ?";
+        $param = $this->clienteId ?? $this->sessionKey;
+
+        if ($param === null || $param === '') return $cache = false;
+
+        $stmt = $this->db->prepare(
+            "SELECT 1 FROM historico_navegacao h
+             WHERE {$cond}
+               AND h.criado_em > DATE_SUB(NOW(), INTERVAL ? DAY)
+             LIMIT 1"
+        );
+        $stmt->execute([$param, self::JANELA_DIAS]);
+        return $cache = (bool)$stmt->fetchColumn();
+    }
+
     /** Retorna IDs do histórico por tipo (produto|categoria|marca|clip) */
     private function getHistoricoIds(string $tipo): array {
+        if (!$this->temHistorico()) return [];
+
         $cond  = $this->clienteId ? "h.cliente_id = ?" : "h.sessao_id = ?";
         $param = $this->clienteId ?? $this->sessionKey;
 
@@ -469,6 +502,8 @@ class PersonalizationService {
     }
 
     private function getBuscas(): array {
+        if (!$this->temHistorico()) return [];
+
         $cond  = $this->clienteId ? "h.cliente_id = ?" : "h.sessao_id = ?";
         $param = $this->clienteId ?? $this->sessionKey;
 

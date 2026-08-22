@@ -52,6 +52,43 @@ class Banner extends Model {
         return $stmt->fetchAll();
     }
 
+    /**
+     * Banners de VÁRIAS zonas numa query só, agrupados por chave de zona.
+     *
+     * A home do app precisa de 5 zonas de uma vez; chamar getByZona() em laço
+     * custaria 5 idas ao banco para trazer, no total, uma dúzia de linhas.
+     * Mantém a mesma ordenação e o mesmo filtro de agendamento.
+     *
+     * @param  string[] $chaves
+     * @return array<string, array<int,array>> ['home_hero' => [...], ...]
+     */
+    public function getByZonas(array $chaves): array {
+        $chaves = array_values(array_unique(array_filter(array_map('strval', $chaves))));
+        if (!$chaves) return [];
+
+        $in   = implode(',', array_fill(0, count($chaves), '?'));
+        $stmt = $this->db->prepare(
+            "SELECT b.*, z.chave AS zona_chave, z.formato, z.max_banners,
+                    z.largura_ideal, z.altura_ideal
+             FROM banners b
+             JOIN banner_zonas z ON z.id = b.zona_id
+             WHERE z.chave IN ({$in})
+               AND z.ativo = 1
+               AND b.ativo = 1
+               AND (b.data_inicio IS NULL OR b.data_inicio <= NOW())
+               AND (b.data_fim    IS NULL OR b.data_fim    >= NOW())
+             ORDER BY b.ordem ASC, b.id ASC"
+        );
+        $stmt->execute($chaves);
+
+        $porZona = array_fill_keys($chaves, []);
+        foreach ($stmt->fetchAll() as $row) {
+            $porZona[$row['zona_chave']][] = $row;
+        }
+
+        return array_filter($porZona);
+    }
+
     public function getZona(string $chave): ?array {
         $stmt = $this->db->prepare(
             "SELECT * FROM banner_zonas WHERE chave = ? LIMIT 1"

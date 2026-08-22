@@ -61,7 +61,7 @@ final class ConversionService
         ], $clienteId);
     }
 
-    public function addToCart(array $item, ?int $clienteId = null): void
+    public function addToCart(array $item, ?int $clienteId = null, ?string $eventId = null): void
     {
         $this->registrar(self::ADD_TO_CART, [
             'content_type' => 'product',
@@ -70,7 +70,7 @@ final class ConversionService
             'value'        => (float)($item['preco'] ?? 0) * (int)($item['quantidade'] ?? 1),
             'currency'     => 'BRL',
             'quantity'     => (int)($item['quantidade'] ?? 1),
-        ], $clienteId);
+        ], $clienteId, null, $eventId); // ← event_id do navegador
     }
 
     public function initiateCheckout(array $carrinho, ?int $clienteId = null): void
@@ -90,14 +90,20 @@ final class ConversionService
      */
     public function purchase(array $pedido, ?int $clienteId = null): void
     {
+        // event_id = código/id do pedido. ESTÁVEL nos 2 lados:
+        // o Pixel (página de sucesso) e o CAPI (webhook) usam o
+        // MESMO valor → a Meta deduplica. Prefixo 'order_' opcional,
+        // mas tem que ser IDÊNTICO ao que o Pixel usa (ver peça 5).
+        $orderId = (string)($pedido['codigo'] ?? $pedido['id'] ?? '');
+
         $this->registrar(self::PURCHASE, [
             'value'        => (float)($pedido['total'] ?? 0),
             'currency'     => 'BRL',
             'content_ids'  => $pedido['content_ids'] ?? [],
             'content_type' => 'product',
             'num_items'    => (int)($pedido['num_items'] ?? 0),
-            'order_id'     => (string)($pedido['id'] ?? ''),
-        ], $clienteId, $pedido['event_time'] ?? null);
+            'order_id'     => $orderId,
+        ], $clienteId, $pedido['event_time'] ?? null, $orderId); // ← event_id = orderId
     }
 
     public function search(string $termo, ?int $clienteId = null): void
@@ -162,7 +168,8 @@ final class ConversionService
         string $eventName,
         array $payload,
         ?int $clienteId = null,
-        ?string $eventTime = null
+        ?string $eventTime = null,
+        ?string $eventIdCustom = null
     ): void {
         try {
             $estado    = $this->consent->estadoAtual();
@@ -176,7 +183,7 @@ final class ConversionService
                 'user_agent' => mb_substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500),
             ];
 
-            $eventId = $this->uuidv4();
+            $eventId = $eventIdCustom ?: $this->uuidv4();
             $this->ultimoEventId = $eventId;
 
             $this->db->prepare(

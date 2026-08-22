@@ -7852,7 +7852,7 @@ input:checked + .cart-check-custom::after {
   display: grid; gap: 14px;
   margin: 24px 0;
 }
-.bn-grid--cols-2 { grid-template-columns: repeat(2, 1fr); font-size: ;}
+.bn-grid--cols-2 { grid-template-columns: repeat(2, 1fr);}
 .bn-grid--cols-3 { grid-template-columns: repeat(3, 1fr); }
 .bn-grid .bn-item {
   aspect-ratio: 16 / 9;

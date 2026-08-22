@@ -574,7 +574,7 @@ $(function () {
   const legadoMap      = PV.legado_map  || {};
   const selecoes       = {};
   let   skuAtual       = null;
-
+  console.log(PV);
   // ── Pré-seleciona variante da URL ────────────────────────
   if (PV.variant_pre) {
     const pre = PV.variant_pre;
@@ -584,15 +584,20 @@ $(function () {
       selecoes[tipo] = String(valor);
       const $btn = $(`.variation-swatch--variacao[data-tipo="${tipo}"][data-valor="${valor}"]`);
       $btn.addClass('active');
+      
       $(`#label-${tipo}`).text(valor);
     });
 
+    let sku_data = Object.values(selecoes);
+    let sku_id = (sku_data.length > 0) ? sku_data[0] : 0;
+
+    const sku_matriz   = PV.matriz[sku_id];
+
+    console.log();
+    
+
     // Atualiza UI com os dados já disponíveis
-    aplicarSkuNaUI({
-      preco_fmt  : pre.preco_fmt,
-      estoque    : pre.estoque,
-      sem_estoque: pre.sem_estoque,
-    });
+    aplicarSkuNaUI(sku_matriz);
   }
 
   // ── Clique em variação (tamanho, voltagem...) ────────────
@@ -629,6 +634,15 @@ $(function () {
   // ── Resolve SKU pela combinação atual ────────────────────
   
 
+  // Gera um UUID no navegador (mesmo formato do servidor)
+  function uuidv4() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      var r = Math.random() * 16 | 0;
+      var v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+
   // Handler unificado para adicionar ao carrinho da página de produto
   $(document).on('click', '#btn-comprar, .btn-add-cart-detail, #btn-buynow', function (e) {
       e.preventDefault();
@@ -636,16 +650,20 @@ $(function () {
       const $btn      = $(this);
       const isBuyNow  = $btn.is('#btn-buynow');   // Comprar agora → checkout
       const produtoId = parseInt($btn.data('product-id') || $btn.attr('data-product-id'));
+      const produtoName = $btn.parent().data('pro-name') || $btn.parent().attr('data-pro-name');
 
       // Lê o sku_id de ambas as fontes (jQuery data e atributo HTML)
-      const skuId     = parseInt($btn.data('sku-id') || $btn.attr('data-sku-id') || 0);
+      const skuId     = parseInt($btn.parent().data('sku-id') || $btn.parent().attr('data-sku-id') || 0);
 
-      console.log('[Comprar] produto_id:', produtoId, '| sku_id:', skuId);
+      console.log(skuId, $btn);
 
       if (!produtoId) return;
-
+      console.log(
+        PV
+      );
+      
       // Verifica se tem variações obrigatórias não selecionadas
-      if (typeof window.PV !== 'undefined' && PV.tipos_slug && PV.tipos_slug.length > 0) {
+      if (typeof window.PV !== 'undefined' && PV.tipos_slug && Object.keys(PV.tipos_slug).length > 0) {
           if (!skuId) {
               mostrarAviso('Selecione todas as opções antes de adicionar ao carrinho.');
               // Destaca os seletores sem seleção
@@ -673,11 +691,25 @@ $(function () {
       if (skuId > 0) {
           dados.sku_id = skuId;
       }
-
+      var eventId = uuidv4(); // ← gerado AQUI, vai pros 2 lados
       console.log('[Comprar] Enviando:', dados);
+
+      // 1. Dispara o Pixel IMEDIATAMENTE (no clique) com o eventId
+      if (window.smPixel) {
+        window.smPixel.track('AddToCart', {
+          content_type: 'product',
+          content_ids: [String(produtoId)],
+          content_name: produtoName || '',
+          value: (PV.preco || 0) * (dados.quantidade || 1),
+          currency: 'BRL'
+        }, eventId);
+      }
+
+      dados.event_id = eventId;
 
       $.post(BASE_URL + '/carrinho/adicionar', dados, function (res) {
           console.log('[Comprar] Resposta:', res);
+          
 
           $btn.prop('disabled', false).text('Adicionar ao carrinho');
 
@@ -700,6 +732,8 @@ $(function () {
           if (typeof showToast === 'function') {
               showToast('Produto adicionado ao carrinho!', 'success');
           }
+
+
 
       }, 'json').fail(function (xhr) {
           console.error('[Comprar] Erro:', xhr.status, xhr.responseText);
@@ -735,7 +769,9 @@ $(function () {
     // Botão de comprar
     const $btn = $('#btn-comprar, .btn-add-cart-detail, #btn-buynow').first();
     if (!$btn.length) return;
-
+    $btn.attr('title','teste')
+    console.log(sku);
+    
     if (sku.sem_estoque) {
         $btn.prop('disabled', true)
             .text('Sem estoque')
@@ -747,6 +783,9 @@ $(function () {
             .removeClass('btn-disabled')
             .addClass('btn-primary')
             .attr('data-sku-id', sku.sku_id)
+            .data('sku-id', sku.sku_id);
+
+        $btn.parent().attr('data-sku-id', sku.sku_id)
             .data('sku-id', sku.sku_id);
     }
   }
@@ -785,6 +824,8 @@ $(function () {
   }
 
   function atualizarURL(chave) {
+    
+    
       if (!window.history || !window.history.pushState) return;
 
       // Usa chave_map para pegar o identifier (id_legado ou sku_id)
@@ -820,6 +861,9 @@ $(function () {
 
       const chave = tiposOrdenados.map(t => selecoes[t]).join('|');
       const sku   = PV.matriz[chave];
+
+      console.log('chave -> '+chave);
+      
 
       if (!sku) {
           mostrarAviso('Combinação não disponível.');

@@ -134,10 +134,13 @@ class SearchController extends Controller {
 
         // ── CONVERSÃO: Search (Fase 1) ────────────────────
         // No controller (server-side) = mais preciso que via JS.
+        $searchEventId = null;
         try {
-            (new ConversionService())->search(mb_substr($q, 0, 120));
+            $conv = new ConversionService();
+            $conv->search(mb_substr($q, 0, 120));
+            $searchEventId = $conv->getUltimoEventId();
         } catch (\Throwable $e) {
-            LogService::error('[Search] Conversion tracking: ', [$e]);
+            error_log('[Search] Conversion: ' . $e->getMessage());
         }
 
         $this->render('products/catalog', array_merge($pag->toArray(), [
@@ -164,6 +167,9 @@ class SearchController extends Controller {
             'produtosCompativeis' => [],
             'mostrarVeiculoBar'   => false,
             'idsComClip'          => $idsComClip,
+
+            'searchEventId' => $searchEventId,
+            'searchTermo'   => $q,
         ]));
     }
 

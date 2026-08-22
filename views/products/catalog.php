@@ -612,4 +612,13 @@ $ordemAtual = $filters['ordem'] ?? 'relevancia';
 .filter-attr-list { padding-top:4px; }
 </style>
 
-<script src="<?= BASE_URL ?>/assets/js/catalog.js" defer></script>
+<?php if (!empty($searchEventId)): ?>
+<script>
+  (function () {
+    if (!window.smPixel) return;
+    window.smPixel.track('Search', {
+      search_string: <?= json_encode($searchTermo ?? '') ?>
+    }, <?= json_encode($searchEventId) ?>);
+  })();
+</script>
+<?php endif; ?>

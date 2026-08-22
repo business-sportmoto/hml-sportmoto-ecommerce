@@ -31,8 +31,10 @@ spl_autoload_register(function (string $class): void {
         ROOT_PATH . '/app/services/email/',
         ROOT_PATH . '/app/services/email/providers/',       
         ROOT_PATH . '/app/services/logistica/',
-        ROOT_PATH . '/app/services/logistica/transportadoras/', 
+        ROOT_PATH . '/app/services/logistica/transportadoras/',
         ROOT_PATH . '/app/services/conversion/',
+        ROOT_PATH . '/app/services/app/',
+        ROOT_PATH . '/app/presenters/',
     ];
     foreach ($paths as $path) {
         $file = $path . $class . '.php';
@@ -44,6 +46,17 @@ spl_autoload_register(function (string $class): void {
     // Descomente para debug temporário:
     // throw new RuntimeException("Classe '{$class}' não encontrada em: " . implode(', ', $paths));
 });
+
+// ── Short-circuit da API do app mobile ────────────────────────
+// Requests em /api/app/* não precisam de nada do bootstrap web (sessão com
+// cookie, remember-me, validação de sessão remota, query de marcasMenu,
+// View::share, CSRF) e não devem receber headers de CSP/X-Frame.
+// Sai daqui direto para AppRouter::dispatch().
+$__uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
+if (str_starts_with($__uri, '/api/app/')) {
+    require ROOT_PATH . '/config/api-app-bootstrap.php';
+    exit;
+}
 
 // Ativa headers de segurança
 SecurityHelper::setSecurityHeaders();

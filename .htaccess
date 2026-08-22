@@ -58,6 +58,11 @@ RewriteRule ^(config|core|app|storage|vendor)(/|$) - [F,L]
 RewriteCond %{REQUEST_FILENAME} -f
 RewriteRule ^pages/.+\.(css|js|png|jpg|jpeg|gif|webp|svg|ico|woff2|woff|ttf)$ - [L]
 
+# ── Header Authorization (API do app mobile) ──────────────────
+# Em FastCGI/CGI o Apache não repassa o header Authorization para o PHP.
+# Sem esta linha, o Bearer token do app some e toda chamada vira 401.
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
 # ── URL amigáveis ─────────────────────────────────────────────
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d

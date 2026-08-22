@@ -536,7 +536,7 @@ function swatchTipo(array $membro, string $atributoSlug): string {
         </div>
 
         <!-- ═══ AÇÕES (hooks: #btn-buynow / .btn-add-cart-detail / #aviso-*) ═══ -->
-        <div class="product-actions">
+        <div class="product-actions" data-pro-name="<?= $product['nome'] ?>">
           <?php if (!$semEstoque): ?>
           <button type="button" class="btn btn-primary btn-buynow" id="btn-buynow" data-product-id="<?= (int)$product['id'] ?>">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>

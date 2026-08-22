@@ -303,20 +303,24 @@ class CheckoutController extends Controller {
         // Cliente passou por identify+address e entra no pagamento
         // = sinal forte de intenção de compra. Dispara uma vez ao
         // abrir a etapa. À prova de falha.
-        try {
-            $itensCk   = $this->cartService->getItensComVariacoes($clienteId);
-            $subtotalCk = array_sum(array_map(
-                fn($i) => (float)($i['preco_unitario'] ?? $i['preco'] ?? 0) * (int)($i['quantidade'] ?? 1),
-                $itensCk
-            ));
-            $contentIdsCk = array_map(fn($i) => (string)($i['produto_id'] ?? ''), $itensCk);
-            $numItemsCk   = array_sum(array_map(fn($i) => (int)($i['quantidade'] ?? 1), $itensCk));
+        $checkoutEventId = null;
+        $itensCk   = $this->cartService->getItensComVariacoes($clienteId);
+        $subtotalCk = array_sum(array_map(
+            fn($i) => (float)($i['preco_unitario'] ?? $i['preco'] ?? 0) * (int)($i['quantidade'] ?? 1),
+            $itensCk
+        ));
+        $contentIdsCk = array_map(fn($i) => (string)($i['produto_id'] ?? ''), $itensCk);
+        $numItemsCk   = array_sum(array_map(fn($i) => (int)($i['quantidade'] ?? 1), $itensCk));
 
-            (new ConversionService())->initiateCheckout([
+        try {
+            $conv = new ConversionService();
+            $conv->initiateCheckout([
                 'total'       => $subtotalCk,
                 'num_items'   => $numItemsCk,
                 'content_ids' => $contentIdsCk,
             ], $clienteId);
+            $checkoutEventId = $conv->getUltimoEventId(); // ← o X
+
         } catch (\Throwable $e) {
             LogService::error('ConversionService -> initiateCheckout', [$e]);
         }
@@ -331,6 +335,11 @@ class CheckoutController extends Controller {
             'freteAtual'    => $this->state->getFrete(),
             'cupomAtual'    => $this->state->getCupom(),
             'maxParcelas'   => 12,
+
+            'checkoutEventId' => $checkoutEventId,
+            'checkoutValue'   => $subtotalCk,
+            'checkoutNumItems'=> $numItemsCk,
+            'checkoutContentIds' => $contentIdsCk,
         ]);
     }
 
@@ -1637,7 +1646,7 @@ class CheckoutController extends Controller {
         $promocaoService    = new PromocaoService();
         $itensCupom         = $itensCupom ?? $cart->getItensParaCupom($clienteId); // reusa se já buscou
         $primeiraCompra     = !isset($primeiraCompra)
-            ? ((new Customer())->getPedidosCount($clienteId) === 0)
+            ? ((new Customer())->getStatusCounts($clienteId) === 0)
             : $primeiraCompra;
 
         $contextoPromo = [
@@ -2106,6 +2115,25 @@ class CheckoutController extends Controller {
 
         $order = new Order();
         $itens = $order->getItemsWithVariacoes($pedido['id']);
+
+        // ── Dados pro Pixel de Purchase (dedup com o CAPI) ────
+        // event_id = codigo (MESMO do CAPI). Só monta se o pedido
+        // está PAGO — não dispara Purchase de pedido não aprovado.
+        $purchasePixel = null;
+        if (($pedido['status_pagamento'] ?? '') === 'aprovado') {
+            $contentIds = [];
+            $numItems   = 0;
+            foreach ($itens as $it) {
+                $contentIds[] = (string)($it['produto_id'] ?? '');
+                $numItems    += (int)($it['quantidade'] ?? 1);
+            }
+            $purchasePixel = [
+                'event_id'    => (string)$pedido['codigo'],   // = CAPI
+                'value'       => (float)($pedido['total'] ?? 0),
+                'num_items'   => $numItems,
+                'content_ids' => $contentIds,
+            ];
+        }
     
         // Cupom utilizado (se houver)
         $cupom = null;
@@ -2135,6 +2163,7 @@ class CheckoutController extends Controller {
             'cupom'     => $cupom,
             'pixDados'  => $pixDados,
             'etapaAtual'=> 'success',
+            'purchasePixel' => $purchasePixel,
         ]);
     }
 

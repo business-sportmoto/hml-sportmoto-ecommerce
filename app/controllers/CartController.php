@@ -182,6 +182,7 @@ class CartController extends Controller {
         // ── CONVERSÃO: AddToCart (Fase 1) ─────────────────────
         // Após a adição confirmada (item novo OU soma no existente).
         // À prova de falha: tracking não quebra a adição ao carrinho.
+        $atcEventId = null;
         try {
             // Garante que temos os dados do produto nos dois caminhos
             // (no caminho "existente", $product não foi carregado)
@@ -192,20 +193,25 @@ class CartController extends Controller {
                 $preco = PriceHelper::currentPrice($product);
             }
 
-            (new ConversionService())->addToCart([
+            $raw = $_POST['event_id'] ?? '';
+            $atcEventId = preg_match('/^[a-f0-9\-]{36}$/i', $raw) ? $raw : null;
+
+            $conv = new ConversionService();
+            $conv->addToCart([
                 'produto_id' => $produtoId,
                 'nome'       => $product['nome'] ?? '',
                 'preco'      => (float)$preco,
                 'quantidade' => $quantidade,
-            ]);
+            ], null, $atcEventId); // ← passa o event_id do navegador
         } catch (\Throwable $e) {
-            error_log('[Cart] AddToCart tracking: ' . $e->getMessage());
+            LogService::audit('[Cart] AddToCart tracking: ' . $e->getMessage(), [$e]);
         }
 
         $this->json([
             'ok'    => true,
             'msg'   => 'Produto adicionado ao carrinho!',
             'count' => $count,
+            'atc_event_id' => $atcEventId, // devolve p/ confirmar (opcional)
         ]);
     }
 
@@ -317,10 +323,28 @@ class CartController extends Controller {
         $count = (int)$stmt->fetchColumn();
         Session::set('carrinho_count', $count);
 
+        $atcEventId = null;
+        try {
+            // event_id gerado no navegador (formato UUID). Valida:
+            $raw = $_POST['event_id'] ?? '';
+            $atcEventId = preg_match('/^[a-f0-9\-]{36}$/i', $raw) ? $raw : null;
+
+            $conv = new ConversionService();
+            $conv->addToCart([
+                'produto_id' => $produtoId,
+                'nome'       => $produto['nome'] ?? '',
+                'preco'      => (float)$preco,
+                'quantidade' => $quantidade,
+            ], null, $atcEventId); // ← passa o event_id do navegador
+        } catch (\Throwable $e) {
+            error_log('[Cart] AddToCart: ' . $e->getMessage());
+        }
+
         $this->json([
             'ok'    => true,
             'msg'   => 'Produto adicionado ao carrinho!',
             'count' => $count,
+            'atc_event_id' => $atcEventId, // devolve p/ confirmar (opcional)
         ]);
     }
 
