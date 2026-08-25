@@ -41,6 +41,27 @@ final class DestinoPresenter
         $segmentos = array_values(array_filter(explode('/', $caminho)));
         $primeiro  = $segmentos[0] ?? '';
         $segundo   = $segmentos[1] ?? null;
+        $terceiro  = $segmentos[2] ?? null;
+
+        // Notificação de pedido aponta para /minha-conta/pedidos/{codigo}. Sem
+        // este caso a notificação mais comum da loja abriria em WebView, com o
+        // cliente logado no app e deslogado na página.
+        if ($primeiro === 'minha-conta') {
+            $destino = match ($segundo) {
+                'pedidos'    => $terceiro
+                    ? ['tipo' => 'pedido',     'params' => ['codigo' => $terceiro]]
+                    : ['tipo' => 'pedidos',    'params' => []],
+                'devolucoes' => ['tipo' => 'devolucoes', 'params' => []],
+                'favoritos'  => ['tipo' => 'favoritos',  'params' => []],
+                'garagem'    => ['tipo' => 'garagem',    'params' => []],
+                default      => null,
+            };
+
+            if ($destino) {
+                $destino['url'] = $base . $caminho;
+                return $destino;
+            }
+        }
 
         $destino = match ($primeiro) {
             'produto'   => $segundo ? ['tipo' => 'produto',   'params' => ['slug' => $segundo]] : null,

@@ -4682,7 +4682,12 @@ to{opacity:1;transform:translateY(0) scale(1)}
 .input-password-wrapper .form-control--lg{padding-right:46px}
 .toggle-password{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:9px;background:transparent;color:#7b8798;cursor:pointer;transition:background .18s ease,color .18s ease}
 .toggle-password:hover{background:#eef4fb;color:var(--auth-primary)}
-.field-error{display:block;margin-top:0px;color:#dc2626;font-size:0px;font-weight:700}
+/* Mensagem de erro por campo (login, código, 2FA, cadastro).
+   Estava com font-size:0px — o JS preenchia o texto e o cliente não via
+   NADA: código errado parecia "não aconteceu nada". :empty mantém o
+   espaçamento zerado enquanto não há mensagem, sem deslocar o layout. */
+.field-error{display:block;margin-top:6px;color:#dc2626;font-size:12.5px;font-weight:700;line-height:1.35}
+.field-error:empty{display:none;margin-top:0}
 .form-label-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px}
 .auth-forgot{color:var(--auth-primary);font-size:12px;font-weight:800;text-decoration:none}
 .auth-forgot:hover{color:var(--auth-primary-dark);text-decoration:underline}

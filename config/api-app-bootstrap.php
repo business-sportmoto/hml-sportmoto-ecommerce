@@ -74,16 +74,48 @@ ini_set('session.gc_maxlifetime', 2592000); // 30 dias (o handler manda, mas ali
 
 session_set_save_handler(new AppSessionHandler(), true);
 
+// ── Nenhum aviso do PHP no corpo da resposta ────────────────────────────────
+// Com display_errors ligado (o padrão em dev), um simples "Undefined array
+// key" imprime HTML ANTES do JSON e quebra o parse no cliente — a tela mostra
+// erro de conexão por causa de um aviso que nem era fatal.
+//
+// Os avisos continuam sendo capturados: o handler abaixo os manda para o
+// LogService, onde aparecem no painel de saúde com arquivo e linha. Silenciar
+// no corpo não é esconder o problema; é não corromper a resposta com ele.
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+error_reporting(E_ALL);
+
+set_error_handler(static function (int $nivel, string $msg, string $arquivo = '', int $linha = 0): bool {
+    // Respeita @ e qualquer supressão configurada.
+    if (!(error_reporting() & $nivel)) {
+        return false;
+    }
+
+    if (class_exists('AppLog')) {
+        $severidade = in_array($nivel, [E_WARNING, E_USER_WARNING, E_DEPRECATED, E_USER_DEPRECATED], true)
+            ? 'warning'
+            : 'error';
+
+        AppLog::{$severidade}('PHP: ' . $msg, [
+            'arquivo' => $arquivo . ':' . $linha,
+            'rota'    => $_SERVER['REQUEST_URI'] ?? '',
+        ]);
+    }
+
+    // true = tratado; o PHP não imprime nada.
+    return true;
+});
+
 // ── Erros ───────────────────────────────────────────────────────────────────
 // Sem isto, uma exceção não tratada devolveria HTML (ou página em branco) para
 // um cliente que só sabe interpretar JSON.
 set_exception_handler(function (\Throwable $e): void {
-    if (class_exists('LogService')) {
-        LogService::error('Exceção não tratada na API do app', [
-            'erro'    => $e->getMessage(),
-            'arquivo' => $e->getFile() . ':' . $e->getLine(),
-            'rota'    => $_SERVER['REQUEST_URI'] ?? '',
-        ]);
+    if (class_exists('AppLog')) {
+        // exception() grava tipo, arquivo, linha e trace redigido — é o que
+        // transforma um 500 mudo num log com pista. O contexto do dispositivo
+        // já foi instalado pelo AppApiController quando havia token.
+        AppLog::exception($e, ['rota' => $_SERVER['REQUEST_URI'] ?? ''], 'critical');
     }
 
     if (!headers_sent()) {

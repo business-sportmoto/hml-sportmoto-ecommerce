@@ -837,7 +837,18 @@ class Cart extends Model {
                 p.nome,
                 p.slug,
                 pi.arquivo     AS imagem_principal,
-                COALESCE(NULLIF(s.preco_promo, 0), s.preco) AS valor_unitario,
+                -- O preço CONGELADO no carrinho vem primeiro: é o que o cliente
+                -- viu e aceitou, e é o que a tela do carrinho mostra. Os
+                -- seguintes são rede de segurança para linhas antigas.
+                --
+                -- Antes começava em `s.preco_promo`, e o LEFT JOIN devolvia NULL
+                -- para item sem sku_id — o checkout somava R$ 0,00 e o pedido
+                -- saía de graça, enquanto o carrinho exibia o preço certo.
+                COALESCE(
+                    NULLIF(ci.preco_unitario, 0),
+                    NULLIF(s.preco_promo, 0), s.preco,
+                    NULLIF(p.preco_promo, 0), p.preco
+                ) AS valor_unitario,
                 p.preco AS preco_master,
                 s.id        AS sku_id_pro,
                 s.sku       AS sku_codigo,
@@ -888,7 +899,18 @@ class Cart extends Model {
                 p.nome,
                 p.slug,
                 pi.arquivo     AS imagem_principal,
-                COALESCE(NULLIF(s.preco_promo, 0), s.preco) AS valor_unitario,
+                -- O preço CONGELADO no carrinho vem primeiro: é o que o cliente
+                -- viu e aceitou, e é o que a tela do carrinho mostra. Os
+                -- seguintes são rede de segurança para linhas antigas.
+                --
+                -- Antes começava em `s.preco_promo`, e o LEFT JOIN devolvia NULL
+                -- para item sem sku_id — o checkout somava R$ 0,00 e o pedido
+                -- saía de graça, enquanto o carrinho exibia o preço certo.
+                COALESCE(
+                    NULLIF(ci.preco_unitario, 0),
+                    NULLIF(s.preco_promo, 0), s.preco,
+                    NULLIF(p.preco_promo, 0), p.preco
+                ) AS valor_unitario,
                 p.preco AS preco_master,
                 s.id        AS sku_id_pro,
                 s.sku       AS sku_codigo,

@@ -45,6 +45,7 @@ class AppHomeController extends AppApiController
             'clips_destaque' => $this->clipsDestaque($ctx),
             'veiculo_ativo'  => $this->veiculoAtivo($ctx),
             'categorias'     => $this->categorias($ctx),
+            'menu'           => $this->menu($ctx),
         ]);
     }
 
@@ -173,11 +174,38 @@ class AppHomeController extends AppApiController
     private function categorias(PresenterContext $ctx): array
     {
         try {
-            $rows = (new Category())->getActive();
+            // Mesma chamada de HomeController::index(): destaque = 1, sem
+            // filtro de parent. É a grade de categorias da home, não o menu.
+            $rows = (new Category())->getActive(0, true, true);
         } catch (\Throwable $e) {
             return [];
         }
 
         return CategoriaPresenter::colecao($rows, $ctx);
+    }
+
+    /**
+     * O menu de navegação — a árvore completa de categorias, a mesma que a web
+     * monta em views/layouts/main.php para o header.
+     *
+     * Reusa a chave de cache `menu_categorias` DE PROPÓSITO: o admin já a
+     * invalida ao salvar uma categoria (CategoriasController:118,132), então
+     * app e site trocam o menu no mesmo instante. Uma chave própria significaria
+     * o app exibindo uma categoria excluída por até uma hora.
+     */
+    private function menu(PresenterContext $ctx): array
+    {
+        try {
+            $arvore = CacheHelper::get('menu_categorias');
+            if (!$arvore) {
+                $arvore = (new Category())->getNavTree();
+                CacheHelper::set('menu_categorias', $arvore, 3600);
+            }
+        } catch (\Throwable $e) {
+            AppLog::exception($e, ['acao' => 'menu_home']);
+            return [];
+        }
+
+        return CategoriaPresenter::arvore($arvore, $ctx);
     }
 }

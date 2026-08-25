@@ -296,6 +296,25 @@ class AppCatalogoController extends AppApiController
             if (!empty($v['ano']))       { $f['ano']       = (int)$v['ano']; }
         }
 
+        // Moto EXPLÍCITA na query — a busca por moto da home.
+        //
+        // Deliberadamente separado de `apenas_compativel`: aquele usa a moto
+        // ATIVA da sessão; este consulta uma moto qualquer sem tocar na
+        // sessão. É o equivalente do /montadora/{slug}/{modelo}-{ano} da web,
+        // onde olhar peça da moto de um amigo não troca a sua moto ativa.
+        //
+        // Vem DEPOIS por decisão: se as duas chegarem juntas, a moto explícita
+        // é a que o usuário acabou de escolher na tela e deve vencer.
+        if ($montadora = (int)$this->query('montadora_id', 0)) {
+            $f['montadora_id'] = $montadora;
+
+            // Modelo e ano só entram acompanhados da montadora: um modelo_id
+            // solto filtraria por um id de outra montadora sem que nada na
+            // tela indicasse isso.
+            if ($modelo = (int)$this->query('modelo_id', 0)) { $f['modelo_id'] = $modelo; }
+            if ($ano    = (int)$this->query('ano', 0))       { $f['ano']       = $ano; }
+        }
+
         return $f;
     }
 

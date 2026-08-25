@@ -220,14 +220,11 @@ class AppTokenService
             return ['ok' => false, 'erro' => 'reuso_detectado'];
         }
 
-        $novos = $this->emitirPar(
-            (int)$linha['dispositivo_id'],
-            $linha['usuario_id'] !== null ? (int)$linha['usuario_id'] : null,
-            $linha['cliente_id'] !== null ? (int)$linha['cliente_id'] : null,
-            (string)$linha['familia']
-        );
-
-        // Marca o refresh consumido e revoga o access antigo da mesma família.
+        // ── A ORDEM AQUI É O QUE IMPORTA ────────────────────────────────
+        // Revogar ANTES de emitir. Na ordem inversa, o UPDATE que apaga "todo
+        // access da família ainda não revogado" alcançava também o access
+        // recém-criado — cada refresh matava o próprio token que acabara de
+        // entregar, e o app entrava em laço de 401.
         try {
             $this->pdo->prepare(
                 "UPDATE app_tokens
@@ -242,7 +239,15 @@ class AppTokenService
             )->execute([':f' => (string)$linha['familia']]);
         } catch (\Throwable $e) {
             LogService::error('Falha ao rotacionar refresh token', ['erro' => $e->getMessage()]);
+            return ['ok' => false, 'erro' => 'falha_rotacao'];
         }
+
+        $novos = $this->emitirPar(
+            (int)$linha['dispositivo_id'],
+            $linha['usuario_id'] !== null ? (int)$linha['usuario_id'] : null,
+            $linha['cliente_id'] !== null ? (int)$linha['cliente_id'] : null,
+            (string)$linha['familia']
+        );
 
         return ['ok' => true, 'tokens' => $novos, 'dispositivo_id' => (int)$linha['dispositivo_id']];
     }

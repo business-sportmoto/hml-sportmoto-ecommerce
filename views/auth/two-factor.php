@@ -1,5 +1,13 @@
 <?php // views/auth/two-factor.php
 // Recebe $canais do controller: ['email'=>[...], 'whatsapp'=>[...], 'sms'=>[...]]
+// e $canalEscolhido: canal já confirmado nesta sessão (string vazia = nenhum).
+//
+// Quando há canal escolhido a tela abre DIRETO na etapa do código. É isso que
+// faz um recarregamento (ou o redirect de "código inválido" sem Ajax) cair no
+// campo do código com o erro visível, em vez de voltar à lista de canais.
+$canalEscolhido = $canalEscolhido ?? '';
+$retomando      = $canalEscolhido !== '' && isset($canais[$canalEscolhido]);
+
 $canalIcons = [
     'totp'     => '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="6" x2="12" y2="9"/>',
     'email'    => '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>',
@@ -34,13 +42,15 @@ $canalIcons = [
             <?= View::e($config['nome'] ?? ConfigHelper::get('site_nome', 'SportMoto')) ?>
           </a>
           <h1 class="auth-title">Verificação em duas etapas</h1>
-          <p class="auth-sub" id="2fa-subtitle">Como prefere receber seu código de verificação?</p>
+          <p class="auth-sub" id="2fa-subtitle"><?= $retomando
+                ? 'Digite o código de 6 dígitos para continuar.'
+                : 'Como prefere receber seu código de verificação?' ?></p>
         </div>
 
         <?php View::partial('partials/flash-message') ?>
 
         <!-- ── ETAPA A: escolha do canal ──────────────────── -->
-        <div id="2fa-step-canal">
+        <div id="2fa-step-canal"<?= $retomando ? ' style="display:none;"' : '' ?>>
           <div class="twofa-channels">
             <?php foreach ($canais as $key => $canal): ?>
             <button type="button"
@@ -73,17 +83,33 @@ $canalIcons = [
         </div>
 
         <!-- ── ETAPA B: digitar o código ──────────────────── -->
-        <div id="2fa-step-codigo" style="display:none;">
-          <div class="twofa-sent-banner" id="2fa-sent-banner"></div>
+        <div id="2fa-step-codigo"<?= $retomando ? '' : ' style="display:none;"' ?>
+             data-canal="<?= View::e($canalEscolhido) ?>">
+          <div class="twofa-sent-banner" id="2fa-sent-banner"<?= $retomando ? '' : ' style="display:none;"' ?>>
+            <?php if ($retomando): ?>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <?= $canalEscolhido === 'totp'
+                    ? 'Digite o código do seu app autenticador.'
+                    : 'Código enviado por ' . View::e($canais[$canalEscolhido]['label']) . '.' ?>
+              <strong><?= View::e($canais[$canalEscolhido]['destino'] ?? '') ?></strong>
+            <?php endif; ?>
+          </div>
 
           <form id="form-2fa" class="auth-form" novalidate>
             <?= SecurityHelper::csrfField() ?>
             <div class="form-group">
               <label for="code">Código de verificação</label>
+              <!-- maxlength 9 porque este mesmo campo recebe também o
+                   código de backup no formato XXXX-XXXX. Com 6 era
+                   impossível digitá-lo, e o backup é a única saída de
+                   quem perdeu o celular. O formato é validado no JS. -->
               <input type="text" id="code" name="code"
                      class="form-control form-control--lg otp-input"
-                     placeholder="000000" maxlength="6" inputmode="numeric"
-                     pattern="[0-9]{6}" autocomplete="one-time-code">
+                     placeholder="<?= $canalEscolhido === 'totp' ? '000000 ou XXXX-XXXX' : '000000' ?>"
+                     maxlength="9"
+                     inputmode="<?= $canalEscolhido === 'totp' ? 'text' : 'numeric' ?>"
+                     autocomplete="one-time-code" autofocus>
               <span class="field-error" id="err-code"></span>
             </div>
             <button type="submit" class="btn btn-primary btn-full auth-btn">
@@ -93,7 +119,9 @@ $canalIcons = [
           </form>
 
           <div class="twofa-actions">
-            <button type="button" class="auth-reenviar" id="btn-2fa-reenviar">Reenviar código</button>
+            <!-- TOTP não tem o que reenviar: o código nasce no app do cliente. -->
+            <button type="button" class="auth-reenviar" id="btn-2fa-reenviar"<?=
+                $canalEscolhido === 'totp' ? ' style="display:none;"' : '' ?>>Reenviar código</button>
             <span class="twofa-sep">·</span>
             <button type="button" class="auth-reenviar" id="btn-2fa-trocar">Trocar método</button>
           </div>

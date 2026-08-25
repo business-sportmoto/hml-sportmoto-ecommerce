@@ -1,0 +1,11 @@
+{
+  "titulo":       "Políticas de privacidade",
+  "descricao":    "Conheça nossa história, valores e equipe.",
+  "keywords":     "sobre nós, história, empresa",
+  "layout":       "main",
+  "ativa":        true,
+  "no_menu":      true,
+  "menu_label":   "Políticas de privacidade",
+  "menu_ordem":   5,
+  "breadcrumb":   false
+}

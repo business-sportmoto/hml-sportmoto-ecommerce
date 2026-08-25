@@ -1560,7 +1560,13 @@ class CheckoutController extends Controller {
     //     ]);
     // }
 
-    private function process(): void {
+    /**
+     * `protected`, e não `private`, para que o app possa reusar exatamente
+     * este fluxo de criação de pedido em vez de reimplementá-lo — ver
+     * app/services/app/AppCheckoutRunner.php. Continua sem ser rota: só
+     * finalize() (web) e o runner (app) chegam aqui.
+     */
+    protected function process(): void {
 
         $creditoService = new CreditoService();
     
@@ -1600,96 +1606,48 @@ class CheckoutController extends Controller {
             $this->json(['ok' => false, 'msg' => 'Endereço de entrega inválido.']);
         }
     
-        // 3. Recalcula totais server-side
-        $subtotal    = (float)array_sum(array_map(
-            fn($i) => (float)$i['valor_unitario'] * (int)$i['quantidade'],
-            $itens
-        ));
-        $freteValor  = (float)($freteData['valor'] ?? 0);
-        $desconto    = 0.0;
-        $freteDesc   = 0.0;
-        $cupomUsoId  = null;
-        $cupomId     = null;
-    
-        // 4. Revalida e reserva cupom
-        if (!empty($cupomSessao['codigo']) && !empty($cupomSessao['cupom_id'])) {
-            $couponService = new CouponService();
-            $itensCupom    = $cart->getItensParaCupom($clienteId);
+        // 3-5. Totais, cupom, promoções e crédito — CheckoutTotais é a fonte
+        // única. Este bloco vivia aqui dentro; foi extraído para que o app
+        // calcule pelo mesmo caminho e os dois nunca divirjam. Ver
+        // app/services/CheckoutTotais.php.
+        $freteValor = (float)($freteData['valor'] ?? 0);
+        $itensCupom = $cart->getItensParaCupom($clienteId);
+        $cupomUsoId = null;
 
-            // Revalida server-side — o cliente pode ter alterado o carrinho
-            // entre aplicar o cupom e finalizar (race condition entre sessões).
-            $resultCupom = $couponService->validar(
-                $cupomSessao['codigo'], $itensCupom, $subtotal, $freteValor,
-                $clienteId, ['origem' => 'finalize']
-            );
-
-            if ($resultCupom['ok']) {
-                // Usa os descontos recalculados (não confia no valor da sessão
-                // — pode ter mudado se o carrinho foi alterado após aplicar).
-                $desconto  = $resultCupom['desconto'];
-                $freteDesc = $resultCupom['frete_desconto'];
-                $cupomId   = (int)$cupomSessao['cupom_id']; // já resolvido — sem query extra
-            } else {
-                // Cupom ficou inválido entre aplicar e finalizar — remove
-                // da sessão e continua sem desconto (não cancela o pedido).
-                Session::remove('cupom_aplicado');
-                $this->state->removerCupom();
-                error_log("[process] cupom {$cupomSessao['codigo']} inválido na finalização: " . $resultCupom['msg']);
-            }
-        }
-    
-        $freteValorFinal = max(0, $freteValor - $freteDesc);
-
-        // 5. Avalia promoções automáticas
-        // Roda após o cupom — respeita a flag acumula_cupom de cada promoção.
-        // Promoções que não acumulam com cupom são ignoradas se houver cupom ativo.
-        $promocaoService    = new PromocaoService();
-        $itensCupom         = $itensCupom ?? $cart->getItensParaCupom($clienteId); // reusa se já buscou
-        $primeiraCompra     = !isset($primeiraCompra)
-            ? ((new Customer())->getStatusCounts($clienteId) === 0)
-            : $primeiraCompra;
-
-        $contextoPromo = [
-            'primeira_compra' => $primeiraCompra,
+        $conta = CheckoutTotais::calcular([
+            'cliente_id'      => $clienteId,
+            'usuario_id'      => $u_data['usuario_id'] ?? null,
+            'itens'           => $itens,
+            'itens_cupom'     => $itensCupom,
+            'frete_valor'     => $freteValor,
+            'cupom'           => $cupomSessao,
+            'credito'         => (float)Session::get('checkout_credito', 0),
+            'primeira_compra' => null,
             'score'           => (int)(Session::get('cliente_score') ?? 0),
-            'tem_cupom'       => $cupomId !== null,
-        ];
+            'origem'          => 'finalize',
+        ]);
 
-        $resultadosPromo = $promocaoService->avaliarCarrinho(
-            $itensCupom, $subtotal, $freteValorFinal, $clienteId, $contextoPromo
-        );
-
-        // Filtra promoções que não acumulam com cupom quando há cupom ativo
-        if ($cupomId !== null) {
-            $resultadosPromo = array_filter(
-                $resultadosPromo,
-                function ($r) {
-                    $promo = (new Promocao())->findById($r['promocao_id']);
-                    return (bool)($promo['acumula_cupom'] ?? false);
-                }
-            );
-            $resultadosPromo = array_values($resultadosPromo);
+        // Cupom que caiu entre aplicar e finalizar sai da sessão, mas não
+        // cancela o pedido — o cliente termina a compra sem o desconto.
+        if ($conta['cupom_erro'] !== null) {
+            Session::remove('cupom_aplicado');
+            $this->state->removerCupom();
+            error_log("[process] cupom {$cupomSessao['codigo']} inválido na finalização: " . $conta['cupom_erro']);
         }
 
-        $totaisPromo      = $promocaoService->calcularTotais($resultadosPromo);
-        $descontoPromo    = $totaisPromo['desconto_produto'];
-        $freteDescPromo   = $totaisPromo['desconto_frete'];
-        $brindes          = $totaisPromo['brindes'];
+        $subtotal        = $conta['subtotal'];
+        $desconto        = $conta['desconto_cupom'];
+        $freteDesc       = $conta['frete_desconto_cupom'];
+        $cupomId         = $conta['cupom_id'];
+        $resultadosPromo = $conta['resultados_promocao'];
+        $brindes         = $conta['brindes'];
+        $promocaoService = new PromocaoService();
 
-        // Brinde entra como pedido_itens com valor real (subtotal sobe),
-        // mas desconto_produto já inclui o preço do brinde (líquido = R$0).
-        // Ex: subtotal R$300 + brinde R$50 = R$350 subtotal, R$50 desconto a mais → total R$300.
-        $subtotalBrinde = (float)array_sum(array_map(
-            fn($b) => $b['preco'] * $b['quantidade'],
-            $brindes
-        ));
+        $descontoTotal   = $conta['desconto_total'];
+        $freteValorFinal = $conta['frete_final'];
+        $subtotalPedido  = $conta['subtotal_pedido'];
+        $total           = $conta['total'];
 
-        // Desconto total = cupom + promoções (inclui preço do brinde)
-        $descontoTotal    = $desconto + $descontoPromo;
-        $freteDescTotal   = $freteDesc + $freteDescPromo;
-        $freteValorFinal  = max(0, $freteValor - $freteDescTotal);
-        $subtotalPedido   = $subtotal + $subtotalBrinde;
-        $total            = max(0, round($subtotalPedido - $descontoTotal + $freteValorFinal, 2));
         // $codigo          = strtoupper(substr(md5(uniqid((string)$clienteId, true)), 0, 8));
         $codigo = $this->gerarProximoCodigoCliente();
     
@@ -1862,9 +1820,13 @@ class CheckoutController extends Controller {
         $boletoLinhaDig   = null;
         $boletoVencimento = null;        
 
-        // APÓS commit — debita o crédito (fora da transação do pedido)
-        $creditoAplicado = (float)Session::get('checkout_credito', 0);
- 
+        // APÓS commit — debita o crédito (fora da transação do pedido).
+        //
+        // O valor vem de CheckoutTotais, não da sessão: lá ele já foi limitado
+        // ao saldo real E ao total do pedido. Antes, o que a sessão dissesse
+        // era debitado inteiro.
+        $creditoAplicado = $conta['credito_usado'];
+
         // Double-check antes de debitar (saldo pode ter mudado)
         if ($creditoAplicado > 0) {
             $creditoService = new CreditoService();
@@ -1887,13 +1849,32 @@ class CheckoutController extends Controller {
         $msg_credito_after_aprove = ($creditoAplicado > 0) ? 'Você aplicou um crédito de R$ ' . number_format($creditoAplicado, 2, ',', '.') . ' nesta compra. Se a compra não for aprovada, o crédito voltará para sua conta.' : '';
         $this->service->mudarStatus($pedidoId, 'aguardando_pagamento', 'Pedido criado com sucesso.' . $msg_credito_after_aprove, 0, false);
     
+        // O gateway cobra o que SOBRA depois do crédito.
+        //
+        // Antes, `valor_centavos` era o total cheio enquanto o crédito era
+        // debitado do saldo — o cliente pagava duas vezes a parte coberta. O
+        // pedido continua registrando `total` bruto (para o relatório fechar
+        // com subtotal - desconto + frete) e `credito_utilizado` à parte.
+        $aPagar = $conta['a_pagar'];
+
+        // Crédito cobriu tudo: não existe cobrança de R$ 0,00 para fazer. O
+        // gateway recusaria, e o pedido ficaria eternamente "aguardando
+        // pagamento" por uma compra que já está paga.
+        if ($aPagar <= 0 && $total > 0) {
+            $statusPagamento = 'aprovado';
+            $gatewayChargeId = null;
+            $gatewayResposta = json_encode(
+                ['origem' => 'credito_interno', 'credito' => $creditoAplicado],
+                JSON_UNESCAPED_UNICODE
+            );
+        } else {
         try {
             $paymentSvc = new PaymentService();
 
             // Resolve token do cartão
             $tokenCartao = null;
             $isCardId    = false;  // true = cardId permanente, false = tokenId efêmero
-            
+
             if ($metodo === 'cartao') {
                 if ($cartaoSalvoId) {
                     $tokenCartao = $this->buscarTokenCartao($db, (int)$cartaoSalvoId);
@@ -1912,7 +1893,7 @@ class CheckoutController extends Controller {
                 'pedido_id'      => $pedidoId,
                 'order_id_loja'  => $codigo,
                 'cliente_id'     => $clienteId,
-                'valor_centavos' => (int) round($total * 100),
+                'valor_centavos' => (int) round($aPagar * 100),
                 'metodo'         => $metodo,
                 'parcelas'       => $parcelas,
                 'token_cartao'   => $tokenCartao,
@@ -1938,9 +1919,10 @@ class CheckoutController extends Controller {
             LogService::error('PaymentService -> '.$e->getMessage().' - line:'.$e->getLine().' - file:'.$e->getFile());
             error_log('[process] gateway: ' . $e->getMessage());
             // Não derruba o pedido — fica pendente, webhook pode confirmar depois
-            $statusPagamento = 'pendente';            
+            $statusPagamento = 'pendente';
         }
-    
+        } // fim do else: houve valor a cobrar do gateway
+
         // 7. Atualiza status do pedido
         $statusPedidoMap = [
             'aprovado'       => 'pagamento_aprovado',
@@ -2012,7 +1994,15 @@ class CheckoutController extends Controller {
         Session::remove('checkout_cartao_id');
         Session::remove('checkout_payment_method');
         Session::remove('cupom_aplicado');
-        $cart->clear($clienteId);
+
+        // Cart::clear() recebe o ID DO CARRINHO. Aqui vinha `$clienteId`, o que
+        // esvaziava o carrinho cujo *id* calhava de ser igual ao id do cliente
+        // — quase sempre de OUTRA pessoa — e deixava o do comprador cheio. Com
+        // o cliente 60, por exemplo, o alvo era o carrinho 60, do cliente 2.
+        $carrinhoDoCliente = $cart->getCarrinhoId(false);
+        if ($carrinhoDoCliente) {
+            $cart->clear($carrinhoDoCliente);
+        }
         
         
         // 10. Responde

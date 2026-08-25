@@ -23,7 +23,13 @@ class Session {
             'lifetime' => 0,                // expira ao fechar o browser (sessão normal)
             'path'     => '/',
             'domain'   => '',
-            'secure'   => isset($_SERVER['HTTPS']), // HTTPS em produção
+            // isset($_SERVER['HTTPS']) errava nos DOIS sentidos: atrás do
+            // Cloudflare a variável não vem e o cookie saía sem `secure`;
+            // em servidores que definem HTTPS='off' o isset() dava true e
+            // marcava `secure` em HTTP puro — o browser recusa o cookie e
+            // a sessão se perde a cada request. SecurityHelper::isHttps()
+            // é a mesma detecção proxy-aware usada pelos demais cookies.
+            'secure'   => SecurityHelper::isHttps(),
             'httponly' => true,             // inacessível via JavaScript
             'samesite' => 'Lax',            // proteção CSRF básica
         ]);
@@ -159,6 +165,17 @@ class Session {
         self::remove('usuario_id');
         self::remove('login_em');
         self::remove('lembrar_sessao');
+
+        // Estado derivado do login anterior. Deixar para trás fazia a
+        // sessão seguinte herdar decisões da conta antiga: o guard de
+        // e-mail lia um `email_verificado` que não era mais dele, e a
+        // validação remota apontava para uma linha de outro dono.
+        self::remove('email_verificado');
+        self::remove('_session_verified_at');
+        self::remove('_sessao_persistente_id');
+        self::remove('_audit_session_token');
+        self::remove('_last_activity_touch');
+
         session_regenerate_id(true);
 
         LogService::info('logoutCliente');

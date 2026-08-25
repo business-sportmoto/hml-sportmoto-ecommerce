@@ -123,6 +123,10 @@ abstract class AppApiController extends Controller
         $this->clienteId = $this->dispositivo['cliente_id'];
         $this->usuarioId = $this->dispositivo['usuario_id'];
 
+        // A partir daqui todo log do request carrega dispositivo, plataforma e
+        // versão do app — é o que permite diagnosticar remotamente.
+        AppLog::contextualizar($this->dispositivo, $this->clienteId);
+
         $this->verificarRateLimit();
 
         // O ultimo_acesso já veio no JOIN da validação do token: decidir aqui
@@ -255,6 +259,19 @@ abstract class AppApiController extends Controller
 
     protected function falha(int $status, string $codigo, string $mensagem, array $meta = []): void
     {
+        // 5xx é problema nosso e precisa aparecer no painel de saúde. 4xx é
+        // comportamento esperado (token vencido, campo faltando) e só polui.
+        // A exceção é 429: rate limit em massa é sinal de abuso ou de um app
+        // em laço de retentativa, e vale um aviso.
+        if ($status >= 500) {
+            AppLog::error('API do app respondeu ' . $status, [
+                'codigo' => $codigo,
+                'rota'   => $this->rotaAtual(),
+            ]);
+        } elseif ($status === 429) {
+            AppLog::warning('Rate limit atingido no app', ['rota' => $this->rotaAtual()]);
+        }
+
         $this->emitir($status, ApiKeyService::envelope(
             false, null, ['codigo' => $codigo, 'mensagem' => $mensagem], $meta
         ));

@@ -143,6 +143,72 @@ class AppSistemaController extends AppApiController
     }
 
     /**
+     * POST /api/app/v1/telemetria
+     *
+     * O app reporta o que quebrou NELE — crash de JS, tela de erro, falha ao
+     * reproduzir um clip. Sem isto, a saúde do aplicativo é um ponto cego:
+     * o servidor responde 200 e mesmo assim o usuário vê tela branca.
+     *
+     * Corpo: { nivel, mensagem, tipo?, tela?, contexto?, stack? }
+     */
+    public function telemetria(): void
+    {
+        $this->bootPublico();
+        $this->liberarSessao();
+
+        $corpo = $this->exigirCampos(['mensagem']);
+
+        $nivel = strtolower((string)($corpo['nivel'] ?? 'error'));
+        $tela  = isset($corpo['tela']) ? mb_substr((string)$corpo['tela'], 0, 80) : null;
+        $tipo  = isset($corpo['tipo']) ? mb_substr((string)$corpo['tipo'], 0, 80) : null;
+
+        // O contexto do cliente é dado não confiável: vem do aparelho. Limitamos
+        // o tamanho e a profundidade antes de guardar — um payload gigante em
+        // laço encheria a tabela de logs.
+        $contexto = [];
+        if (!empty($corpo['contexto']) && is_array($corpo['contexto'])) {
+            $contexto = array_slice(
+                array_map(
+                    static fn($v) => is_scalar($v) ? mb_substr((string)$v, 0, 300) : '[objeto]',
+                    $corpo['contexto']
+                ),
+                0,
+                20,
+                true
+            );
+        }
+
+        if ($tela) { $contexto['tela'] = $tela; }
+        if ($tipo) { $contexto['tipo_erro'] = $tipo; }
+        if (!empty($corpo['stack'])) {
+            $contexto['stack'] = mb_substr((string)$corpo['stack'], 0, 4000);
+        }
+
+        AppLog::doCliente($nivel, (string)$corpo['mensagem'], $contexto);
+
+        $this->ok(['registrado' => true], 202);
+    }
+
+    /**
+     * GET /api/app/v1/_saude  (somente com APP_DEBUG)
+     *
+     * Resumo de saúde do app: erros por nível, tráfego, latência e os
+     * problemas mais recorrentes. Em produção este painel deve viver no admin,
+     * atrás de autenticação — aqui é a versão de desenvolvimento.
+     */
+    public function saude(): void
+    {
+        if (!APP_DEBUG) {
+            $this->falha(404, 'nao_encontrado', 'Rota não encontrada.');
+        }
+
+        $this->bootAberto();
+        $horas = (int)$this->query('horas', 24);
+
+        $this->ok(AppLog::saude($horas));
+    }
+
+    /**
      * GET /api/app/v1/_diagnostico  (somente com APP_DEBUG)
      *
      * Teste de aceitação da Fase 0: prova que a ponte de sessão está de pé.

@@ -15,6 +15,13 @@ class AuthController extends Controller {
 
     private const COOKIE_ORIGEM = 'ec_verify_origin';
 
+    /**
+     * Tempo máximo entre validar a senha e concluir o 2FA.
+     * Passou disso, a pendência morre e o login recomeça: a senha já foi
+     * digitada, então a janela aberta é uma credencial parcial esperando.
+     */
+    private const PENDENCIA_2FA_TTL = 900; // 15 minutos
+
     private User             $userModel;
     private TokenService     $tokenService;
     private TwoFactorService $twoFactorService;
@@ -45,16 +52,32 @@ class AuthController extends Controller {
      * Retorna true se interrompeu o fluxo (2FA pendente).
      */
     private function maybeRequire2FA(array $user, bool $lembrar): bool {
-        if (!$this->twoFactorService->isAtivo((int)$user['id'])) {
+        $userId = (int) $user['id'];
+
+        // São DOIS interruptores independentes na tabela `usuarios`:
+        //   dois_fatores_ativo → 2FA por e-mail/WhatsApp (toggle da conta)
+        //   totp_ativo         → app autenticador (setup próprio, §Segurança)
+        // Olhar só o primeiro fazia quem configurou o Google Authenticator
+        // entrar direto com a senha: o app ficava ativo na tela de
+        // segurança, mas o login nunca pedia o código.
+        $exige2FA = $this->twoFactorService->isAtivo($userId)
+                 || $this->totpService->isAtivo($userId);
+
+        if (!$exige2FA) {
             return false;
         }
 
         // Marca a pendência — NAO envia codigo ainda.
         // O envio acontece em send2FAChannel() apos o usuario escolher
         // o canal (e-mail / WhatsApp / SMS) na tela /autenticacao-2fa.
-        Session::set('_2fa_pending_user',    (int)$user['id']);
+        Session::set('_2fa_pending_user',    $userId);
         Session::set('_2fa_pending_cliente', (int)$user['cliente_id']);
         Session::set('_2fa_lembrar',         $lembrar);
+
+        // Janela de vida da pendência. Sem isto, um `_2fa_pending_user`
+        // esquecido na sessão deixa a tela de código válida por tempo
+        // indeterminado depois da senha ter sido digitada.
+        Session::set('_2fa_pending_em', time());
 
         $this->json([
             'ok'         => false,
@@ -63,6 +86,39 @@ class AuthController extends Controller {
             'msg'        => 'Verificacao em duas etapas necessaria.',
         ]);
         return true;
+    }
+
+    /**
+     * Usuário com 2FA pendente NESTA sessão, ou 0.
+     *
+     * Fonte única para as três telas do fluxo (form, envio e validação):
+     * cada uma lia `_2fa_pending_user` por conta própria e nenhuma
+     * checava validade, então a pendência sobrevivia indefinidamente.
+     * Expirou → limpa tudo e devolve 0; quem chama decide o que exibir.
+     */
+    private function pending2FAUserId(): int {
+        $userId = (int) Session::get('_2fa_pending_user');
+        if ($userId <= 0) return 0;
+
+        $iniciadoEm = (int) Session::get('_2fa_pending_em', 0);
+        if ($iniciadoEm > 0 && (time() - $iniciadoEm) > self::PENDENCIA_2FA_TTL) {
+            LogService::info('Pendência de 2FA expirada', [
+                'usuario_id' => $userId,
+            ], 'auth');
+            $this->clear2FAPending();
+            return 0;
+        }
+
+        return $userId;
+    }
+
+    /** Limpa todo o estado intermediário de 2FA da sessão. */
+    private function clear2FAPending(): void {
+        Session::remove('_2fa_pending_user');
+        Session::remove('_2fa_pending_cliente');
+        Session::remove('_2fa_lembrar');
+        Session::remove('_2fa_canal_usado');
+        Session::remove('_2fa_pending_em');
     }
 
     /**
@@ -75,6 +131,14 @@ class AuthController extends Controller {
         $temCel  = strlen($celular) >= 10;
         $temTotp = $this->totpService->isAtivo($userId);
 
+        // Canais de ENVIO (e-mail/WhatsApp) pertencem ao toggle
+        // `dois_fatores_ativo`. Quem ativou SÓ o app autenticador não
+        // pode ver o e-mail listado aqui: seria rebaixar um fator que o
+        // cliente escolheu justamente por não depender da caixa postal.
+        // Nesse caso a saída de emergência são os códigos de backup, que
+        // o twoFactor() aceita no mesmo campo.
+        $temEnvio = $this->twoFactorService->isAtivo($userId);
+
         return [
             // TOTP primeiro quando disponível — é o canal mais rápido
             // (código já está no app, sem esperar envio) e mais seguro
@@ -82,23 +146,26 @@ class AuthController extends Controller {
             'totp' => [
                 'habilitado' => $temTotp,
                 'label'      => 'App autenticador',
-                'destino'    => 'Código do seu app (Google Authenticator, Authy, etc.)',
+                'destino'    => 'Código do app ou um código de backup',
             ],
             'email' => [
-                'habilitado' => $email !== '',
+                'habilitado' => $temEnvio && $email !== '',
                 'label'      => 'E-mail',
                 'destino'    => $this->maskEmail2($email),
             ],
             'whatsapp' => [
-                'habilitado' => $temCel,
+                'habilitado' => $temEnvio && $temCel,
                 'label'      => 'WhatsApp',
                 'destino'    => $temCel ? $this->maskPhone($celular) : 'Sem celular cadastrado',
             ],
+            // SMS depende de TRÊS coisas: o 2FA por envio estar ligado na
+            // conta, haver celular cadastrado e o gateway estar de fato
+            // configurado. Sem a última checagem o cliente escolheria um
+            // canal que só devolve erro — pior do que não oferecer.
             'sms' => [
-                'habilitado' => false,  // habilitar quando houver gateway SMS
+                'habilitado' => $temEnvio && $temCel && SmsService::disponivel(),
                 'label'      => 'SMS',
                 'destino'    => $temCel ? $this->maskPhone($celular) : 'Sem celular cadastrado',
-                'em_breve'   => true,
             ],
         ];
     }
@@ -499,19 +566,26 @@ class AuthController extends Controller {
         $code     = SecurityHelper::generateNumericCode(6);
         $expiraEm = date('Y-m-d H:i:s', time() + 600); // 10 minutos
 
-        // Invalida códigos anteriores
+        // Invalida códigos de login anteriores (só os DESTE tipo — um
+        // pedido de login não pode derrubar a verificação de e-mail
+        // pendente do cadastro, e vice-versa).
         $db->prepare(
             "UPDATE tokens_verificacao SET usado = 1
-             WHERE usuario_id = ? AND tipo = 'email_verify' AND usado = 0"
+             WHERE usuario_id = ? AND tipo = 'login_code' AND usado = 0"
         )->execute([$user['id']]);
 
         // Vincula o token ao navegador que o solicitou
         $origemHash = $this->emitirNonceOrigem();
- 
+
+        // tipo 'login_code', NÃO 'email_verify'. Os dois eram gravados no
+        // mesmo balde, e verifyEmail() resolve /verificar-email/{token}
+        // por token puro, sem escopo de usuário: um código de login de 6
+        // dígitos podia ser resgatado como link de verificação de outra
+        // pessoa. O ENUM da coluna já previa este valor.
         $db->prepare(
             "INSERT INTO tokens_verificacao
                 (usuario_id, token, tipo, expira_em, origem_hash)
-             VALUES (?, ?, 'email_verify', ?, ?)"
+             VALUES (?, ?, 'login_code', ?, ?)"
         )->execute([$user['id'], $code, $expiraEm, $origemHash]);
 
         // Envia e-mail
@@ -571,12 +645,16 @@ class AuthController extends Controller {
             $this->json(['ok' => false, 'msg' => 'Código incorreto ou expirado.']);
         }
 
-        // Valida o código
+        // Valida o código. Este endpoint atende DOIS formulários:
+        //   #form-codigo       → login por código  → tipo 'login_code'
+        //   #form-verify-email → ativação da conta → tipo 'email_verify'
+        // Ambos provam posse da caixa postal, então ambos servem aqui.
+        // Sempre escopado por usuario_id — nunca só pelo valor do token.
         $stmt = $db->prepare(
             "SELECT id FROM tokens_verificacao
              WHERE usuario_id = ?
                AND token      = ?
-               AND tipo       = 'email_verify' -- / login_code
+               AND tipo       IN ('login_code', 'email_verify')
                AND usado      = 0
                AND expira_em  > NOW()
              LIMIT 1"
@@ -608,6 +686,24 @@ class AuthController extends Controller {
         // Sem isto, quem ativa pelo CÓDIGO fica com email_verificado = 0
         // para sempre — só o clique no link (verifyEmail) marcava.
         if (empty($user['email_verificado'])) {
+            // ── A GRAVAÇÃO QUE FALTAVA ────────────────────
+            // O comentário acima já descrevia a intenção, mas o UPDATE
+            // nunca existiu. Resultado: finalizeLogin() gravava
+            // email_verificado=false na sessão, e o guard de bootstrap
+            // (AuthHelper::enforceEmailVerificado) deslogava o cliente no
+            // primeiro clique — o login "dava certo" e voltava para /login.
+            $this->userModel->markEmailVerified((int) $user['id']);
+
+            // Reflete no array que segue para o finalizeLogin: é dele que
+            // sai a chave de sessão lida pelo guard.
+            $user['email_verificado'] = 1;
+
+            // [LOG] audit: ativação de conta pelo código — evento de
+            // ciclo de vida da conta, não só de acesso.
+            LogService::audit('E-mail verificado via código de login', [
+                'usuario_id' => (int) $user['id'],
+            ]);
+
             // Cliente novo ativou → cria contato no Bling AGORA (best-effort).
             // Bling fora NÃO trava o login: cai na fila e o cron cria depois.
             try {
@@ -633,16 +729,48 @@ class AuthController extends Controller {
     // ── 2FA ───────────────────────────────────────────────────
 
     public function twoFactorForm(): void {
-        if (!Session::has('_2fa_pending_user')) {
+        $userId = $this->pending2FAUserId();
+        if ($userId <= 0) {
+            Session::flash('error', 'Sua verificação expirou. Entre novamente.');
             $this->redirect(BASE_URL . '/login');
+            return;
         }
 
-        $userId = (int)Session::get('_2fa_pending_user');
         $perfil = $this->userModel->findWithProfile($userId);
+        $canais = $this->getCanais2FA($perfil ?? [], $userId);
+
+        // Nenhum canal utilizável = tela sem saída. Acontece se o cliente
+        // tinha 2FA por e-mail e o e-mail foi apagado do perfil, ou se o
+        // TOTP foi desativado no meio do fluxo. Melhor recomeçar o login
+        // do que exibir uma lista de botões todos desabilitados.
+        if (!array_filter($canais, static fn(array $c): bool => !empty($c['habilitado']))) {
+            LogService::error('2FA sem canal disponível — login interrompido', [
+                'usuario_id' => $userId,
+            ], 'auth');
+
+            $this->clear2FAPending();
+            Session::flash('error',
+                'Não há canal de verificação disponível para sua conta. Fale com o suporte.');
+            $this->redirect(BASE_URL . '/login');
+            return;
+        }
+
+        // ── Retoma a etapa do código ──────────────────────
+        // O canal já escolhido vive na sessão. Sem consultá-lo, QUALQUER
+        // recarga desta URL voltava para a lista de canais — inclusive o
+        // redirect de "código inválido" do ramo não-Ajax logo abaixo, que
+        // jogava o cliente de volta ao início da verificação em vez de
+        // mostrar o erro. Só retoma se o canal ainda estiver habilitado.
+        $canalEscolhido = (string) Session::get('_2fa_canal_usado', '');
+        if ($canalEscolhido === '' || empty($canais[$canalEscolhido]['habilitado'])) {
+            $canalEscolhido = '';
+        }
 
         SeoHelper::setTitle('Verificação em dois fatores');
+        SeoHelper::setRobots('noindex, nofollow');
         $this->render('auth/two-factor', [
-            'canais' => $this->getCanais2FA($perfil ?? [], $userId),
+            'canais'         => $canais,
+            'canalEscolhido' => $canalEscolhido,
         ], 'minimal');
     }
 
@@ -654,8 +782,8 @@ class AuthController extends Controller {
     public function send2FAChannel(): void {
         $this->verifyCsrf();
 
-        $userId = (int)Session::get('_2fa_pending_user');
-        if (!$userId) {
+        $userId = $this->pending2FAUserId();
+        if ($userId <= 0) {
             $this->json(['ok' => false, 'msg' => 'Sessão expirada. Faça login novamente.', 'restart' => true]);
         }
 
@@ -696,9 +824,23 @@ class AuthController extends Controller {
                     break;
 
                 case 'sms':
-                    // GANCHO — habilitar quando houver gateway de SMS:
-                    // SmsService::sendCodigo($perfil['celular'], $code, 10);
-                    $this->json(['ok' => false, 'msg' => 'SMS ainda não disponível.']);
+                    // Diferente do e-mail e do WhatsApp, o SmsService NÃO
+                    // lança em falha — devolve bool. Sem checar o retorno,
+                    // a tela diria "código enviado" para uma mensagem que
+                    // nunca saiu, e o cliente ficaria esperando.
+                    $enviado = SmsService::sendCodigo(
+                        (string) ($perfil['celular'] ?? ''),
+                        $code,
+                        10,
+                        ['cliente_id' => (int) ($perfil['cliente_id'] ?? 0) ?: null]
+                    );
+
+                    if (!$enviado) {
+                        $this->json([
+                            'ok'  => false,
+                            'msg' => 'Não foi possível enviar o SMS. Tente outro canal.',
+                        ]);
+                    }
                     break;
 
                 case 'email':
@@ -738,8 +880,13 @@ class AuthController extends Controller {
     public function twoFactor(): void {
         $this->verifyCsrf();
 
-        $userId = Session::get('_2fa_pending_user');
-        if (!$userId) {
+        $userId = $this->pending2FAUserId();
+        if ($userId <= 0) {
+            $msg = 'Sua verificação expirou. Entre novamente.';
+            if (AuthHelper::isAjax()) {
+                $this->json(['ok' => false, 'msg' => $msg, 'restart' => true]);
+            }
+            Session::flash('error', $msg);
             $this->redirect(BASE_URL . '/login');
             return;
         }
@@ -750,7 +897,26 @@ class AuthController extends Controller {
         $ip        = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
         $rateLimit = new RateLimitService();
         $user      = $this->userModel->findWithProfile($userId);
-        $emailRL   = $user['email'] ?? ('uid_' . $userId);
+
+        // A conta pode ter sido desativada/excluída ENTRE a senha e o
+        // código. A senha já foi aceita, então só o recheck aqui impede
+        // que a janela do 2FA vire uma porta para conta bloqueada.
+        if (!$user || empty($user['ativo']) || !empty($user['deleted_at'])) {
+            LogService::warning('2FA interrompido: conta inativa ou removida', [
+                'usuario_id' => $userId,
+            ], 'auth');
+
+            $this->clear2FAPending();
+            $msg = 'Não foi possível concluir o acesso. Fale com o suporte.';
+            if (AuthHelper::isAjax()) {
+                $this->json(['ok' => false, 'msg' => $msg, 'restart' => true]);
+            }
+            Session::flash('error', $msg);
+            $this->redirect(BASE_URL . '/login');
+            return;
+        }
+
+        $emailRL = $user['email'] ?? ('uid_' . $userId);
 
         $rlCode = $rateLimit->checkCode($ip, $emailRL);
         if ($rlCode['status'] === 'blocked') {
@@ -762,9 +928,7 @@ class AuthController extends Controller {
             ], 'auth');
 
             // Invalida a sessão 2FA pendente — força recomeçar o login
-            Session::remove('_2fa_pending_user');
-            Session::remove('_2fa_pending_cliente');
-            Session::remove('_2fa_lembrar');
+            $this->clear2FAPending();
             if (AuthHelper::isAjax()) {
                 $this->json(['ok' => false, 'msg' => $rlCode['msg'], 'restart' => true]);
             }
@@ -779,18 +943,21 @@ class AuthController extends Controller {
         $canalUsado = Session::get('_2fa_canal_usado', 'email');
 
         if ($canalUsado === 'totp') {
-            $segredo     = $this->totpService->getSegredo((int)$userId);
+            $segredo      = $this->totpService->getSegredo($userId);
             $codigoValido = $segredo && $this->totpService->validarCodigo($segredo, $code);
 
             // Fallback: se não bateu como TOTP, tenta como código de
             // backup de uso único (cobre "perdi o celular, mas tenho a
             // lista de códigos salva").
             if (!$codigoValido) {
-                $codigoValido = $this->totpService->validarCodigoBackup((int)$userId, $code);
+                $codigoValido = $this->totpService->validarCodigoBackup($userId, $code);
             }
         } else {
-            // Mesmo sistema do painel (e-mail/WhatsApp/SMS)
-            $codigoValido = $this->twoFactorService->validarCodigo($userId, $code, 'login');
+            // Mesmo sistema do painel (e-mail/WhatsApp/SMS).
+            // validarCodigo() recebe (usuarioId, code) — o 3º argumento
+            // 'login' que existia aqui era silenciosamente descartado e
+            // dava a impressão de haver escopo por ação, que não há.
+            $codigoValido = $this->twoFactorService->validarCodigo($userId, $code);
         }
 
         if (!$codigoValido) {
@@ -818,19 +985,12 @@ class AuthController extends Controller {
             'canal'      => $canalUsado,
         ]);
 
-        $lembrar = Session::get('_2fa_lembrar', false);
+        $lembrar = (bool) Session::get('_2fa_lembrar', false);
 
-        Session::remove('_2fa_pending_user');
-        Session::remove('_2fa_pending_cliente');
-        Session::remove('_2fa_lembrar');
-        Session::remove('_2fa_canal_usado');
+        $this->clear2FAPending();
 
-        if (AuthHelper::isAjax()) {
-            // finalizeLogin já responde JSON com redirect
-            $this->finalizeLogin($user, $lembrar);
-            return;
-        }
-
+        // finalizeLogin decide sozinho entre JSON e redirect conforme a
+        // requisição — os dois ramos idênticos daqui eram ruído.
         $this->finalizeLogin($user, $lembrar);
     }
 
@@ -840,23 +1000,52 @@ class AuthController extends Controller {
     protected function finalizeLogin(array $user, bool $lembrar): void {
         $db = Database::getInstance()->getConnection();
 
-        // ── Anti session-fixation ─────────────────────────
-        // Novo ID de sessão a cada login: um session ID fixado
-        // antes da autenticação não pode ser reaproveitado.
-        if (session_status() === PHP_SESSION_ACTIVE) {
-            session_regenerate_id(true);
+        // ── Pré-condição: sem cliente_id não há login ─────
+        // Todo caminho de autenticação desemboca aqui, então é aqui que
+        // a sessão meia-criada tem de ser barrada: sem clientes.id o
+        // Session::getClienteId() volta 0 e o cliente "loga" numa conta
+        // que nenhuma tela consegue carregar.
+        $clienteId = (int) ($user['cliente_id'] ?? 0);
+        if ($clienteId <= 0) {
+            LogService::error('Login abortado: usuário sem perfil de cliente', [
+                'usuario_id' => (int) ($user['id'] ?? 0),
+            ], 'auth');
+
+            $msg = 'Sua conta está incompleta. Fale com o suporte.';
+            if (AuthHelper::isAjax()) {
+                $this->json(['ok' => false, 'msg' => $msg]);
+            }
+            Session::flash('error', $msg);
+            $this->redirect(BASE_URL . '/login');
+            return;
         }
 
-        $cliente = ['id' => $user['cliente_id']];
+        // ── Anti session-fixation ─────────────────────────
+        // Novo ID de sessão a cada login: um session ID fixado antes da
+        // autenticação não pode ser reaproveitado. A regeneração mora
+        // DENTRO de Session::loginCliente() — repetir aqui emitia dois
+        // Set-Cookie de sessão no mesmo response.
+        $cliente = ['id' => $clienteId];
         Session::loginCliente($user, $cliente, $lembrar);
         SecurityHelper::clearRateLimit('login_' . md5($user['email']));
 
-        // Estado de verificação na sessão
-        // $stmt = $db->prepare("SELECT verificado FROM clientes WHERE id = ? LIMIT 1");
-        // $stmt->execute([$user['cliente_id']]);
-        // Session::set('cliente_verificado', (bool)$stmt->fetchColumn());
-        Session::set('email_verificado', !empty($user['email_verificado']));
-        
+        // ── Estado de verificação na sessão ───────────────
+        // Lido do BANCO, não do array recebido. Este é o valor que o
+        // guard de bootstrap (enforceEmailVerificado) consulta a cada
+        // request: se vier defasado, o cliente é deslogado no primeiro
+        // clique e o login parece "não funcionar".
+        $stmtVer = $db->prepare("SELECT email_verificado FROM usuarios WHERE id = ? LIMIT 1");
+        $stmtVer->execute([(int) $user['id']]);
+        Session::set('email_verificado', (bool) $stmtVer->fetchColumn());
+
+        // Sessão recém-validada: evita que validateActiveSession() dispare
+        // já no primeiro request pós-login (o contador nasce em zero).
+        Session::set('_session_verified_at', time());
+
+        // Trilha de último acesso (coluna existia e nunca era escrita).
+        $db->prepare("UPDATE usuarios SET ultimo_login = NOW() WHERE id = ?")
+           ->execute([(int) $user['id']]);
+
         if ($lembrar) {
             // Cria sessão persistente com cookie (30 dias)
             $this->tokenService->createRememberToken($user['id']);
@@ -916,16 +1105,45 @@ class AuthController extends Controller {
 
         $redirectUrl = AuthHelper::getRedirectAfterLogin();
 
-        $svc = new VeiculoService();
-        $svc->carregarDoCliente((int)$cliente['id']);
+        // ── Enriquecimentos best-effort ───────────────────
+        // Garagem e vínculo de tracking são conveniências. Se qualquer
+        // uma explodir, a exceção sobe ANTES da resposta: o cliente já
+        // está logado no servidor, mas o front recebe HTML de erro onde
+        // esperava JSON e trata como falha de login. Isola cada uma.
+        try {
+            (new VeiculoService())->carregarDoCliente($clienteId);
+        } catch (\Throwable $e) {
+            LogService::exception($e, 'warning', 'auth', [
+                'usuario_id' => (int) $user['id'],
+                'acao'       => 'carregar_garagem',
+            ]);
+        }
 
-        TrackingService::vincularCliente((int)$user['id']);
+        try {
+            TrackingService::vincularCliente((int) $user['id']);
+        } catch (\Throwable $e) {
+            LogService::exception($e, 'warning', 'auth', [
+                'usuario_id' => (int) $user['id'],
+                'acao'       => 'vincular_tracking',
+            ]);
+        }
+
+        $primeiroNome = mb_substr($user['nome'], 0, strpos($user['nome'] . ' ', ' '));
+
+        // ── Resposta conforme o tipo de requisição ────────
+        // verifyEmail() chega aqui por NAVEGAÇÃO (clique no link do
+        // e-mail). Responder JSON ali despejava `{"ok":true,...}` na tela
+        // em vez de levar o cliente para a conta.
+        if (!AuthHelper::isAjax()) {
+            Session::flash('success', 'Bem-vindo(a), ' . $primeiroNome . '!');
+            $this->redirect($redirectUrl);
+            return;
+        }
 
         $this->json([
             'ok'       => true,
             'redirect' => $redirectUrl,
-            'msg'      => 'Bem-vindo(a), ' . mb_substr($user['nome'], 0,
-                        strpos($user['nome'] . ' ', ' ')) . '!',
+            'msg'      => 'Bem-vindo(a), ' . $primeiroNome . '!',
         ]);
     }
     /**
@@ -1118,12 +1336,23 @@ class AuthController extends Controller {
             $db = Database::getInstance()->getConnection();
 
             if (!empty($_COOKIE['ec_remember'])) {
-                // Remove APENAS a sessão do cookie atual
-                $tokenHash = hash('sha256', $_COOKIE['ec_remember']);
-                $db->prepare(
-                    "DELETE FROM sessoes_persistentes
-                    WHERE usuario_id = ? AND token = ?"
-                )->execute([$userId, $tokenHash]);
+                // Remove APENAS a sessão deste dispositivo.
+                //
+                // O cookie é "{familia}:{token}" — hashear a string
+                // inteira nunca batia com nenhuma coluna, então o logout
+                // deixava a linha viva no banco: ela seguia listada em
+                // "sessões ativas" e o cookie continuava resgatável até
+                // expirar. A família é o identificador estável do
+                // dispositivo, e é por ela que se apaga.
+                $partes  = explode(':', (string) $_COOKIE['ec_remember'], 2);
+                $familia = $partes[0] ?? '';
+
+                if ($familia !== '') {
+                    $db->prepare(
+                        "DELETE FROM sessoes_persistentes
+                        WHERE usuario_id = ? AND token_familia = ?"
+                    )->execute([$userId, $familia]);
+                }
 
                 // Apaga o cookie
                 TokenService::clearRememberCookie();
@@ -1322,6 +1551,21 @@ class AuthController extends Controller {
     public function verifyEmail(string $token): void {
         $db = Database::getInstance()->getConnection();
  
+        // ── Freio de enumeração ───────────────────────────
+        // O token desta rota é um código de 6 dígitos e a busca abaixo
+        // NÃO tem escopo de usuário: sem freio, varrer 000000–999999
+        // consome/valida verificações de terceiros. 10 tentativas / 10min.
+        $ipKey = md5($_SERVER['REMOTE_ADDR'] ?? '');
+        if (SecurityHelper::rateLimitExceeded('verify_email_' . $ipKey, 10, 600)) {
+            LogService::warning('Rate limit em verifyEmail (possível varredura de tokens)', [
+                'token_hash' => hash('sha256', $token),
+            ], 'auth');
+
+            SeoHelper::setTitle('Link inválido');
+            $this->render('auth/verify-invalid', ['jaUsado' => false], 'minimal');
+            return;
+        }
+
         // origem_hash entra no SELECT — é o que decide o auto-login
         $stmt = $db->prepare(
             "SELECT t.id, t.usuario_id, t.expira_em, t.origem_hash

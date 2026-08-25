@@ -47,8 +47,13 @@ final class ProductDetailPresenter
                 'slug' => $produto['categoria_slug'] ?? null,
             ],
 
-            'descricao'       => $produto['descricao'] ?? null,
-            'descricao_curta' => $produto['descricao_curta'] ?? null,
+            // A coluna guarda HTML do editor do admin. O React Native não
+            // renderiza HTML: um <Text> mostraria "<p>O novo LS2..." literal.
+            // Mandamos texto limpo para exibir e o HTML original à parte, para
+            // quando o app tiver um renderizador rico.
+            'descricao'       => self::textoLimpo($produto['descricao'] ?? null),
+            'descricao_curta' => self::textoLimpo($produto['descricao_curta'] ?? null),
+            'descricao_html'  => $produto['descricao'] ?? null,
 
             'imagens' => self::imagens($imagens, $produto, $ctx),
             'preco'   => PrecoPresenter::bloco($produto),
@@ -98,6 +103,35 @@ final class ProductDetailPresenter
                 'texto' => $produto['nome'],
             ],
         ];
+    }
+
+    /**
+     * HTML do editor → texto legível.
+     *
+     * Preserva a estrutura que importa para leitura: <br> e </p> viram quebras
+     * de linha, <li> vira marcador. Sem isso a ficha técnica do produto — que
+     * é toda montada com <br> — viraria um parágrafo único ilegível.
+     */
+    private static function textoLimpo(?string $html): ?string
+    {
+        if ($html === null || trim($html) === '') {
+            return null;
+        }
+
+        $t = preg_replace('#<\s*br\s*/?\s*>#i', "\n", $html);
+        $t = preg_replace('#<\s*/\s*(p|div|h[1-6])\s*>#i', "\n\n", (string)$t);
+        $t = preg_replace('#<\s*li[^>]*>#i', "• ", (string)$t);
+        $t = preg_replace('#<\s*/\s*li\s*>#i', "\n", (string)$t);
+        $t = strip_tags((string)$t);
+        $t = html_entity_decode($t, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        // Espaço não-quebrável do editor vira espaço comum.
+        $t = str_replace("\xC2\xA0", ' ', $t);
+        // No máximo uma linha em branco entre blocos.
+        $t = preg_replace("/[ \t]+\n/", "\n", $t);
+        $t = preg_replace("/\n{3,}/", "\n\n", (string)$t);
+
+        return trim((string)$t) ?: null;
     }
 
     /**

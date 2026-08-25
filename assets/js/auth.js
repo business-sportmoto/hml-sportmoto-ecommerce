@@ -175,7 +175,7 @@ $(function () {
 
     enviarLogin(dados).then(function(res){
       if (res.ok || res.requer_2fa) {
-        window.location.href = res.redirect;
+        window.location.href = res.redirect || (BASE_URL + '/minha-conta');
         return;
       }
 
@@ -203,6 +203,12 @@ $(function () {
       }
 
       $err.text(res.msg || 'Não foi possível entrar.');
+    }).catch(function () {
+      // Sem este catch, qualquer falha da promise (rede caída, JSON
+      // inválido, recaptcha.js que não carregou) deixava o botão preso
+      // em "Entrando..." sem nenhuma mensagem — o login parecia morto.
+      $btn.prop('disabled', false).text('Entrar');
+      $err.text('Erro de conexão. Tente novamente.');
     });
 
     // $.post(BASE_URL + '/login', $(this).serialize(), function (res) {
@@ -229,16 +235,26 @@ $(function () {
   async function enviarLogin(login) {
     // Gera o token ANTES do submit. Resolve null se reCAPTCHA não
     // estiver configurado/carregado — backend já trata isso sem travar.
-    var token = await Recaptcha.getToken('login');
-  
+    // O guard cobre o caso de recaptcha.js nem ter chegado à página:
+    // um ReferenceError aqui abortava o login inteiro em silêncio.
+    var token = null;
+    if (window.Recaptcha && typeof window.Recaptcha.getToken === 'function') {
+      try { token = await window.Recaptcha.getToken('login'); } catch (e) { token = null; }
+    }
+
+    // AUTH_CONFIG vem de um <script> inline da view. Se a view mudar e
+    // ele sumir, cair no CSRF_TOKEN/BASE_URL do layout mantém o login
+    // de pé em vez de quebrar com "AUTH_CONFIG is not defined".
+    var cfg = window.AUTH_CONFIG || {};
+
     var fd = new FormData();
-    fd.append('_csrf_token', AUTH_CONFIG.csrfToken);
+    fd.append('_csrf_token', cfg.csrfToken || CSRF_TOKEN);
     fd.append('login', login.login);
     fd.append('senha', login.senha);
     if (login.lembrar) fd.append('lembrar', '1');
-    if (token) fd.append('recaptcha_token', token); // ← única linha nova
-  
-    return fetch(AUTH_CONFIG.baseUrl + '/login', {
+    if (token) fd.append('recaptcha_token', token);
+
+    return fetch((cfg.baseUrl || BASE_URL) + '/login', {
       method: 'POST',
       headers: { 'X-Requested-With': 'XMLHttpRequest' },
       body: fd,
@@ -319,8 +335,14 @@ $(function () {
     $btn.prop('disabled', true).text('Verificando...');
 
     $.post(BASE_URL + '/login/validar-codigo', $(this).serialize(), function (res) {
-      if (res.ok) {
-        window.location.href = res.redirect;
+      // res.ok = login concluído.
+      // res.requer_2fa = código aceito, mas a conta tem segundo fator:
+      // o servidor JÁ consumiu o código e guardou a pendência na sessão,
+      // então parar aqui deixava o cliente preso numa tela que só dizia
+      // "verificação em duas etapas necessária" — e o código não servia
+      // mais. Segue para a tela de 2FA.
+      if (res.ok || res.requer_2fa) {
+        window.location.href = res.redirect || (BASE_URL + '/minha-conta');
         return;
       }
 
@@ -412,9 +434,11 @@ $(function () {
       tipo:        'email_verify',
       _csrf_token: CSRF_TOKEN,
     }, function (res) {
-      if (res.ok) {
-        $err.text(res.msg);
-        window.location.href = res.redirect;
+      // Mesma regra do #form-codigo: quem ativa a conta pelo código e
+      // tem 2FA precisa seguir para a segunda etapa, não travar aqui.
+      if (res.ok || res.requer_2fa) {
+        $err.text(res.msg || '');
+        window.location.href = res.redirect || (BASE_URL + '/minha-conta');
         return;
       }
 
@@ -543,7 +567,18 @@ $(function () {
   // 2FA SIMPLES
   // ════════════════════════════════════════════════════════
   // Evita duplo submit quando a tela usa o fluxo completo com escolha de canal.
-  if (!$('#2fa-step-canal, #2fa-step-codigo').length) {
+  //
+  // ATENÇÃO ao seletor: um ID que começa com dígito ("2fa-step-canal") NÃO é
+  // um identificador CSS válido. Como o jQuery 4 abandonou o Sizzle e passa
+  // direto para querySelectorAll, `$('#2fa-step-canal')` lança SyntaxError —
+  // e a exceção abortava TODO o resto deste callback de ready: força da
+  // senha, confirmação de senha, checagem de e-mail no cadastro e as máscaras
+  // de CPF/telefone simplesmente não eram ligadas em nenhuma tela.
+  // getElementById aceita qualquer string, então é ele quem faz a checagem.
+  var temFluxoCanal = document.getElementById('2fa-step-canal')
+                   || document.getElementById('2fa-step-codigo');
+
+  if (!temFluxoCanal) {
     $('#form-2fa').on('submit', function (e) {
       e.preventDefault();
 
@@ -678,12 +713,30 @@ $(function () {
     $(this).val(v);
   });
 
-  $('.otp-input').on('input', function () {
-    const codigo = $(this).val().replace(/\D/g, '').substring(0, 6);
-    $(this).val(codigo);
+  // ── Auto-envio dos campos de código de 6 dígitos ────────
+  //
+  // A versão anterior recarregava a página inteira, e o motivo é sutil:
+  // ela chamava `.trigger('submit')`. O trigger do jQuery executa os
+  // handlers ligados VIA JQUERY e, se nenhum chamar preventDefault,
+  // executa a ação padrão invocando o método nativo `form.submit()` —
+  // que NÃO dispara o evento submit e por isso não pode ser cancelado.
+  // O #form-2fa é ligado com addEventListener (nativo), então o jQuery
+  // não achava handler nenhum e caía direto na navegação.
+  //
+  // requestSubmit() não tem esse problema: dispara o evento submit de
+  // verdade, respeitando tanto handlers jQuery quanto nativos.
+  //
+  // O #form-2fa fica de fora porque o próprio módulo de 2FA já faz o
+  // auto-envio (e precisa tratar código de backup, que tem 9 caracteres).
+  $(document).on('input', '.otp-input', function () {
+    const form = this.closest('form');
+    if (!form || form.id === 'form-2fa') return;
 
-    if (codigo.length === 6) {
-      $(this).closest('form').trigger('submit');
+    const codigo = this.value.replace(/\D/g, '').substring(0, 6);
+    if (this.value !== codigo) this.value = codigo;
+
+    if (codigo.length === 6 && typeof form.requestSubmit === 'function') {
+      form.requestSubmit();
     }
   });
 
@@ -888,7 +941,13 @@ $(function () {
   'use strict';
 
   var CFG  = window.AUTH_CONFIG || {};
-  var BASE = CFG.baseUrl || '';
+  // Fallback para as constantes do layout: sem isso, uma view sem o
+  // <script> de AUTH_CONFIG mandava _csrf_token=undefined e todo POST
+  // do 2FA voltava 403 — que o front exibia como "erro de conexão".
+  var BASE = CFG.baseUrl || (typeof BASE_URL !== 'undefined' ? BASE_URL : '');
+  var TOKEN = function () {
+    return CFG.csrfToken || (typeof CSRF_TOKEN !== 'undefined' ? CSRF_TOKEN : '');
+  };
 
   // Exposto: trata resposta do login (chamar onde processa o /login)
   window.handle2FAResponse = function (resp) {
@@ -915,11 +974,15 @@ $(function () {
     var btnTxt     = btnSubmit ? btnSubmit.querySelector('.btn-text') : null;
     var btnLd      = btnSubmit ? btnSubmit.querySelector('.btn-loading') : null;
 
-    var canalAtual = null;
+    // O servidor pode renderizar a página JÁ na etapa do código (recarga,
+    // botão voltar, ou o redirect de "código inválido" sem Ajax). Nesse caso
+    // o canal escolhido vem no data-attribute: sem lê-lo, `canalAtual` ficava
+    // null e o campo passava a rejeitar código de backup e a recusar reenvio.
+    var canalAtual = stepCodigo.getAttribute('data-canal') || null;
 
     function post(url, data) {
       var fd = new FormData();
-      fd.append('_csrf_token', CFG.csrfToken);
+      fd.append('_csrf_token', TOKEN());
       Object.keys(data).forEach(function (k) { fd.append(k, data[k]); });
       return fetch(BASE + url, {
         method: 'POST',
@@ -946,12 +1009,20 @@ $(function () {
           stepCodigo.style.display = '';
           if (subtitle) subtitle.textContent = 'Digite o código de 6 dígitos que enviamos.';
           if (banner) {
+            banner.style.display = '';
             banner.innerHTML =
               '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
               'stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> ' +
               resp.msg + ' <strong>' + (resp.destino || '') + '</strong>';
           }
-          if (input) { input.value = ''; input.focus(); }
+          if (input) {
+            input.value = '';
+            // No TOTP o campo aceita letras (código de backup): teclado
+            // numérico puro no celular impediria digitá-lo.
+            input.setAttribute('inputmode', canal === 'totp' ? 'text' : 'numeric');
+            input.setAttribute('placeholder', canal === 'totp' ? '000000 ou XXXX-XXXX' : '000000');
+            input.focus();
+          }
 
           // TOTP não tem "reenviar" — o código já vem do app do usuário,
           // não foi enviado por nenhum canal externo.
@@ -977,6 +1048,13 @@ $(function () {
         stepCodigo.style.display = 'none';
         stepCanal.style.display  = '';
         if (subtitle) subtitle.textContent = 'Como prefere receber seu código de verificação?';
+
+        // Zera o estado da etapa anterior: sem isso o campo continuava com o
+        // filtro e o erro do canal antigo depois de trocar de método.
+        canalAtual = null;
+        if (errEl) errEl.textContent = '';
+        if (input) input.value = '';
+        if (banner) banner.style.display = 'none';
       });
     }
 
@@ -991,6 +1069,7 @@ $(function () {
             btnReenviar.disabled = false;
             btnReenviar.textContent = 'Reenviar código';
             if (resp.ok && banner) {
+              banner.style.display = '';
               banner.innerHTML =
                 '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
                 'stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> ' +
@@ -1009,9 +1088,23 @@ $(function () {
     // ── Etapa B: validar código ───────────────────────
     if (input) {
       input.addEventListener('input', function () {
-        this.value = this.value.replace(/\D/g, '').slice(0, 6);
+        // No canal TOTP o mesmo campo aceita DUAS coisas: os 6 dígitos
+        // do app e um código de backup XXXX-XXXX. Filtrar tudo que não
+        // é dígito tornava os códigos de backup impossíveis de digitar —
+        // ou seja, quem perdia o celular perdia a conta, mesmo tendo a
+        // lista salva (o backend sempre soube validá-los).
+        if (canalAtual === 'totp') {
+          this.value = this.value.toUpperCase().replace(/[^0-9A-Z-]/g, '').slice(0, 9);
+        } else {
+          this.value = this.value.replace(/\D/g, '').slice(0, 6);
+        }
+
         if (errEl) errEl.textContent = '';
-        if (this.value.length === 6) form.requestSubmit();
+
+        // Autoenvio só para os 6 dígitos. Código de backup tem traço e
+        // 9 caracteres: enviar sozinho no meio da digitação queimaria
+        // um código de uso único.
+        if (/^\d{6}$/.test(this.value)) form.requestSubmit();
       });
     }
 
@@ -1028,8 +1121,17 @@ $(function () {
         if (errEl) errEl.textContent = '';
 
         var code = (input && input.value || '').trim();
-        if (code.length !== 6) {
-          if (errEl) errEl.textContent = 'Digite os 6 dígitos do código.';
+
+        // 6 dígitos (app/e-mail/WhatsApp) OU código de backup XXXX-XXXX.
+        var ehCodigo6  = /^\d{6}$/.test(code);
+        var ehBackup   = canalAtual === 'totp' && /^[0-9A-Z]{4}-?[0-9A-Z]{4}$/.test(code);
+
+        if (!ehCodigo6 && !ehBackup) {
+          if (errEl) {
+            errEl.textContent = canalAtual === 'totp'
+              ? 'Digite os 6 dígitos do app ou um código de backup.'
+              : 'Digite os 6 dígitos do código.';
+          }
           return;
         }
 

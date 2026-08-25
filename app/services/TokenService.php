@@ -62,7 +62,12 @@ class TokenService {
             VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)"
         )->execute([
             $userId,
-            $token,
+            // GRAVA O HASH, nunca o token em claro. O validador só existe
+            // no cookie do cliente; o banco guarda apenas a verificação.
+            // (Antes gravava $token cru enquanto checkRotatedToken comparava
+            // contra sha256 — nenhum cookie batia, e TODO retorno caía no
+            // "roubo detectado", revogando as sessões do usuário.)
+            $tokenHash,
             $familia,
             $ip,
             $ua,
@@ -141,8 +146,18 @@ class TokenService {
 
         $tokenHash = hash('sha256', $token);
 
+        // ── Caso 0: linha gravada em CLARO pelo bug antigo ──────
+        // Até a correção, createRememberToken() gravava o token cru na
+        // coluna enquanto a verificação comparava contra o sha256. Todas
+        // as linhas criadas naquele período são inverificáveis e cairiam
+        // no "roubo detectado" (caso 3), revogando as sessões de TODOS os
+        // clientes no primeiro acesso pós-deploy.
+        // Aceita UMA vez e deixa a rotação abaixo regravar já com hash —
+        // o segredo apresentado é o mesmo, não há perda de garantia.
+        $legado = hash_equals($row['token'], $token);
+
         // ── Caso 1: token atual confere → loga e ROTACIONA ──
-        if (hash_equals($row['token'], $tokenHash)) {
+        if ($legado || hash_equals($row['token'], $tokenHash)) {
             self::loginFromCookie($row);
 
             $novoToken = SecurityHelper::generateToken(32);
@@ -189,11 +204,13 @@ class TokenService {
         self::revokeAllSessionsStatic($db, (int)$row['usuario_id']);
         self::clearRememberCookie();
 
-        error_log(sprintf(
-            '[SECURITY] Reuso de remember token detectado — usuário %d (%s). Todas as sessões revogadas.',
-            $row['usuario_id'],
-            $row['email']
-        ));
+        // [LOG] critical: reuso de cookie persistente é indício de roubo de
+        // sessão E a única pista de por que o cliente perdeu TODAS as
+        // sessões de uma vez. error_log() deixava isso fora do painel.
+        LogService::critical('Reuso de remember token — todas as sessões revogadas', [
+            'usuario_id' => (int) $row['usuario_id'],
+            'familia'    => $familia,
+        ], 'auth');
 
         try {
             if (class_exists('MailHelper') && method_exists('MailHelper', 'sendSecurityAlert')) {
@@ -270,11 +287,10 @@ class TokenService {
     // ── Helpers do fluxo de cookie ───────────────────────────
 
     private static function loginFromCookie(array $row): void {
-        // Anti session-fixation: novo session ID antes de associar identidade
-        if (session_status() === PHP_SESSION_ACTIVE) {
-            session_regenerate_id(true);
-        }
-
+        // Anti session-fixation: quem regenera o ID é Session::loginCliente().
+        // Regenerar aqui TAMBÉM emitia dois Set-Cookie de sessão no mesmo
+        // response — comportamento indefinido entre browsers e a origem de
+        // "logou e caiu" intermitente. Um único ponto de regeneração.
         Session::loginCliente(
             ['id' => $row['usuario_id'], 'nome' => $row['nome'], 'email' => $row['email']],
             ['id' => $row['cliente_id']]
