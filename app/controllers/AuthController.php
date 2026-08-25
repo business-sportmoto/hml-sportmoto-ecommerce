@@ -162,10 +162,16 @@ class AuthController extends Controller {
             // conta, haver celular cadastrado e o gateway estar de fato
             // configurado. Sem a última checagem o cliente escolheria um
             // canal que só devolve erro — pior do que não oferecer.
+            // 'sms' => [
+            //     'habilitado' => $temEnvio && $temCel && SmsService::disponivel(),
+            //     'label'      => 'SMS',
+            //     'destino'    => $temCel ? $this->maskPhone($celular) : 'Sem celular cadastrado',
+            // ],
             'sms' => [
-                'habilitado' => $temEnvio && $temCel && SmsService::disponivel(),
+                'habilitado' => $temEnvio && $temCel && SmsService::disponivel(),  // habilitar quando houver gateway SMS
                 'label'      => 'SMS',
                 'destino'    => $temCel ? $this->maskPhone($celular) : 'Sem celular cadastrado',
+                // 'em_breve'   => true,
             ],
         ];
     }
@@ -839,6 +845,7 @@ class AuthController extends Controller {
                         $this->json([
                             'ok'  => false,
                             'msg' => 'Não foi possível enviar o SMS. Tente outro canal.',
+                            
                         ]);
                     }
                     break;

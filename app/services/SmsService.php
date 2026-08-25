@@ -14,7 +14,7 @@
  * CONFIGURAÇÃO (.env):
  *   SMS_DRIVER       comtele | log        (padrão: log em dev, comtele fora)
  *   COMTELE_API_KEY  chave da conta Comtele
- *   COMTELE_SENDER   remetente homologado (opcional)
+ *   COMTELE_ROUTE    id da rota da conta (padrão 17 = Premium/transacional)
  *   COMTELE_TIMEOUT  segundos (opcional, padrão 12)
  *
  * USO:
@@ -149,11 +149,16 @@ class SmsService
             if (!$res->success) {
                 // [LOG] O cliente legítimo não recebeu o segundo fator.
                 // NUNCA inclua a mensagem no contexto: ela contém o código.
+                // O `raw` traz status HTTP e o texto de erro DO GATEWAY —
+                // é o que diferencia "chave inválida" de "sem crédito" de
+                // "número recusado" sem precisar reproduzir o problema.
                 LogService::error('Falha no envio de SMS', [
                     'tipo'       => $tipo,
                     'cliente_id' => $clienteId,
+                    'gateway'    => $provider->nome(),
                     'erro'       => $res->error,
                     'temporario' => $res->temporary,
+                    'resposta'   => $res->raw,
                 ], 'sms');
             }
 
@@ -212,7 +217,7 @@ class SmsService
             'log'     => new LogSmsProvider(),
             'comtele' => new ComteleSmsProvider(
                 self::config('COMTELE_API_KEY'),
-                self::config('COMTELE_SENDER'),
+                (int) self::config('COMTELE_ROUTE'),
                 (int) (self::config('COMTELE_TIMEOUT') ?: 12)
             ),
             default   => throw new RuntimeException("SMS_DRIVER desconhecido: {$driver}"),

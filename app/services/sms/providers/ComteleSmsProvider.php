@@ -2,37 +2,53 @@
 /**
  * app/services/sms/providers/ComteleSmsProvider.php
  *
- * Adapter para o SMS Gateway da Comtele (API v2).
+ * Adapter para a API de SMS da Comtele.
  *
- * Contrato usado aqui (confira contra o painel da sua conta antes de ir
- * para produção — endpoints de gateway mudam sem aviso):
+ * Contrato (developers.comtele.com.br — verificado contra a API real):
  *
- *   POST https://sms.comtele.com.br/api/v2/send
- *   Header:  auth-key: <COMTELE_API_KEY>
+ *   POST https://api.comtele.com.br/messages/sms/send
+ *   Header:  x-api-key: <COMTELE_API_KEY>
  *            Content-Type: application/json
- *   Body:    {"Sender":"...", "Receivers":"5551999998888", "Content":"..."}
- *   Resposta:{"Success":true, "Object":"<id>", "Message":null}
+ *   Body:    {
+ *              "receivers": ["5551999998888"],   // ARRAY, não string
+ *              "contactGroups": [],
+ *              "message": "...",
+ *              "route": 17,                      // obrigatório
+ *              "tag": "...", "custom": "..."
+ *            }
+ *   Sucesso: {"hasError":false,"message":null,"totalRecords":1,"errors":[],"object":null}
+ *   Erro:    {"hasError":true,"message":"<motivo>","errors":[...]}
  *
- * `Sender` é opcional e só vale se o remetente estiver homologado na
- * conta; sem homologação a Comtele usa o remetente padrão dela.
+ * ATENÇÃO — existe um endpoint ANTIGO (sms.comtele.com.br/api/v2/send, header
+ * `auth-key`) que ainda responde. Ele NÃO aceita as chaves emitidas hoje:
+ * devolve 401 "A chave de acesso informada é inválida", o que faz parecer
+ * problema de credencial quando é de endpoint. Se voltar 401, confira a URL
+ * antes de desconfiar da chave.
+ *
+ * ROTA: cada conta tem as suas (GET https://api.comtele.com.br/routes).
+ * Rota de marketing está sujeita a filtragem e regras de opt-out — código de
+ * login precisa de rota transacional/premium, senão o SMS atrasa ou não chega.
  *
  * CREDENCIAIS (.env):
  *   COMTELE_API_KEY   — obrigatória
- *   COMTELE_SENDER    — opcional
- *   COMTELE_TIMEOUT   — opcional (segundos, padrão 12)
+ *   COMTELE_ROUTE     — id da rota (padrão 17)
+ *   COMTELE_TIMEOUT   — segundos (padrão 12)
  */
 class ComteleSmsProvider implements SmsProviderInterface
 {
-    private const ENDPOINT = 'https://sms.comtele.com.br/api/v2/send';
+    private const ENDPOINT = 'https://api.comtele.com.br/messages/sms/send';
+
+    /** Rota transacional. Ver GET /routes para as da conta. */
+    private const ROTA_PADRAO = 17;
 
     private string $apiKey;
-    private string $sender;
+    private int    $rota;
     private int    $timeout;
 
-    public function __construct(string $apiKey, string $sender = '', int $timeout = 12)
+    public function __construct(string $apiKey, int $rota = 0, int $timeout = 12)
     {
-        $this->apiKey  = trim($apiKey);
-        $this->sender  = trim($sender);
+        $this->apiKey = trim($apiKey);
+        $this->rota   = $rota > 0 ? $rota : self::ROTA_PADRAO;
         // Timeout curto de propósito: isto roda DENTRO do pedido de login.
         // Um gateway lento não pode segurar a tela do cliente.
         $this->timeout = max(3, min($timeout, 30));
@@ -54,15 +70,16 @@ class ComteleSmsProvider implements SmsProviderInterface
             return SmsSendResult::fail('COMTELE_API_KEY ausente', false, true);
         }
 
-        $body = [
-            'Receivers' => $numero,
-            'Content'   => $mensagem,
-        ];
-        if ($this->sender !== '') {
-            $body['Sender'] = $this->sender;
-        }
-
-        $json = json_encode($body, JSON_UNESCAPED_UNICODE);
+        $json = json_encode([
+            'receivers'     => [$numero],
+            'contactGroups' => [],
+            'message'       => $mensagem,
+            'route'         => $this->rota,
+            // Aparecem nos relatórios da Comtele: permitem separar o
+            // tráfego de autenticação do resto sem abrir cada mensagem.
+            'tag'           => 'auth-2fa',
+            'custom'        => 'sportmoto',
+        ], JSON_UNESCAPED_UNICODE);
 
         $ch = curl_init(self::ENDPOINT);
         curl_setopt_array($ch, [
@@ -71,7 +88,7 @@ class ComteleSmsProvider implements SmsProviderInterface
             CURLOPT_POSTFIELDS     => $json,
             CURLOPT_HTTPHEADER     => [
                 'Content-Type: application/json',
-                'auth-key: ' . $this->apiKey,
+                'x-api-key: ' . $this->apiKey,
             ],
             CURLOPT_TIMEOUT        => $this->timeout,
             CURLOPT_CONNECTTIMEOUT => 5,
@@ -87,30 +104,54 @@ class ComteleSmsProvider implements SmsProviderInterface
             return SmsSendResult::fail('rede: ' . ($curlErr ?: 'sem resposta'), true, false);
         }
 
-        $dados = json_decode((string) $resp, true);
+        $dados      = json_decode((string) $resp, true);
+        $permanente = $http >= 400 && $http < 500;
+
+        // Nem toda resposta é JSON (o endpoint antigo devolve text/plain, e o
+        // novo já devolveu 500 com um blob opaco). O texto costuma ser a
+        // explicação exata — é mensagem do gateway, não dado do cliente.
         if (!is_array($dados)) {
+            $texto = trim(preg_replace('/\s+/', ' ', strip_tags((string) $resp)) ?? '');
+            $texto = mb_substr($texto, 0, 200);
+
             return SmsSendResult::fail(
-                'resposta não-JSON (HTTP ' . $http . ')',
-                $http >= 500,
-                $http >= 400 && $http < 500,
-                ['http' => $http, 'body' => mb_substr((string) $resp, 0, 300)]
+                ($texto !== '' ? $texto : 'resposta vazia') . ' (HTTP ' . $http . ')',
+                !$permanente,
+                $permanente,
+                ['http' => $http, 'body' => $texto]
             );
         }
 
-        if ($http >= 200 && $http < 300 && !empty($dados['Success'])) {
-            $id = $dados['Object'] ?? null;
-            return SmsSendResult::ok(
-                is_scalar($id) ? (string) $id : null,
-                ['http' => $http]
-            );
+        // Sucesso exige HTTP 2xx E hasError === false. A Comtele responde 200
+        // com hasError=true em erro de validação, então checar só o status
+        // daria mensagem por entregue sem ter saído.
+        if ($http >= 200 && $http < 300 && empty($dados['hasError'])) {
+            // NÃO validar por `totalRecords`: a Comtele devolve 0 mesmo no
+            // sucesso ("A mensagem foi enviada para processamento com
+            // sucesso e logo será entregue."). Tratá-lo como contador fazia
+            // o adapter reportar falha DEPOIS de a mensagem já ter saído —
+            // o pior dos dois mundos, porque o cliente recebe o SMS e a tela
+            // diz que não deu certo.
+            //
+            // `hasError` é o único sinal confiável. Note que o envio é
+            // assíncrono: o "ok" aqui significa aceito para processamento,
+            // não entregue no aparelho.
+            return SmsSendResult::ok(null, [
+                'http'      => $http,
+                'aceite'    => mb_substr((string) ($dados['message'] ?? ''), 0, 160),
+            ]);
         }
 
-        // 401/403 = chave errada, 402 = sem saldo: reenviar não resolve.
-        // 429 e 5xx passam, porque uma nova tentativa pode funcionar.
-        $permanente = in_array($http, [400, 401, 402, 403, 404], true);
+        $motivo = (string) ($dados['message'] ?? '');
+        if ($motivo === '' && !empty($dados['errors']) && is_array($dados['errors'])) {
+            $motivo = implode('; ', array_map(
+                static fn($e): string => is_scalar($e) ? (string) $e : json_encode($e, JSON_UNESCAPED_UNICODE),
+                array_slice($dados['errors'], 0, 3)
+            ));
+        }
 
         return SmsSendResult::fail(
-            (string) ($dados['Message'] ?? 'falha no envio') . ' (HTTP ' . $http . ')',
+            mb_substr($motivo !== '' ? $motivo : 'falha no envio', 0, 200) . ' (HTTP ' . $http . ')',
             !$permanente,
             $permanente,
             ['http' => $http]

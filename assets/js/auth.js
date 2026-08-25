@@ -992,6 +992,41 @@ $(function () {
       }).then(function (r) { return r.json(); });
     }
 
+    // ── Feedback ao usuário (assets/js/toast.js) ──────
+    //
+    // toast.js é carregado DEPOIS do auth.js no layout minimal, mas estes
+    // helpers só rodam em resposta a clique, quando window.Toast já existe.
+    // O fallback para alert() cobre o caso de o arquivo não ter carregado —
+    // feio, porém melhor do que engolir a mensagem em silêncio, que é
+    // exatamente o problema que este bloco existe para resolver.
+    function notificar(tipo, mensagem) {
+      if (window.Toast && typeof Toast[tipo] === 'function') {
+        return Toast[tipo](mensagem);
+      }
+      alert(mensagem);
+      return null;
+    }
+
+    /**
+     * Fecha um toast de "carregando" transformando-o no resultado final.
+     * Se não houver toast pendente (Toast ausente na hora do clique),
+     * emite um novo — nunca deixa a ação terminar sem resposta visível.
+     */
+    function concluir(id, tipo, mensagem) {
+      if (id && window.Toast && typeof Toast.update === 'function') {
+        Toast.update(id, {
+          type:     tipo,
+          message:  mensagem,
+          duration: tipo === 'error' ? 6000 : 4000,
+        });
+        return;
+      }
+      if (id && window.Toast && typeof Toast.dismiss === 'function') {
+        Toast.dismiss(id);
+      }
+      notificar(tipo, mensagem);
+    }
+
     // ── Etapa A: escolher canal e enviar ──────────────
     function enviarPorCanal(canal, btnEl) {
       canalAtual = canal;
@@ -1002,7 +1037,7 @@ $(function () {
           if (btnEl) btnEl.style.opacity = '';
 
           if (resp.restart) { window.location.href = BASE + '/login'; return; }
-          if (!resp.ok) { alert(resp.msg || 'Erro ao enviar código.'); return; }
+          if (!resp.ok) { notificar('error', resp.msg || 'Não foi possível enviar o código.'); return; }
 
           // Mostra etapa do código
           stepCanal.style.display  = 'none';
@@ -1032,7 +1067,7 @@ $(function () {
         })
         .catch(function () {
           if (btnEl) btnEl.style.opacity = '';
-          alert('Erro de conexão. Tente novamente.');
+          notificar('error', 'Erro de conexão. Tente novamente.');
         });
     }
 
@@ -1059,28 +1094,71 @@ $(function () {
     }
 
     // ── Reenviar: reenvia pelo mesmo canal ────────────
+    //
+    // O sucesso PRECISA de um toast. A versão anterior só reescrevia o
+    // banner com o mesmo texto que já estava na tela ("Código enviado por
+    // E-mail. j***@..."), então nada mudava visualmente e o clique parecia
+    // não ter funcionado. Banner = estado ("o código está neste canal");
+    // toast = evento ("acabei de reenviar"). São coisas diferentes.
     if (btnReenviar) {
       btnReenviar.addEventListener('click', function () {
-        if (!canalAtual) return;
-        btnReenviar.disabled = true;
+        if (!canalAtual) {
+          notificar('error', 'Escolha primeiro como receber o código.');
+          return;
+        }
+
+        btnReenviar.disabled    = true;
         btnReenviar.textContent = 'Reenviando...';
+
+        // Toast de carregando (duration 0) que vira sucesso/erro no fim:
+        // o reenvio depende de e-mail/SMS e pode demorar alguns segundos.
+        var aviso = (window.Toast && Toast.loading)
+          ? Toast.loading('Reenviando código...')
+          : null;
+
+        function restaurar() {
+          btnReenviar.disabled    = false;
+          btnReenviar.textContent = 'Reenviar código';
+        }
+
         post('/autenticacao-2fa/enviar', { canal: canalAtual })
           .then(function (resp) {
-            btnReenviar.disabled = false;
-            btnReenviar.textContent = 'Reenviar código';
-            if (resp.ok && banner) {
+            restaurar();
+
+            // Pendência expirada no servidor: reenviar não tem para onde
+            // ir. Antes isto era ignorado e o botão só "piscava".
+            if (resp.restart) {
+              concluir(aviso, 'error', resp.msg || 'Sua verificação expirou. Entre novamente.');
+              setTimeout(function () { window.location.href = BASE + '/login'; }, 1200);
+              return;
+            }
+
+            if (!resp.ok) {
+              // Cobre o limite de reenvios ("Aguarde antes de solicitar
+              // outro código"), que antes vinha num alert().
+              concluir(aviso, 'error', resp.msg || 'Não foi possível reenviar o código.');
+              return;
+            }
+
+            if (banner) {
               banner.style.display = '';
               banner.innerHTML =
                 '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
                 'stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> ' +
                 resp.msg + ' <strong>' + (resp.destino || '') + '</strong>';
-            } else if (!resp.ok) {
-              alert(resp.msg || 'Erro ao reenviar.');
             }
+
+            // O código anterior deixou de valer: limpar o campo evita que
+            // o cliente envie o antigo sem perceber.
+            if (input) { input.value = ''; input.focus(); }
+            if (errEl) errEl.textContent = '';
+
+            concluir(aviso, 'success',
+              'Novo código enviado' + (resp.destino ? ' para ' + resp.destino : '') + '.');
           })
           .catch(function () {
-            btnReenviar.disabled = false;
-            btnReenviar.textContent = 'Reenviar código';
+            restaurar();
+            concluir(aviso, 'error', 'Erro de conexão. Tente novamente.');
           });
       });
     }
