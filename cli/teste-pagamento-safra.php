@@ -39,16 +39,121 @@ if ($ambiente !== 'hml' && $acao !== 'status') {
 
 $db = Database::getInstance()->getConnection();
 
-switch ($acao) {
-    case 'cartao':        cobrarCartao($db, false); break;
-    case 'cartao-negado': cobrarCartao($db, true);  break;
-    case 'pix':           cobrarPix($db);           break;
-    case 'status':        verStatus($db, (string) $arg); break;
-    case 'limpar':        limpar($db);              break;
-    default:              ajuda();
+// Sem este try/catch a excecao morre silenciosa quando display_errors esta
+// desligado no servidor — foi exatamente o que escondeu um 403 da Safra.
+try {
+    switch ($acao) {
+        case 'cartao':        cobrarCartao($db, false); break;
+        case 'cartao-negado': cobrarCartao($db, true);  break;
+        case 'pix':           cobrarPix($db);           break;
+        case 'status':        verStatus($db, (string) $arg); break;
+        case 'diagnostico':   diagnostico();            break;
+        case 'limpar':        limpar($db);              break;
+        default:              ajuda();
+    }
+} catch (\Throwable $e) {
+    fwrite(STDERR, "
+  FALHOU: " . get_class($e) . "
+  " . $e->getMessage() . "
+");
+    fwrite(STDERR, "  em " . $e->getFile() . ":" . $e->getLine() . "
+
+");
+    fwrite(STDERR, "  Rode:  php cli/teste-pagamento-safra.php diagnostico
+
+");
+    exit(1);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Mostra a resposta CRUA da autenticacao. Existe porque a diferenca entre
+ * "credencial errada" (401 com JSON) e "bloqueio de rede/WAF" (403 com HTML)
+ * nao aparece na mensagem tratada — e sao problemas completamente diferentes.
+ */
+function diagnostico(): void
+{
+    $token = (string) getenv('SAFRAPAY_MERCHANT_TOKEN');
+    $mid   = (string) getenv('SAFRAPAY_MERCHANT_ID');
+    $amb   = (string) getenv('SAFRAPAY_AMBIENTE');
+    $base  = $amb === 'prod' ? 'https://payment.safrapay.com.br' : 'https://payment-hml.safrapay.com.br';
+
+    echo "
+▸ DIAGNOSTICO
+
+";
+    printf("  SAFRAPAY_AMBIENTE      = %s
+", $amb ?: '(vazio)');
+    printf("  SAFRAPAY_MERCHANT_ID   = %s
+", $mid ? substr($mid, 0, 8) . '...' : '(vazio)');
+    printf("  SAFRAPAY_MERCHANT_TOKEN= %s
+", $token ? substr($token, 0, 5) . '... (' . strlen($token) . ' chars)' : '(vazio)');
+    printf("  base                   = %s
+", $base);
+    printf("  PHP                    = %s | curl = %s
+", PHP_VERSION,
+        (curl_version()['version'] ?? '?'));
+
+    // IP de saida do servidor — e o que a Safra ve.
+    echo "
+  IP de saida deste servidor:
+";
+    foreach (['https://api.ipify.org', 'https://ifconfig.me/ip'] as $u) {
+        $ch = curl_init($u);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10]);
+        $ip = curl_exec($ch); $err = curl_error($ch); curl_close($ch);
+        printf("    %-26s %s
+", parse_url($u, PHP_URL_HOST), $ip !== false ? trim((string) $ip) : 'falhou: ' . $err);
+    }
+
+    // Resposta crua da autenticacao, com cabecalhos.
+    echo "
+  POST {$base}/v2/merchant/auth (resposta crua):
+";
+    $ch = curl_init($base . '/v2/merchant/auth');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_POSTFIELDS => '',
+        CURLOPT_HTTPHEADER => ['Authorization: ' . $token],
+        CURLOPT_TIMEOUT => 25, CURLOPT_HEADER => true,
+    ]);
+    $resp = curl_exec($ch);
+    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $hsz  = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+    $err  = curl_error($ch);
+    curl_close($ch);
+
+    if ($resp === false) { echo "    ERRO DE REDE: {$err}
+
+"; return; }
+
+    printf("    HTTP %d
+", $code);
+    foreach (explode("
+", trim(substr($resp, 0, $hsz))) as $h) {
+        $h = trim($h);
+        if (preg_match('/^(server|cf-ray|x-|www-authenticate|content-type|via|mitigated):/i', $h)) {
+            echo "    ↳ {$h}
+";
+        }
+    }
+    $corpo = trim(substr($resp, $hsz));
+    echo "    corpo: " . (mb_substr($corpo, 0, 500) ?: '(vazio)') . "
+";
+
+    echo "
+  COMO LER:
+";
+    echo "    HTTP 200            -> tudo certo
+";
+    echo "    HTTP 401 + JSON     -> credencial errada/expirada
+";
+    echo "    HTTP 403 + HTML     -> bloqueio de WAF/IP. O IP acima precisa ser liberado pela Safra.
+";
+    echo "    erro de rede        -> firewall de saida no servidor
+
+";
+}
 
 function ajuda(): void
 {
@@ -60,6 +165,7 @@ function ajuda(): void
       cartao-negado   Mesmo fluxo com R$ 3,33 (cenário de recusa)
       pix             Cria pedido + gera QR (aguarda pagamento)
       status <ref>    Mostra pedido, transação e webhooks recebidos
+      diagnostico     Testa a conexao com a Safra e mostra a resposta crua
       limpar          Remove os pedidos de teste deste script
 
     TXT;
