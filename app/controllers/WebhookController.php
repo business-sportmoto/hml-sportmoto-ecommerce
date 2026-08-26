@@ -263,6 +263,108 @@ class WebhookController extends Controller
     // PRIVADOS
     // =================================================================
 
+
+    /**
+     * POST /webhooks/safrapay
+     *
+     * Recebe as notificações da Safra Pay (EventType 1 Created, 2 Updated).
+     * Mesmo esqueleto do webhook da Malga — corpo cru primeiro, autenticação
+     * isolada, log com idempotência, resposta rápida.
+     *
+     * DUAS DECISÕES QUE VALEM EXPLICAR:
+     *
+     * 1. Responde 200 mesmo em evento duplicado. A Safra exige 2xx em até 30s
+     *    e reentrega quando não recebe; devolver erro num duplicado geraria
+     *    reentrega infinita de algo que já foi processado.
+     *
+     * 2. Autenticação recusada devolve 401 SEM processar, mas o log é gravado.
+     *    Tentativa forjada é justamente o que se quer ver depois.
+     *
+     * O efeito financeiro NÃO acontece aqui. O header da Safra é segredo
+     * compartilhado, não assinatura do corpo — então quem confirma o pagamento
+     * é a reconsulta em GET /v2/charge/{id}, feita pelo processor.
+     */
+    public function safrapay(): void
+    {
+        $rawBody = file_get_contents('php://input') ?: '';
+        $headers = $this->getRequestHeaders();
+        $ip      = $_SERVER['REMOTE_ADDR'] ?? null;
+
+        $payload = json_decode($rawBody, true);
+        if (!is_array($payload)) {
+            $this->logFalha('payload nao e JSON', $rawBody, $headers, $ip);
+            $this->respond(400, ['ok' => false, 'msg' => 'payload invalido']);
+            return;
+        }
+
+        $evento    = SafraPayWebhookEvento::daPayload($payload);
+        $validacao = (new SafraPayWebhookValidator())->validar($headers);
+
+        try {
+            $logId = $this->persistirLog([
+                'gateway_codigo'    => 'safrapay',
+                'event_id'          => $evento->eventId(),
+                'tipo'              => $evento->tipo(),
+                'charge_id'         => $evento->chargeId,
+                'payload'           => $rawBody,
+                'assinatura_header' => 'Authorization: ' . (empty($headers['Authorization']) ? '(ausente)' : '(presente)'),
+                'assinatura_valida' => $validacao['valida'] ? 1 : 0,
+                'ip_origem'         => $ip,
+            ]);
+        } catch (\PDOException $e) {
+            if ($this->isDuplicateKey($e)) {
+                // Reentrega do mesmo evento: já registrado e já tratado.
+                LogService::info('[Webhook safrapay] evento duplicado ignorado', [
+                    'charge_id' => $evento->chargeId,
+                    'tipo'      => $evento->tipo(),
+                ], 'pagamento');
+                $this->respond(200, ['ok' => true, 'msg' => 'duplicado']);
+                return;
+            }
+            throw $e;
+        }
+
+        if (!$validacao['valida']) {
+            LogService::critical('[Webhook safrapay] autenticacao recusada', [
+                'motivo'    => $validacao['motivo'],
+                'charge_id' => $evento->chargeId,
+                'ip'        => $ip,
+            ], 'pagamento');
+            $this->respond(401, ['ok' => false, 'msg' => 'nao autorizado']);
+            return;
+        }
+
+        LogService::info('[Webhook safrapay] evento recebido', [
+            'charge_id'          => $evento->chargeId,
+            'pedido'             => $evento->merchantChargeId,
+            'tipo'               => $evento->tipo(),
+            'metodo'             => $evento->metodo,
+            'transaction_status' => $evento->transactionStatus,
+            'valor_centavos'     => $evento->valorCentavos,
+        ], 'pagamento');
+
+        // Processa de forma SINCRONA: a Safra exige 2xx em ate 30s e o
+        // processor reconsulta a cobranca antes de qualquer efeito.
+        // Falha aqui NAO vira erro HTTP — o evento ja esta gravado, e
+        // devolver erro faria a Safra reentregar algo ja registrado.
+        try {
+            $r = (new SafraPayWebhookProcessor())->processarPorLogId($logId);
+            if (!$r['ok']) {
+                LogService::warning('[Webhook safrapay] evento nao aplicado', [
+                    'charge_id' => $evento->chargeId,
+                    'motivo'    => $r['motivo'],
+                ], 'pagamento');
+            }
+        } catch (\Throwable $e) {
+            LogService::exception($e, 'error', 'pagamento', [
+                'charge_id' => $evento->chargeId,
+                'acao'      => 'processar_webhook',
+            ]);
+        }
+
+        $this->respond(200, ['ok' => true]);
+    }
+
     private function getRequestHeaders(): array
     {
         if (function_exists('getallheaders')) {
@@ -283,12 +385,14 @@ class WebhookController extends Controller
     {
         $db = Database::getInstance()->getConnection();
 
-        // Resolve gateway_id da Malga
-        $stmt = $db->prepare("SELECT id FROM pgto_gateways WHERE codigo = 'malga' LIMIT 1");
-        $stmt->execute();
+        // Resolve gateway_id pelo codigo da adquirente. Antes era fixo em
+        // 'malga'; com multiplas adquirentes o log precisa saber de quem veio.
+        $codigo = (string) ($dados['gateway_codigo'] ?? 'malga');
+        $stmt = $db->prepare("SELECT id FROM pgto_gateways WHERE codigo = ? LIMIT 1");
+        $stmt->execute([$codigo]);
         $gatewayId = (int) ($stmt->fetchColumn() ?: 0);
         if ($gatewayId === 0) {
-            throw new RuntimeException('Gateway malga não existe em pgto_gateways');
+            throw new RuntimeException("Gateway {$codigo} nao existe em pgto_gateways");
         }
 
         $db->prepare(

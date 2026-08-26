@@ -12,6 +12,7 @@ Router::post('/consent/salvar', 'ConsentController@salvar');
 
 Router::post('/webhooks/malga',          'WebhookController@malga');
 Router::get( '/webhooks/malga/diagnose', 'WebhookController@diagnose');
+Router::post('/webhooks/safrapay',        'WebhookController@safrapay');
 // Webhook público (sem auth) — ANTES das rotas admin
 Router::post('/webhook/bling', 'BlingWebhookController@receive');
 
