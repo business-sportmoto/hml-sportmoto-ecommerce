@@ -138,7 +138,7 @@ function diagnostico(): void
         }
     }
     $corpo = trim(substr($resp, $hsz));
-    echo "    corpo: " . (mb_substr($corpo, 0, 500) ?: '(vazio)') . "
+    echo "    corpo: " . (mb_substr($corpo, 0, 2000) ?: '(vazio)') . "
 ";
 
     echo "
