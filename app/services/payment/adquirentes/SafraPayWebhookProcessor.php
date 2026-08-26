@@ -91,11 +91,38 @@ class SafraPayWebhookProcessor
             // ── Reconsulta: a fonte da verdade ──────────────────────────
             $atual = $this->adapter->consultar($evento->chargeId);
 
-            if ($atual->exigeConsulta || $atual->porta === PagamentoClassificacao::INDISPONIVEL) {
-                // Safra fora do ar agora. NÃO marca processado — a reentrega
-                // dela (ou o cron de reconciliação) tenta de novo.
-                $this->registrarTentativa($webhookLogId, 'reconsulta indisponivel');
-                return ['ok' => false, 'motivo' => 'reconsulta indisponivel', 'status' => null];
+            // ── A reconsulta precisa ter LIDO a cobrança ────────────────
+            //
+            // Só um resultado vindo do corpo da cobrança pode virar status.
+            // Qualquer falha de transporte — timeout, 5xx, credencial, e
+            // principalmente bloqueio de WAF (403 HTML do Akamai) — significa
+            // "não sei", não "negado".
+            //
+            // Sem esta guarda, um bloqueio de infraestrutura entre nós e a
+            // Safra marcava pagamentos legítimos como RECUSADOS: o default do
+            // statusDaReconsulta() era Denied. Um IP bloqueado derrubaria os
+            // pedidos do dia inteiro.
+            $reconsultaFalhou = in_array($atual->porta, [
+                PagamentoClassificacao::ERRO_TECNICO,
+                PagamentoClassificacao::INDISPONIVEL,
+                PagamentoClassificacao::INCERTO,
+            ], true);
+
+            if ($reconsultaFalhou || $atual->exigeConsulta) {
+                $motivo = 'reconsulta falhou (' . $atual->classeErro . ', HTTP '
+                        . ($atual->httpStatus ?? 0) . ') — evento nao aplicado';
+
+                LogService::error('[Safra webhook] reconsulta indisponivel', [
+                    'charge_id' => $evento->chargeId,
+                    'classe'    => $atual->classeErro,
+                    'http'      => $atual->httpStatus,
+                    'detalhe'   => $atual->mensagemAdquirente,
+                ], 'pagamento');
+
+                // NÃO marca processado: a reentrega da Safra ou a
+                // reconciliação tentam de novo quando a conexão voltar.
+                $this->registrarTentativa($webhookLogId, $motivo);
+                return ['ok' => false, 'motivo' => $motivo, 'status' => null];
             }
 
             $statusSafra = $this->statusDaReconsulta($atual);
