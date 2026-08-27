@@ -13,6 +13,12 @@ Router::post('/consent/salvar', 'ConsentController@salvar');
 Router::post('/webhooks/malga',          'WebhookController@malga');
 Router::get( '/webhooks/malga/diagnose', 'WebhookController@diagnose');
 Router::post('/webhooks/safrapay',        'WebhookController@safrapay');
+
+// ClearSale. A rota com {token} vem ANTES da sem token: o segredo e opcional
+// no protocolo deles (que nao preve nenhum), mas como a URL e cadastrada por
+// e-mail, embutir um no caminho e a protecao mais barata contra abuso.
+Router::post('/webhooks/clearsale/{token}', 'WebhookController@clearsale');
+Router::post('/webhooks/clearsale',         'WebhookController@clearsale');
 // Webhook público (sem auth) — ANTES das rotas admin
 Router::post('/webhook/bling', 'BlingWebhookController@receive');
 

@@ -365,6 +365,153 @@ class WebhookController extends Controller
         $this->respond(200, ['ok' => true]);
     }
 
+    /**
+     * POST /webhooks/clearsale[/{token}]
+     *
+     * Notificacao de mudanca de status da ClearSale.
+     *
+     * TRES COISAS DEFINEM ESTE ENDPOINT, e todas vem da documentacao deles:
+     *
+     *  1. A NOTIFICACAO NAO TRAZ O VEREDITO. O corpo e so
+     *     {code, date, type} — "mudou alguma coisa neste pedido". O parecer
+     *     tem que ser consultado a parte. Entao nada do que chega aqui e
+     *     confiado: o unico uso do corpo e descobrir QUAL pedido reconsultar.
+     *
+     *  2. NAO HA ASSINATURA NEM TOKEN no protocolo deles. Como a URL e
+     *     cadastrada por e-mail, da para embutir um segredo no proprio
+     *     caminho (CLEARSALE_WEBHOOK_TOKEN). E protecao contra abuso, nao
+     *     contra falsificacao de parecer — falsificar e impossivel de
+     *     qualquer forma, porque a fonte da verdade e a API deles.
+     *
+     *  3. ELES RETENTAM ATE RECEBER 200. Qualquer outro codigo vira
+     *     retentativa em loop. Por isso este metodo responde 200 em quase
+     *     todos os caminhos, inclusive quando recusa: engasgar aqui geraria
+     *     tempestade de retentativa sem consertar nada.
+     *
+     * PERDER UMA NOTIFICACAO NAO PERDE O PARECER: antes de processar, a
+     * analise volta para a fila do cron (agendarConsultaImediata). Se este
+     * request morrer no meio, o worker pega em seguida. A notificacao encurta
+     * a espera; ela nao e a unica via.
+     */
+    public function clearsale(string $token = ''): void
+    {
+        $rawBody = file_get_contents('php://input') ?: '';
+        $ip      = $_SERVER['REMOTE_ADDR'] ?? null;
+
+        if (!$this->clearsaleTokenValido($token)) {
+            LogService::critical('[Webhook clearsale] token do caminho invalido', [
+                'ip' => $ip, 'tem_token' => $token !== '',
+            ], 'pagamento');
+            // 200 de proposito: uma URL mal cadastrada nao pode virar loop
+            // infinito de retentativa. O cron cobre o que se perder aqui.
+            $this->respond(200, ['ok' => true]);
+            return;
+        }
+
+        $payload = json_decode($rawBody, true);
+        $codigo  = is_array($payload) ? trim((string) ($payload['code'] ?? '')) : '';
+
+        if ($codigo === '') {
+            LogService::warning('[Webhook clearsale] payload sem code', [
+                'ip' => $ip, 'corpo' => mb_substr($rawBody, 0, 300),
+            ], 'pagamento');
+            $this->respond(200, ['ok' => true]);
+            return;
+        }
+
+        $svc  = new ClearSaleParecerService();
+        // Uma consulta barata no nosso banco antes de qualquer chamada externa:
+        // codigo que nao esta esperando parecer nao gasta request na ClearSale.
+        $linha = $svc->pendentePorCodigo($codigo);
+
+        if (!$linha) {
+            LogService::info('[Webhook clearsale] notificacao sem analise pendente', [
+                'pedido' => $codigo, 'tipo' => $payload['type'] ?? null, 'ip' => $ip,
+            ], 'pagamento');
+            $this->respond(200, ['ok' => true]);
+            return;
+        }
+
+        // Devolve para a fila do cron ANTES de processar. Esta e a linha que
+        // torna seguro responder 200 logo em seguida.
+        $svc->agendarConsultaImediata((int) $linha['id']);
+
+        LogService::info('[Webhook clearsale] notificacao recebida', [
+            'pedido' => $codigo, 'tipo' => $payload['type'] ?? null,
+            'status_atual' => $linha['codigo_status'] ?? null,
+        ], 'pagamento');
+
+        $this->responderEProcessar(static function () use ($svc, $linha, $codigo): void {
+            try {
+                $r = $svc->processar($linha);
+                LogService::info('[Webhook clearsale] parecer aplicado', [
+                    'pedido' => $codigo, 'acao' => $r['acao'],
+                    'status' => $r['codigo_status'], 'score' => $r['score'],
+                ], 'pagamento');
+            } catch (\Throwable $e) {
+                // Ja respondemos 200 e a analise ja voltou para a fila:
+                // o cron reprocessa. Aqui so registra.
+                LogService::exception($e, 'error', 'pagamento',
+                    ['acao' => 'webhook_clearsale', 'pedido' => $codigo]);
+            }
+        });
+    }
+
+    /**
+     * Segredo opcional no caminho da URL.
+     *
+     * Sem CLEARSALE_WEBHOOK_TOKEN configurado o endpoint fica aberto — e o
+     * comportamento correto, porque o protocolo da ClearSale nao preve
+     * segredo nenhum e travar por padrao deixaria o webhook morto sem aviso.
+     * Com token configurado, a comparacao e em tempo constante.
+     */
+    private function clearsaleTokenValido(string $token): bool
+    {
+        $esperado = (string) (getenv('CLEARSALE_WEBHOOK_TOKEN')
+                    ?: ($_ENV['CLEARSALE_WEBHOOK_TOKEN'] ?? ''));
+
+        if ($esperado === '') return true;
+
+        return $token !== '' && hash_equals($esperado, $token);
+    }
+
+    /**
+     * Responde 200 e fecha a conexao antes de trabalhar.
+     *
+     * A ClearSale so quer o 200; deixa-la esperando a nossa consulta ao
+     * endpoint de status (que ja levou 4s em teste) so aumenta a chance de
+     * timeout do lado deles e retentativa do nosso. Onde o SAPI nao souber
+     * encerrar cedo, processa antes de responder — mais lento, mas correto.
+     */
+    private function responderEProcessar(callable $trabalho): void
+    {
+        // Cada SAPI batiza a mesma coisa de um jeito. LiteSpeed (producao)
+        // usa litespeed_finish_request; PHP-FPM usa fastcgi_finish_request;
+        // Apache com mod_php nao tem nenhum dos dois.
+        $encerrar = null;
+        foreach (['litespeed_finish_request', 'fastcgi_finish_request'] as $f) {
+            if (function_exists($f)) { $encerrar = $f; break; }
+        }
+
+        if ($encerrar === null) {
+            // Sem como fechar cedo, trabalha antes de responder. Mais lento,
+            // e a ClearSale pode estourar o proprio timeout e reenviar — o
+            // que e inofensivo: o piso de 30s e o cron cobrem a reentrega.
+            $trabalho();
+            $this->respond(200, ['ok' => true]);
+            return;
+        }
+
+        http_response_code(200);
+        header('Content-Type: application/json; charset=utf-8');
+        header('X-Robots-Tag: noindex');
+        echo json_encode(['ok' => true]);
+
+        $encerrar();
+        $trabalho();
+        exit;
+    }
+
     private function getRequestHeaders(): array
     {
         if (function_exists('getallheaders')) {
