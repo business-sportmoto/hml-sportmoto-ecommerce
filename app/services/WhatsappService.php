@@ -834,7 +834,7 @@ class WhatsappService
             'codigo_de_verificacao_2fa',  // ← nome exato do template aprovado
             [
                 // Body: {{1}} = código, {{2}} = telefone de contato
-                MetaCloudService::body($codigo, ConfigHelper::get('loja_whatsapp')),
+                MetaCloudService::body($codigo, ConfigHelper::get('loja_whatsapp_avisos')),
 
                 // Botão URL — sufixo dinâmico substitui {{1}} na URL do botão
                 // A URL base é: https://www.whatsapp.com/otp/code/?...&code=otp

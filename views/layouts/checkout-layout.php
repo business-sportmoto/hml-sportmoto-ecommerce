@@ -281,5 +281,12 @@ $ctaMobile = $ctaPorEtapa[$etapaAtual ?? 'identify'] ?? null;
     }
   })(jQuery);
   </script>
+
+  <?php
+  // ClearSale Behavior Analytics. O sessionID vem do servidor e e o mesmo que
+  // o pedido leva na analise — e essa correspondencia que amarra o pedido ao
+  // dispositivo. Sem CLEARSALE_APP_KEY no .env, nao renderiza nada.
+  echo ClearSaleFingerprint::script();
+  ?>
 </body>
 </html>

@@ -31,6 +31,8 @@ AppRouter::post($v . '/auth/identificar',      'AppAuthController@identificar');
 AppRouter::post($v . '/auth/cadastro',         'AppAuthController@cadastro');
 AppRouter::post($v . '/auth/email/verificar',  'AppAuthController@verificarEmail');
 AppRouter::post($v . '/auth/email/reenviar',   'AppAuthController@reenviarVerificacao');
+AppRouter::post($v . '/auth/senha/recuperar',   'AppAuthController@recuperarSenha');
+AppRouter::post($v . '/auth/senha/redefinir',   'AppAuthController@redefinirSenha');
 AppRouter::post($v . '/auth/login',            'AppAuthController@login');
 AppRouter::post($v . '/auth/2fa/enviar',       'AppAuthController@enviarCodigo2fa');
 AppRouter::post($v . '/auth/2fa/verificar',    'AppAuthController@verificar2fa');
@@ -76,6 +78,21 @@ AppRouter::delete($v . '/carrinho/cupom',           'AppCarrinhoController@remov
 
 // ── Conta ───────────────────────────────────────────────────────────────────
 AppRouter::get   ($v . '/conta/perfil',                'AppContaController@perfil');
+
+// ── Área do cliente ─────────────────────────────────────────────────────────
+// Espelha views/customer/*. Literais antes de {id}, como sempre.
+AppRouter::get   ($v . '/conta/resumo',                'AppPerfilController@resumo');
+AppRouter::get   ($v . '/conta/perfil/dados',          'AppPerfilController@dados');
+AppRouter::patch ($v . '/conta/perfil',                'AppPerfilController@atualizar');
+AppRouter::post  ($v . '/conta/perfil/avatar',         'AppPerfilController@avatar');
+AppRouter::post  ($v . '/conta/senha',                 'AppPerfilController@trocarSenha');
+AppRouter::post  ($v . '/conta/cartoes/{id:\d+}/principal', 'AppPerfilController@cartaoPrincipal');
+AppRouter::get   ($v . '/conta/sessoes',               'AppPerfilController@sessoes');
+AppRouter::delete($v . '/conta/sessoes',               'AppPerfilController@encerrarOutras');
+AppRouter::delete($v . '/conta/sessoes/{id:\d+}',      'AppPerfilController@encerrarSessao');
+AppRouter::get   ($v . '/conta/seguranca',             'AppPerfilController@seguranca');
+AppRouter::post  ($v . '/conta/seguranca/2fa',         'AppPerfilController@alternar2fa');
+AppRouter::get   ($v . '/conta/avaliacoes',            'AppPerfilController@avaliacoes');
 AppRouter::get   ($v . '/conta/favoritos/ids',         'AppContaController@favoritosIds'); // antes de /favoritos
 AppRouter::get   ($v . '/conta/favoritos',             'AppContaController@favoritos');
 AppRouter::post  ($v . '/conta/favoritos',             'AppContaController@favoritar');

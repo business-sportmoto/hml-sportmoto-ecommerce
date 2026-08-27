@@ -14,7 +14,12 @@ class Customer extends Model {
                     u.criado_em AS membro_desde,
                     c.id AS cliente_id, c.cpf, c.telefone, c.celular,
                     c.nascimento, c.genero, c.avatar, c.newsletter,
-                    c.verificado, c.verificado_em
+                    c.verificado, c.verificado_em,
+                    -- views/customer/conta.php le saldo_disponivel do perfil
+                    -- para montar o cartao de credito da loja. A coluna existe
+                    -- em `clientes` mas nao vinha neste SELECT, entao o cartao
+                    -- nunca aparecia — nem para quem tem saldo.
+                    c.saldo_disponivel
             FROM clientes c
             JOIN usuarios u ON u.id = c.usuario_id
             WHERE c.id = ? AND u.deleted_at IS NULL
@@ -61,7 +66,10 @@ class Customer extends Model {
             !empty($data['celular'])    ? $data['celular']    : null,
             !empty($data['nascimento']) ? $data['nascimento'] : null,
             !empty($data['genero'])     ? $data['genero']     : null,
-            isset($data['newsletter'])  ? 1 : 0,
+            // `isset()` num booleano FALSE devolve true — com isso a
+            // newsletter era gravada como 1 mesmo quando o cliente desmarcava,
+            // e nao havia como desativar nem pela web nem pelo app.
+            !empty($data['newsletter']) ? 1 : 0,
             $clienteId,
         ]);
     }
@@ -531,12 +539,27 @@ class Customer extends Model {
         $stmtEnd->execute([$clienteId]);
         $endTotal = (int) $stmtEnd->fetchColumn();
 
+        // views/customer/conta.php le `tier` e `score` daqui para o selo do
+        // topo. Nenhum dos dois era devolvido, entao o padrao do proprio view
+        // (`bronze` e 0) valia para todo mundo: o cliente 2, que e `gold` com
+        // 900 pontos, aparecia como Bronze 0 pts.
+        $stmtScore = $db->prepare(
+            "SELECT score_total, tier FROM clientes_score WHERE cliente_id = ? LIMIT 1"
+        );
+        $stmtScore->execute([$clienteId]);
+        $score = $stmtScore->fetch() ?: null;
+
         return [
             'total_pedidos'  => (int)   $pedStats['total'],
             'gasto_total'    => (float) ($pedStats['gasto_total'] ?? 0),
             'ultimo_pedido'  => $pedStats['ultimo_pedido'],
             'total_favoritos'=> $wishTotal,
             'total_enderecos'=> $endTotal,
+
+            // Sem linha em clientes_score o cliente e novo e ainda nao foi
+            // calculado — bronze/0 e a resposta certa, nao um valor de falha.
+            'score'          => (int)   ($score['score_total'] ?? 0),
+            'tier'           => (string)($score['tier'] ?? 'bronze'),
         ];
     }
 }

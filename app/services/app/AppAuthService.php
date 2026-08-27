@@ -127,10 +127,15 @@ class AppAuthService
         }
 
         if (empty($user['email_verificado'])) {
+            // `usuario_id` vai junto porque o app manda a pessoa DIRETO para a
+            // tela do código, com botão de reenviar. Sem ele, a única saída era
+            // ler a mensagem e procurar sozinha o e-mail antigo — e conta não
+            // confirmada nunca virava conta ativa.
             return [
-                'estado' => 'email_pendente',
-                'mensagem' => 'Confirme seu e-mail antes de entrar. Veja sua caixa de entrada.',
-                'email' => $this->mascararEmail((string)$user['email']),
+                'estado'     => 'email_pendente',
+                'mensagem'   => 'Confirme seu e-mail para entrar. Enviamos um código para você.',
+                'email'      => $this->mascararEmail((string)$user['email']),
+                'usuario_id' => (int)$user['id'],
             ];
         }
 
@@ -283,17 +288,38 @@ class AppAuthService
      */
     public function cadastrar(array $dispositivo, array $dados, ?string $ip): array
     {
-        $nome  = trim(SecurityHelper::sanitizeString((string)($dados['nome'] ?? '')));
-        $email = SecurityHelper::sanitizeEmail((string)($dados['email'] ?? ''));
-        $cpf   = preg_replace('/\D/', '', (string)($dados['cpf'] ?? ''));
-        $senha = (string)($dados['senha'] ?? '');
+        $nome    = trim(SecurityHelper::sanitizeString((string)($dados['nome'] ?? '')));
+        $email   = SecurityHelper::sanitizeEmail((string)($dados['email'] ?? ''));
+        $cpf     = preg_replace('/\D/', '', (string)($dados['cpf'] ?? ''));
+        $celular = preg_replace('/\D/', '', (string)($dados['celular'] ?? ''));
+        $senha   = (string)($dados['senha'] ?? '');
         $newsletter = !empty($dados['newsletter']);
 
         $erros = [];
         if (mb_strlen($nome) < 3)                       $erros['nome']  = 'Informe seu nome completo.';
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $erros['email'] = 'E-mail inválido.';
         if (!SecurityHelper::validatePassword($senha))  $erros['senha'] = 'Use 8+ caracteres, com maiúscula, minúscula e número.';
-        if ($cpf !== '' && !SecurityHelper::validateCpf($cpf)) $erros['cpf'] = 'CPF inválido.';
+        // CPF é OBRIGATORIO. E a chave que liga o cliente ao pedido, a nota
+        // fiscal e ao antifraude — conta sem CPF trava na primeira compra, e
+        // corrigir depois exige suporte manual.
+        //
+        // A web ainda o aceita vazio; aqui nao, de proposito: e cadastro novo,
+        // e o custo de exigir agora e menor que o de cobrar depois.
+        if ($cpf === '') {
+            $erros['cpf'] = 'Informe seu CPF.';
+        } elseif (!SecurityHelper::validateCpf($cpf)) {
+            $erros['cpf'] = 'CPF inválido.';
+        }
+
+        // Celular é OBRIGATÓRIO: é por ele que saem o 2FA por WhatsApp e SMS e
+        // os avisos de entrega. Coletar depois, quando o cliente precisar do
+        // segundo fator, significaria pedir no pior momento possível.
+        //
+        // 10 dígitos (fixo com DDD) ou 11 (celular com o 9). Menos que isso não
+        // é um número brasileiro discável.
+        if (strlen((string)$celular) < 10 || strlen((string)$celular) > 11) {
+            $erros['celular'] = 'Informe o DDD e o número.';
+        }
 
         // `confirmar_senha` não existe aqui: no app o campo tem botão de
         // mostrar a senha, que resolve o mesmo problema sem um segundo campo.
@@ -339,8 +365,14 @@ class AppAuthService
             $usuarioId = (int)$this->pdo->lastInsertId();
 
             $this->pdo->prepare(
-                "INSERT INTO clientes (usuario_id, cpf, newsletter, criado_em) VALUES (:u, :c, :n, NOW())"
-            )->execute([':u' => $usuarioId, ':c' => $cpf ?: null, ':n' => $newsletter ? 1 : 0]);
+                "INSERT INTO clientes (usuario_id, cpf, celular, newsletter, criado_em)
+                 VALUES (:u, :c, :cel, :n, NOW())"
+            )->execute([
+                ':u'   => $usuarioId,
+                ':c'   => $cpf,
+                ':cel' => $celular,
+                ':n'   => $newsletter ? 1 : 0,
+            ]);
 
             $clienteId = (int)$this->pdo->lastInsertId();
 
@@ -501,6 +533,183 @@ class AppAuthService
             'mensagem' => 'Enviamos um novo código.',
             'email'    => $this->mascararEmail((string)$user['email']),
         ];
+    }
+
+    /* =================================================================
+       SENHA — recuperar e definir
+       ================================================================= */
+
+    /**
+     * Pede um código para redefinir a senha.
+     *
+     * Cobre DOIS casos que a loja trata em telas diferentes e que aqui são a
+     * mesma operação, porque User::updatePassword() já grava
+     * `senha_definida = 1`:
+     *
+     *   - "Esqueci minha senha", de quem tem senha.
+     *   - "Definir senha", de conta migrada da Tray ou criada via Google, que
+     *     nunca teve senha local.
+     *
+     * A web manda um LINK de 64 caracteres. Aqui é código de 6 dígitos: link
+     * significa sair para o navegador e voltar, e o app já resolve o mesmo
+     * problema com código na verificação de e-mail e no 2FA.
+     *
+     * A resposta é SEMPRE a mesma, exista a conta ou não. Diferenciar
+     * transformaria este endpoint numa lista de e-mails cadastrados — que é
+     * justamente o que identificar() protege com rate limit e atraso.
+     */
+    public function solicitarRedefinicao(array $dispositivo, string $login, ?string $ip): array
+    {
+        $login = trim(SecurityHelper::sanitizeString($login));
+
+        $generica = [
+            'estado'   => 'enviado',
+            'mensagem' => 'Se essa conta existir, enviamos um código para o e-mail cadastrado.',
+        ];
+
+        if ($login === '') {
+            return ['estado' => 'dados_invalidos', 'mensagem' => 'Informe o e-mail ou CPF.'];
+        }
+
+        // Limite por CONTA, não por IP: o abuso aqui é encher a caixa postal de
+        // alguém, e o atacante troca de IP mais fácil do que de alvo.
+        if (SecurityHelper::rateLimitExceeded('reset_app_' . md5($login), 3, 900)) {
+            LogService::warning('Rate limit em recuperacao de senha pelo app', [
+                'dispositivo_id' => (int)$dispositivo['id'],
+            ], 'auth');
+            return $generica; // genérica também aqui, para não sinalizar nada
+        }
+
+        $user = (new AuthController())->findUserByLogin($this->pdo, $login);
+
+        $this->atrasoConstante();
+
+        if (!$user || empty($user['ativo'])) {
+            return $generica;
+        }
+
+        $codigo = SecurityHelper::generateNumericCode(6);
+
+        try {
+            $this->pdo->prepare(
+                "UPDATE tokens_verificacao SET usado = 1
+                  WHERE usuario_id = :u AND tipo = 'senha_reset' AND usado = 0"
+            )->execute([':u' => (int)$user['id']]);
+
+            $this->pdo->prepare(
+                "INSERT INTO tokens_verificacao (usuario_id, token, tipo, expira_em, origem_hash)
+                 VALUES (:u, :t, 'senha_reset', DATE_ADD(NOW(), INTERVAL 30 MINUTE), :o)"
+            )->execute([
+                ':u' => (int)$user['id'],
+                ':t' => $codigo,
+                ':o' => hash('sha256', 'app:' . (string)$dispositivo['device_uuid']),
+            ]);
+
+            MailHelper::sendLoginCode((string)$user['email'], (string)$user['nome'], $codigo);
+        } catch (\Throwable $e) {
+            // NUNCA logar o código.
+            AppLog::exception($e, ['acao' => 'reset_envio', 'usuario_id' => (int)$user['id']]);
+            return $generica;
+        }
+
+        LogService::audit('Redefinicao de senha solicitada pelo app', [
+            'usuario_id'     => (int)$user['id'],
+            'dispositivo_id' => (int)$dispositivo['id'],
+        ]);
+
+        // O e-mail mascarado é a única pista, e é a que o cliente precisa para
+        // saber em qual caixa procurar. Não revela nada que ele já não saiba.
+        return $generica + ['email' => $this->mascararEmail((string)$user['email'])];
+    }
+
+    /**
+     * Troca a senha com o código e já entra na conta.
+     *
+     * O `login` vem de novo porque solicitarRedefinicao() é deliberadamente
+     * genérica e não devolve o id do usuário — devolver seria confirmar que a
+     * conta existe.
+     */
+    public function redefinirSenha(array $dispositivo, string $login, string $codigo, string $senha): array
+    {
+        $login  = trim(SecurityHelper::sanitizeString($login));
+        $codigo = preg_replace('/\D/', '', $codigo);
+
+        if ($login === '' || strlen((string)$codigo) !== 6) {
+            return ['estado' => 'dados_invalidos', 'mensagem' => 'Informe o código de 6 dígitos.'];
+        }
+
+        if (!SecurityHelper::validatePassword($senha)) {
+            return [
+                'estado'   => 'dados_invalidos',
+                'mensagem' => 'Senha fraca.',
+                'erros'    => ['senha' => 'Use 8+ caracteres, com maiúscula, minúscula e número.'],
+            ];
+        }
+
+        // Freio por dispositivo: 10 tentativas em 10 min. Sem teto, 6 dígitos
+        // caem por força bruta.
+        if (SecurityHelper::rateLimitExceeded('reset_conf_' . (int)$dispositivo['id'], 10, 600)) {
+            return ['estado' => 'bloqueado', 'mensagem' => 'Muitas tentativas. Aguarde alguns minutos.'];
+        }
+
+        $user = (new AuthController())->findUserByLogin($this->pdo, $login);
+
+        if (!$user || empty($user['ativo'])) {
+            return ['estado' => 'codigo_invalido', 'mensagem' => 'Código incorreto ou expirado.'];
+        }
+
+        $st = $this->pdo->prepare(
+            "SELECT id FROM tokens_verificacao
+              WHERE usuario_id = :u AND token = :t AND tipo = 'senha_reset'
+                AND usado = 0 AND expira_em > NOW()
+              LIMIT 1"
+        );
+        $st->execute([':u' => (int)$user['id'], ':t' => $codigo]);
+        $linha = $st->fetch(PDO::FETCH_ASSOC);
+
+        if (!$linha) {
+            // Mesma mensagem para código errado e para expirado: distinguir
+            // diria a quem está adivinhando que acertou o número e só perdeu o
+            // prazo.
+            return ['estado' => 'codigo_invalido', 'mensagem' => 'Código incorreto ou expirado.'];
+        }
+
+        try {
+            // updatePassword() grava senha_definida = 1 e email_verificado = 1
+            // — é o que faz este mesmo fluxo servir para "definir senha" de
+            // conta migrada, que nunca teve senha local.
+            (new User())->updatePassword((int)$user['id'], $senha);
+
+            $this->pdo->prepare("UPDATE tokens_verificacao SET usado = 1 WHERE id = :i")
+                      ->execute([':i' => (int)$linha['id']]);
+
+            // Senha nova revoga tudo o que existia, na web e no app. Se a conta
+            // foi tomada, o invasor perde o acesso agora — inclusive nos outros
+            // aparelhos.
+            (new TokenService())->revokeAllSessions((int)$user['id']);
+
+            if (!empty($user['cliente_id'])) {
+                $this->tokens->revogarCliente((int)$user['cliente_id'], 'senha_redefinida');
+            }
+        } catch (\Throwable $e) {
+            AppLog::exception($e, ['acao' => 'reset_confirmar', 'usuario_id' => (int)$user['id']]);
+            return ['estado' => 'falha', 'mensagem' => 'Não foi possível redefinir sua senha agora.'];
+        }
+
+        LogService::audit('Senha redefinida pelo app', [
+            'usuario_id'        => (int)$user['id'],
+            'dispositivo_id'    => (int)$dispositivo['id'],
+            'sessoes_revogadas' => true,
+        ]);
+
+        $completo = $this->usuarioCompleto((int)$user['id']);
+        if (!$completo) {
+            return ['estado' => 'senha_alterada', 'mensagem' => 'Senha alterada! Faça login.'];
+        }
+
+        // Entra direto: a pessoa acabou de provar acesso ao e-mail E definiu a
+        // senha. Pedir para digitá-la de novo agora não acrescenta nada.
+        return $this->concluirLogin($dispositivo, $completo);
     }
 
     /* =================================================================

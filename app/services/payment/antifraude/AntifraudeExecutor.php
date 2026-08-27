@@ -147,16 +147,59 @@ class AntifraudeExecutor
 
     // =========================================================================
 
+    /**
+     * Traduz o contexto do roteamento para o que a ClearSale precisa.
+     *
+     * O sessionID sai da sessao PHP por padrao: o antifraude roda na MESMA
+     * requisicao em que o comprador clicou em pagar, entao o id que o
+     * fingerprint recebeu na pagina ja esta ali. Assim o checkout nao precisa
+     * lembrar de repassar — e esquecer disso seria silencioso, custando
+     * consulta cega em todo pedido.
+     */
     private function montarPedido(array $ctx): array
     {
+        $sid = (string) ($ctx['session_id'] ?? '');
+        if ($sid === '' && class_exists('ClearSaleFingerprint')) {
+            $sid = ClearSaleFingerprint::sessionId();
+        }
+
         return [
             'codigo'         => (string) ($ctx['order_id_loja'] ?? ''),
+            'session_id'     => $sid,
+            'cliente_id'     => (int) ($ctx['cliente_id'] ?? 0),
             'valor_centavos' => (int) ($ctx['valor_centavos'] ?? 0),
+            'frete_centavos' => (int) ($ctx['frete_centavos'] ?? 0),
+            'parcelas'       => max(1, (int) ($ctx['parcelas'] ?? 1)),
+            'metodo'         => (string) ($ctx['metodo'] ?? 'cartao_credito'),
             'ip'             => (string) ($ctx['ip_cliente'] ?? ''),
             'cliente'        => $ctx['cliente'] ?? [],
+            'entrega'        => $ctx['entrega'] ?? [],
             'itens'          => $ctx['itens'] ?? [],
-            'pagamento'      => $ctx['pagamento_clearsale'] ?? [],
+            'cartao'         => self::cartaoSeguro($ctx['cartao'] ?? [], $ctx['bandeira'] ?? null),
         ];
+    }
+
+    /**
+     * BIN e ultimos 4 do cartao, nunca o PAN completo.
+     *
+     * O BIN diz banco, pais e tipo do cartao — e um dos sinais mais fortes que
+     * a analise usa. Derivado em memoria e descartado: continua valendo a
+     * premissa de que o numero inteiro nao fica em lugar nenhum nosso.
+     */
+    private static function cartaoSeguro(array $cartao, ?string $bandeira): array
+    {
+        if (!$cartao) return [];
+
+        $pan = preg_replace('/\D/', '', (string) ($cartao['numero'] ?? '')) ?? '';
+
+        return array_filter([
+            'bin'       => strlen($pan) >= 6 ? substr($pan, 0, 6) : (string) ($cartao['bin'] ?? ''),
+            'ultimos4'  => strlen($pan) >= 4 ? substr($pan, -4)   : (string) ($cartao['ultimos4'] ?? ''),
+            'validade'  => (string) ($cartao['validade'] ?? ''),
+            'titular'   => (string) ($cartao['titular'] ?? ''),
+            'documento' => (string) ($cartao['documento'] ?? ''),
+            'bandeira'  => (string) ($bandeira ?? $cartao['bandeira'] ?? ''),
+        ], static fn($v) => $v !== '');
     }
 
     /** Grava em pgto_antifraude. Auditoria: nunca derruba o pagamento. */
@@ -168,10 +211,10 @@ class AntifraudeExecutor
             $this->db->prepare(
                 "INSERT INTO pgto_antifraude
                     (pedido_id, order_id_loja, tentativa_id, provedor, modo, status,
-                     score, recomendacao, analise_id, motivo,
+                     score, recomendacao, codigo_status, analise_id, motivo,
                      decisao_pre, regra_aplicada, motivo_pre, score_cliente, tier_cliente,
                      enviado_em, respondido_em, criado_em)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())"
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())"
             )->execute([
                 $ctx['pedido_id']     ?? null,
                 (string) ($ctx['order_id_loja'] ?? ''),
@@ -181,6 +224,10 @@ class AntifraudeExecutor
                 $this->statusPersistido($porta, $analise),
                 $analise['score']      ?? null,
                 $analise['status']     ?? null,
+                // Codigo bruto (NVO/AMA/APA...). E o que diz se a ClearSale
+                // ainda deve um parecer — `recomendacao` ja vem traduzida e
+                // nao distingue "na fila deles" de "julgado suspeito".
+                $analise['codigo_status'] ?? null,
                 $analise['analise_id'] ?? null,
                 $motivoExtra !== null ? mb_substr($motivoExtra, 0, 255) : ($analise['motivo'] ?? null),
                 $local['decisao'],

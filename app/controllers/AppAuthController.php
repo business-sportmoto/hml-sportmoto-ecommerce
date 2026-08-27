@@ -158,6 +158,58 @@ class AppAuthController extends AppApiController
     }
 
     /**
+     * POST /api/app/v1/auth/senha/recuperar
+     * Corpo: { login }   — e-mail OU CPF
+     *
+     * Serve tanto para "esqueci minha senha" quanto para "definir senha" de
+     * conta migrada da Tray ou criada via Google: as duas terminam no mesmo
+     * lugar, porque User::updatePassword() grava `senha_definida = 1`.
+     *
+     * A resposta é genérica de propósito — ver solicitarRedefinicao().
+     */
+    public function recuperarSenha(): void
+    {
+        $this->bootPublico();
+
+        $corpo = $this->exigirCampos(['login']);
+
+        $resultado = (new AppAuthService())->solicitarRedefinicao(
+            $this->dispositivo,
+            (string)$corpo['login'],
+            $this->ipReal()
+        );
+
+        $this->ok($resultado);
+    }
+
+    /**
+     * POST /api/app/v1/auth/senha/redefinir
+     * Corpo: { login, codigo, senha }
+     *
+     * Confirmado o código, entra na conta: a pessoa provou acesso ao e-mail e
+     * acabou de escolher a senha.
+     */
+    public function redefinirSenha(): void
+    {
+        $this->bootPublico();
+
+        $corpo = $this->exigirCampos(['login', 'codigo', 'senha']);
+
+        $resultado = (new AppAuthService())->redefinirSenha(
+            $this->dispositivo,
+            (string)$corpo['login'],
+            (string)$corpo['codigo'],
+            (string)$corpo['senha']
+        );
+
+        if ($resultado['estado'] === 'bloqueado') {
+            $this->falha(429, 'bloqueado', $resultado['mensagem']);
+        }
+
+        $this->ok($resultado);
+    }
+
+    /**
      * POST /api/app/v1/auth/2fa/enviar
      * Corpo: { desafio, canal? }
      *

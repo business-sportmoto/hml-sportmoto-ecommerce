@@ -26,7 +26,7 @@ class CustomerController extends Controller {
         $pedidos = $this->customerModel->getOrders($this->clienteId(), 3);
 
         SeoHelper::setTitle('Minha Conta');
-        $this->render('customer/dashboard', [
+        $this->render('customer/conta', [
             'perfil'  => $perfil,
             'stats'   => $stats,
             'pedidos' => $pedidos,
