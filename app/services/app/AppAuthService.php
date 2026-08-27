@@ -153,6 +153,357 @@ class AppAuthService
     }
 
     /* =================================================================
+       IDENTIFICAÇÃO — a primeira etapa
+       ================================================================= */
+
+    /**
+     * "Você já tem conta aqui?" — espelha AuthController::checkIdentity().
+     *
+     * É o passo que a loja usa: o cliente digita e-mail ou CPF, e só então o
+     * app decide se pede senha ou abre o cadastro. Pedir senha antes de saber
+     * se a conta existe faz quem nunca comprou digitar uma senha inexistente
+     * para só depois descobrir que precisa se cadastrar.
+     *
+     * O preço desse desenho é que o endpoint REVELA se uma conta existe. As
+     * duas defesas da web vêm junto, e não são opcionais:
+     *
+     *   1. Rate limit em duas janelas (10/5min e 30/1h por IP) — a de uma hora
+     *      é o que pega varredura lenta, que passaria pela de 5 minutos.
+     *   2. Atraso artificial de 150–400 ms em TODAS as respostas, inclusive as
+     *      de sucesso. Sem ele, a diferença de latência entre "existe" e "não
+     *      existe" identifica a conta mesmo com o rate limit no lugar.
+     *
+     * @return array{estado:string, ...}
+     */
+    public function identificar(array $dispositivo, string $login, ?string $ip): array
+    {
+        $login = trim(SecurityHelper::sanitizeString($login));
+
+        if ($login === '') {
+            return ['estado' => 'dados_invalidos', 'mensagem' => 'Informe o e-mail ou CPF.'];
+        }
+
+        $ipKey = md5((string)($ip ?? '0.0.0.0'));
+
+        if (SecurityHelper::rateLimitExceeded('check_identity_' . $ipKey, 10, 300)
+            || SecurityHelper::rateLimitExceeded('check_identity_h_' . $ipKey, 30, 3600)) {
+            LogService::warning('Rate limit em identificar do app (possível enumeração)', [
+                'dispositivo_id' => (int)$dispositivo['id'],
+            ], 'auth');
+            $this->atrasoConstante();
+            return ['estado' => 'bloqueado', 'mensagem' => 'Muitas tentativas. Aguarde alguns minutos.'];
+        }
+
+        $auth = new AuthController();
+        $user = $auth->findUserByLogin($this->pdo, $login);
+
+        $this->atrasoConstante();
+
+        if (!$user) {
+            return [
+                'estado'   => 'nao_existe',
+                'mensagem' => 'Não encontramos essa conta. Vamos criar uma para você.',
+                // Devolvido para o cadastro já abrir preenchido: quem digitou o
+                // e-mail não deve digitá-lo de novo na tela seguinte.
+                'login'    => $login,
+                'parece_email' => filter_var($login, FILTER_VALIDATE_EMAIL) !== false,
+            ];
+        }
+
+        if (empty($user['ativo'])) {
+            return ['estado' => 'conta_desativada', 'mensagem' => 'Esta conta está desativada. Fale com o nosso atendimento.'];
+        }
+
+        // Sem senha local: a etapa de senha não faz sentido, e mostrá-la só
+        // levaria a pessoa a errar. Desvia aqui, antes de o campo aparecer.
+        if (isset($user['senha_definida']) && (int)$user['senha_definida'] === 0) {
+            $veioDaTray = !empty($user['tray_id']);
+
+            return [
+                'estado'   => $veioDaTray ? 'definir_senha' : 'sem_senha_google',
+                'mensagem' => $veioDaTray
+                    ? 'Identificamos sua conta da nossa loja anterior. Por segurança, defina uma nova senha para continuar.'
+                    : 'Esta conta usa login com Google. Entre com o Google ou defina uma senha.',
+                'email'    => $this->mascararEmail((string)$user['email']),
+                'url'      => rtrim(BASE_URL, '/') . '/recuperar-senha?email=' . urlencode((string)$user['email']),
+            ];
+        }
+
+        return [
+            'estado'      => 'existe',
+            'nome'        => $this->primeiroNome((string)$user['nome']),
+            'email'       => $this->mascararEmail((string)$user['email']),
+            'avatar'      => $this->avatarDoCliente((int)$user['id']),
+            // Ecoado para a etapa de senha reenviar exatamente o mesmo valor —
+            // o cliente pode ter digitado CPF, e o backend precisa do mesmo
+            // identificador para achar a conta de novo.
+            'login'       => $login,
+            'email_verificado' => !empty($user['email_verificado']),
+        ];
+    }
+
+    /**
+     * Iguala estatisticamente o tempo de resposta entre "existe" e "não
+     * existe". Aplicado a TODOS os desfechos, de propósito.
+     */
+    private function atrasoConstante(): void
+    {
+        usleep(random_int(150000, 400000));
+    }
+
+    private function avatarDoCliente(int $usuarioId): ?string
+    {
+        try {
+            $st = $this->pdo->prepare(
+                "SELECT avatar FROM clientes WHERE usuario_id = :u LIMIT 1"
+            );
+            $st->execute([':u' => $usuarioId]);
+            $arquivo = (string)($st->fetchColumn() ?: '');
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        return $arquivo !== '' ? $arquivo : null;
+    }
+
+    /* =================================================================
+       CADASTRO
+       ================================================================= */
+
+    /**
+     * Cria a conta. Mesmas regras de AuthController::register() — mesma
+     * validação de senha, mesmo checagem de duplicidade, mesma criação de
+     * usuário + cliente + wishlist padrão + código de verificação.
+     *
+     * A conta nasce com `email_verificado = 0`, e é isso que impede o login
+     * até a confirmação. Não é burocracia: sem verificar, qualquer um cria
+     * conta com o e-mail de outra pessoa e passa a receber os pedidos dela.
+     *
+     * @return array{estado:string, ...}
+     */
+    public function cadastrar(array $dispositivo, array $dados, ?string $ip): array
+    {
+        $nome  = trim(SecurityHelper::sanitizeString((string)($dados['nome'] ?? '')));
+        $email = SecurityHelper::sanitizeEmail((string)($dados['email'] ?? ''));
+        $cpf   = preg_replace('/\D/', '', (string)($dados['cpf'] ?? ''));
+        $senha = (string)($dados['senha'] ?? '');
+        $newsletter = !empty($dados['newsletter']);
+
+        $erros = [];
+        if (mb_strlen($nome) < 3)                       $erros['nome']  = 'Informe seu nome completo.';
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $erros['email'] = 'E-mail inválido.';
+        if (!SecurityHelper::validatePassword($senha))  $erros['senha'] = 'Use 8+ caracteres, com maiúscula, minúscula e número.';
+        if ($cpf !== '' && !SecurityHelper::validateCpf($cpf)) $erros['cpf'] = 'CPF inválido.';
+
+        // `confirmar_senha` não existe aqui: no app o campo tem botão de
+        // mostrar a senha, que resolve o mesmo problema sem um segundo campo.
+        if ($erros) {
+            return ['estado' => 'dados_invalidos', 'mensagem' => 'Confira os dados informados.', 'erros' => $erros];
+        }
+
+        // Rate limit por IP: cadastro em massa é o abuso óbvio deste endpoint.
+        $ipKey = md5((string)($ip ?? '0.0.0.0'));
+        if (SecurityHelper::rateLimitExceeded('cadastro_app_' . $ipKey, 5, 3600)) {
+            LogService::warning('Rate limit no cadastro pelo app', [
+                'dispositivo_id' => (int)$dispositivo['id'],
+            ], 'auth');
+            return ['estado' => 'bloqueado', 'mensagem' => 'Muitas tentativas. Tente novamente mais tarde.'];
+        }
+
+        $st = $this->pdo->prepare("SELECT id FROM usuarios WHERE email = :e LIMIT 1");
+        $st->execute([':e' => $email]);
+        if ($st->fetchColumn()) {
+            return [
+                'estado'   => 'email_em_uso',
+                'mensagem' => 'Este e-mail já tem conta. Entre com sua senha.',
+                'login'    => $email,
+            ];
+        }
+
+        if ($cpf !== '') {
+            $st = $this->pdo->prepare("SELECT id FROM clientes WHERE cpf = :c LIMIT 1");
+            $st->execute([':c' => $cpf]);
+            if ($st->fetchColumn()) {
+                return ['estado' => 'dados_invalidos', 'mensagem' => 'Este CPF já está cadastrado.', 'erros' => ['cpf' => 'CPF já cadastrado.']];
+            }
+        }
+
+        try {
+            $this->pdo->beginTransaction();
+
+            $this->pdo->prepare(
+                "INSERT INTO usuarios (nome, email, senha_hash, tipo, email_verificado, ativo, criado_em)
+                 VALUES (:n, :e, :s, 'cliente', 0, 1, NOW())"
+            )->execute([':n' => $nome, ':e' => $email, ':s' => password_hash($senha, PASSWORD_ARGON2ID)]);
+
+            $usuarioId = (int)$this->pdo->lastInsertId();
+
+            $this->pdo->prepare(
+                "INSERT INTO clientes (usuario_id, cpf, newsletter, criado_em) VALUES (:u, :c, :n, NOW())"
+            )->execute([':u' => $usuarioId, ':c' => $cpf ?: null, ':n' => $newsletter ? 1 : 0]);
+
+            $clienteId = (int)$this->pdo->lastInsertId();
+
+            // A lista padrão nasce junto: sem ela o coração de favoritar não
+            // tem onde gravar, e o cliente descobre isso no primeiro toque.
+            $this->pdo->prepare(
+                "INSERT INTO wishlist (cliente_id, nome, padrao, criado_em) VALUES (:c, 'Meus favoritos', 1, NOW())"
+            )->execute([':c' => $clienteId]);
+
+            $codigo = SecurityHelper::generateNumericCode(6);
+
+            $this->pdo->prepare(
+                "INSERT INTO tokens_verificacao (usuario_id, token, tipo, expira_em, origem_hash)
+                 VALUES (:u, :t, 'email_verify', DATE_ADD(NOW(), INTERVAL 24 HOUR), :o)"
+            )->execute([
+                ':u' => $usuarioId,
+                ':t' => $codigo,
+                // Amarra o código a ESTE aparelho — o equivalente do
+                // origem_hash do navegador na web.
+                ':o' => hash('sha256', 'app:' . (string)$dispositivo['device_uuid']),
+            ]);
+
+            $this->pdo->commit();
+        } catch (\Throwable $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            AppLog::exception($e, ['acao' => 'cadastro_app']);
+            return ['estado' => 'falha', 'mensagem' => 'Não foi possível criar sua conta agora. Tente novamente.'];
+        }
+
+        try {
+            MailHelper::sendVerificationEmail($email, $nome, $codigo);
+        } catch (\Throwable $e) {
+            // A conta já existe: falhar aqui não pode desfazê-la. O cliente
+            // pede reenvio na própria tela seguinte.
+            AppLog::exception($e, ['acao' => 'email_verificacao', 'usuario_id' => $usuarioId]);
+        }
+
+        LogService::audit('Conta criada pelo app', [
+            'usuario_id'     => $usuarioId,
+            'dispositivo_id' => (int)$dispositivo['id'],
+            'com_cpf'        => $cpf !== '',
+        ]);
+
+        return [
+            'estado'     => 'verificacao_email',
+            'mensagem'   => 'Conta criada! Enviamos um código de 6 dígitos para o seu e-mail.',
+            'usuario_id' => $usuarioId,
+            'email'      => $this->mascararEmail($email),
+        ];
+    }
+
+    /**
+     * Confirma o e-mail com o código de 6 dígitos e já entra na conta.
+     *
+     * A busca é ESCOPADA ao usuario_id, diferente da rota web equivalente, que
+     * procura o código sem escopo — o próprio comentário dela reconhece que
+     * isso permite varrer 000000–999999 e consumir verificações alheias. Aqui
+     * o app sempre sabe de quem é a conta que acabou de criar, então não há
+     * motivo para abrir mão do escopo.
+     */
+    public function verificarEmail(array $dispositivo, int $usuarioId, string $codigo): array
+    {
+        $codigo = preg_replace('/\D/', '', $codigo);
+
+        if (strlen((string)$codigo) !== 6 || $usuarioId <= 0) {
+            return ['estado' => 'dados_invalidos', 'mensagem' => 'Informe o código de 6 dígitos.'];
+        }
+
+        // Freio por dispositivo: 10 tentativas em 10 minutos.
+        if (SecurityHelper::rateLimitExceeded('verify_app_' . (int)$dispositivo['id'], 10, 600)) {
+            return ['estado' => 'bloqueado', 'mensagem' => 'Muitas tentativas. Aguarde alguns minutos.'];
+        }
+
+        $st = $this->pdo->prepare(
+            "SELECT id, expira_em FROM tokens_verificacao
+              WHERE usuario_id = :u AND token = :t AND tipo = 'email_verify' AND usado = 0
+              LIMIT 1"
+        );
+        $st->execute([':u' => $usuarioId, ':t' => $codigo]);
+        $linha = $st->fetch(PDO::FETCH_ASSOC);
+
+        if (!$linha) {
+            return ['estado' => 'codigo_invalido', 'mensagem' => 'Código incorreto. Confira e tente de novo.'];
+        }
+
+        if (strtotime((string)$linha['expira_em']) < time()) {
+            return ['estado' => 'codigo_expirado', 'mensagem' => 'Este código expirou. Peça um novo.'];
+        }
+
+        $this->pdo->prepare("UPDATE usuarios SET email_verificado = 1 WHERE id = :u")
+                  ->execute([':u' => $usuarioId]);
+        $this->pdo->prepare("UPDATE tokens_verificacao SET usado = 1 WHERE id = :i")
+                  ->execute([':i' => (int)$linha['id']]);
+
+        $user = $this->usuarioCompleto($usuarioId);
+        if (!$user) {
+            return ['estado' => 'falha', 'mensagem' => 'Conta verificada, mas não foi possível entrar. Faça login.'];
+        }
+
+        LogService::audit('E-mail verificado pelo app', ['usuario_id' => $usuarioId]);
+
+        // Verificou: entra direto. Mandar para a tela de login logo depois de
+        // digitar o código seria pedir a senha que ela acabou de criar.
+        return $this->concluirLogin($dispositivo, $user);
+    }
+
+    /**
+     * Reenvia o código. Invalida os anteriores para não deixar vários códigos
+     * válidos ao mesmo tempo.
+     */
+    public function reenviarVerificacao(array $dispositivo, int $usuarioId): array
+    {
+        if (SecurityHelper::rateLimitExceeded('reenvio_app_' . (int)$dispositivo['id'], 3, 600)) {
+            return ['estado' => 'bloqueado', 'mensagem' => 'Aguarde alguns minutos para pedir outro código.'];
+        }
+
+        $st = $this->pdo->prepare(
+            "SELECT nome, email, email_verificado FROM usuarios WHERE id = :u LIMIT 1"
+        );
+        $st->execute([':u' => $usuarioId]);
+        $user = $st->fetch(PDO::FETCH_ASSOC);
+
+        if (!$user) {
+            return ['estado' => 'falha', 'mensagem' => 'Conta não encontrada.'];
+        }
+
+        if (!empty($user['email_verificado'])) {
+            return ['estado' => 'ja_verificado', 'mensagem' => 'Seu e-mail já está confirmado. Faça login.'];
+        }
+
+        $codigo = SecurityHelper::generateNumericCode(6);
+
+        try {
+            $this->pdo->prepare(
+                "UPDATE tokens_verificacao SET usado = 1
+                  WHERE usuario_id = :u AND tipo = 'email_verify' AND usado = 0"
+            )->execute([':u' => $usuarioId]);
+
+            $this->pdo->prepare(
+                "INSERT INTO tokens_verificacao (usuario_id, token, tipo, expira_em, origem_hash)
+                 VALUES (:u, :t, 'email_verify', DATE_ADD(NOW(), INTERVAL 24 HOUR), :o)"
+            )->execute([
+                ':u' => $usuarioId,
+                ':t' => $codigo,
+                ':o' => hash('sha256', 'app:' . (string)$dispositivo['device_uuid']),
+            ]);
+
+            MailHelper::sendVerificationEmail((string)$user['email'], (string)$user['nome'], $codigo);
+        } catch (\Throwable $e) {
+            AppLog::exception($e, ['acao' => 'reenvio_verificacao', 'usuario_id' => $usuarioId]);
+            return ['estado' => 'falha', 'mensagem' => 'Não conseguimos reenviar agora. Tente em instantes.'];
+        }
+
+        return [
+            'estado'   => 'enviado',
+            'mensagem' => 'Enviamos um novo código.',
+            'email'    => $this->mascararEmail((string)$user['email']),
+        ];
+    }
+
+    /* =================================================================
        SEGUNDO FATOR
        ================================================================= */
 
@@ -171,12 +522,41 @@ class AppAuthService
     {
         $usuarioId = (int)$user['id'];
 
-        $totp  = new TotpService();
-        $temTotp  = $totp->isAtivo($usuarioId);
-        $temEmail = (new TwoFactorService())->isAtivo($usuarioId);
+        // A lista de canais vem de AuthController::getCanais2FA() — a MESMA
+        // que a tela de 2FA do site usa. Antes, este metodo decidia sozinho e
+        // so conhecia TOTP e e-mail: quem tinha WhatsApp ou SMS configurado
+        // via, no app, apenas o app autenticador.
+        //
+        // Cada canal tem sua propria condicao (o toggle de envio, celular
+        // cadastrado, o gateway de SMS estar de pe), e reimplementa-las aqui
+        // seria garantir que as duas listas divergissem.
+        $perfil = (new User())->findWithProfile($usuarioId) ?? [];
+        $canaisWeb = (new AuthController())->getCanais2FA($perfil, $usuarioId);
 
-        if (!$temTotp && !$temEmail) {
-            return null;
+        $disponiveis = array_filter($canaisWeb, static fn(array $c): bool => !empty($c['habilitado']));
+
+        // Nenhum canal habilitado com 2FA DESLIGADO significa apenas que a
+        // conta nao usa segundo fator: segue o login.
+        $exige2FA = (new TotpService())->isAtivo($usuarioId)
+                 || (new TwoFactorService())->isAtivo($usuarioId);
+
+        if (!$disponiveis) {
+            if (!$exige2FA) {
+                return null;
+            }
+
+            // Mas com 2FA LIGADO e nenhum canal utilizavel, deixar passar seria
+            // rebaixar em silencio a protecao que o cliente escolheu. Acontece
+            // se o TOTP for desativado no meio do fluxo, ou se o celular sumir
+            // do perfil. A web recusa nesse caso; aqui tambem.
+            LogService::error('2FA sem canal disponivel — login do app interrompido', [
+                'usuario_id' => $usuarioId,
+            ], 'auth');
+
+            return [
+                'estado'   => 'conta_desativada',
+                'mensagem' => 'Não há canal de verificação disponível para sua conta. Fale com o suporte.',
+            ];
         }
 
         // O `contexto` guarda quem é o usuário; o token em si é o que o app
@@ -192,14 +572,15 @@ class AppAuthService
         );
 
         $canais = [];
-        if ($temTotp) {
-            $canais[] = ['tipo' => 'totp', 'rotulo' => 'Aplicativo autenticador'];
-        }
-        if ($temEmail) {
+        foreach ($disponiveis as $tipo => $c) {
             $canais[] = [
-                'tipo'    => 'email',
-                'rotulo'  => 'Código por e-mail',
-                'destino' => $this->mascararEmail((string)$user['email']),
+                'tipo'    => (string)$tipo,
+                'rotulo'  => (string)$c['label'],
+                'destino' => (string)$c['destino'],
+                // TOTP nao tem envio: o codigo ja esta no aplicativo do
+                // usuario, gerado localmente a cada 30s. A tela usa isto para
+                // pular direto ao campo em vez de mostrar "enviar codigo".
+                'envia'   => $tipo !== 'totp',
             ];
         }
 
@@ -216,7 +597,7 @@ class AppAuthService
      * Envia o código do segundo fator pelo canal escolhido.
      * TOTP não passa por aqui: o código já está no aplicativo do usuário.
      */
-    public function enviarCodigo2FA(array $dispositivo, string $desafio): array
+    public function enviarCodigo2FA(array $dispositivo, string $desafio, string $canal = 'email'): array
     {
         $linha = $this->tokens->validar($desafio, '2fa_challenge');
 
@@ -231,38 +612,81 @@ class AppAuthService
             return ['ok' => false, 'codigo' => 'aguarde', 'mensagem' => 'Aguarde antes de pedir outro código.'];
         }
 
-        try {
-            $st = $this->pdo->prepare("SELECT nome, email FROM usuarios WHERE id = :id LIMIT 1");
-            $st->execute([':id' => $usuarioId]);
-            $user = $st->fetch(PDO::FETCH_ASSOC);
-
-            if (!$user) {
-                return ['ok' => false, 'codigo' => 'desafio_invalido', 'mensagem' => 'Desafio inválido.'];
-            }
-
-            $codigo   = SecurityHelper::generateNumericCode(6);
-            $expiraEm = date('Y-m-d H:i:s', time() + 600);
-
-            $this->pdo->prepare(
-                "UPDATE tokens_verificacao SET usado = 1
-                 WHERE usuario_id = :u AND tipo = '2fa' AND usado = 0"
-            )->execute([':u' => $usuarioId]);
-
-            $this->pdo->prepare(
-                "INSERT INTO tokens_verificacao (usuario_id, token, tipo, expira_em)
-                 VALUES (:u, :t, '2fa', :e)"
-            )->execute([':u' => $usuarioId, ':t' => $codigo, ':e' => $expiraEm]);
-
-            MailHelper::sendLoginCode((string)$user['email'], (string)$user['nome'], $codigo);
-        } catch (\Throwable $e) {
-            // NUNCA logar o código — é o segredo de acesso.
-            AppLog::exception($e, ['acao' => '2fa_envio', 'usuario_id' => $usuarioId]);
-            return ['ok' => false, 'codigo' => 'falha_envio', 'mensagem' => 'Não foi possível enviar o código.'];
+        $perfil = (new User())->findWithProfile($usuarioId);
+        if (!$perfil) {
+            return ['ok' => false, 'codigo' => 'desafio_invalido', 'mensagem' => 'Desafio inválido.'];
         }
 
+        // O canal precisa estar habilitado PARA ESTA CONTA. Confiar no que o
+        // app mandou deixaria alguém pedir SMS numa conta sem celular, ou por
+        // um gateway fora do ar — e o cliente ficaria esperando um código que
+        // nunca sai.
+        $canais = (new AuthController())->getCanais2FA($perfil, $usuarioId);
+
+        if (empty($canais[$canal]['habilitado'])) {
+            return ['ok' => false, 'codigo' => 'canal_indisponivel', 'mensagem' => 'Canal de verificação indisponível.'];
+        }
+
+        // TOTP não tem nada a enviar: o código já está no aplicativo do
+        // usuário, gerado localmente a cada 30s. Só confirma a escolha.
+        if ($canal === 'totp') {
+            return [
+                'ok'         => true,
+                'canal'      => 'totp',
+                'destino'    => (string)$canais['totp']['destino'],
+                'mensagem'   => 'Digite o código do seu app autenticador.',
+                'reenvio_em' => 0,
+            ];
+        }
+
+        try {
+            // Mesma geração da web (TwoFactorService), em vez de um INSERT
+            // próprio: o código, o prazo e a invalidação dos anteriores passam
+            // a ter um dono só.
+            $codigo = (new TwoFactorService())->solicitarVerificacao($usuarioId, 'login');
+
+            switch ($canal) {
+                case 'whatsapp':
+                    WhatsappService::sendCodigoVerificacao($perfil, $codigo, 10);
+                    break;
+
+                case 'sms':
+                    // SmsService NÃO lança em falha — devolve bool. Sem checar,
+                    // a tela diria "código enviado" para uma mensagem que nunca
+                    // saiu. É o mesmo cuidado de AuthController::send2FAChannel.
+                    $enviado = SmsService::sendCodigo(
+                        (string)($perfil['celular'] ?? ''),
+                        $codigo,
+                        10,
+                        ['cliente_id' => (int)($perfil['cliente_id'] ?? 0) ?: null]
+                    );
+
+                    if (!$enviado) {
+                        return ['ok' => false, 'codigo' => 'falha_envio', 'mensagem' => 'Não foi possível enviar o SMS. Tente outro canal.'];
+                    }
+                    break;
+
+                case 'email':
+                default:
+                    MailHelper::send2FACode((string)$perfil['email'], (string)$perfil['nome'], $codigo);
+                    break;
+            }
+        } catch (\Throwable $e) {
+            // NUNCA logar o código — é o segredo de acesso.
+            AppLog::exception($e, ['acao' => '2fa_envio', 'usuario_id' => $usuarioId, 'canal' => $canal]);
+            return ['ok' => false, 'codigo' => 'falha_envio', 'mensagem' => 'Não foi possível enviar o código. Tente outro canal.'];
+        }
+
+        LogService::info('Código 2FA enviado pelo app', [
+            'usuario_id' => $usuarioId,
+            'canal'      => $canal,
+        ], 'auth');
+
         return [
-            'ok'       => true,
-            'destino'  => $this->mascararEmail((string)$user['email']),
+            'ok'         => true,
+            'canal'      => $canal,
+            'destino'    => (string)$canais[$canal]['destino'],
+            'mensagem'   => 'Código enviado por ' . $canais[$canal]['label'] . '.',
             'reenvio_em' => 60,
         ];
     }

@@ -124,8 +124,14 @@ class AuthController extends Controller {
     /**
      * Canais de 2FA disponiveis. E-mail sempre existe; WhatsApp/SMS
      * dependem de celular cadastrado. SMS fica como gancho desabilitado.
+     *
+     * `public` porque o APP consome a mesma lista — ver
+     * AppAuthService::talvezExigir2FA(). Duplicar estas regras significaria,
+     * mais cedo ou mais tarde, o site oferecer WhatsApp e o app nao, ou o app
+     * oferecer SMS depois de o gateway sair do ar. A decisao de quais canais
+     * valem para uma conta mora aqui, e so aqui.
      */
-    private function getCanais2FA(array $perfil, int $userId): array {
+    public function getCanais2FA(array $perfil, int $userId): array {
         $email   = $perfil['email']   ?? '';
         $celular = preg_replace('/\D/', '', $perfil['celular'] ?? '');
         $temCel  = strlen($celular) >= 10;

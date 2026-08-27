@@ -35,6 +35,21 @@ $janela = (int) ($dash['janela_dias'] ?? 30);
       </form>
       <a href="<?= $base ?>/admin/payment/transacoes" class="pgto_btn">Transações</a>
       <a href="<?= $base ?>/admin/payment/webhooks"   class="pgto_btn">Webhooks</a>
+      <?php
+        $emAnalise = 0;
+        try {
+            $emAnalise = (int) Database::getInstance()->getConnection()
+                ->query("SELECT COUNT(*) FROM pedidos WHERE status_pedido = 'em_analise'")
+                ->fetchColumn();
+        } catch (Throwable) {}
+      ?>
+      <a href="<?= $base ?>/admin/pagamentos/analise" class="pgto_btn"
+         <?= $emAnalise > 0 ? 'style="background:#fffbeb;color:#b45309;font-weight:700;"' : '' ?>>
+        Análise<?= $emAnalise > 0 ? ' (' . $emAnalise . ')' : '' ?>
+      </a>
+      <a href="<?= $base ?>/admin/pagamentos/fluxos"      class="pgto_btn">Fluxos</a>
+      <a href="<?= $base ?>/admin/pagamentos/formas"      class="pgto_btn">Formas</a>
+      <a href="<?= $base ?>/admin/pagamentos/adquirentes" class="pgto_btn">Adquirentes</a>
     </div>
   </div>
 
@@ -138,6 +153,102 @@ $janela = (int) ($dash['janela_dias'] ?? 30);
         <?php endif; ?>
       </tbody>
     </table>
+  </div>
+
+  <!-- ─────────── Parcelamento mais usado ─────────── -->
+  <!-- Conta apenas tentativas APROVADAS: parcela escolhida numa transacao
+       negada e tentativa frustrada, nao preferencia do cliente. -->
+  <h2 class="pgto_section_title">Parcelamento mais usado</h2>
+  <div class="pgto_card pgto_table_card">
+    <table class="pgto_table">
+      <thead>
+        <tr><th>Parcelas</th><th class="num">Aprovações</th><th class="num">Participação</th><th class="num">Volume</th></tr>
+      </thead>
+      <tbody>
+        <?php if (empty($dash['parcelas'])): ?>
+          <tr><td colspan="4" class="pgto_empty">Sem dados no período.</td></tr>
+        <?php else: foreach ($dash['parcelas'] as $p): ?>
+          <tr>
+            <td><strong><?= (int) $p['parcelas'] ?>x</strong></td>
+            <td class="num"><?= pgto_int($p['total']) ?></td>
+            <td class="num">
+              <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;">
+                <div style="flex:0 0 90px;height:6px;background:#f1f5f9;border-radius:3px;overflow:hidden;">
+                  <div style="width:<?= (float) $p['percentual'] ?>%;height:100%;background:#2563eb;"></div>
+                </div>
+                <span><?= number_format((float) $p['percentual'], 1, ',', '.') ?>%</span>
+              </div>
+            </td>
+            <td class="num"><?= pgto_money((int) $p['volume_centavos']) ?></td>
+          </tr>
+        <?php endforeach; endif; ?>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─────────── Eficácia do fallback ─────────── -->
+  <?php if (!empty($dash['fallback']['pedidos_multi'])): ?>
+  <h2 class="pgto_section_title">Fallback entre adquirentes</h2>
+  <div class="pgto_cards">
+    <div class="pgto_card">
+      <span class="pgto_card_label">Pedidos com 2+ tentativas</span>
+      <span class="pgto_card_value"><?= pgto_int($dash['fallback']['pedidos_multi']) ?></span>
+      <span class="pgto_card_footer">a primeira adquirente falhou</span>
+    </div>
+    <div class="pgto_card">
+      <span class="pgto_card_label">Resgatados pela seguinte</span>
+      <span class="pgto_card_value"><?= pgto_int($dash['fallback']['salvos']) ?></span>
+      <span class="pgto_card_footer">
+        <strong class="pgto_taxa"><?= $dash['fallback']['taxa_resgate'] !== null
+          ? number_format((float) $dash['fallback']['taxa_resgate'], 1, ',', '.') . '%' : '—' ?></strong>
+        taxa de resgate
+      </span>
+    </div>
+  </div>
+  <?php endif; ?>
+
+  <!-- ─────────── Log de erro por adquirente ─────────── -->
+  <!-- Vem de pgto_tentativas, nao de pgto_transacoes: aqui aparecem tambem as
+       tentativas que falharam e nunca viraram cobranca. -->
+  <h2 class="pgto_section_title">Erros por adquirente</h2>
+  <div class="pgto_card pgto_table_card">
+    <table class="pgto_table">
+      <thead>
+        <tr>
+          <th>Adquirente</th><th>Motivo</th><th>Código</th>
+          <th class="num">Ocorrências</th><th>Último</th><th>Detalhe</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php if (empty($dash['erros_adquirente'])): ?>
+          <tr><td colspan="6" class="pgto_empty">Nenhuma falha no período.</td></tr>
+        <?php else: foreach ($dash['erros_adquirente'] as $e): ?>
+          <tr>
+            <td><strong><?= htmlspecialchars($e['adquirente_codigo']) ?></strong></td>
+            <td>
+              <span style="padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;
+                    background:<?= $e['e_tecnico'] ? '#fef2f2' : '#f8fafc' ?>;
+                    color:<?= $e['e_tecnico'] ? '#b91c1c' : '#475569' ?>;">
+                <?= $e['e_tecnico'] ? 'TÉCNICO' : 'EMISSOR' ?>
+              </span>
+              <?= htmlspecialchars($e['classe_erro'] ?? '—') ?>
+            </td>
+            <td><?= htmlspecialchars($e['codigo_adquirente'] ?? '—') ?></td>
+            <td class="num"><?= pgto_int($e['total']) ?></td>
+            <td style="font-size:12px;color:#64748b;">
+              <?= $e['ultimo'] ? date('d/m H:i', strtotime($e['ultimo'])) : '—' ?>
+            </td>
+            <td style="font-size:12px;color:#64748b;max-width:280px;">
+              <?= htmlspecialchars(mb_substr((string) $e['ultima_mensagem'], 0, 90)) ?>
+            </td>
+          </tr>
+        <?php endforeach; endif; ?>
+      </tbody>
+    </table>
+    <p style="font-size:11.5px;color:#64748b;padding:10px 14px;margin:0;">
+      <strong>TÉCNICO</strong> é falha nossa ou da adquirente — cai para outra e vale investigar.
+      <strong>EMISSOR</strong> é decisão do banco do cliente — não é retentado, por regra das bandeiras.
+    </p>
   </div>
 
   <!-- ─────────── Por provedor ─────────── -->

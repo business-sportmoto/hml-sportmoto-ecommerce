@@ -56,6 +56,108 @@ class AppAuthController extends AppApiController
     }
 
     /**
+     * POST /api/app/v1/auth/identificar
+     * Corpo: { login }   — e-mail OU CPF
+     *
+     * A primeira etapa do login, igual à da loja: descobre se a conta existe
+     * antes de pedir senha. `estado` diz o que a tela faz:
+     *   existe            → pede a senha (com nome e avatar de quem está entrando)
+     *   nao_existe        → abre o cadastro, já preenchido com o que foi digitado
+     *   definir_senha     → conta migrada; manda definir senha no fluxo web
+     *   sem_senha_google  → conta criada com Google
+     *   conta_desativada / bloqueado
+     */
+    public function identificar(): void
+    {
+        $this->bootPublico();
+
+        $corpo = $this->exigirCampos(['login']);
+
+        $resultado = (new AppAuthService())->identificar(
+            $this->dispositivo,
+            (string)$corpo['login'],
+            $this->ipReal()
+        );
+
+        if ($resultado['estado'] === 'bloqueado') {
+            $this->falha(429, 'bloqueado', $resultado['mensagem']);
+        }
+
+        $this->ok($resultado);
+    }
+
+    /**
+     * POST /api/app/v1/auth/cadastro
+     * Corpo: { nome, email, senha, cpf?, newsletter? }
+     */
+    public function cadastro(): void
+    {
+        $this->bootPublico();
+
+        $corpo = $this->exigirCampos(['nome', 'email', 'senha']);
+
+        $resultado = (new AppAuthService())->cadastrar(
+            $this->dispositivo,
+            $corpo,
+            $this->ipReal()
+        );
+
+        if ($resultado['estado'] === 'bloqueado') {
+            $this->falha(429, 'bloqueado', $resultado['mensagem']);
+        }
+
+        $this->ok($resultado, $resultado['estado'] === 'verificacao_email' ? 201 : 200);
+    }
+
+    /**
+     * POST /api/app/v1/auth/email/verificar
+     * Corpo: { usuario_id, codigo }
+     *
+     * Confirma o e-mail e JÁ ENTRA na conta — pedir a senha logo depois de a
+     * pessoa tê-la criado seria trabalho sem função.
+     */
+    public function verificarEmail(): void
+    {
+        $this->bootPublico();
+
+        $corpo = $this->exigirCampos(['usuario_id', 'codigo']);
+
+        $resultado = (new AppAuthService())->verificarEmail(
+            $this->dispositivo,
+            (int)$corpo['usuario_id'],
+            (string)$corpo['codigo']
+        );
+
+        if ($resultado['estado'] === 'bloqueado') {
+            $this->falha(429, 'bloqueado', $resultado['mensagem']);
+        }
+
+        $this->ok($resultado);
+    }
+
+    /**
+     * POST /api/app/v1/auth/email/reenviar
+     * Corpo: { usuario_id }
+     */
+    public function reenviarVerificacao(): void
+    {
+        $this->bootPublico();
+
+        $corpo = $this->exigirCampos(['usuario_id']);
+
+        $resultado = (new AppAuthService())->reenviarVerificacao(
+            $this->dispositivo,
+            (int)$corpo['usuario_id']
+        );
+
+        if ($resultado['estado'] === 'bloqueado') {
+            $this->falha(429, 'bloqueado', $resultado['mensagem']);
+        }
+
+        $this->ok($resultado);
+    }
+
+    /**
      * POST /api/app/v1/auth/2fa/enviar
      * Corpo: { desafio, canal? }
      *
@@ -67,14 +169,31 @@ class AppAuthController extends AppApiController
         $this->bootPublico();
         $corpo = $this->exigirCampos(['desafio']);
 
-        $r = (new AppAuthService())->enviarCodigo2FA($this->dispositivo, (string)$corpo['desafio']);
+        $r = (new AppAuthService())->enviarCodigo2FA(
+            $this->dispositivo,
+            (string)$corpo['desafio'],
+            // Sem canal explícito, e-mail — o comportamento anterior, para não
+            // quebrar uma versão do app que ainda não manda o campo.
+            (string)($corpo['canal'] ?? 'email')
+        );
 
         if (empty($r['ok'])) {
-            $status = ($r['codigo'] ?? '') === 'aguarde' ? 429 : 401;
+            $status = match ((string)($r['codigo'] ?? '')) {
+                'aguarde'            => 429,
+                'canal_indisponivel' => 422,
+                'falha_envio'        => 502,
+                default              => 401,
+            };
             $this->falha($status, (string)$r['codigo'], (string)$r['mensagem']);
         }
 
-        $this->ok(['enviado' => true, 'destino' => $r['destino'], 'reenvio_em' => $r['reenvio_em']]);
+        $this->ok([
+            'enviado'    => true,
+            'canal'      => $r['canal'] ?? 'email',
+            'destino'    => $r['destino'],
+            'mensagem'   => $r['mensagem'] ?? null,
+            'reenvio_em' => $r['reenvio_em'],
+        ]);
     }
 
     /**

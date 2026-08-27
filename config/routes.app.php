@@ -26,6 +26,11 @@ AppRouter::get ($v . '/_saude',                'AppSistemaController@saude');
 
 // ── Auth ────────────────────────────────────────────────────────────────────
 // Fase 0 traz só o ciclo de vida do token; login, 2FA, Google e Apple na Fase 2.
+// Identificação primeiro, senha depois — o mesmo padrão da loja.
+AppRouter::post($v . '/auth/identificar',      'AppAuthController@identificar');
+AppRouter::post($v . '/auth/cadastro',         'AppAuthController@cadastro');
+AppRouter::post($v . '/auth/email/verificar',  'AppAuthController@verificarEmail');
+AppRouter::post($v . '/auth/email/reenviar',   'AppAuthController@reenviarVerificacao');
 AppRouter::post($v . '/auth/login',            'AppAuthController@login');
 AppRouter::post($v . '/auth/2fa/enviar',       'AppAuthController@enviarCodigo2fa');
 AppRouter::post($v . '/auth/2fa/verificar',    'AppAuthController@verificar2fa');

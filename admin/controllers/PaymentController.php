@@ -152,37 +152,58 @@ class PaymentController extends Controller
             }
         }
 
-        // Executa
-        try {
-            $paymentSvc = new PaymentService();
-            $resultado = $paymentSvc->estornar($tx['charge_id'], $valorCentavos);
-        } catch (\Throwable $e) {
-            error_log('[Admin/Pagto.estornar] ' . $e->getMessage());
-            $this->json(['ok' => false, 'msg' => 'Erro ao processar estorno no gateway: ' . $e->getMessage()]);
+        // ── Executa na adquirente QUE PROCESSOU esta cobrança ────────
+        //
+        // Antes ia por PaymentService, que resolve um gateway global. Com
+        // várias adquirentes isso manda o estorno para a errada — que
+        // responde "não encontrado" e o dinheiro do cliente não volta.
+        $adq = AdquirenteFactory::paraTransacao($tx);
+        if (!$adq) {
+            $this->json(['ok' => false, 'msg' =>
+                'Não há adapter implementado para a adquirente "' . ($tx['gateway_codigo'] ?? '?') . '".']);
+        }
+        if (!$adq->configurado()) {
+            $this->json(['ok' => false, 'msg' =>
+                'A adquirente "' . $adq->codigo() . '" está sem credenciais configuradas.']);
         }
 
-        if (!$resultado->ok) {
+        try {
+            $c = $adq->cancelar((string) $tx['charge_id'], $valorCentavos);
+        } catch (\Throwable $e) {
+            LogService::exception($e, 'error', 'pagamento', [
+                'acao' => 'estorno_manual', 'transacao_id' => $id,
+            ]);
+            $this->json(['ok' => false, 'msg' => 'Erro ao processar estorno: ' . $e->getMessage()]);
+        }
+
+        // Pendente NÃO é falha: cancelamento pós-liquidação (D+N) entra em
+        // PendingCancel e a adquirente confirma depois, por webhook. Tratar
+        // como erro faria o operador pedir estorno de novo.
+        if (!$c->sucesso()) {
             $this->json([
                 'ok'  => false,
-                'msg' => 'O gateway recusou o estorno: ' . ($resultado->errorMessage ?? 'erro desconhecido'),
+                'msg' => 'A adquirente recusou o estorno: ' . ($c->mensagemAdquirente ?? $c->mensagemCliente),
             ]);
         }
 
-        // Audit
-        if (class_exists('LogService') && method_exists('LogService', 'audit')) {
-            LogService::audit('pagamento_estornado_manual', [
-                'transacao_id'   => $id,
-                'charge_id'      => $tx['charge_id'],
-                'valor_centavos' => $valorCentavos,
-                'motivo'         => mb_substr($motivo, 0, 500),
-                'admin_id'       => (int) Session::get('admin_id'),
-            ]);
-        }
+        LogService::audit('pagamento_estornado_manual', [
+            'transacao_id'   => $id,
+            'charge_id'      => $tx['charge_id'],
+            'adquirente'     => $adq->codigo(),
+            'valor_centavos' => $valorCentavos,
+            'parcial'        => $valorCentavos !== null,
+            'motivo'         => mb_substr($motivo, 0, 500),
+            'por'            => AuthHelper::usuarioId(),
+        ]);
 
+        $pendente = $c->cancelamentoPendente;
         $this->json([
-            'ok'      => true,
-            'msg'     => 'Estorno solicitado com sucesso. O status final pode demorar alguns minutos para atualizar.',
-            'status'  => $resultado->status,
+            'ok'       => true,
+            'pendente' => $pendente,
+            'msg'      => $pendente
+                ? 'Estorno solicitado. A adquirente está processando — a confirmação chega por webhook.'
+                : 'Estorno concluído.',
+            'status'   => $pendente ? 'estorno_pendente' : 'estornado',
         ]);
     }
 
@@ -269,41 +290,66 @@ class PaymentController extends Controller
             $this->json(['ok' => false, 'msg' => 'Transação sem charge_id — não foi criada no gateway.']);
         }
 
-        try {
-            $paymentSvc = new PaymentService();
-            $resultado  = $paymentSvc->consultarStatus($tx['charge_id']);
-        } catch (\Throwable $e) {
-            error_log('[Admin/Pagto.consultarTransacao] ' . $e->getMessage());
-            $this->json(['ok' => false, 'msg' => 'Erro ao consultar o gateway: ' . $e->getMessage()]);
+        // Consulta na adquirente que processou esta cobrança.
+        $adq = AdquirenteFactory::paraTransacao($tx);
+        if (!$adq) {
+            $this->json(['ok' => false, 'msg' =>
+                'Não há adapter implementado para a adquirente "' . ($tx['gateway_codigo'] ?? '?') . '".']);
         }
 
-        if (!$resultado->ok) {
+        try {
+            $c = $adq->consultar((string) $tx['charge_id']);
+        } catch (\Throwable $e) {
+            LogService::exception($e, 'error', 'pagamento', [
+                'acao' => 'consulta_manual', 'transacao_id' => $id,
+            ]);
+            $this->json(['ok' => false, 'msg' => 'Erro ao consultar a adquirente: ' . $e->getMessage()]);
+        }
+
+        // Falha de transporte NÃO é status. Um 403 de WAF ou um timeout
+        // significa "não sei" — atualizar o status a partir disso marcaria
+        // pagamento legítimo como recusado.
+        if (in_array($c->porta, [
+            PagamentoClassificacao::ERRO_TECNICO,
+            PagamentoClassificacao::INDISPONIVEL,
+            PagamentoClassificacao::INCERTO,
+        ], true)) {
             $this->json([
                 'ok'  => false,
-                'msg' => 'Gateway retornou erro: ' . ($resultado->errorMessage ?? 'desconhecido'),
+                'msg' => 'Não foi possível falar com a adquirente ('
+                       . $c->classeErro . ', HTTP ' . ($c->httpStatus ?? 0) . '). '
+                       . 'O status local foi preservado.',
             ]);
         }
 
-        if (class_exists('LogService') && method_exists('LogService', 'audit')) {
-            LogService::audit('transacao_consultada_manual', [
-                'transacao_id' => $id,
-                'charge_id'    => $tx['charge_id'],
-                'status_antes' => $tx['status'],
-                'status_agora' => $resultado->status,
-                'admin_id'     => (int) Session::get('admin_id'),
-            ]);
-        }
+        $statusNovo = match ($c->porta) {
+            PagamentoClassificacao::APROVADO => 'aprovado',
+            PagamentoClassificacao::PENDENTE => $c->classeErro === 'cancelamento_pendente'
+                                                ? 'estorno_pendente' : 'aguardando',
+            default => $c->classeErro === 'cancelado' ? 'estornado' : 'recusado',
+        };
 
-        $mudou = $resultado->status !== $tx['status'];
+        LogService::audit('transacao_consultada_manual', [
+            'transacao_id' => $id,
+            'charge_id'    => $tx['charge_id'],
+            'adquirente'   => $adq->codigo(),
+            'status_antes' => $tx['status'],
+            'status_agora' => $statusNovo,
+            'abecs'        => $c->codigoAdquirente,
+            'por'          => AuthHelper::usuarioId(),
+        ]);
+
+        $mudou = $statusNovo !== $tx['status'];
 
         $this->json([
-            'ok'          => true,
-            'status'      => $resultado->status,
-            'status_antes'=> $tx['status'],
-            'mudou'       => $mudou,
-            'msg'         => $mudou
-                ? "Status atualizado: {$tx['status']} → {$resultado->status}"
-                : "Status confirmado pelo gateway: {$resultado->status} (sem mudança)",
+            'ok'           => true,
+            'status'       => $statusNovo,
+            'status_antes' => $tx['status'],
+            'mudou'        => $mudou,
+            'abecs'        => $c->codigoAdquirente,
+            'msg'          => $mudou
+                ? "Status atualizado: {$tx['status']} → {$statusNovo}"
+                : "Status confirmado pela adquirente: {$statusNovo} (sem mudança)",
         ]);
     }
 
@@ -313,10 +359,33 @@ class PaymentController extends Controller
         $this->verifyCsrf();
 
         try {
-            $processor = new MalgaWebhookProcessor();
+            $db = Database::getInstance()->getConnection();
+
+            // ── Processor pela adquirente do evento ──────────────────
+            // Estava fixo no MalgaWebhookProcessor. Com a Safra gravando na
+            // mesma tabela, reprocessar um evento dela passaria pelo parser
+            // errado — os payloads não têm nem o mesmo formato (PascalCase
+            // com status inteiro na Safra, camelCase na Malga).
+            $st = $db->prepare(
+                "SELECT g.codigo FROM pgto_webhook_log w
+                   JOIN pgto_gateways g ON g.id = w.gateway_id
+                  WHERE w.id = ? LIMIT 1"
+            );
+            $st->execute([$id]);
+            $codigo = (string) ($st->fetchColumn() ?: '');
+
+            $processor = match ($codigo) {
+                'safrapay' => new SafraPayWebhookProcessor(),
+                'malga'    => new MalgaWebhookProcessor(),
+                default    => null,
+            };
+
+            if (!$processor) {
+                $this->json(['ok' => false, 'msg' =>
+                    'Não há processor para a adquirente "' . ($codigo ?: 'desconhecida') . '".']);
+            }
 
             // Reset do flag pra forçar reprocessamento
-            $db = Database::getInstance()->getConnection();
             $db->prepare(
                 "UPDATE pgto_webhook_log
                     SET processado = 0, erro = NULL
@@ -325,14 +394,13 @@ class PaymentController extends Controller
 
             $resultado = $processor->processarPorLogId($id);
 
-            if (class_exists('LogService') && method_exists('LogService', 'audit')) {
-                LogService::audit('webhook_reprocessado_manual', [
-                    'log_id'   => $id,
-                    'admin_id' => (int) Session::get('admin_id'),
-                    'ok'       => $resultado['ok'],
-                    'motivo'   => $resultado['motivo'],
-                ]);
-            }
+            LogService::audit('webhook_reprocessado_manual', [
+                'log_id'     => $id,
+                'adquirente' => $codigo,
+                'por'        => AuthHelper::usuarioId(),
+                'ok'         => $resultado['ok'],
+                'motivo'     => $resultado['motivo'],
+            ]);
 
             $this->json([
                 'ok'     => $resultado['ok'],

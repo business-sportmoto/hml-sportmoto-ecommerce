@@ -40,6 +40,130 @@ class PaymentDashboardService
             'webhooks_saude'  => $this->saudeWebhooks(),
             'alertas'         => $this->detectarAlertas($diasJanela),
             'ultimas_acoes'   => $this->ultimasTransacoesParaInbox(10),
+
+            // ── Fontes novas, vindas de pgto_tentativas ──────────────
+            // pgto_transacoes guarda a cobranca que VINGOU; pgto_tentativas
+            // guarda o caminho inteiro, inclusive as que falharam. Sem ela
+            // nao da para responder "por que falhou nesta adquirente" nem
+            // "quantas vezes tentamos antes de aprovar".
+            'parcelas'        => $this->parcelasMaisUsadas($diasJanela),
+            'erros_adquirente'=> $this->errosPorAdquirente($diasJanela),
+            'fallback'        => $this->eficaciaFallback($diasJanela),
+        ];
+    }
+
+    // =================================================================
+    // PARCELAMENTO MAIS USADO
+    // =================================================================
+    /**
+     * So conta tentativa APROVADA: parcela escolhida em transacao negada nao
+     * representa preferencia do cliente, representa tentativa frustrada.
+     */
+    public function parcelasMaisUsadas(int $dias): array
+    {
+        $st = $this->db->prepare(
+            "SELECT parcelas,
+                    COUNT(*)              AS total,
+                    SUM(valor_centavos)   AS volume_centavos
+               FROM pgto_tentativas
+              WHERE resultado = 'aprovado'
+                AND metodo LIKE 'cartao%'
+                AND criado_em >= (NOW() - INTERVAL :d DAY)
+              GROUP BY parcelas
+              ORDER BY total DESC"
+        );
+        $st->bindValue(':d', $dias, PDO::PARAM_INT);
+        $st->execute();
+        $linhas = $st->fetchAll(PDO::FETCH_ASSOC);
+
+        $totalGeral = array_sum(array_column($linhas, 'total')) ?: 1;
+        foreach ($linhas as &$l) {
+            $l['parcelas']  = (int) $l['parcelas'];
+            $l['total']     = (int) $l['total'];
+            $l['percentual'] = round(($l['total'] / $totalGeral) * 100, 1);
+        }
+        return $linhas;
+    }
+
+    // =================================================================
+    // LOG DE ERRO POR ADQUIRENTE
+    // =================================================================
+    /**
+     * Erros agrupados por adquirente e classe. E daqui que sai a resposta
+     * para "o que esta acontecendo com a adquirente X" sem abrir pedido a
+     * pedido.
+     */
+    public function errosPorAdquirente(int $dias): array
+    {
+        $st = $this->db->prepare(
+            "SELECT adquirente_codigo,
+                    classe_erro,
+                    codigo_adquirente,
+                    COUNT(*)                      AS total,
+                    MAX(criado_em)                AS ultimo,
+                    SUBSTRING_INDEX(GROUP_CONCAT(
+                        COALESCE(mensagem_adquirente, '') ORDER BY id DESC SEPARATOR '|||'
+                    ), '|||', 1)                  AS ultima_mensagem
+               FROM pgto_tentativas
+              WHERE resultado <> 'aprovado'
+                AND resultado <> 'pendente'
+                AND criado_em >= (NOW() - INTERVAL :d DAY)
+              GROUP BY adquirente_codigo, classe_erro, codigo_adquirente
+              ORDER BY total DESC
+              LIMIT 40"
+        );
+        $st->bindValue(':d', $dias, PDO::PARAM_INT);
+        $st->execute();
+
+        $out = [];
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $l) {
+            $l['total'] = (int) $l['total'];
+            // Separa o que e culpa nossa/da adquirente do que e decisao do
+            // emissor: sao acoes completamente diferentes.
+            $l['e_tecnico'] = in_array($l['classe_erro'], [
+                'indisponivel', 'timeout', 'tecnico', 'contrato',
+                'credencial', 'erro_adquirente', 'rate_limit',
+            ], true);
+            $out[] = $l;
+        }
+        return $out;
+    }
+
+    // =================================================================
+    // EFICACIA DO FALLBACK
+    // =================================================================
+    /**
+     * Quantos pedidos precisaram de mais de uma adquirente, e quantos desses
+     * foram salvos pela segunda. E a metrica que justifica (ou nao) manter
+     * uma adquirente de reserva contratada.
+     */
+    public function eficaciaFallback(int $dias): array
+    {
+        $st = $this->db->prepare(
+            "SELECT
+                COUNT(*)                                                   AS pedidos_multi,
+                SUM(CASE WHEN aprovou = 1 THEN 1 ELSE 0 END)               AS salvos
+             FROM (
+                SELECT order_id_loja,
+                       COUNT(*) AS tentativas,
+                       MAX(CASE WHEN resultado = 'aprovado' THEN 1 ELSE 0 END) AS aprovou
+                  FROM pgto_tentativas
+                 WHERE criado_em >= (NOW() - INTERVAL :d DAY)
+                 GROUP BY order_id_loja
+                HAVING tentativas > 1
+             ) t"
+        );
+        $st->bindValue(':d', $dias, PDO::PARAM_INT);
+        $st->execute();
+        $r = $st->fetch(PDO::FETCH_ASSOC) ?: ['pedidos_multi' => 0, 'salvos' => 0];
+
+        $multi  = (int) $r['pedidos_multi'];
+        $salvos = (int) $r['salvos'];
+
+        return [
+            'pedidos_multi' => $multi,
+            'salvos'        => $salvos,
+            'taxa_resgate'  => $multi > 0 ? round(($salvos / $multi) * 100, 1) : null,
         ];
     }
 

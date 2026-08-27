@@ -294,6 +294,26 @@ AdminRouter::post('/configuracoes/status-pedidos/salvar',       'AdminStatusPedi
 AdminRouter::post('/configuracoes/status-pedidos/excluir',      'AdminStatusPedidoController@excluir');
 AdminRouter::post('/configuracoes/status-pedidos/reordenar',    'AdminStatusPedidoController@reordenar');
 
+// ── Configuração de pagamentos ──────────────────────────────────────
+// Formas: super+gerente (impacto financeiro). Adquirentes: super (credenciais).
+// A permissão real é aplicada no controller, método a método.
+AdminRouter::get ('/pagamentos/formas',                  'AdminPagamentoConfigController@formas');
+AdminRouter::post('/pagamentos/formas/salvar',           'AdminPagamentoConfigController@salvarForma');
+AdminRouter::post('/pagamentos/formas/simular',          'AdminPagamentoConfigController@simularForma');
+AdminRouter::get ('/pagamentos/adquirentes',             'AdminPagamentoConfigController@adquirentes');
+AdminRouter::get ('/pagamentos/analise',                 'AdminAnaliseController@index');
+AdminRouter::get ('/pagamentos/analise/{id:\d+}',        'AdminAnaliseController@detalhe');
+AdminRouter::post('/pagamentos/analise/aprovar',         'AdminAnaliseController@aprovar');
+AdminRouter::post('/pagamentos/analise/recusar',         'AdminAnaliseController@recusar');
+AdminRouter::get ('/pagamentos/fluxos',                  'AdminPagamentoFluxoController@index');
+AdminRouter::get ('/pagamentos/fluxos/editor',           'AdminPagamentoFluxoController@editor');
+AdminRouter::post('/pagamentos/fluxos/salvar',           'AdminPagamentoFluxoController@salvar');
+AdminRouter::post('/pagamentos/fluxos/publicar',         'AdminPagamentoFluxoController@publicar');
+AdminRouter::post('/pagamentos/fluxos/rascunho',         'AdminPagamentoFluxoController@novoRascunho');
+AdminRouter::post('/pagamentos/adquirentes/salvar',      'AdminPagamentoConfigController@salvarAdquirente');
+AdminRouter::post('/pagamentos/adquirentes/alternar',    'AdminPagamentoConfigController@alternarAdquirente');
+AdminRouter::post('/pagamentos/adquirentes/testar',      'AdminPagamentoConfigController@testarAdquirente');
+
 AdminRouter::get ('/configuracoes/pwa',                   'AdminPwaController@index');
 AdminRouter::post('/configuracoes/pwa/salvar',            'AdminPwaController@salvar');
 AdminRouter::post('/configuracoes/pwa/gerar-icones',      'AdminPwaController@gerarIcones');

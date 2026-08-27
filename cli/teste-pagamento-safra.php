@@ -113,9 +113,12 @@ function diagnostico(): void
 ";
     $ch = curl_init($base . '/v2/merchant/auth');
     curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_POSTFIELDS => '',
+        CURLOPT_RETURNTRANSFER => true, 
+        CURLOPT_POST => true, 
+        CURLOPT_POSTFIELDS => '',
         CURLOPT_HTTPHEADER => ['Authorization: ' . $token],
-        CURLOPT_TIMEOUT => 25, CURLOPT_HEADER => true,
+        CURLOPT_TIMEOUT => 25, 
+        CURLOPT_HEADER => true,
     ]);
     $resp = curl_exec($ch);
     $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);

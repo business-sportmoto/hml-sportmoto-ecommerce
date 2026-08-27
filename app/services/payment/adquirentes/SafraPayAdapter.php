@@ -30,7 +30,7 @@ declare(strict_types=1);
  * (Brasília). Fora disso a autorização falha por indisponibilidade — não é
  * erro de integração.
  */
-class SafraPayAdapter
+class SafraPayAdapter implements AdquirenteInterface
 {
     // ── Enumeradores (doc: /primeiros-passos#enumeradores) ──────────────────
     private const BRAND = [
