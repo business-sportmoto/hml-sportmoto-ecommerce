@@ -1811,6 +1811,8 @@ class CheckoutController extends Controller {
         // 6. Gateway de pagamento — via PaymentService (Etapa 2)
         // ════════════════════════════════════════════════════
         $statusPagamento  = 'pendente';
+        $pedidoRetido     = false;
+        $mensagemCliente  = null;
         $gatewayChargeId  = null;
         $gatewayResposta  = null;
         $pixQrCode        = null;
@@ -1869,56 +1871,113 @@ class CheckoutController extends Controller {
             );
         } else {
         try {
-            $paymentSvc = new PaymentService();
-
-            // Resolve token do cartão
-            $tokenCartao = null;
-            $isCardId    = false;  // true = cardId permanente, false = tokenId efêmero
+            // ── Motor de roteamento ──────────────────────────────────────
+            // Substitui o PaymentService, que resolvia UM gateway global. A
+            // partir daqui o pagamento passa pelo fluxo publicado do metodo:
+            // condicoes, antifraude, retencao e as regras de retentativa.
+            $tokenCartao   = null;
+            $cartaoSalvo   = null;
+            $adquirenteFix = '';
 
             if ($metodo === 'cartao') {
                 if ($cartaoSalvoId) {
-                    $tokenCartao = $this->buscarTokenCartao($db, (int)$cartaoSalvoId);
-                    $isCardId    = true;  // vem do banco — é um cardId permanente do vault
+                    $cartaoSalvo = $this->cartaoSalvoParaCobranca((int) $cartaoSalvoId, $clienteId);
+                    if (!$cartaoSalvo) {
+                        $this->json(['ok' => false, 'msg' => 'Cartão indisponível. Escolha outro.']);
+                    }
+
+                    // O token so vale na adquirente que o emitiu: prende o
+                    // roteamento a ela. Ver PagamentoRoteador::tentarAdquirente.
+                    $adquirenteFix = $cartaoSalvo['adquirente'];
+
+                    // TOKEN FRESCO TEM PRECEDENCIA sobre o que esta guardado.
+                    //
+                    // No Mercado Pago o `card_ref` nao serve para cobrar: a
+                    // Orders API so aceita `token`, e um token novo so nasce
+                    // com o CVV. O navegador acabou de gerar um a partir do
+                    // cartao salvo — e ele que vale.
+                    $tokenFresco = trim((string) ($_POST['gateway_token'] ?? ''));
+
+                    if ($tokenFresco !== '') {
+                        if (!preg_match('/^[0-9a-f]{32,33}$/i', $tokenFresco)
+                            && !preg_match('/^[0-9a-f-]{36}$/i', $tokenFresco)) {
+                            $this->json(['ok' => false, 'msg' =>
+                                'Código de segurança inválido. Tente novamente.']);
+                        }
+                        $tokenCartao = $tokenFresco;
+                    } else {
+                        $tokenCartao = $cartaoSalvo['token'];
+                    }
                 } elseif ($cartaoTemp) {
                     $tokenCartao = $cartaoTemp['gateway_token'] ?? $cartaoTemp['token'] ?? null;
-                    $isCardId    = false; // token fresco da sessão — ainda pode ser tokenId
                 }
+
                 if (empty($tokenCartao)) {
                     $this->json(['ok' => false, 'msg' => 'Cartão sem token. Adicione o cartão novamente.']);
                 }
             }
-            
-            // ... e no processarPagamento(), adicionar is_card_id ao array:
-            $resultado = $paymentSvc->processarPagamento([
-                'pedido_id'      => $pedidoId,
-                'order_id_loja'  => $codigo,
-                'cliente_id'     => $clienteId,
-                'valor_centavos' => (int) round($aPagar * 100),
-                'metodo'         => $metodo,
-                'parcelas'       => $parcelas,
-                'token_cartao'   => $tokenCartao,
-                'is_card_id'     => $isCardId,   // ← flag nova
-                'descricao'      => 'SportMoto #' . $codigo,
-                'cliente'        =>  $this->buildCustomerData($clienteId, $endereco),
-                'ip_origem'      => $_SERVER['REMOTE_ADDR'] ?? null,
-            ]);
 
-            // LogService::info('processarPagamento', $tokenCartao);
-    
-            $statusPagamento  = $resultado->status;
-            $gatewayChargeId  = $resultado->chargeId;
-            $gatewayResposta  = json_encode($resultado->raw, JSON_UNESCAPED_UNICODE);
-            $pixQrCode        = $resultado->pixQrCode;
-            $pixCopiaCola     = $resultado->pixCopiaCola;
-            $pixExpiraEm      = $resultado->pixExpiraEm;
-            $boletoUrl        = $resultado->boletoUrl;
-            $boletoLinhaDig   = $resultado->boletoLinhaDigitavel;
-            $boletoVencimento = $resultado->boletoVencimento;
-    
+            $cliente = $this->buildCustomerData($clienteId, $endereco);
+
+            $ctx = [
+                // O fluxo e escolhido por este codigo: precisa casar com
+                // pgto_fluxos.metodo_codigo, nao com o rotulo do checkout.
+                'metodo'            => $metodo === 'cartao' ? 'cartao_credito' : $metodo,
+                'pedido_id'         => $pedidoId,
+                'order_id_loja'     => $codigo,
+                'cliente_id'        => $clienteId,
+                'valor_centavos'    => (int) round($aPagar * 100),
+                'parcelas'          => (int) $parcelas,
+                'descricao_fatura'  => 'SportMoto ' . $codigo,
+                'token_temporario'  => $tokenCartao,
+                'adquirente_fixa'   => $adquirenteFix,
+                'bandeira'          => $cartaoSalvo['bandeira'] ?? ($cartaoTemp['bandeira'] ?? null),
+                'cliente'           => $cliente,
+                'entrega'           => $cliente['endereco'] ?? [],
+                'ip_cliente'        => $_SERVER['REMOTE_ADDR'] ?? null,
+                'session_id'        => class_exists('ClearSaleFingerprint')
+                                        ? ClearSaleFingerprint::sessionId() : null,
+            ];
+
+            $rot = (new PagamentoRoteador())->processar($ctx);
+
+            LogService::info('Roteamento concluido', $rot->resumo() + [
+                'order_id_loja' => $codigo,
+            ], 'pagamento');
+
+            $c = $rot->classificacao;
+            $instrumento = $rot->instrumento();
+
+            // RETIDO NAO E RECUSADO. O dinheiro pode ate estar capturado; o
+            // que esta suspenso e a MERCADORIA. Por isso o pagamento fica
+            // 'aprovado' e quem segura e o status do pedido, na fila.
+            if ($rot->retido) {
+                $statusPagamento = 'aprovado';
+            } elseif ($rot->aprovado()) {
+                $statusPagamento = 'aprovado';
+            } elseif ($rot->pendente()) {
+                $statusPagamento = 'pendente';
+            } else {
+                $statusPagamento = 'recusado';
+            }
+
+            $pedidoRetido     = $rot->retido;
+            $mensagemCliente  = $rot->mensagemCliente;
+            $gatewayChargeId  = $c->chargeId ?? null;
+            $gatewayResposta  = json_encode($rot->resumo(), JSON_UNESCAPED_UNICODE);
+
+            $pixQrCode        = $instrumento['qrcode_base64']   ?? null;
+            $pixCopiaCola     = $instrumento['qrcode']          ?? null;
+            $pixExpiraEm      = $instrumento['expira_em']       ?? null;
+            $boletoUrl        = $instrumento['url']             ?? null;
+            $boletoLinhaDig   = $instrumento['linha_digitavel'] ?? null;
+            $boletoVencimento = $instrumento['vencimento']      ?? null;
+
         } catch (\Throwable $e) {
-            LogService::error('PaymentService -> '.$e->getMessage().' - line:'.$e->getLine().' - file:'.$e->getFile());
-            error_log('[process] gateway: ' . $e->getMessage());
-            // Não derruba o pedido — fica pendente, webhook pode confirmar depois
+            LogService::exception($e, 'error', 'pagamento', [
+                'acao' => 'rotear_pagamento', 'pedido_id' => $pedidoId, 'codigo' => $codigo,
+            ]);
+            // Nao derruba o pedido: fica pendente e o webhook pode confirmar.
             $statusPagamento = 'pendente';
         }
         } // fim do else: houve valor a cobrar do gateway
@@ -1934,7 +1993,21 @@ class CheckoutController extends Controller {
             'erro'           => 'aguardando_pagamento',
         ];
         $statusPedidoFinal = $statusPedidoMap[$statusPagamento] ?? 'aguardando_pagamento';
+
+        // Pedido retido pelo antifraude: o pagamento passou, a mercadoria nao
+        // sai. Vai para a fila de analise em vez de 'pagamento_aprovado' —
+        // liberar aqui anularia a decisao do fluxo.
+        if (!empty($pedidoRetido)) {
+            $statusPedidoFinal = 'em_analise';
+        }
         $pagoEm = ($statusPagamento === 'aprovado') ? date('Y-m-d H:i:s') : null;
+
+        if ($statusPedidoFinal === 'em_analise') {
+            $this->service->mudarStatus(
+                $pedidoId, 'em_analise',
+                'Retido pelo antifraude para análise.', 0, false
+            );
+        }
 
         if($statusPedidoFinal === 'pagamento_aprovado') {
             $msg_credito = 'Você utilizou um crédito de R$ ' . number_format($creditoAplicado, 2, ',', '.') . ' nesta compra.';
@@ -2362,35 +2435,151 @@ class CheckoutController extends Controller {
     //     $this->renderCheckout('checkout/payment-card-add', ['etapaAtual' => 'payment', 'modo'=>'card-add']);
     // }
 
+    /**
+     * GET /checkout/payment/card/add
+     *
+     * A credencial FRONT decide qual SDK a pagina carrega. Ela e publica por
+     * natureza — vai para o navegador de qualquer jeito —, mas sai do banco
+     * pelo PagamentoCredencialService porque a coluna esta cifrada: ler
+     * `front_api_key` cru devolveria o blob AES, e o SDK falharia com um erro
+     * que nao explica nada.
+     */
     public function paymentCardAdd(): void {
         $this->requireLogin();
-    
-        // Carrega credenciais front-end do gateway ativo
-        $pdo = Database::getInstance()->getConnection();
-        $stmt = $pdo->prepare(
-            "SELECT front_client_id, front_api_key, sandbox
-            FROM pgto_gateways
-            WHERE codigo = 'malga' AND ativo = 1
-            LIMIT 1"
-        );
-        $stmt->execute();
-        $gw = $stmt->fetch(\PDO::FETCH_ASSOC);
-    
-        if (!$gw || empty($gw['front_client_id']) || empty($gw['front_api_key'])) {
-            // Credenciais front não configuradas — não permite chegar nessa página
+
+        $adq = $this->adquirenteDoCartao();
+
+        if ($adq === null) {
             $this->renderError(
                 'Pagamento por cartão indisponível no momento. Tente outro método.',
-                'admin' // ou o layout que o projeto usa
+                'admin'
             );
             return;
         }
-    
-        // Define como constantes pra a view ler
-        if (!defined('MALGA_PUBLIC_CLIENT_ID')) define('MALGA_PUBLIC_CLIENT_ID', (string) $gw['front_client_id']);
-        if (!defined('MALGA_PUBLIC_API_KEY'))   define('MALGA_PUBLIC_API_KEY',   (string) $gw['front_api_key']);
-        if (!defined('MALGA_SANDBOX'))          define('MALGA_SANDBOX',          (bool) $gw['sandbox']);
-    
-        $this->renderCheckout('checkout/payment-card-add', ['etapaAtual' => 'payment', 'modo'=>'card-add']);
+
+        // A view le estas constantes para escolher o glue de tokenizacao.
+        if (!defined('CHECKOUT_ADQUIRENTE'))  define('CHECKOUT_ADQUIRENTE',  $adq['codigo']);
+        if (!defined('CHECKOUT_PUBLIC_KEY'))  define('CHECKOUT_PUBLIC_KEY',  $adq['public_key']);
+        if (!defined('CHECKOUT_CLIENT_ID'))   define('CHECKOUT_CLIENT_ID',   $adq['client_id']);
+        if (!defined('CHECKOUT_SANDBOX'))     define('CHECKOUT_SANDBOX',     $adq['sandbox']);
+
+        // Compatibilidade com a view atual enquanto a Malga nao sai de cena.
+        if ($adq['codigo'] === 'malga') {
+            if (!defined('MALGA_PUBLIC_CLIENT_ID')) define('MALGA_PUBLIC_CLIENT_ID', $adq['client_id']);
+            if (!defined('MALGA_PUBLIC_API_KEY'))   define('MALGA_PUBLIC_API_KEY',   $adq['public_key']);
+            if (!defined('MALGA_SANDBOX'))          define('MALGA_SANDBOX',          $adq['sandbox']);
+        }
+
+        $this->renderCheckout('checkout/payment-card-add', [
+            'etapaAtual' => 'payment',
+            'modo'       => 'card-add',
+            // Preenche o documento do titular quando ja existe no cadastro.
+            // Continua editavel: o cartao pode ser de outra pessoa.
+            'cpfCliente' => $this->cpfDoCliente(),
+        ]);
+    }
+
+    /**
+     * Cartao salvo pronto para cobranca, com a adquirente dona dele.
+     *
+     * Devolve null quando o cartao nao e do cliente, esta inativo, ou pertence
+     * a uma adquirente que nao esta mais ativa — nesse ultimo caso apresenta-lo
+     * so produziria uma recusa sem explicacao, porque o token aponta para um
+     * cofre que ninguem mais consulta.
+     *
+     * @return array{token:string, adquirente:string, bandeira:string}|null
+     */
+    private function cartaoSalvoParaCobranca(int $cartaoId, int $clienteId): ?array
+    {
+        $st = Database::getInstance()->getConnection()->prepare(
+            "SELECT cs.token, cs.card_ref, cs.bandeira, g.codigo AS adquirente, g.ativo
+               FROM cartoes_salvos cs
+          LEFT JOIN pgto_gateways g ON g.id = cs.gateway_id
+              WHERE cs.id = ? AND cs.cliente_id = ? AND cs.ativo = 1
+              LIMIT 1"
+        );
+        $st->execute([$cartaoId, $clienteId]);
+        $c = $st->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$c) return null;
+
+        if (empty($c['adquirente']) || (int) $c['ativo'] !== 1) {
+            LogService::warning('Cartao salvo de adquirente inativa', [
+                'cartao_id' => $cartaoId, 'adquirente' => $c['adquirente'] ?? null,
+            ], 'pagamento');
+            return null;
+        }
+
+        // card_ref e o id permanente do cartao na adquirente; token e o valor
+        // legado. Onde houver os dois, o permanente manda — o token pode ser
+        // de uso unico (e no Mercado Pago e).
+        $valor = (string) ($c['card_ref'] ?: $c['token']);
+        if ($valor === '') return null;
+
+        return [
+            'token'      => $valor,
+            'adquirente' => (string) $c['adquirente'],
+            'bandeira'   => (string) ($c['bandeira'] ?? ''),
+        ];
+    }
+
+    /** CPF do cliente logado, formatado. Vazio quando nao ha. */
+    private function cpfDoCliente(): string
+    {
+        $clienteId = (int) Session::get('cliente_id');
+        if ($clienteId <= 0) return '';
+
+        $st = Database::getInstance()->getConnection()
+            ->prepare('SELECT cpf FROM clientes WHERE id = ? LIMIT 1');
+        $st->execute([$clienteId]);
+
+        $cpf = preg_replace('/\D/', '', (string) ($st->fetchColumn() ?: '')) ?? '';
+
+        if (strlen($cpf) === 11) {
+            return substr($cpf, 0, 3) . '.' . substr($cpf, 3, 3) . '.'
+                 . substr($cpf, 6, 3) . '-' . substr($cpf, 9, 2);
+        }
+        if (strlen($cpf) === 14) {
+            return substr($cpf, 0, 2) . '.' . substr($cpf, 2, 3) . '.' . substr($cpf, 5, 3)
+                 . '/' . substr($cpf, 8, 4) . '-' . substr($cpf, 12, 2);
+        }
+        return '';
+    }
+
+    /**
+     * Qual adquirente tokeniza o cartao nesta pagina.
+     *
+     * Escolhe entre as ATIVAS que tem chave publica, na ordem de preferencia.
+     * Nao adivinha: uma adquirente sem chave publica nao consegue tokenizar no
+     * navegador, e deixa-la ganhar a escolha derrubaria o checkout inteiro.
+     *
+     * @return array{codigo:string, public_key:string, client_id:string, sandbox:bool}|null
+     */
+    private function adquirenteDoCartao(): ?array
+    {
+        $pdo = Database::getInstance()->getConnection();
+        $st  = $pdo->query("SELECT codigo FROM pgto_gateways WHERE ativo = 1");
+        $ativas = $st ? $st->fetchAll(\PDO::FETCH_COLUMN) : [];
+
+        foreach (['mercadopago', 'malga'] as $codigo) {
+            if (!in_array($codigo, $ativas, true)) continue;
+
+            $c = PagamentoCredencialService::para($codigo);
+            if ($c['public_key'] === '') continue;
+
+            return [
+                'codigo'     => $codigo,
+                'public_key' => $c['public_key'],
+                'client_id'  => $c['client_id'],
+                'sandbox'    => $c['sandbox'],
+            ];
+        }
+
+        LogService::error('Checkout de cartao sem adquirente com chave publica', [
+            'ativas' => $ativas,
+        ], 'pagamento');
+
+        return null;
     }
 
     /** POST /checkout/payment/card/add */
@@ -2685,8 +2874,25 @@ class CheckoutController extends Controller {
         if (empty($tokenId)) {
             $this->json(['ok' => false, 'msg' => 'Token do cartão ausente. Tente novamente.']);
         }
-        if (!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $tokenId)) {
+        // CADA ADQUIRENTE TEM UM FORMATO DE TOKEN.
+        //   Malga         UUID com hifens  (8-4-4-4-12)
+        //   Mercado Pago  32 hexadecimais, sem hifen
+        // A regex antiga so aceitava UUID, entao todo token do Mercado Pago
+        // era recusado aqui com "Token invalido" — sem pista do motivo.
+        $formatoOk = preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $tokenId)
+                  || preg_match('/^[0-9a-f]{32,33}$/i', $tokenId);
+
+        if (!$formatoOk) {
             $this->json(['ok' => false, 'msg' => 'Token inválido. Atualize a página e tente novamente.']);
+        }
+
+        // Documento do titular. O Mercado Pago exige para tokenizar, e guardar
+        // evita pedir de novo na proxima compra.
+        $docTitular = preg_replace('/\D/', '', (string) ($_POST['cpf_titular'] ?? '')) ?? '';
+
+        if ($docTitular !== '' && strlen($docTitular) === 11
+            && !SecurityHelper::validateCpf($docTitular)) {
+            $this->json(['ok' => false, 'msg' => 'CPF do titular inválido.']);
         }
         if (strlen($ultimos4) !== 4) $ultimos4 = '0000';
         if (empty($bandeira))        $bandeira  = 'outros';
@@ -2702,68 +2908,96 @@ class CheckoutController extends Controller {
         $stmt->execute([':id' => $clienteId]);
         $cliente = $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
 
-        $cardId          = null;
-        $malgaCustomerId = $cliente['malga_customer_id'] ?? null;
-
-        try {
-            $malgaSvc = MalgaService::fromCodigo('malga');
-
-            // ── Etapa 1: GET ou cria customer na Malga ────────────────────
-            $dadosCliente = [
-                'nome'      => $cliente['nome']     ?? 'Cliente',
-                'email'     => $cliente['email']    ?? '',
-                'telefone'  => $cliente['telefone'] ?? '',
-                'documento' => preg_replace('/\D/', '', (string) ($cliente['cpf'] ?? '')),
-            ];
-
-            $customerId = $malgaSvc->buscarOuCriarCustomerPorCliente(
-                $dadosCliente,
-                $malgaCustomerId
-            );
-
-            // Persiste o customerId se for novo
-            if ($customerId && $customerId !== $malgaCustomerId) {
-                $db->prepare(
-                    "UPDATE clientes SET malga_customer_id = :cid WHERE id = :id"
-                )->execute([':cid' => $customerId, ':id' => $clienteId]);
-            }
-
-            // ── Etapa 2: cria card no vault da Malga ──────────────────────
-            // POST /v1/cards com tokenId → retorna cardId permanente
-            $vaultResult = $malgaSvc->criarCartaoVault($tokenId);
-            $cardId = $vaultResult['cardId'];
-
-            // Atualiza bandeira e last4 com os dados reais da Malga
-            if (!empty($vaultResult['bandeira'])) $bandeira = $vaultResult['bandeira'];
-            if (!empty($vaultResult['last4']))    $ultimos4  = $vaultResult['last4'];
-
-            // ── Etapa 3: associa card ao customer ─────────────────────────
-            // POST /v1/customers/{customerId}/cards → 204 No Content
-            if (!empty($customerId)) {
-                $malgaSvc->associarCartaoAoCustomer($customerId, $cardId);
-            }
-
-        } catch (\Throwable $e) {
-            // Loga o erro real do vault para debug
-            error_log('[CartaoAdd] vault falhou: ' . $e->getMessage() . ' | ' . $e->getFile() . ':' . $e->getLine());
-            if (class_exists('LogService')) {
-                LogService::warning('[CartaoAdd] vault/customer falhou — usando tokenId como fallback', [
-                    'cliente_id' => $clienteId,
-                    'erro'       => $e->getMessage() . ' | ' . $e->getFile() . ':' . $e->getLine(),
-                ]);
-            }
-            // Fallback: usa tokenId — o adapter tentará como sourceType:'token'.
-            // ATENÇÃO: token expira em minutos. Se a compra não for finalizada
-            // imediatamente, o próximo erro será expired_token. O correto é investigar
-            // por que o vault falhou (ver error_log acima).
-            $cardId = $tokenId;
+        // Cliente sem documento no cadastro: aproveita o que ele acabou de
+        // digitar. Nao sobrescreve um CPF ja existente — o cartao pode ser de
+        // outra pessoa, e o cadastro e do titular da conta, nao do cartao.
+        if ($docTitular !== '' && empty($cliente['cpf'])) {
+            $db->prepare('UPDATE clientes SET cpf = ? WHERE id = ?')
+               ->execute([$docTitular, $clienteId]);
+            $cliente['cpf'] = $docTitular;
         }
 
-        // ── Salva no banco ────────────────────────────────────────────────
+        // ── Guarda o cartao NA ADQUIRENTE ────────────────────────────
+        //
+        // Um cartao salvo pertence a UMA adquirente: o token so vale em quem
+        // o emitiu. Por isso o registro guarda de quem e — e por isso este
+        // trecho ramifica em vez de assumir a Malga.
+        $adq = $this->adquirenteDoCartao();
+        $codigoAdq = $adq['codigo'] ?? '';
+
+        $cardId       = null;
+        $customerRef  = null;
+        $gatewayId    = null;
+
+        $dadosCliente = [
+            'nome'      => $cliente['nome']     ?? 'Cliente',
+            'email'     => $cliente['email']    ?? '',
+            'telefone'  => $cliente['telefone'] ?? '',
+            'documento' => preg_replace('/\D/', '', (string) ($cliente['cpf'] ?? '')),
+        ];
+
+        try {
+            if ($codigoAdq === 'mercadopago') {
+                $mp = new MercadoPagoAdapter();
+                $res = $mp->salvarCartao($dadosCliente, $tokenId);
+
+                if (!$res['ok']) {
+                    // NAO cai para "guarda o token mesmo assim": no Mercado
+                    // Pago o token e de uso unico, entao um cartao salvo com
+                    // token funcionaria uma vez e depois recusaria sem
+                    // explicacao. Melhor recusar agora, enquanto o cliente
+                    // ainda esta na tela e pode tentar de novo.
+                    $this->json(['ok' => false, 'msg' =>
+                        'Não foi possível salvar o cartão. Tente novamente ou use outro cartão.']);
+                }
+
+                $customerRef = $res['customer_ref'];
+                $cardId      = $res['card_ref'];
+                if (!empty($res['bandeira'])) $bandeira = $res['bandeira'];
+                if (!empty($res['ultimos4'])) $ultimos4 = $res['ultimos4'];
+
+            } else {
+                $malgaSvc        = MalgaService::fromCodigo('malga');
+                $malgaCustomerId = $cliente['malga_customer_id'] ?? null;
+
+                $customerRef = $malgaSvc->buscarOuCriarCustomerPorCliente(
+                    $dadosCliente, $malgaCustomerId
+                );
+
+                if ($customerRef && $customerRef !== $malgaCustomerId) {
+                    $db->prepare("UPDATE clientes SET malga_customer_id = :cid WHERE id = :id")
+                       ->execute([':cid' => $customerRef, ':id' => $clienteId]);
+                }
+
+                $vault  = $malgaSvc->criarCartaoVault($tokenId);
+                $cardId = $vault['cardId'];
+                if (!empty($vault['bandeira'])) $bandeira = $vault['bandeira'];
+                if (!empty($vault['last4']))    $ultimos4 = $vault['last4'];
+
+                if (!empty($customerRef)) {
+                    $malgaSvc->associarCartaoAoCustomer($customerRef, $cardId);
+                }
+            }
+
+            $st = $db->prepare('SELECT id FROM pgto_gateways WHERE codigo = ? LIMIT 1');
+            $st->execute([$codigoAdq]);
+            $gatewayId = (int) ($st->fetchColumn() ?: 0) ?: null;
+
+        } catch (\Throwable $e) {
+            LogService::exception($e, 'error', 'pagamento', [
+                'acao' => 'salvar_cartao', 'adquirente' => $codigoAdq, 'cliente_id' => $clienteId,
+            ]);
+            $this->json(['ok' => false, 'msg' =>
+                'Não foi possível salvar o cartão agora. Tente novamente em instantes.']);
+        }
+
         try {
             $cartaoModel = new CartaoSalvo();
             $cartaoId    = $cartaoModel->salvar([
                 'cliente_id'   => $clienteId,
+                'gateway_id'   => $gatewayId,
+                'customer_ref' => $customerRef,
+                'card_ref'     => $cardId,
                 'token'        => $cardId,     // cardId permanente (ou tokenId como fallback)
                 'bandeira'     => $bandeira,
                 'ultimos_4'    => $ultimos4,

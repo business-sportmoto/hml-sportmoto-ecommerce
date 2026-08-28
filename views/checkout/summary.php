@@ -284,6 +284,38 @@ $isBoleto = $metodo === 'boleto';
     }
   }
   $cardAtual = $cardSalvo ?? $cardTemp;
+
+  // ── Cartao salvo que exige token novo a cada compra ─────────────────
+  //
+  // O Mercado Pago nao cobra por card_id: a Orders API so aceita `token`, e
+  // um token novo so nasce com o codigo de seguranca. Entao cartao salvo do
+  // MP ainda pede o CVV — o que o cadastro poupa e numero, validade e nome.
+  //
+  // Nao e atrito gratuito: e o que impede quem tem acesso a conta do
+  // comprador de usar um cartao salvo sem ter o cartao na mao.
+  $cvvNecessario = false;
+  $cvvCardRef    = '';
+  $cvvPublicKey  = '';
+
+  if ($cardSalvo && !empty($cardSalvo['card_ref'])) {
+      try {
+          $gw = Database::getInstance()->getConnection()->prepare(
+              'SELECT codigo FROM pgto_gateways WHERE id = ? AND ativo = 1 LIMIT 1'
+          );
+          $gw->execute([(int) ($cardSalvo['gateway_id'] ?? 0)]);
+
+          if ($gw->fetchColumn() === 'mercadopago') {
+              $cred          = PagamentoCredencialService::para('mercadopago');
+              $cvvPublicKey  = $cred['public_key'];
+              $cvvCardRef    = (string) $cardSalvo['card_ref'];
+              $cvvNecessario = $cvvPublicKey !== '';
+          }
+      } catch (\Throwable $e) {
+          // Sem o CVV o pagamento falha adiante com mensagem clara; derrubar
+          // a pagina do resumo aqui seria pior.
+          LogService::exception($e, 'warning', 'pagamento', ['acao' => 'cvv_cartao_salvo']);
+      }
+  }
 ?>
 
 <div class="summary-block summary-payment-block">
@@ -422,6 +454,23 @@ $isBoleto = $metodo === 'boleto';
     </div>
   </div>
 
+  <?php if ($cvvNecessario): ?>
+  <!-- ════════ CVV do cartao salvo ════════
+       Campo hospedado do Mercado Pago: o codigo e digitado dentro de um
+       iframe deles e vira token. Nao passa pelo nosso DOM nem pelo POST. -->
+  <div class="form-group" id="cvv-salvo-bloco">
+    <label for="card-cvv-salvo">
+      Código de segurança
+      <span class="label-opt">3 dígitos no verso · 4 no Amex</span>
+    </label>
+    <div id="card-cvv-salvo" class="form-control hosted-field" data-placeholder="000"></div>
+    <span class="field-error" id="err-cvv-salvo"></span>
+    <small class="form-help">
+      Pedimos a cada compra para proteger seu cartão salvo.
+    </small>
+  </div>
+  <?php endif; ?>
+
   <div id="finalize-error" class="form-alert" style="display:none;"></div>
 
   <button type="button" class="btn btn-primary btn-full btn-place-order" id="btn-finalize">
@@ -435,6 +484,37 @@ $isBoleto = $metodo === 'boleto';
     e nossa <a href="<?= BASE_URL ?>/politica-privacidade" target="_blank">Política de Privacidade</a>.
   </p>
 </div>
+
+<?php if ($cvvNecessario): ?>
+<script src="<?= PerformanceHelper::assetVersion('js/checkout-mercadopago.js') ?>" defer></script>
+<script>
+  // Monta so o campo de CVV, amarrado ao cartao salvo. O `card_ref` diz ao
+  // SDK de qual cartao esse codigo e — sem ele o token nasceria orfao.
+  jQuery(function ($) {
+    var SDK = window.SportMotoMercadoPagoCheckout;
+    if (!SDK) return;
+
+    SDK.init({
+      publicKey: <?= json_encode($cvvPublicKey) ?>,
+      onReady: function () {
+        SDK.montarCvvDeCartaoSalvo(<?= json_encode($cvvCardRef) ?>, 'card-cvv-salvo');
+      },
+      // O token so nasce quando o cliente clica em finalizar; o checkout-summary
+      // guarda aqui e segue com o POST.
+      onSubmit: function (t) { $(document).trigger('mp:token-salvo', [t]); },
+      // O erro tambem vira evento: sem isso o botao de finalizar ficaria
+      // girando ate o timeout, sem o cliente saber o que aconteceu.
+      onError:  function (m) {
+        $('#err-cvv-salvo').text(m);
+        $(document).trigger('mp:token-erro', [{ msg: m }]);
+      }
+    });
+
+    // O botao de finalizar precisa do token ANTES do POST.
+    window.__mpCartaoSalvo = <?= json_encode($cvvCardRef) ?>;
+  });
+</script>
+<?php endif; ?>
 
 <style>
 

@@ -108,6 +108,27 @@ class AntifraudeExecutor
             );
         }
 
+        // ── 4b. Sem parecer ainda: NAO decide ────────────────────────
+        //
+        // A analise da ClearSale e assincrona: o envio responde `NVO` e o
+        // veredito nasce minutos depois. `NVO` traduzido vira risco "medio",
+        // e a regra de risco medio APROVA cliente acima de Silver — entao um
+        // pedido com chargeback no historico saia liberado antes de a
+        // ClearSale ter julgado coisa alguma.
+        //
+        // "Ainda nao sei" nao e "risco medio". Retem, e o worker resolve
+        // quando o parecer chegar.
+        if (class_exists('ClearSaleService')
+            && ClearSaleService::aguardandoParecer($analise['codigo_status'] ?? null)) {
+
+            $motivo = 'Aguardando parecer do antifraude (' . ($analise['codigo_status'] ?? '?') . ').';
+            $this->registrar($ctx, $local, $analise, self::PORTA_ANALISE, true, $motivo);
+
+            return ['porta' => self::PORTA_ANALISE, 'decisao' => AntifraudeDecisor::ANALISE,
+                    'regra' => 'aguardando_parecer', 'motivo' => $motivo,
+                    'consultou' => true, 'status_clearsale' => $analise['status']];
+        }
+
         // ── 5. Parecer cruzado com o tier ────────────────────────────
         $pos = $this->decisor->decidirPosAnalise(
             $analise['status'], $analise['risco'], (string) $local['tier']

@@ -51,6 +51,9 @@ class MercadoPagoRetornoService
 
         $novo = $this->statusLocal($c->porta);
 
+        // A notificacao traz o id do pedido NO MERCADO PAGO, que e o nosso
+        // charge_id. Nao adianta procurar por order_id_loja: sao numeracoes
+        // diferentes, nunca casariam.
         $st = $this->db->prepare(
             'SELECT id, pedido_id, order_id_loja, cliente_id, valor_centavos, metodo, parcelas, status
                FROM pgto_transacoes WHERE charge_id = ? LIMIT 1'
@@ -59,9 +62,11 @@ class MercadoPagoRetornoService
         $tx = $st->fetch(PDO::FETCH_ASSOC);
 
         if (!$tx) {
-            // Normal enquanto o checkout não grava transação. O log guarda o
-            // desfecho para não perder o rastro do dinheiro.
-            LogService::info('Retorno do Mercado Pago sem transacao local', [
+            // Acontece na janela entre o Mercado Pago criar a cobranca e nos
+            // gravarmos a transacao. Nao ha o que fazer aqui: eles reenviam a
+            // cada 15 minutos, e a proxima encontra. Registrar importa para o
+            // caso de NUNCA encontrar — que seria dinheiro sem rastro.
+            LogService::warning('Retorno do Mercado Pago sem transacao local', [
                 'order_id' => $orderId, 'porta' => $c->porta, 'status' => $novo,
             ], 'pagamento');
             return ['acao' => 'sem_transacao', 'status' => $novo, 'porta' => $c->porta];

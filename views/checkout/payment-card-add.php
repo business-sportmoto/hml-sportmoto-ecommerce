@@ -21,9 +21,14 @@ $malgaClientId = defined('MALGA_PUBLIC_CLIENT_ID') ? MALGA_PUBLIC_CLIENT_ID : ''
 $malgaApiKey   = defined('MALGA_PUBLIC_API_KEY')   ? MALGA_PUBLIC_API_KEY   : '';
 $malgaSandbox  = defined('MALGA_SANDBOX')          ? (bool) MALGA_SANDBOX   : true;
 
+// CPF/CNPJ do titular. O Mercado Pago EXIGE identificacao para emitir o
+// token — sem ela o createCardToken falha com um erro que nao explica nada.
+// Vem preenchido quando o cliente ja tem documento no cadastro; continua
+// editavel porque o cartao pode ser de outra pessoa.
+$cpfCliente = $cpfCliente ?? '';
+
 
 ?>
-teste
 <div class="checkout-section">
   <div class="section-head">
     <div class="section-head-back">
@@ -82,22 +87,38 @@ teste
         <span class="card-brand-detected" id="card-brand-detected"></span>
       </label>
       <!-- Container vazio: a Malga injeta um iframe AQUI -->
-      <div id="card-number" class="form-control hosted-field" data-placeholder="0000 0000 0000 0000"></div>
+      <div id="card-number" class="form-control hosted-field" data-placeholder=""></div>
       <span class="field-error" id="err-numero"></span>
     </div>
 
     <!-- ════════ NOME (input normal — não é dado PCI sensível) ════════ -->
     <div class="form-group">
       <label for="card-holder-name">Nome impresso no cartão</label>
-      <div id="card-holder-name" class="form-control hosted-field" data-placeholder="Como está no cartão"></div>
+      <div id="card-holder-name" class="form-control hosted-field" data-placeholder=""></div>
       <span class="field-error" id="err-nome"></span>
+    </div>
+
+    <!-- ════════ CPF/CNPJ DO TITULAR ════════
+         Nao e dado de cartao: input normal, sem iframe. Mas e obrigatorio —
+         o Mercado Pago recusa a tokenizacao sem identificacao do titular. -->
+    <div class="form-group">
+      <label for="cpf_titular">
+        CPF ou CNPJ do titular
+        <span class="label-opt">de quem está no cartão</span>
+      </label>
+      <input type="text" id="cpf_titular" name="cpf_titular"
+             class="form-control"
+             inputmode="numeric" autocomplete="off" maxlength="18"
+             placeholder="000.000.000-00"
+             value="<?= View::e($cpfCliente) ?>">
+      <span class="field-error" id="err-cpf"></span>
     </div>
 
     <div class="form-row">
       <!-- ════════ VALIDADE ════════ -->
       <div class="form-group form-col">
         <label for="card-expiration-date">Validade</label>
-        <div id="card-expiration-date" class="form-control hosted-field" data-placeholder="MM/AA"></div>
+        <div id="card-expiration-date" class="form-control hosted-field" data-placeholder=""></div>
         <span class="field-error" id="err-validade"></span>
       </div>
 
@@ -114,7 +135,7 @@ teste
             </svg>
           </span>
         </label>
-        <div id="card-cvv" class="form-control hosted-field" data-placeholder="000"></div>
+        <div id="card-cvv" class="form-control hosted-field" data-placeholder=""></div>
         <span class="field-error" id="err-cvv"></span>
       </div>
     </div>
@@ -325,55 +346,130 @@ teste
   margin-bottom: 2px;
 }
 </style>
-<!--
-  Carrega o SDK Malga como ESM e a glue do checkout.
-  ATENÇÃO: type="module" é obrigatório porque o SDK só publica ESM/CJS.
-  O glue exporta uma função global SportMotoMalgaCheckout pra ser usada
-  pelos handlers jQuery existentes, sem forçar async/await no resto do site.
--->
-<script type="module">
-  import { MalgaTokenization } from '<?= PerformanceHelper::assetVersion('vendor/malga/malga-tokenization-2.3.0.js') ?>';
-  window.__MalgaTokenization = MalgaTokenization;
-  window.dispatchEvent(new Event('malga-sdk-ready'));  
-</script>
-<script src="<?= PerformanceHelper::assetVersion('js/checkout-malga.js?v=1') ?>" defer></script>  
+<?php
+// Qual adquirente tokeniza nesta pagina. O controller resolveu pela lista de
+// gateways ativos com chave publica; aqui so escolhemos qual glue carregar.
+$adq       = defined('CHECKOUT_ADQUIRENTE') ? CHECKOUT_ADQUIRENTE : 'malga';
+$publicKey = defined('CHECKOUT_PUBLIC_KEY') ? CHECKOUT_PUBLIC_KEY : '';
+$clientId  = defined('CHECKOUT_CLIENT_ID')  ? CHECKOUT_CLIENT_ID  : '';
+$sandbox   = defined('CHECKOUT_SANDBOX')    ? CHECKOUT_SANDBOX    : true;
+?>
+<?php if ($adq === 'mercadopago'): ?>
+  <!--
+    Mercado Pago: numero, validade e CVV ficam em iframes do proprio MP.
+    O SDK e carregado pelo glue, que espera o global aparecer em vez de
+    depender da ordem das tags.
+  -->
+  <script src="<?= PerformanceHelper::assetVersion('js/checkout-mercadopago.js') ?>" defer></script>
+<?php else: ?>
+  <!--
+    Carrega o SDK Malga como ESM e a glue do checkout.
+    ATENÇÃO: type="module" é obrigatório porque o SDK só publica ESM/CJS.
+  -->
+  <script type="module">
+    import { MalgaTokenization } from '<?= PerformanceHelper::assetVersion('vendor/malga/malga-tokenization-2.3.0.js') ?>';
+    window.__MalgaTokenization = MalgaTokenization;
+    window.dispatchEvent(new Event('malga-sdk-ready'));
+  </script>
+  <script src="<?= PerformanceHelper::assetVersion('js/checkout-malga.js?v=1') ?>" defer></script>
+<?php endif; ?>
 <script>
-  // Boot do checkout (jQuery-friendly, sem async/await direto);
-  $(function() {
-    
-    
-    SportMotoMalgaCheckout.init({
-      clientId:  <?= json_encode($malgaClientId) ?>,
-      apiKey:    <?= json_encode($malgaApiKey) ?>,
-      sandbox:   <?= json_encode($malgaSandbox) ?>,
-      onReady:   function() { 
-        $('#btn-save-card').prop('disabled', false); 
+  // Boot do checkout. Os dois glues expoem o MESMO contrato — init com as
+  // mesmas callbacks e onSubmit com o mesmo objeto —, entao daqui para baixo
+  // nada sabe qual adquirente esta em uso.
+  $(function () {
+    var ADQ = <?= json_encode($adq) ?>;
+    var SDK = ADQ === 'mercadopago'
+      ? window.SportMotoMercadoPagoCheckout
+      : window.SportMotoMalgaCheckout;
+
+    if (!SDK) {
+      $('#card-add-error').text('Pagamento por cartão indisponível no momento.').show();
+      return;
+    }
+
+    // Mascara e validacao do documento do titular. Fica aqui, e nao no glue,
+    // porque e UX de formulario: vale para qualquer adquirente.
+    var $cpf = $('#cpf_titular');
+
+    function soDigitos(v) { return String(v || '').replace(/\D/g, ''); }
+
+    function formatarDoc(d) {
+      if (d.length <= 11) {
+        return d.replace(/(\d{3})(\d)/, '$1.$2')
+                .replace(/(\d{3})(\d)/, '$1.$2')
+                .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+      }
+      return d.replace(/^(\d{2})(\d)/, '$1.$2')
+              .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+              .replace(/\.(\d{3})(\d)/, '.$1/$2')
+              .replace(/(\d{4})(\d)/, '$1-$2');
+    }
+
+    $cpf.on('input', function () {
+      var d = soDigitos($(this).val()).slice(0, 14);
+      $(this).val(formatarDoc(d));
+      if (d.length === 11 || d.length === 14) $('#err-cpf').text('');
+    });
+
+    $cpf.on('blur', function () {
+      var d = soDigitos($(this).val());
+      $('#err-cpf').text(
+        d.length === 0 || d.length === 11 || d.length === 14 ? '' : 'CPF ou CNPJ incompleto.'
+      );
+    });
+
+    // O glue do Mercado Pago tokeniza sob demanda, entao o botao de salvar
+    // dispara a tokenizacao em vez de enviar o formulario.
+    if (ADQ === 'mercadopago') {
+      $('#form-card-add').on('submit', function (e) {
+        e.preventDefault();
+
+        var doc = soDigitos($cpf.val());
+        if (doc.length !== 11 && doc.length !== 14) {
+          $('#err-cpf').text('Informe o CPF ou CNPJ do titular.');
+          $cpf.trigger('focus');
+          return;
+        }
+        $('#err-cpf').text('');
+
+        SDK.tokenizar({
+          titular:   $('#card-holder-input').val(),
+          documento: doc
+        });
+      });
+    }
+
+    SDK.init({
+      publicKey: <?= json_encode($publicKey) ?>,
+      clientId:  <?= json_encode($clientId) ?>,
+      apiKey:    <?= json_encode($publicKey) ?>,
+      sandbox:   <?= json_encode((bool) $sandbox) ?>,
+
+      onReady: function () {
+        $('#btn-save-card').prop('disabled', false);
       },
-      onSubmit:  function(tokenData) {
-        console.log(tokenData);
-        
-        // tokenData: { tokenId, brand, last4 }
+
+      // { tokenId, brand, last4, bin } — o numero do cartao nunca chega aqui.
+      onSubmit: function (tokenData) {
         $('#gateway_token').val(tokenData.tokenId);
         $('#card-brand-value').val(tokenData.brand || '');
         $('#card-last4-value').val(tokenData.last4 || '');
 
-        // submit normal — o backend já aceita gateway_token na rota
-        // /checkout/payment/card/add (POST)
         $.post('<?= BASE_URL ?>/checkout/payment/card/add', $('#form-card-add').serialize())
-          .done(function(resp) {
+          .done(function (resp) {
             if (resp.ok) {
               window.location.href = resp.redirect || '<?= BASE_URL ?>/checkout/payment';
             } else {
-              SportMotoMalgaCheckout.showError(resp.msg || 'Não foi possível salvar o cartão.');
+              SDK.showError(resp.msg || 'Não foi possível salvar o cartão.');
             }
           })
-          .fail(function() {
-            SportMotoMalgaCheckout.showError('Erro de comunicação. Tente novamente.');
+          .fail(function () {
+            SDK.showError('Erro de comunicação. Tente novamente.');
           });
       },
-      onError: function(msg) {
-        SportMotoMalgaCheckout.showError('Error: '+msg);
-      }
+
+      onError: function (msg) { SDK.showError(msg); }
     });
   });
 </script>

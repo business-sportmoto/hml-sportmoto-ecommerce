@@ -315,6 +315,113 @@ class MercadoPagoAdapter implements AdquirenteInterface
     }
 
     /**
+     * Guarda o cartao para reuso: cria (ou reaproveita) o cliente e vincula
+     * o cartao a ele.
+     *
+     * POR QUE ISTO E NECESSARIO:
+     *   O token da tokenizacao e de USO UNICO — verificado: a primeira
+     *   cobranca aprova, a segunda com o mesmo token e recusada. Guardar o
+     *   token como "cartao salvo" funcionaria uma vez so. O que persiste e o
+     *   par customer_id + card_id, e e ele que vai para cartoes_salvos.
+     *
+     *   O token E CONSUMIDO aqui: depois de virar cartao, nao serve mais para
+     *   cobrar. Quem salva o cartao no mesmo passo de uma compra precisa de
+     *   dois tokens, nao um.
+     *
+     * NAO ESTA NO AdquirenteInterface: guardar cartao nao e algo que toda
+     * adquirente faca do mesmo jeito, e forcar na interface obrigaria as
+     * outras a fingir que fazem.
+     *
+     * @return array{ok:bool, customer_ref:?string, card_ref:?string,
+     *               bandeira:?string, ultimos4:?string, erro:?string}
+     */
+    public function salvarCartao(array $cliente, string $token): array
+    {
+        $email = trim((string) ($cliente['email'] ?? ''));
+        if ($email === '' || $token === '') {
+            return $this->falhaCartao('e-mail do cliente ou token ausente');
+        }
+
+        $customerId = $this->acharOuCriarCliente($cliente, $email);
+        if ($customerId === null) {
+            return $this->falhaCartao('nao foi possivel criar o cliente na adquirente');
+        }
+
+        $r = $this->http('POST', '/v1/customers/' . rawurlencode($customerId) . '/cards',
+                         ['token' => $token]);
+
+        if ($r['erro'] !== null || $r['http'] < 200 || $r['http'] >= 300) {
+            LogService::error('Mercado Pago recusou salvar o cartao', [
+                'customer' => $customerId, 'http' => $r['http'],
+                'motivo'   => mb_substr((string) ($r['body']['message'] ?? $r['raw']), 0, 200),
+            ], 'pagamento');
+            return $this->falhaCartao('a adquirente recusou salvar o cartao');
+        }
+
+        $c = $r['body'];
+
+        return [
+            'ok'           => true,
+            'customer_ref' => $customerId,
+            'card_ref'     => isset($c['id']) ? (string) $c['id'] : null,
+            'bandeira'     => (string) ($c['payment_method']['id'] ?? '') ?: null,
+            'ultimos4'     => (string) ($c['last_four_digits'] ?? '') ?: null,
+            'erro'         => null,
+        ];
+    }
+
+    /**
+     * Cliente na adquirente, por e-mail.
+     *
+     * Busca antes de criar porque o Mercado Pago recusa e-mail duplicado — e
+     * o cliente pode ja existir de uma compra anterior, ou de outro cadastro
+     * nosso que nao guardou o id.
+     */
+    private function acharOuCriarCliente(array $cliente, string $email): ?string
+    {
+        $busca = $this->http('GET', '/v1/customers/search?email=' . urlencode($email), null);
+
+        $achado = $busca['body']['results'][0]['id'] ?? null;
+        if ($achado) return (string) $achado;
+
+        $doc  = self::digitos((string) ($cliente['documento'] ?? ''));
+        $nome = trim((string) ($cliente['nome'] ?? ''));
+        $part = $nome !== '' ? (preg_split('/\s+/', $nome) ?: []) : [];
+
+        $corpo = array_filter([
+            'email'      => $email,
+            'first_name' => (string) ($part[0] ?? ''),
+            'last_name'  => count($part) > 1 ? (string) end($part) : '',
+        ], static fn($v) => $v !== '');
+
+        if ($doc !== '') {
+            $corpo['identification'] = [
+                'type'   => strlen($doc) > 11 ? 'CNPJ' : 'CPF',
+                'number' => $doc,
+            ];
+        }
+
+        $r = $this->http('POST', '/v1/customers', $corpo);
+
+        if ($r['http'] >= 200 && $r['http'] < 300 && isset($r['body']['id'])) {
+            return (string) $r['body']['id'];
+        }
+
+        LogService::error('Mercado Pago recusou criar o cliente', [
+            'http'   => $r['http'],
+            'motivo' => mb_substr((string) ($r['body']['message'] ?? $r['raw']), 0, 200),
+        ], 'pagamento');
+
+        return null;
+    }
+
+    private function falhaCartao(string $erro): array
+    {
+        return ['ok' => false, 'customer_ref' => null, 'card_ref' => null,
+                'bandeira' => null, 'ultimos4' => null, 'erro' => $erro];
+    }
+
+    /**
      * Cancela ou estorna.
      *
      * SÃO ENDPOINTS DIFERENTES, e usar o errado devolve 409:
@@ -650,7 +757,7 @@ class MercadoPagoAdapter implements AdquirenteInterface
         $cli = $d['cliente'] ?? [];
         $doc = self::digitos((string) ($cli['documento'] ?? ''));
 
-        $p = ['email' => (string) ($cli['email'] ?? '')];
+        $p = ['email' => $this->emailPagador((string) ($cli['email'] ?? ''))];
 
         if ($doc !== '') {
             $p['identification'] = ['type' => strlen($doc) > 11 ? 'CNPJ' : 'CPF', 'number' => $doc];
@@ -673,6 +780,37 @@ class MercadoPagoAdapter implements AdquirenteInterface
         if ($end) $p['address'] = $end;
 
         return $p;
+    }
+
+    /**
+     * E-mail do pagador, com uma acomodacao SO DE SANDBOX.
+     *
+     * O ambiente de teste do Mercado Pago recusa qualquer e-mail que nao
+     * termine em @testuser.com:
+     *   "Email format is invalid for sandbox environment"
+     *
+     * Sem isto, nenhum checkout real e testavel — o e-mail do cliente derruba
+     * o pagamento antes de qualquer coisa. Em PRODUCAO o e-mail vai intacto:
+     * substituir o e-mail de um comprador de verdade quebraria o recibo, a
+     * cobranca e o suporte.
+     *
+     * O apelido preserva o original, entao da para rastrear de quem era.
+     */
+    private function emailPagador(string $email): string
+    {
+        if ($this->ambiente !== 'sandbox' || $email === '') return $email;
+        if (str_ends_with(strtolower($email), '@testuser.com')) return $email;
+
+        // Estavel por cliente: o mesmo e-mail gera sempre o mesmo apelido,
+        // entao o Mercado Pago enxerga um comprador so entre as compras.
+        $apelido = 'test_user_' . substr(hash('sha256', strtolower($email)), 0, 12) . '@testuser.com';
+
+        LogService::info('E-mail do pagador trocado (regra do sandbox do Mercado Pago)', [
+            'original' => preg_replace('/(.{2}).*(@.*)/', '$1***$2', $email),
+            'usado'    => $apelido,
+        ], 'pagamento');
+
+        return $apelido;
     }
 
     private function endereco(array $d): array

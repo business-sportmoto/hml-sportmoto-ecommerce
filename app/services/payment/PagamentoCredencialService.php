@@ -55,10 +55,29 @@ class PagamentoCredencialService
         $linha = self::linha($codigo);
         $env   = self::prefixoEnv($codigo);
 
-        // O `sandbox` do banco manda; sem linha, cai no .env.
-        $sandbox = $linha !== null
-            ? (bool) $linha['sandbox']
-            : in_array(strtolower(self::env($env . 'AMBIENTE')), ['sandbox', 'teste', 'test', 'homologacao'], true);
+        // ── Ambiente: o banco manda, mas divergencia nao passa calada ──
+        //
+        // Existem DUAS fontes (.env e a coluna `sandbox`) e elas podem
+        // discordar. Ja aconteceu: o .env dizia sandbox, o banco dizia
+        // producao, e o adapter operou se declarando producao com credencial
+        // de teste. No sentido inverso o estrago e pior — cobrar cartao real
+        // achando que esta testando.
+        //
+        // O banco continua vencendo (e o lugar administravel), mas a
+        // discordancia vira log de alerta em vez de sumir.
+        $envAmbiente = strtolower(self::env($env . 'AMBIENTE'));
+        $envSandbox  = in_array($envAmbiente, ['sandbox', 'teste', 'test', 'homologacao'], true);
+
+        $sandbox = $linha !== null ? (bool) $linha['sandbox'] : $envSandbox;
+
+        if ($linha !== null && $envAmbiente !== '' && $envSandbox !== $sandbox) {
+            LogService::warning('Ambiente da adquirente diverge entre .env e banco', [
+                'adquirente' => $codigo,
+                'env'        => $envSandbox ? 'sandbox' : 'producao',
+                'banco'      => $sandbox ? 'sandbox' : 'producao',
+                'valendo'    => $sandbox ? 'sandbox' : 'producao',
+            ], 'pagamento');
+        }
 
         // Em sandbox as chaves de teste vêm primeiro; o par de produção
         // continua no .env sem atrapalhar.

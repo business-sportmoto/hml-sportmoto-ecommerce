@@ -165,26 +165,70 @@
     }
 
     CK.btnLoading($btn);
-    CK.post('/checkout/finalize', {
-      forma_pagamento: method,
-      parcelas:        $('#parcelas').val()         || 1,
-      salvar_cartao:   $('input[name="salvar_cartao"]').is(':checked') ? 1 : 0,
-      // numero_cartao:   $('#numero_cartao').val().replace(/\D/g, '') || '',
-      // nome_cartao:     $('#nome_cartao').val().trim()                || '',
-      // validade_cartao: $('#validade_cartao').val().trim()            || '',
-      // cvv_cartao:      $('#cvv_cartao').val()                        || '',
-    })
-    .done(function (res) {
-      if (res.ok && res.redirect) { 
-        window.location.href = res.redirect; 
-      return; }
-      CK.btnLoading($btn, false);
-      CK.formAlertSet($err, res.msg || 'Erro ao processar pagamento.');
-    })
-    .fail(function () {
-      CK.btnLoading($btn, false);
-      CK.formAlertSet($err, 'Erro de conexão. Tente novamente.');
-    });
+
+    function enviar(tokenSalvo) {
+      CK.post('/checkout/finalize', {
+        forma_pagamento: method,
+        parcelas:        $('#parcelas').val() || 1,
+        salvar_cartao:   $('input[name="salvar_cartao"]').is(':checked') ? 1 : 0,
+        // Token gerado agora a partir do cartao salvo + CVV. Vazio quando a
+        // forma de pagamento nao precisa (pix, boleto, cartao novo).
+        gateway_token:   tokenSalvo || ''
+      })
+      .done(function (res) {
+        if (res.ok && res.redirect) { window.location.href = res.redirect; return; }
+        CK.btnLoading($btn, false);
+        CK.formAlertSet($err, res.msg || 'Erro ao processar pagamento.');
+      })
+      .fail(function () {
+        CK.btnLoading($btn, false);
+        CK.formAlertSet($err, 'Erro de conexão. Tente novamente.');
+      });
+    }
+
+    // CARTAO SALVO DO MERCADO PAGO: o token nasce AGORA, do card_id mais o
+    // CVV que o cliente acabou de digitar. Nao da para reaproveitar o token
+    // da vez passada — ele e de uso unico.
+    var cardRef = window.__mpCartaoSalvo;
+    var SDK     = window.SportMotoMercadoPagoCheckout;
+
+    if (cardRef && SDK) {
+      var resolvido = false;
+
+      function encerrar(fn) {
+        if (resolvido) return;          // token e erro podem chegar juntos
+        resolvido = true;
+        clearTimeout(travou);
+        $(document).off('mp:token-salvo mp:token-erro', quandoToken);
+        fn();
+      }
+
+      function quandoToken(e, dado) {
+        if (e.type === 'mp:token-salvo' && dado && dado.tokenId) {
+          encerrar(function () { enviar(dado.tokenId); });
+        } else {
+          encerrar(function () {
+            CK.btnLoading($btn, false);
+            CK.formAlertSet($err, (dado && dado.msg) || 'Não foi possível validar o cartão.');
+          });
+        }
+      }
+
+      // Rede de seguranca: se o SDK nao responder nem com token nem com erro,
+      // o botao nao pode ficar girando para sempre.
+      var travou = setTimeout(function () {
+        encerrar(function () {
+          CK.btnLoading($btn, false);
+          CK.formAlertSet($err, 'O cartão demorou a responder. Tente novamente.');
+        });
+      }, 20000);
+
+      $(document).on('mp:token-salvo mp:token-erro', quandoToken);
+      SDK.tokenizarSalvo(cardRef);
+      return;
+    }
+
+    enviar(null);
   });
 
   $(function () { popularParcelas(); });

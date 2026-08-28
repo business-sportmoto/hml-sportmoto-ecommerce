@@ -17,7 +17,8 @@ class CartaoSalvo {
 
     public function listarPorCliente(int $clienteId): array {
         $stmt = $this->db->prepare(
-            "SELECT id, bandeira, ultimos_4, nome_titular, validade, principal, apelido
+            "SELECT id, gateway_id, card_ref, bandeira, ultimos_4,
+                    nome_titular, validade, principal, apelido
                FROM cartoes_salvos
               WHERE cliente_id = :cid AND ativo = 1
               ORDER BY principal DESC, id DESC"
@@ -69,13 +70,22 @@ class CartaoSalvo {
         // Named parameters — impossível ter mismatch de count
         $this->db->prepare(
             "INSERT INTO cartoes_salvos
-               (cliente_id, token, bandeira, ultimos_4,
-                nome_titular, apelido, validade, principal)
+               (cliente_id, gateway_id, token, customer_ref, card_ref,
+                bandeira, ultimos_4, nome_titular, apelido, validade, principal)
              VALUES
-               (:cliente_id, :token, :bandeira, :ultimos_4,
-                :nome_titular, :apelido, :validade, :principal)"
+               (:cliente_id, :gateway_id, :token, :customer_ref, :card_ref,
+                :bandeira, :ultimos_4, :nome_titular, :apelido, :validade, :principal)"
         )->execute([
             ':cliente_id'   => $clienteId,
+            // De quem e o cartao. Sem isto ele seria apresentado a uma
+            // adquirente que nao emitiu o token e recusado sem motivo claro.
+            ':gateway_id'   => !empty($data['gateway_id']) ? (int) $data['gateway_id'] : null,
+            // Ids permanentes na adquirente. No Mercado Pago sao ELES que
+            // permitem reuso — o token da tokenizacao e de uso unico.
+            ':customer_ref' => !empty($data['customer_ref'])
+                ? SecurityHelper::sanitizeString((string) $data['customer_ref']) : null,
+            ':card_ref'     => !empty($data['card_ref'])
+                ? SecurityHelper::sanitizeString((string) $data['card_ref']) : null,
             ':token'        => SecurityHelper::sanitizeString((string) $data['token']),
             ':bandeira'     => SecurityHelper::sanitizeString(strtolower((string) $data['bandeira'])),
             ':ultimos_4'    => $ultimos4,

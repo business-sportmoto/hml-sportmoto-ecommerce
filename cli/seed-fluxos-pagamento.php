@@ -18,8 +18,11 @@ declare(strict_types=1);
 
 require __DIR__ . '/../bootstrap-cli.php';
 
-/** Adquirente única por enquanto. Ver POR QUE no rodapé do arquivo. */
-const ADQ = 'safrapay';
+/**
+ * Adquirente dos nós de tentativa.
+ * Sobrescreva pela linha de comando: ADQ=safrapay php cli/seed-fluxos-pagamento.php
+ */
+define('ADQ', getenv('ADQ') ?: 'mercadopago');
 
 /** Acima disto, pedido é grande demais para passar sem antifraude. R$ 500,00. */
 const VALOR_ALTO_CENTAVOS = 50000;
@@ -38,27 +41,27 @@ const VALOR_ALTO_CENTAVOS = 50000;
 // risco do Pix pertence ao webhook de confirmação.
 //
 $PIX = [
-    'nome' => 'PIX — geração de QR com Safra',
+    'nome' => 'PIX — geração de QR',
     'nos'  => [
         ['entrada',   'entrada',           [],                     60, 250],
-        ['pix_safra', 'tentar_adquirente', ['adquirente' => ADQ], 310, 250],
+        ['pix_1', 'tentar_adquirente', ['adquirente' => ADQ], 310, 250],
         ['ok',        'aprovar',           [],                    640, 160],
         ['nok_tec',   'recusar',           [],                    640, 300],
         ['nok',       'recusar',           [],                    640, 420],
     ],
     'arestas' => [
-        ['entrada',   'saida',           'pix_safra'],
+        ['entrada',   'saida',           'pix_1'],
         // O desfecho NORMAL do Pix é `pendente`: QR na tela, aguardando.
-        ['pix_safra', 'pendente',        'ok'],
+        ['pix_1', 'pendente',        'ok'],
         // `aprovado` só acontece se a confirmação vier na mesma resposta.
-        ['pix_safra', 'aprovado',        'ok'],
-        // Safra fora do ar: sem segunda adquirente, recusa e o cliente
+        ['pix_1', 'aprovado',        'ok'],
+        // Adquirente fora do ar: sem segunda, recusa e o cliente
         // escolhe outra forma. Ver rodapé.
-        ['pix_safra', 'erro_tecnico',    'nok_tec'],
-        ['pix_safra', 'indisponivel',    'nok_tec'],
+        ['pix_1', 'erro_tecnico',    'nok_tec'],
+        ['pix_1', 'indisponivel',    'nok_tec'],
         // Chave inválida, valor fora de faixa, CPF recusado no registro.
-        ['pix_safra', 'negado_dados',    'nok'],
-        ['pix_safra', 'negado_generico', 'nok'],
+        ['pix_1', 'negado_dados',    'nok'],
+        ['pix_1', 'negado_generico', 'nok'],
     ],
 ];
 
@@ -72,22 +75,22 @@ $PIX = [
 // chargeback para sofrer. Antifraude aqui seria custo sem contrapartida.
 //
 $BOLETO = [
-    'nome' => 'Boleto — registro com Safra',
+    'nome' => 'Boleto — registro',
     'nos'  => [
         ['entrada',   'entrada',           [],                     60, 250],
-        ['bol_safra', 'tentar_adquirente', ['adquirente' => ADQ], 310, 250],
+        ['bol_1', 'tentar_adquirente', ['adquirente' => ADQ], 310, 250],
         ['ok',        'aprovar',           [],                    640, 160],
         ['nok_tec',   'recusar',           [],                    640, 300],
         ['nok',       'recusar',           [],                    640, 420],
     ],
     'arestas' => [
-        ['entrada',   'saida',           'bol_safra'],
-        ['bol_safra', 'pendente',        'ok'],   // boleto emitido
-        ['bol_safra', 'aprovado',        'ok'],
-        ['bol_safra', 'erro_tecnico',    'nok_tec'],
-        ['bol_safra', 'indisponivel',    'nok_tec'],
-        ['bol_safra', 'negado_dados',    'nok'],  // CPF/endereço recusado
-        ['bol_safra', 'negado_generico', 'nok'],
+        ['entrada',   'saida',           'bol_1'],
+        ['bol_1', 'pendente',        'ok'],   // boleto emitido
+        ['bol_1', 'aprovado',        'ok'],
+        ['bol_1', 'erro_tecnico',    'nok_tec'],
+        ['bol_1', 'indisponivel',    'nok_tec'],
+        ['bol_1', 'negado_dados',    'nok'],  // CPF/endereço recusado
+        ['bol_1', 'negado_generico', 'nok'],
     ],
 ];
 

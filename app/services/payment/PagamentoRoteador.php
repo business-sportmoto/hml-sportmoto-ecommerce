@@ -207,7 +207,32 @@ class PagamentoRoteador
         }
 
         $codigo = (string) ($cfg['adquirente'] ?? '');
-        $adq    = ($this->fabrica)($codigo);
+
+        // CARTAO SALVO NAO ROTEIA: o token so vale na adquirente que o emitiu.
+        //
+        // Apresenta-lo a outra nao daria fallback, daria uma recusa sem
+        // sentido — ela nao reconhece o ponteiro. Entao quando o pagamento usa
+        // um cartao salvo, TODO no de tentativa passa a apontar para a dona
+        // dele, e um no configurado para outra adquirente e pulado.
+        //
+        // Consequencia honesta: cartao salvo + adquirente fora do ar = falha.
+        // Nao ha para onde cair, e o cliente escolhe outra forma.
+        $fixa = (string) ($ctx['adquirente_fixa'] ?? '');
+
+        if ($fixa !== '' && $codigo !== $fixa) {
+            $this->gravarTentativa($ctx, $r, $noRef, $codigo, null, 'pulado',
+                'cartao_de_outra_adquirente',
+                'Cartao salvo pertence a ' . $fixa . '; este no usa ' . $codigo);
+
+            LogService::info('No pulado: cartao salvo e de outra adquirente', [
+                'no' => $noRef, 'no_usa' => $codigo, 'cartao_e_de' => $fixa,
+                'order_id_loja' => $ctx['order_id_loja'] ?? null,
+            ], 'pagamento');
+
+            return PagamentoClassificacao::INDISPONIVEL;
+        }
+
+        $adq = ($this->fabrica)($codigo);
 
         if (!$adq || !$adq->configurado()) {
             // Adquirente inexistente ou sem credencial: não é falha do cliente.
@@ -251,6 +276,16 @@ class PagamentoRoteador
         $r->adquirenteUsada  = $codigo;
         $r->tentativaIdAtual = $tentativaId;
         $this->fecharTentativa($tentativaId, $c);
+
+        // A TENTATIVA e o log do fluxo; a TRANSACAO e o dinheiro.
+        //
+        // Sao coisas diferentes e as duas precisam existir. Sem a transacao:
+        // o dashboard nao ve o pagamento, o webhook nao acha o pedido para
+        // confirmar (ele procura por charge_id) e o estorno nao sabe a quem
+        // pedir. Um Pix pago ficaria pendente para sempre.
+        if ($c->chargeId) {
+            $this->gravarTransacao($ctx, $r, $codigo, $tentativaRef, $c);
+        }
 
         // ── Incerteza: consultar antes de qualquer decisão ───────────
         if ($c->exigeConsulta && $c->chargeId) {
@@ -473,6 +508,93 @@ class PagamentoRoteador
         return substr((string) ($ctx['order_id_loja'] ?? 'sem-pedido'), 0, 60) . '-t' . $seq;
     }
 
+    /**
+     * Cria ou atualiza a transacao — o registro durave do que foi cobrado.
+     *
+     * Chaveada por charge_id: reprocessar a mesma cobranca (uma consulta apos
+     * timeout, por exemplo) atualiza a linha em vez de duplicar o dinheiro no
+     * relatorio.
+     */
+    private function gravarTransacao(
+        array $ctx, PagamentoRoteamentoResultado $r, string $codigo,
+        ?string $tentativaRef, PagamentoClassificacao $c
+    ): void {
+        try {
+            $gw = null;
+            $st = $this->db->prepare("SELECT id FROM pgto_gateways WHERE codigo = ? LIMIT 1");
+            $st->execute([$codigo]);
+            $gw = $st->fetchColumn() ?: null;
+
+            $status = match ($c->porta) {
+                PagamentoClassificacao::APROVADO => 'aprovado',
+                PagamentoClassificacao::PENDENTE => 'pendente',
+                PagamentoClassificacao::INCERTO  => 'pendente',
+                default                          => 'recusado',
+            };
+
+            $this->db->prepare(
+                "INSERT INTO pgto_transacoes
+                    (gateway_id, charge_id, idempotency_key, pedido_id, order_id_loja, cliente_id,
+                     valor_centavos, moeda, metodo, parcelas, status, provedor_real,
+                     declined_code, declined_message,
+                     pix_qrcode, pix_qrcode_image, pix_expira_em,
+                     boleto_linha_digitavel, boleto_codigo_barras, boleto_pdf_url, boleto_vencimento,
+                     ip_origem, criado_em, atualizado_em, pago_em)
+                 VALUES (?,?,?,?,?,?,?,'BRL',?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW(),
+                         CASE WHEN ? = 'aprovado' THEN NOW() ELSE NULL END)
+                 ON DUPLICATE KEY UPDATE
+                    -- A chave unica e order_id_loja: UMA transacao por pedido.
+                    -- Se o fluxo tentou outra adquirente, o charge_id novo tem
+                    -- de vencer — senao o webhook da cobranca atual procuraria
+                    -- por um id que ninguem mais usa.
+                    charge_id              = VALUES(charge_id),
+                    gateway_id             = VALUES(gateway_id),
+                    provedor_real          = VALUES(provedor_real),
+                    idempotency_key        = VALUES(idempotency_key),
+                    status                 = VALUES(status),
+                    declined_code          = VALUES(declined_code),
+                    declined_message       = VALUES(declined_message),
+                    pix_qrcode             = COALESCE(VALUES(pix_qrcode), pix_qrcode),
+                    pix_qrcode_image       = COALESCE(VALUES(pix_qrcode_image), pix_qrcode_image),
+                    boleto_linha_digitavel = COALESCE(VALUES(boleto_linha_digitavel), boleto_linha_digitavel),
+                    boleto_pdf_url         = COALESCE(VALUES(boleto_pdf_url), boleto_pdf_url),
+                    atualizado_em          = NOW(),
+                    pago_em                = COALESCE(pago_em,
+                                              CASE WHEN VALUES(status) = 'aprovado' THEN NOW() ELSE NULL END)"
+            )->execute([
+                $gw,
+                $c->chargeId,
+                $tentativaRef,
+                $ctx['pedido_id']  ?? null,
+                (string) ($ctx['order_id_loja'] ?? ''),
+                $ctx['cliente_id'] ?? null,
+                (int) ($ctx['valor_centavos'] ?? 0),
+                (string) ($ctx['metodo'] ?? ''),
+                max(1, (int) ($ctx['parcelas'] ?? 1)),
+                $status,
+                $codigo,
+                $c->codigoAdquirente,
+                mb_substr((string) ($c->mensagemAdquirente ?? ''), 0, 255),
+                $c->pixQrCode,
+                $c->pixQrCodeBase64,
+                $c->pixExpiraEm,
+                $c->boletoLinhaDigitavel,
+                $c->boletoCodigoBarras,
+                $c->boletoUrl,
+                $c->boletoVencimento,
+                $ctx['ip_cliente'] ?? null,
+                $status,
+            ]);
+        } catch (\Throwable $e) {
+            // Nao derruba o pagamento em curso, mas e grave: sem transacao o
+            // webhook nao confirma. Por isso error, nao warning.
+            LogService::exception($e, 'error', 'pagamento', [
+                'acao' => 'gravar_transacao', 'charge_id' => $c->chargeId,
+                'order_id_loja' => $ctx['order_id_loja'] ?? null,
+            ]);
+        }
+    }
+
     private function gravarTentativa(
         array $ctx, PagamentoRoteamentoResultado $r, string $noRef, string $codigo,
         ?string $tentativaRef, string $resultado, ?string $classeErro, ?string $mensagem
@@ -533,12 +655,17 @@ class PagamentoRoteador
     }
 
     /** Resolve o adapter pelo código. Ponto único de crescimento por adquirente. */
+    /**
+     * Delega ao AdquirenteFactory — fonte unica.
+     *
+     * Antes este metodo tinha um `match` proprio, duplicando a lista do
+     * factory. As duas listas divergiram: o Mercado Pago foi registrado no
+     * factory e nao aqui, e TODO pagamento caia em "adquirente indisponivel"
+     * com o fluxo aparentemente correto. Um registro em dois lugares e um
+     * registro que vai ficar pela metade.
+     */
     private function adquirentePorCodigo(string $codigo): ?AdquirenteInterface
     {
-        return match ($codigo) {
-            'safrapay' => new SafraPayAdapter(),
-            'fake'     => new FakeAdquirenteAdapter('fake'),
-            default    => null,
-        };
+        return AdquirenteFactory::porCodigo($codigo);
     }
 }
