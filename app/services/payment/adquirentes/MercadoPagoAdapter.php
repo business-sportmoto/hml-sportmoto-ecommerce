@@ -357,6 +357,7 @@ class MercadoPagoAdapter implements AdquirenteInterface
             LogService::error('Mercado Pago recusou salvar o cartao', [
                 'customer' => $customerId, 'http' => $r['http'],
                 'motivo'   => mb_substr($motivo, 0, 200),
+                'cliente'=>$cliente, 'tef'=>$cliente['documento'].'tef'
             ], 'pagamento');
 
             // "invalid card owner" significa que o titular do token nao bate
@@ -413,31 +414,27 @@ class MercadoPagoAdapter implements AdquirenteInterface
         $nome = trim((string) ($cliente['nome'] ?? ''));
         $part = $nome !== '' ? (preg_split('/\s+/', $nome) ?: []) : [];
 
-        // A IDENTIFICACAO E OBRIGATORIA, E PRECISA BATER COM A DO TOKEN.
+        // O CLIENTE VAI SEM IDENTIFICACAO — e isso e o que faz cartao de
+        // terceiro funcionar.
         //
-        // Aprendido em teste, na ordem: criar o cliente COM CPF diferente do
-        // titular faz a vinculacao do cartao falhar com "invalid card owner";
-        // criar SEM CPF faz a propria criacao falhar com "Validation error to
-        // register user". Ou seja, nao ha saida pelo "nao mandar".
+        // Um cliente daqui e o RECIPIENTE do comprador, achado pelo e-mail
+        // dele, e guarda TODOS os cartoes que ele usa: o proprio, o da mae,
+        // o da empresa. Se o recipiente tiver CPF, o Mercado Pago cruza esse
+        // documento com o do titular gravado no token e recusa qualquer
+        // cartao que nao seja do comprador — "invalid card owner".
         //
-        // Consequencia para quem chama: o documento aqui tem de ser o MESMO
-        // usado na tokenizacao — o do TITULAR do cartao, nao o do comprador.
-        // Sao pessoas diferentes sempre que alguem paga com o cartao do
-        // conjuge, do pai ou da empresa.
-        $doc = self::digitos((string) ($cliente['documento'] ?? ''));
-
+        // O documento do titular ja viaja dentro do token, posto la na
+        // tokenizacao. Repetir no cliente nao acrescenta nada e so cria uma
+        // regra que proibe o caso comum de pagar com o cartao de outra pessoa.
+        //
+        // (Cheguei a achar que a identificacao era obrigatoria. Nao e: um
+        // POST so com `email` devolve 201. O que derrubava era o `+` no
+        // e-mail — ver emailParaCadastro.)
         $corpo = array_filter([
             'email'      => $email,
             'first_name' => (string) ($part[0] ?? ''),
             'last_name'  => count($part) > 1 ? (string) end($part) : '',
         ], static fn($v) => $v !== '');
-
-        if ($doc !== '') {
-            $corpo['identification'] = [
-                'type'   => strlen($doc) > 11 ? 'CNPJ' : 'CPF',
-                'number' => $doc,
-            ];
-        }
 
         $r = $this->http('POST', '/v1/customers', $corpo);
 

@@ -2933,12 +2933,13 @@ class CheckoutController extends Controller {
             'nome'      => $cliente['nome']     ?? 'Cliente',
             'email'     => $cliente['email']    ?? '',
             'telefone'  => $cliente['telefone'] ?? '',
-            // O documento do TITULAR, que e o mesmo usado na tokenizacao —
-            // nao o da conta. O cartao pode ser de outra pessoa, e mandar o
-            // CPF do comprador faria a adquirente recusar o vinculo.
-            'documento' => $docTitular !== ''
-                ? $docTitular
-                : (preg_replace('/\D/', '', (string) ($cliente['cpf'] ?? '')) ?? ''),
+            // SEM documento, de proposito.
+            //
+            // Este cadastro e o recipiente do COMPRADOR na adquirente, e ele
+            // guarda todos os cartoes que essa pessoa usa — inclusive os que
+            // nao sao dela. Gravar um CPF aqui faria a adquirente exigir que
+            // todo cartao fosse do comprador, e o cartao da mae pararia de
+            // salvar. O documento do titular vai dentro do token.
         ];
 
         try {
