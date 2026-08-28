@@ -545,7 +545,7 @@ class WebhookController extends Controller
         $payload = json_decode($rawBody, true);
         if (!is_array($payload)) {
             LogService::warning('[Webhook mercadopago] corpo nao e JSON', [
-                'ip' => $ip, 'corpo' => mb_substr($rawBody, 0, 200),
+                'ip' => $ip, 'corpo' => mb_substr($rawBody, 0, 200), 'payloaad'=>$payload
             ], 'pagamento');
             $this->respond(200, ['ok' => true]);
             return;
