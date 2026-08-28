@@ -577,7 +577,7 @@ class WebhookController extends Controller
         }
 
         LogService::info('[Webhook mercadopago] notificacao recebida', [
-            'tipo' => $tipo, 'acao' => $acao, 'recurso' => $recurso,
+            'tipo' => $tipo, 'acao' => $acao, 'recurso' => $recurso, 'header' =>$headers
         ], 'pagamento');
 
         // So `orders` interessa: e o recurso que a Orders API cria. Os demais
