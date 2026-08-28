@@ -512,6 +512,137 @@ class WebhookController extends Controller
         exit;
     }
 
+    /**
+     * POST /webhooks/mercadopago
+     *
+     * Notificacao do Mercado Pago. E ela que fecha o ciclo do Pix e do
+     * boleto: os dois terminam o fluxo em `pendente`, com o dinheiro ainda
+     * nao recebido, e so esta chamada avisa quando ele entra.
+     *
+     * TRES REGRAS QUE VEM DO PROTOCOLO DELES:
+     *
+     *  1. A NOTIFICACAO NAO TRAZ O ESTADO, so o id do recurso —
+     *     {id, live_mode, type, action, data:{id}}. O estado tem que ser
+     *     consultado. Entao nada do corpo e confiado: ele so diz O QUE
+     *     reconsultar, e a fonte da verdade continua sendo a API.
+     *
+     *  2. ELES ESPERAM 200/201 EM ATE 22 SEGUNDOS e reenviam a cada 15
+     *     minutos ate conseguir. Por isso responde cedo e trabalha depois.
+     *
+     *  3. A ASSINATURA E OPCIONAL DO LADO DELES, mas quando ha segredo
+     *     cadastrado ela e verificada — HMAC-SHA256 sobre
+     *     "id:<data.id>;request-id:<x-request-id>;ts:<ts>;".
+     *
+     * Reenvio nao causa dano: reconsultar e reaplicar o mesmo estado e
+     * idempotente.
+     */
+    public function mercadopago(): void
+    {
+        $rawBody = file_get_contents('php://input') ?: '';
+        $headers = $this->getRequestHeaders();
+        $ip      = $_SERVER['REMOTE_ADDR'] ?? null;
+
+        $payload = json_decode($rawBody, true);
+        if (!is_array($payload)) {
+            LogService::warning('[Webhook mercadopago] corpo nao e JSON', [
+                'ip' => $ip, 'corpo' => mb_substr($rawBody, 0, 200),
+            ], 'pagamento');
+            $this->respond(200, ['ok' => true]);
+            return;
+        }
+
+        $tipo     = (string) ($payload['type'] ?? $payload['topic'] ?? '');
+        $recurso  = (string) ($payload['data']['id'] ?? $_GET['data.id'] ?? '');
+        $acao     = (string) ($payload['action'] ?? '');
+
+        if ($recurso === '') {
+            LogService::warning('[Webhook mercadopago] notificacao sem data.id', [
+                'ip' => $ip, 'tipo' => $tipo,
+            ], 'pagamento');
+            $this->respond(200, ['ok' => true]);
+            return;
+        }
+
+        $cred = PagamentoCredencialService::para('mercadopago');
+
+        if (!$this->mpAssinaturaValida($headers, $recurso, (string) $cred['webhook_secret'])) {
+            LogService::critical('[Webhook mercadopago] assinatura invalida', [
+                'ip' => $ip, 'recurso' => $recurso, 'tipo' => $tipo,
+            ], 'pagamento');
+            // 200 de proposito: assinatura errada nao se conserta com
+            // retentativa, e 4xx aqui geraria reenvio a cada 15 min para
+            // sempre. O log critico e quem avisa.
+            $this->respond(200, ['ok' => true]);
+            return;
+        }
+
+        LogService::info('[Webhook mercadopago] notificacao recebida', [
+            'tipo' => $tipo, 'acao' => $acao, 'recurso' => $recurso,
+        ], 'pagamento');
+
+        // So `orders` interessa: e o recurso que a Orders API cria. Os demais
+        // topicos (merchant_order, chargebacks) tem tratamento proprio.
+        if ($tipo !== '' && !str_starts_with($tipo, 'order')) {
+            $this->respond(200, ['ok' => true]);
+            return;
+        }
+
+        $this->responderEProcessar(static function () use ($recurso): void {
+            try {
+                (new MercadoPagoRetornoService())->aplicar($recurso);
+            } catch (\Throwable $e) {
+                // Ja respondemos 200. Eles reenviam em 15 min de qualquer
+                // forma quando nao processarmos, e reaplicar e idempotente.
+                LogService::exception($e, 'error', 'pagamento',
+                    ['acao' => 'webhook_mercadopago', 'recurso' => $recurso]);
+            }
+        });
+    }
+
+    /**
+     * Assinatura x-signature do Mercado Pago.
+     *
+     * Sem segredo cadastrado, aceita — a verificacao e opcional no painel
+     * deles, e recusar por padrao deixaria o webhook morto sem aviso. Com
+     * segredo, a comparacao e em tempo constante.
+     *
+     * O manifesto omite partes ausentes e usa data.id em minusculas: os ids
+     * da Orders API sao maiusculos (ORDTST01...), entao esquecer isso faz
+     * TODA assinatura falhar.
+     */
+    private function mpAssinaturaValida(array $headers, string $recurso, string $segredo): bool
+    {
+        if ($segredo === '') return true;
+
+        $assinatura = '';
+        $requestId  = '';
+        foreach ($headers as $k => $v) {
+            $k = strtolower($k);
+            if ($k === 'x-signature')  $assinatura = (string) $v;
+            if ($k === 'x-request-id') $requestId  = (string) $v;
+        }
+
+        if ($assinatura === '') return false;
+
+        $ts = '';
+        $v1 = '';
+        foreach (explode(',', $assinatura) as $parte) {
+            $par = explode('=', trim($parte), 2);
+            if (count($par) !== 2) continue;
+            if ($par[0] === 'ts') $ts = $par[1];
+            if ($par[0] === 'v1') $v1 = $par[1];
+        }
+
+        if ($v1 === '') return false;
+
+        $manifesto = '';
+        if ($recurso  !== '') $manifesto .= 'id:' . strtolower($recurso) . ';';
+        if ($requestId !== '') $manifesto .= 'request-id:' . $requestId . ';';
+        if ($ts        !== '') $manifesto .= 'ts:' . $ts . ';';
+
+        return hash_equals(hash_hmac('sha256', $manifesto, $segredo), $v1);
+    }
+
     private function getRequestHeaders(): array
     {
         if (function_exists('getallheaders')) {

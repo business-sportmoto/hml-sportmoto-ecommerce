@@ -31,8 +31,9 @@ class PagamentoAdquirente extends Model
 
     /** Adapters que existem no código — o que a tela pode oferecer. */
     public const SUPORTADAS = [
-        'safrapay' => 'Safra Pay',
-        'fake'     => 'Fake (testes)',
+        'safrapay'    => 'Safra Pay',
+        'mercadopago' => 'Mercado Pago',
+        'fake'        => 'Fake (testes)',
     ];
 
     public function listar(): array

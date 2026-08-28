@@ -19,6 +19,11 @@ Router::post('/webhooks/safrapay',        'WebhookController@safrapay');
 // e-mail, embutir um no caminho e a protecao mais barata contra abuso.
 Router::post('/webhooks/clearsale/{token}', 'WebhookController@clearsale');
 Router::post('/webhooks/clearsale',         'WebhookController@clearsale');
+
+// Mercado Pago. E este webhook que fecha o ciclo do Pix e do boleto: os dois
+// terminam o fluxo em  e so esta chamada avisa quando o dinheiro
+// entra. Cadastre a URL em Suas integracoes > Webhooks.
+Router::post('/webhooks/mercadopago', 'WebhookController@mercadopago');
 // Webhook público (sem auth) — ANTES das rotas admin
 Router::post('/webhook/bling', 'BlingWebhookController@receive');
 
