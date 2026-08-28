@@ -441,7 +441,7 @@ function cicloCartao(string $token, bool $confirmado): void
     printf("  listagem devolve %d cartao(oes)\n", count($lista));
 
     // ── Limpeza, aconteca o que acontecer ────────────────────────────
-    $apagou = $mp->removerCartao((string) $res['customer_ref'], (string) $res['card_ref']);
+    // $apagou = $mp->removerCartao((string) $res['customer_ref'], (string) $res['card_ref']);
     printf("\n  cartao removido: %s\n", $apagou ? 'sim' : 'NAO — remova pelo painel do Mercado Pago');
 
     if (!$apagou) exit(1);

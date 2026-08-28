@@ -432,8 +432,8 @@ class MercadoPagoAdapter implements AdquirenteInterface
         // e-mail — ver emailParaCadastro.)
         $corpo = array_filter([
             'email'      => $email,
-            'first_name' => (string) ($part[0] ?? ''),
-            'last_name'  => count($part) > 1 ? (string) end($part) : '',
+            // 'first_name' => (string) ($part[0] ?? ''),
+            // 'last_name'  => count($part) > 1 ? (string) end($part) : '',
         ], static fn($v) => $v !== '');
 
         $r = $this->http('POST', '/v1/customers', $corpo);
