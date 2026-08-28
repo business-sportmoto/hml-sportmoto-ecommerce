@@ -260,7 +260,7 @@ class SecurityHelper {
                 "default-src 'self'; " .
 
                 "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com/gsi/client; " .
-                "script-src-elem 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com/gsi/client https://connect.facebook.net https://device.clearsale.com.br https://sdk.mercadopago.com; " .
+                "script-src-elem 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com/gsi/client https://connect.facebook.net; " .
                 
                 "worker-src 'self' blob:;".
                 "media-src 'self' blob: {$stream};".
@@ -269,8 +269,8 @@ class SecurityHelper {
                 "font-src 'self' https://fonts.gstatic.com data:;" .
                 
                 "img-src 'self' data: https:" . $baseImgSrc . " https://media.sportmoto.com.br https://www.facebook.com {$stream}; " .
-                "connect-src 'self' https://accounts.google.com/gsi/ https://sandbox-api.malga.io https://api.malga.io https://www.facebook.com https://connect.facebook.net https://device.clearsale.com.br https://sdk.mercadopago.com {$stream}; " .
-                "frame-src 'self' https://accounts.google.com/gsi/ https://hosted-fields-sandbox.malga.io https://hosted-fields.malga.io https://iframe.cloudflarestream.com https://www.facebook.com;" .
+                "connect-src 'self' https://accounts.google.com/gsi/ https://sandbox-api.malga.io https://api.malga.io https://www.facebook.com https://connect.facebook.net {$stream}; " .
+                "frame-src 'self' https://accounts.google.com/gsi/ https://hosted-fields-sandbox.malga.io https://hosted-fields.malga.io https://iframe.cloudflarestream.com;" .
 
                 // --- HARDENING (faltavam) ------------------------------------------
                 "object-src 'none';".        // sem plugins/Flash como vetor

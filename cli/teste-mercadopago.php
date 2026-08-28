@@ -31,7 +31,7 @@ require __DIR__ . '/../bootstrap-cli.php';
 
 $cmd = $argv[1] ?? 'diagnostico';
 
-$COMANDOS = ['diagnostico', 'corpo', 'cartao', 'pix', 'boleto', 'migrar-banco', 'webhook-secret'];
+$COMANDOS = ['diagnostico', 'corpo', 'cartao', 'pix', 'boleto', 'migrar-banco', 'webhook-secret', 'cartao-ciclo', 'pagina-token'];
 
 if (!in_array($cmd, $COMANDOS, true)) {
     fwrite(STDERR, "Comando desconhecido: {$cmd}\n  " . implode(' | ', $COMANDOS) . "\n");
@@ -39,7 +39,12 @@ if (!in_array($cmd, $COMANDOS, true)) {
 }
 
 if ($cmd === 'migrar-banco')   { migrarParaBanco(); exit(0); }
+if ($cmd === 'cartao-ciclo')   {
+    cicloCartao((string) ($argv[2] ?? ''), in_array('--confirmo', $argv, true));
+    exit(0);
+}
 if ($cmd === 'webhook-secret') { salvarWebhookSecret((string) ($argv[2] ?? '')); exit(0); }
+if ($cmd === 'pagina-token')   { paginaToken(in_array('--remover', $argv, true)); exit(0); }
 
 if ($cmd !== 'diagnostico') {
     exercitar($cmd);
@@ -318,4 +323,182 @@ function salvarWebhookSecret(string $segredo): void
     }
     PagamentoCredencialService::salvar('mercadopago', ['webhook_secret' => $segredo]);
     printf("segredo gravado: %s\n", PagamentoCriptoService::last4($segredo));
+}
+
+/**
+ * Ciclo completo de cartao salvo: cria cliente, salva, lista e REMOVE.
+ *
+ * POR QUE ISTO EXISTE, E POR QUE ELE APAGA NO FIM:
+ *   A API de clientes/cartoes do Mercado Pago nao responde as credenciais da
+ *   conta de teste — devolve 401 "Unauthorized use of live credentials" em
+ *   todas as chamadas, inclusive com customer_id inventado. Testado. A
+ *   Orders API tambem nao sabe guardar cartao: o `payer` dela nao tem
+ *   customer e nao ha campo de vault em lugar nenhum da referencia.
+ *
+ *   Sobra validar com credencial de PRODUCAO. E seguro porque:
+ *     - criar cliente e salvar cartao NAO movimenta dinheiro
+ *     - existe DELETE, entao da para desfazer
+ *   Mas exige um cartao REAL: em producao o Mercado Pago recusa os de teste.
+ *
+ *   Por isso este comando apaga o que criou, sempre — inclusive quando algo
+ *   falha no meio. Deixar um cartao real pendurado numa conta de producao por
+ *   causa de um teste seria o pior desfecho possivel.
+ *
+ *   php cli/teste-mercadopago.php cartao-ciclo <token-do-navegador> --confirmo
+ */
+function cicloCartao(string $token, bool $confirmado): void
+{
+    // CREDENCIAL DE PRODUCAO SEM COLOCAR A LOJA EM PRODUCAO.
+    //
+    // A API de clientes/cartoes so atende credencial de producao, mas trocar
+    // `pgto_gateways.sandbox` para 0 faria QUALQUER checkout naquela janela
+    // cobrar de verdade. Aqui as chaves vem de variaveis proprias (MP_PROD_*)
+    // e sao passadas direto ao adapter: nada mais no sistema enxerga producao.
+    $token = trim($token);
+
+    $tokenProd = (string) (getenv('MP_PROD_ACCESS_TOKEN') ?: '');
+    $pkProd    = (string) (getenv('MP_PROD_PUBLIC_KEY') ?: '');
+
+    if ($tokenProd === '' || $pkProd === '') {
+        fwrite(STDERR,
+            "Faltam as credenciais de PRODUCAO no .env, em variaveis proprias:\n\n"
+          . "  MP_PROD_ACCESS_TOKEN=APP_USR-...\n"
+          . "  MP_PROD_PUBLIC_KEY=APP_USR-...\n\n"
+          . "Nomes separados de proposito: assim so este comando as enxerga, e o\n"
+          . "resto da loja continua em sandbox.\n");
+        exit(1);
+    }
+
+    if (!$confirmado) {
+        fwrite(STDERR,
+            "Isto cria um cliente e salva um cartao na conta REAL do Mercado Pago.\n"
+          . "  Nao movimenta dinheiro, e o cartao e apagado no fim.\n"
+          . "  Exige um cartao de verdade: em producao os de teste sao recusados.\n\n"
+          . "  Confirme com --confirmo\n");
+        exit(2);
+    }
+
+    if ($token === '') {
+        fwrite(STDERR, "Falta o token do cartao.\n"
+          . "  Gere um em: php cli/teste-mercadopago.php pagina-token\n");
+        exit(1);
+    }
+
+    $mp    = new MercadoPagoAdapter($tokenProd, $pkProd, 'producao');
+    $email = 'qa+cartao' . date('YmdHis') . '@sportmoto.com.br';
+
+    printf("ambiente: %s | e-mail do teste: %s\n\n", $mp->ambiente(), $email);
+
+    $res = $mp->salvarCartao([
+        'nome' => 'QA SportMoto', 'email' => $email, 'documento' => '19119119100',
+    ], $token);
+
+    if (!$res['ok']) {
+        printf("  FALHOU: %s\n", $res['erro']);
+        exit(1);
+    }
+
+    printf("  cliente  %s\n", $res['customer_ref']);
+    printf("  cartao   %s  %s ****%s\n", $res['card_ref'], $res['bandeira'], $res['ultimos4']);
+
+    // Confere que o cartao aparece na listagem — e o que o checkout usaria.
+    $lista = $mp->listarCartoes((string) $res['customer_ref']);
+    printf("  listagem devolve %d cartao(oes)\n", count($lista));
+
+    // ── Limpeza, aconteca o que acontecer ────────────────────────────
+    $apagou = $mp->removerCartao((string) $res['customer_ref'], (string) $res['card_ref']);
+    printf("\n  cartao removido: %s\n", $apagou ? 'sim' : 'NAO — remova pelo painel do Mercado Pago');
+
+    if (!$apagou) exit(1);
+
+    echo "\n  Ciclo completo. O cadastro de cartao funciona nesta credencial.\n";
+}
+
+/**
+ * Gera uma pagina local para tokenizar um cartao REAL com a chave de producao.
+ *
+ * O token e amarrado ao par de credenciais que o criou: um gerado com a chave
+ * de sandbox nao serve para a API de producao. Por isso esta pagina usa
+ * MP_PROD_PUBLIC_KEY.
+ *
+ * O numero do cartao vive dentro dos iframes do Mercado Pago — nao passa por
+ * esta pagina, nem pelo servidor, nem por log nenhum. Ela so mostra o token.
+ *
+ * APAGUE depois: php cli/teste-mercadopago.php pagina-token --remover
+ */
+function paginaToken(bool $remover): void
+{
+    $arquivo = dirname(__DIR__) . '/token-producao.html';
+    $url     = rtrim(BASE_URL, '/') . '/token-producao.html';
+
+    if ($remover) {
+        if (is_file($arquivo)) unlink($arquivo);
+        echo "pagina removida\n";
+        return;
+    }
+
+    $pk = (string) (getenv('MP_PROD_PUBLIC_KEY') ?: '');
+    if ($pk === '') {
+        fwrite(STDERR, "Falta MP_PROD_PUBLIC_KEY no .env.\n");
+        exit(1);
+    }
+
+    $glue = (string) file_get_contents(dirname(__DIR__) . '/assets/js/checkout-mercadopago.js');
+
+    // Nowdoc: nada aqui e interpolado pelo PHP. Com aspas duplas, a sequencia
+    // `{$` do JavaScript viraria interpolacao e o arquivo nem compilaria.
+    $boot = <<<'JS'
+jQuery(function ($) {
+  var S = window.SportMotoMercadoPagoCheckout;
+  S.init({
+    publicKey: PK_AQUI,
+    onReady:  function () { $('#btn-save-card').prop('disabled', false); },
+    onSubmit: function (t) {
+      $('#saida').show().html('<b>Token:</b><br>' + t.tokenId +
+        '<br><br>' + (t.brand || '') + ' ****' + (t.last4 || ''));
+    },
+    onError:  function (m) { $('#card-add-error').text(m); }
+  });
+  $('#form-card-add').on('submit', function () {
+    S.tokenizar({
+      titular:   $('#card-holder-input').val(),
+      documento: $('#cpf_titular').val()
+    });
+    return false;
+  });
+});
+JS;
+
+
+    $html = '<!doctype html><meta charset="utf-8"><title>Token de producao</title>'
+        . '<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>'
+        . '<style>body{font:15px system-ui;max-width:460px;margin:40px auto;padding:0 16px}'
+        . '.hosted-field{border:1px solid #cbd5e1;border-radius:8px;height:44px;padding:0 12px;margin:6px 0 14px}'
+        . 'label{font-weight:500;font-size:13px}'
+        . 'input{width:100%;height:42px;border:1px solid #cbd5e1;border-radius:8px;padding:0 12px;margin:6px 0 14px;font:inherit}'
+        . 'button{width:100%;height:46px;border:0;border-radius:8px;background:#0f172a;color:#fff;font:inherit;cursor:pointer}'
+        . '#saida{margin-top:20px;padding:14px;background:#f1f5f9;border-radius:8px;word-break:break-all;display:none}'
+        . '#card-add-error{color:#b91c1c;font-size:13px;margin:10px 0}</style>'
+        . '<h2>Token de cartao &mdash; producao</h2>'
+        . '<p style="color:#64748b;font-size:13px">Cartao real. Nada e cobrado: isto so gera o token para o '
+        . 'teste de cadastro. O numero fica dentro dos iframes do Mercado Pago.</p>'
+        . '<form id="form-card-add" onsubmit="return false">'
+        . '<label>Numero</label><div id="card-number" class="hosted-field"></div>'
+        . '<label>Nome impresso</label><div id="card-holder-name" class="hosted-field"></div>'
+        . '<label>Validade</label><div id="card-expiration-date" class="hosted-field"></div>'
+        . '<label>CVV</label><div id="card-cvv" class="hosted-field"></div>'
+        . '<label>CPF do titular</label><input id="cpf_titular" inputmode="numeric" placeholder="000.000.000-00">'
+        . '<div id="card-add-error"></div>'
+        . '<button id="btn-save-card" disabled>Gerar token</button></form>'
+        . '<div id="saida"></div><span id="card-brand-detected"></span><div id="card-prev-holder"></div>'
+        . '<script>' . $glue . '</script>'
+        . '<script>' . str_replace('PK_AQUI', json_encode($pk), $boot) . '</script>';
+
+    file_put_contents($arquivo, $html);
+
+    printf("pagina criada: %s\n\n", $url);
+    echo "  1. abra a pagina e preencha com um cartao REAL seu\n"
+       . "  2. copie o token que aparecer\n"
+       . "  3. php cli/teste-mercadopago.php cartao-ciclo <token> --confirmo\n"
+       . "  4. php cli/teste-mercadopago.php pagina-token --remover\n";
 }

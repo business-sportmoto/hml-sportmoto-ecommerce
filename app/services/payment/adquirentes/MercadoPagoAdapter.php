@@ -415,6 +415,42 @@ class MercadoPagoAdapter implements AdquirenteInterface
         return null;
     }
 
+    /** Cartoes salvos de um cliente. E o que o checkout mostraria. */
+    public function listarCartoes(string $customerId): array
+    {
+        $r = $this->http('GET', '/v1/customers/' . rawurlencode($customerId) . '/cards', null);
+
+        return ($r['http'] >= 200 && $r['http'] < 300 && is_array($r['body']))
+            ? $r['body']
+            : [];
+    }
+
+    /**
+     * Remove um cartao salvo.
+     *
+     * Precisa existir para o cliente poder descadastrar — e para um teste em
+     * producao nao deixar cartao real pendurado na conta.
+     */
+    public function removerCartao(string $customerId, string $cardId): bool
+    {
+        $r = $this->http(
+            'DELETE',
+            '/v1/customers/' . rawurlencode($customerId) . '/cards/' . rawurlencode($cardId),
+            null
+        );
+
+        $ok = $r['erro'] === null && $r['http'] >= 200 && $r['http'] < 300;
+
+        if (!$ok) {
+            LogService::error('Mercado Pago recusou remover o cartao', [
+                'customer' => $customerId, 'card' => $cardId, 'http' => $r['http'],
+                'motivo'   => mb_substr((string) ($r['body']['message'] ?? $r['raw']), 0, 200),
+            ], 'pagamento');
+        }
+
+        return $ok;
+    }
+
     private function falhaCartao(string $erro): array
     {
         return ['ok' => false, 'customer_ref' => null, 'card_ref' => null,
