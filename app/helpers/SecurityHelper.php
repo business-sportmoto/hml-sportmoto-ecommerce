@@ -260,7 +260,7 @@ class SecurityHelper {
                 "default-src 'self'; " .
 
                 "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com/gsi/client; " .
-                "script-src-elem 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com/gsi/client https://connect.facebook.net; " .
+                "script-src-elem 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com/gsi/client https://connect.facebook.net https://device.clearsale.com.br https://sdk.mercadopago.com; " .
                 
                 "worker-src 'self' blob:;".
                 "media-src 'self' blob: {$stream};".
