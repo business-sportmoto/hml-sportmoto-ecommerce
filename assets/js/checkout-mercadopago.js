@@ -323,7 +323,9 @@
       mp.getPaymentMethods({ bin: bin }).then(function (r) {
         var achado = r && r.results && r.results[0];
         bandeira = achado ? achado.id : null;
-        self._pintarBandeira(achado ? achado.thumbnail : null);
+        // secure_thumbnail, nao thumbnail: o segundo vem em http:// e numa
+        // pagina https o navegador bloqueia como conteudo misto.
+        self._pintarBandeira(achado ? (achado.secure_thumbnail || achado.thumbnail) : null);
       }).catch(function () {
         bandeira = null;
         self._pintarBandeira();

@@ -253,14 +253,29 @@ class SecurityHelper {
 
             $stream = 'https://*.cloudflarestream.com';
 
+            // ── Hosts de pagamento e antifraude ─────────────────────────
+            //
+            // Agrupados aqui, e nao espalhados no header, porque cada
+            // adquirente precisa aparecer em TRES diretivas diferentes —
+            // script, connect e frame — e esquecer uma so quebra o checkout
+            // com um erro de CSP que nao diz qual integracao parou.
+            //
+            //   sdk.*           o SDK que roda na pagina
+            //   secure-fields.* os iframes que guardam numero, validade e CVV
+            //   api.*           as chamadas que o SDK faz (tokenizar, bandeira)
+            //   device.*        o fingerprint da ClearSale
+            $pgtoScript  = 'https://sdk.mercadopago.com https://device.clearsale.com.br';
+            $pgtoConnect = 'https://api.mercadopago.com https://sdk.mercadopago.com';
+            $pgtoFrame   = 'https://secure-fields.mercadopago.com https://www.mercadopago.com';
+
             header("Cross-Origin-Opener-Policy: same-origin-allow-popups");
 
             header(
                 "Content-Security-Policy: " .
                 "default-src 'self'; " .
 
-                "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com/gsi/client; " .
-                "script-src-elem 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com/gsi/client https://connect.facebook.net; " .
+                "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com/gsi/client {$pgtoScript}; " .
+                "script-src-elem 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com/gsi/client https://connect.facebook.net {$pgtoScript}; " .
                 
                 "worker-src 'self' blob:;".
                 "media-src 'self' blob: {$stream};".
@@ -269,8 +284,8 @@ class SecurityHelper {
                 "font-src 'self' https://fonts.gstatic.com data:;" .
                 
                 "img-src 'self' data: https:" . $baseImgSrc . " https://media.sportmoto.com.br https://www.facebook.com {$stream}; " .
-                "connect-src 'self' https://accounts.google.com/gsi/ https://sandbox-api.malga.io https://api.malga.io https://www.facebook.com https://connect.facebook.net {$stream}; " .
-                "frame-src 'self' https://accounts.google.com/gsi/ https://hosted-fields-sandbox.malga.io https://hosted-fields.malga.io https://iframe.cloudflarestream.com;" .
+                "connect-src 'self' https://accounts.google.com/gsi/ https://sandbox-api.malga.io https://api.malga.io https://www.facebook.com https://connect.facebook.net {$pgtoConnect} {$stream}; " .
+                "frame-src 'self' https://accounts.google.com/gsi/ https://hosted-fields-sandbox.malga.io https://hosted-fields.malga.io {$pgtoFrame} https://iframe.cloudflarestream.com;" .
 
                 // --- HARDENING (faltavam) ------------------------------------------
                 "object-src 'none';".        // sem plugins/Flash como vetor
