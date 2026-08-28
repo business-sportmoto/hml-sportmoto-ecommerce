@@ -384,14 +384,49 @@ function cicloCartao(string $token, bool $confirmado): void
         exit(1);
     }
 
-    $mp    = new MercadoPagoAdapter($tokenProd, $pkProd, 'producao');
-    $email = 'qa+cartao' . date('YmdHis') . '@sportmoto.com.br';
+    $mp = new MercadoPagoAdapter($tokenProd, $pkProd, 'producao');
 
-    printf("ambiente: %s | e-mail do teste: %s\n\n", $mp->ambiente(), $email);
+    // Parametrizavel, porque o "invalid card owner" vem de um destes dados
+    // nao bater com o titular gravado dentro do token.
+    //
+    // O E-MAIL IMPORTA MAIS DO QUE PARECE: havendo cliente com ele, o cadastro
+    // reaproveita aquele — inclusive a identificacao que ele ja carrega. Para
+    // um teste limpo, use um e-mail ainda nao usado.
+    // SEM `+`: o Mercado Pago recusa alias no cadastro de cliente com
+    // "Field=email - Syntax invalid" (causa 612). O adapter tira o alias
+    // sozinho, mas usar um e-mail limpo aqui mantem cada rodada com o seu
+    // proprio cliente, em vez de todas colapsarem no mesmo.
+    $email = 'qamp' . date('Hi') . '@sportmoto.com.br';
+    $nome  = '';
 
-    $res = $mp->salvarCartao([
-        'nome' => 'QA SportMoto', 'email' => $email, 'documento' => '19119119100',
-    ], $token);
+    $cpf = '';
+
+    foreach ($GLOBALS['argv'] as $arg) {
+        if (str_starts_with($arg, '--email=')) $email = substr($arg, 8);
+        if (str_starts_with($arg, '--nome='))  $nome  = substr($arg, 7);
+        if (str_starts_with($arg, '--cpf='))   $cpf   = preg_replace('/\D/', '', substr($arg, 6));
+    }
+
+    if ($cpf === '') {
+        fwrite(STDERR,
+            "Falta --cpf.\n\n"
+          . "  Ele tem de ser EXATAMENTE o mesmo digitado na pagina de tokenizacao:\n"
+          . "  o Mercado Pago cruza o documento do cliente com o do titular gravado\n"
+          . "  no token, e recusa com \"invalid card owner\" se diferirem.\n\n"
+          . "  A pagina imprime o comando pronto, com nome e CPF ja preenchidos.\n");
+        exit(1);
+    }
+
+    printf("ambiente: %s\n  cliente: %s\n  titular: %s\n  documento: %s\n\n",
+        $mp->ambiente(), $email, $nome !== '' ? $nome : '(sem nome)',
+        preg_replace('/\d(?=\d{4})/', '*', $cpf));
+
+    // O documento vai junto e PRECISA ser o mesmo da tokenizacao: sem ele o
+    // cliente nem chega a ser criado; diferente, o cartao nao vincula.
+    $res = $mp->salvarCartao(
+        array_filter(['nome' => $nome, 'email' => $email, 'documento' => $cpf]),
+        $token
+    );
 
     if (!$res['ok']) {
         printf("  FALHOU: %s\n", $res['erro']);
@@ -454,8 +489,15 @@ jQuery(function ($) {
     publicKey: PK_AQUI,
     onReady:  function () { $('#btn-save-card').prop('disabled', false); },
     onSubmit: function (t) {
-      $('#saida').show().html('<b>Token:</b><br>' + t.tokenId +
-        '<br><br>' + (t.brand || '') + ' ****' + (t.last4 || ''));
+      var nome = $('#card-holder-input').val() || '';
+      var cpf  = ($('#cpf_titular').val() || '').replace(/\D/g, '');
+      $('#saida').show().html(
+        '<b>Token:</b><br>' + t.tokenId +
+        '<br><br>' + (t.brand || '') + ' ****' + (t.last4 || '') +
+        '<br><br><b>Rode exatamente isto</b> (nome e CPF sao os que voce digitou;' +
+        ' o Mercado Pago cruza os dois):<br><code>php cli/teste-mercadopago.php cartao-ciclo ' +
+        t.tokenId + ' --nome="' + nome + '" --cpf=' + cpf + ' --confirmo</code>'
+      );
     },
     onError:  function (m) { $('#card-add-error').text(m); }
   });

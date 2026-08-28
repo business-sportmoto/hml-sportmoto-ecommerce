@@ -337,7 +337,8 @@ class MercadoPagoAdapter implements AdquirenteInterface
      */
     public function salvarCartao(array $cliente, string $token): array
     {
-        $email = trim((string) ($cliente['email'] ?? ''));
+        $email = self::emailParaCadastro((string) ($cliente['email'] ?? ''));
+
         if ($email === '' || $token === '') {
             return $this->falhaCartao('e-mail do cliente ou token ausente');
         }
@@ -351,14 +352,37 @@ class MercadoPagoAdapter implements AdquirenteInterface
                          ['token' => $token]);
 
         if ($r['erro'] !== null || $r['http'] < 200 || $r['http'] >= 300) {
+            $motivo = (string) ($r['body']['message'] ?? $r['raw']);
+
             LogService::error('Mercado Pago recusou salvar o cartao', [
                 'customer' => $customerId, 'http' => $r['http'],
-                'motivo'   => mb_substr((string) ($r['body']['message'] ?? $r['raw']), 0, 200),
+                'motivo'   => mb_substr($motivo, 0, 200),
             ], 'pagamento');
+
+            // "invalid card owner" significa que o titular do token nao bate
+            // com o cadastro do cliente na adquirente. Vale dizer isso em vez
+            // de um erro generico: quem le o log precisa saber onde olhar.
+            if (stripos($motivo, 'card owner') !== false) {
+                return $this->falhaCartao(
+                    'os dados do titular nao conferem com o cadastro do cliente na adquirente'
+                );
+            }
+
             return $this->falhaCartao('a adquirente recusou salvar o cartao');
         }
 
         $c = $r['body'];
+
+        // Cartao salvo e evento de auditoria: alguem passou a poder cobrar
+        // aquele cliente sem redigitar o numero. So o erro estava deixando
+        // rastro — um cadastro bem-sucedido nao aparecia em lugar nenhum.
+        LogService::audit('Cartao salvo na adquirente', [
+            'adquirente' => $this->codigo(),
+            'customer'   => $customerId,
+            'card'       => $c['id'] ?? null,
+            'bandeira'   => $c['payment_method']['id'] ?? null,
+            'ultimos4'   => $c['last_four_digits'] ?? null,
+        ]);
 
         return [
             'ok'           => true,
@@ -381,12 +405,26 @@ class MercadoPagoAdapter implements AdquirenteInterface
     {
         $busca = $this->http('GET', '/v1/customers/search?email=' . urlencode($email), null);
 
+        // LogService::audit('acharOuCriarCliente', [$busca]);
+
         $achado = $busca['body']['results'][0]['id'] ?? null;
         if ($achado) return (string) $achado;
 
-        $doc  = self::digitos((string) ($cliente['documento'] ?? ''));
         $nome = trim((string) ($cliente['nome'] ?? ''));
         $part = $nome !== '' ? (preg_split('/\s+/', $nome) ?: []) : [];
+
+        // A IDENTIFICACAO E OBRIGATORIA, E PRECISA BATER COM A DO TOKEN.
+        //
+        // Aprendido em teste, na ordem: criar o cliente COM CPF diferente do
+        // titular faz a vinculacao do cartao falhar com "invalid card owner";
+        // criar SEM CPF faz a propria criacao falhar com "Validation error to
+        // register user". Ou seja, nao ha saida pelo "nao mandar".
+        //
+        // Consequencia para quem chama: o documento aqui tem de ser o MESMO
+        // usado na tokenizacao — o do TITULAR do cartao, nao o do comprador.
+        // Sao pessoas diferentes sempre que alguem paga com o cartao do
+        // conjuge, do pai ou da empresa.
+        $doc = self::digitos((string) ($cliente['documento'] ?? ''));
 
         $corpo = array_filter([
             'email'      => $email,
@@ -407,9 +445,14 @@ class MercadoPagoAdapter implements AdquirenteInterface
             return (string) $r['body']['id'];
         }
 
+        // `cause` e onde mora a explicacao. O `message` sozinho diz
+        // "Validation error to register user", que nao ajuda ninguem — foi
+        // preciso sondar a API para descobrir que o problema era o `+` no
+        // e-mail. Logar o cause evita a proxima cacada.
         LogService::error('Mercado Pago recusou criar o cliente', [
             'http'   => $r['http'],
             'motivo' => mb_substr((string) ($r['body']['message'] ?? $r['raw']), 0, 200),
+            'causa'  => isset($r['body']['cause']) ? json_encode($r['body']['cause']) : null,
         ], 'pagamento');
 
         return null;
@@ -449,6 +492,33 @@ class MercadoPagoAdapter implements AdquirenteInterface
         }
 
         return $ok;
+    }
+
+    /**
+     * E-mail aceito pelo cadastro de clientes do Mercado Pago.
+     *
+     * Eles recusam alias com `+` — "Field=email - Syntax invalid", causa 612.
+     * E alias e comum: quem usa Gmail costuma assinar como
+     * joao+loja@gmail.com, e o cartao desse cliente nunca seria salvo.
+     *
+     * Tirar a parte depois do `+` aponta para a MESMA caixa postal, entao nao
+     * se perde nada — e o cadastro passa.
+     */
+    private static function emailParaCadastro(string $email): string
+    {
+        $email = trim($email);
+        if ($email === '' || !str_contains($email, '+')) return $email;
+
+        [$local, $dominio] = explode('@', $email, 2) + ['', ''];
+        if ($dominio === '') return $email;
+
+        $limpo = strtok($local, '+') . '@' . $dominio;
+
+        LogService::info('E-mail sem alias para o cadastro no Mercado Pago', [
+            'original' => preg_replace('/(.{2}).*(@.*)/', '$1***$2', $email),
+        ], 'pagamento');
+
+        return $limpo;
     }
 
     private function falhaCartao(string $erro): array

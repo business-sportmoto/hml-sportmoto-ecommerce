@@ -2933,7 +2933,12 @@ class CheckoutController extends Controller {
             'nome'      => $cliente['nome']     ?? 'Cliente',
             'email'     => $cliente['email']    ?? '',
             'telefone'  => $cliente['telefone'] ?? '',
-            'documento' => preg_replace('/\D/', '', (string) ($cliente['cpf'] ?? '')),
+            // O documento do TITULAR, que e o mesmo usado na tokenizacao —
+            // nao o da conta. O cartao pode ser de outra pessoa, e mandar o
+            // CPF do comprador faria a adquirente recusar o vinculo.
+            'documento' => $docTitular !== ''
+                ? $docTitular
+                : (preg_replace('/\D/', '', (string) ($cliente['cpf'] ?? '')) ?? ''),
         ];
 
         try {
