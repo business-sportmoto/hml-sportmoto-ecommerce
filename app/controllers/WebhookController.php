@@ -567,7 +567,7 @@ class WebhookController extends Controller
 
         if (!$this->mpAssinaturaValida($headers, $recurso, (string) $cred['webhook_secret'])) {
             LogService::critical('[Webhook mercadopago] assinatura invalida', [
-                'ip' => $ip, 'recurso' => $recurso, 'tipo' => $tipo,
+                'ip' => $ip, 'recurso' => $recurso, 'tipo' => $tipo, 'header' =>$headers
             ], 'pagamento');
             // 200 de proposito: assinatura errada nao se conserta com
             // retentativa, e 4xx aqui geraria reenvio a cada 15 min para
