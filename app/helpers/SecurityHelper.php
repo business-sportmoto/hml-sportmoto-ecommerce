@@ -260,13 +260,21 @@ class SecurityHelper {
             // script, connect e frame — e esquecer uma so quebra o checkout
             // com um erro de CSP que nao diz qual integracao parou.
             //
-            //   sdk.*           o SDK que roda na pagina
-            //   secure-fields.* os iframes que guardam numero, validade e CVV
-            //   api.*           as chamadas que o SDK faz (tokenizar, bandeira)
-            //   device.*        o fingerprint da ClearSale
+            //   sdk.mercadopago      o SDK que roda na pagina
+            //   *.mercadopago        iframes dos campos e chamadas do SDK
+            //   *.mercadolibre       o fingerprint de dispositivo do Mercado
+            //                        Pago roda nos dominios do Mercado Livre
+            //                        (/jms/lgz/...), por fetch E por iframe
+            //   device.clearsale     o fingerprint da ClearSale
+            //
+            // CURINGA NOS DOIS DOMINIOS, de proposito: o SDK do Mercado Pago
+            // distribui coleta e telemetria por varios subdominios e muda com
+            // o tempo. Listar um a um vira uma cacada a cada release deles,
+            // com o checkout quebrado no intervalo. Sao dominios de UMA
+            // empresa, entao o curinga custa pouco e evita esse ciclo.
             $pgtoScript  = 'https://sdk.mercadopago.com https://device.clearsale.com.br';
-            $pgtoConnect = 'https://api.mercadopago.com https://sdk.mercadopago.com';
-            $pgtoFrame   = 'https://secure-fields.mercadopago.com https://www.mercadopago.com';
+            $pgtoConnect = 'https://*.mercadopago.com https://*.mercadolibre.com';
+            $pgtoFrame   = 'https://*.mercadopago.com https://*.mercadolibre.com';
 
             header("Cross-Origin-Opener-Policy: same-origin-allow-popups");
 
