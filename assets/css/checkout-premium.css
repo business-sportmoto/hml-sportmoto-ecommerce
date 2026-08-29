@@ -2864,6 +2864,12 @@ to{opacity:1;transform:translateY(0)}
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 13px; font-weight: 700; color: #d97706; margin-bottom: 14px;
 }
+.pix-timer strong { font-variant-numeric: tabular-nums; }
+
+/* QR vencido: vermelho, com a saída. Antes a contagem simplesmente parava
+   e o cliente ficava olhando um código que o banco já recusava. */
+.pix-timer--expirado { color: #dc2626; }
+.pix-timer--expirado a { color: #dc2626; text-decoration: underline; font-weight: 700; }
 .pix-steps {
   list-style: none; padding: 0; margin: 0; counter-reset: pix;
   display: flex; flex-direction: column; gap: 9px;
@@ -2881,7 +2887,15 @@ to{opacity:1;transform:translateY(0)}
 .success-pix-qr {
   display: flex; flex-direction: column; align-items: center; gap: 8px; flex-shrink: 0;
 }
-.success-pix-qr small { font-size: 12px; color: #94a3b8; }
+.success-pix-qr small { font-size: 12px; color: #94a3b8; text-align: center; line-height: 1.5; }
+
+/* Adquirente que não devolve imagem do QR: diz isso, em vez do retângulo
+   cinza vazio que parecia carregamento travado. */
+.success-pix-qr--sem-imagem {
+  width: 190px; padding: 22px 16px;
+  border: 1px dashed #cbd5e1; border-radius: 14px; background: #f8fafc;
+}
+.success-pix-qr--sem-imagem svg { width: 40px; height: 40px; stroke: #94a3b8; }
 .pix-qr-img {
   width: 190px; height: 190px; border-radius: 14px;
   box-shadow: 0 4px 20px rgba(0,0,0,.12); border: 8px solid #fff;

@@ -75,6 +75,7 @@ class IconLibrary
         $icon = self::find($key);
 
         if (!$icon) {
+            self::avisarAusente($key);
             return '';
         }
 
@@ -134,6 +135,88 @@ class IconLibrary
 
         return preg_replace('/<svg\b([^>]*)>/i', '<svg$1' . $attrString . '>', $svg, 1) ?? $svg;
     }
+    /** A chave existe no acervo? Util para diagnostico e testes. */
+    public static function has(string $key): bool
+    {
+        return self::find($key) !== null;
+    }
+
+    /**
+     * Monta o sprite <symbol> das chaves informadas.
+     *
+     * Renderizado uma unica vez por pagina, permite que o JS (que nao alcanca o
+     * PHP) referencie qualquer icone por <use href="#i-chave"> sem duplicar SVG
+     * nem repetir markup a cada linha de tabela renderizada.
+     */
+    public static function sprite(array $keys, string $prefix = 'i-'): string
+    {
+        $simbolos = [];
+
+        foreach (array_unique($keys) as $key) {
+            $icon = self::find($key);
+
+            if (!$icon) {
+                self::avisarAusente($key);
+                continue;
+            }
+
+            $svg = trim((string) $icon['svg']);
+
+            if (!preg_match('/<svg\b([^>]*)>(.*)<\/svg>/is', $svg, $m)) {
+                continue;
+            }
+
+            $viewBox = preg_match('/viewBox="([^"]*)"/i', $m[1], $vb) ? $vb[1] : '0 -960 960 960';
+
+            $simbolos[] = '<symbol id="' . self::idDe($key, $prefix)
+                . '" viewBox="' . htmlspecialchars($viewBox, ENT_QUOTES, 'UTF-8') . '">'
+                . $m[2] . '</symbol>';
+        }
+
+        if (empty($simbolos)) {
+            return '';
+        }
+
+        return '<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"'
+            . ' style="position:absolute;width:0;height:0;overflow:hidden">'
+            . implode('', $simbolos) . '</svg>';
+    }
+
+    /**
+     * Referencia um simbolo do sprite. Mesma saida que o helper JS produz, para
+     * que markup vindo do PHP e do JS sejam indistinguiveis.
+     */
+    public static function ref(string $key, string $class = 'log_ico', string $prefix = 'i-'): string
+    {
+        return '<svg class="' . htmlspecialchars($class, ENT_QUOTES, 'UTF-8') . '" aria-hidden="true" focusable="false">'
+            . '<use href="#' . self::idDe($key, $prefix) . '"></use></svg>';
+    }
+
+    private static function idDe(string $key, string $prefix): string
+    {
+        return htmlspecialchars($prefix . preg_replace('/[^a-z0-9_-]/i', '', $key), ENT_QUOTES, 'UTF-8');
+    }
+
+    /**
+     * Chave inexistente e um erro silencioso: render() devolve string vazia e o
+     * icone some da tela sem aviso. Registrar evita que passe batido (foi assim
+     * que 'carrinho', 'manifesto' e 'localizacao' ficaram invisiveis).
+     */
+    private static function avisarAusente(string $key): void
+    {
+        static $vistos = [];
+
+        if (isset($vistos[$key])) {
+            return;
+        }
+
+        $vistos[$key] = true;
+
+        if (class_exists('LogService')) {
+            LogService::warning('IconLibrary: icone inexistente', ['chave' => $key]);
+        }
+    }
+
 
      
 // ════════════════════════════════════════════════════════

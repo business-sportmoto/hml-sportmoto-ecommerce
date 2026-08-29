@@ -565,7 +565,7 @@ class WebhookController extends Controller
 
         $cred = PagamentoCredencialService::para('mercadopago');
 
-        LogService::audit('PagamentoCredencialService', $cred);
+        
 
         if (!$this->mpAssinaturaValida($headers, $recurso, (string) $cred['webhook_secret'])) {
             LogService::critical('[Webhook mercadopago] assinatura invalida', [

@@ -2,9 +2,9 @@
 /**
  * View: Simulador de frete.
  * Roda a Calculadora (empacotamento + transportadoras ativas + regras).
- * Resultado renderizado por frete.js.
+ * Resultado renderizado por logistica.js.
  */
-$ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">' . (class_exists('IconLibrary') ? IconLibrary::render($n) : '') . '</span>';
+$ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">' . (class_exists('IconLibrary') ? IconLibrary::ref($n, '') : '') . '</span>';
 ?>
 
 
@@ -53,7 +53,7 @@ $ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int
                     </div>
 
                     <div class="log_fieldset" style="margin-top:14px;">
-                        <h4>Itens <button type="button" class="log_btn log_btn--sm js-item-add"><i class="bi bi-plus-lg"></i> Adicionar</button></h4>
+                        <h4>Itens <button type="button" class="log_btn log_btn--sm js-item-add"><?= $ico('add', 15) ?> Adicionar</button></h4>
                         <div id="logSimItens"></div>
                     </div>
 

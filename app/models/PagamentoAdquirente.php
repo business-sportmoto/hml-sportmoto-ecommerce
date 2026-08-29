@@ -92,7 +92,11 @@ class PagamentoAdquirente extends Model
             ['chave' => 'tres_ds', 'rotulo' => 'Autenticação 3DS', 'tipo' => 'select',
              'opcoes' => ['never' => 'Desligada', 'on_fraud_risk' => 'Quando houver risco'],
              'padrao' => 'never',
-             'ajuda' => 'Ligada, o banco pode pedir confirmação ao cliente — a tela ainda não trata esse desafio.'],
+             'ajuda' => 'Ligada, o emissor assume o chargeback de FRAUDE quando autentica '
+                      . '(disputa comercial continua sua). Na maioria dos casos ele resolve '
+                      . 'sem perguntar nada ao cliente. Quando pede confirmação, o pedido fica '
+                      . 'PENDENTE e não é reapresentado em outra adquirente — a tela do desafio '
+                      . 'ainda não existe.'],
         ],
     ];
 

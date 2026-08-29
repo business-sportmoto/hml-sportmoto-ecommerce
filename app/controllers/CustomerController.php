@@ -30,6 +30,9 @@ class CustomerController extends Controller {
             'perfil'  => $perfil,
             'stats'   => $stats,
             'pedidos' => $pedidos,
+            // Os mesmos contadores dos selos do menu. O model memoiza por
+            // requisicao, entao o layout reaproveita em vez de repetir.
+            'badges'  => $this->customerModel->getMenuBadges($this->clienteId()),
         ], 'customer');
     }
 
@@ -280,11 +283,18 @@ class CustomerController extends Controller {
         $this->render('customer/cards', ['perfil'  => $perfil,'cards' => $cards], 'customer');
     }
 
+    /**
+     * Remover cartao e apagar em DOIS lugares: aqui e na adquirente.
+     *
+     * O DELETE local sozinho nao removia nada — so perdia o customer_ref e o
+     * card_ref, deixando o cartao pendurado na adquirente sem ninguem que
+     * soubesse ir busca-lo. A ordem e o que fazer quando a adquirente recusa
+     * ficam no service.
+     */
     public function deleteCard(): void {
         $this->verifyCsrf();
         $cartaoId = SecurityHelper::sanitizeInt($_POST['cartao_id'] ?? 0);
-        $ok = $this->customerModel->deleteCard($this->clienteId(), $cartaoId);
-        $this->json(['ok' => $ok, 'msg' => $ok ? 'Cartão removido.' : 'Erro ao remover.']);
+        $this->json((new CartaoSalvoService())->remover($cartaoId, $this->clienteId()));
     }
 
     public function setPrincipalCard(): void {

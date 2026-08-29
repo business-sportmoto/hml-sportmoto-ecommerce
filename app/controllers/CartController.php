@@ -662,8 +662,18 @@ class CartController extends Controller {
 
     // ── Compartilhar carrinho ─────────────────────────────────
 
-        /**
+    /**
      * Gera o link de compartilhamento (chamado via Ajax POST).
+     *
+     * O snapshot e a cópia vivem em CarrinhoCompartilhadoService, porque o app
+     * compartilha o mesmo carrinho pelas rotas /api/app/v1/carrinho/... — se o
+     * link gerado na loja e o gerado no app não guardassem exatamente a mesma
+     * coisa, o mesmo carrinho chegaria diferente conforme onde foi criado.
+     *
+     * Mudança de comportamento: o snapshot passa a gravar sku_id. O código que
+     * estava aqui lia `opcoes_snapshot` e `sku_legado`, dois campos que
+     * Cart::getItems() nunca devolveu — saíam sempre null, e a cópia entregava
+     * o produto base no lugar da variação escolhida.
      */
     public function share(): void {
         $this->verifyCsrf();
@@ -673,88 +683,24 @@ class CartController extends Controller {
             $this->json(['ok' => false, 'msg' => 'Carrinho vazio.']);
         }
 
-        $db        = Database::getInstance()->getConnection();
-        $cartModel = new Cart();
+        $usuarioId = Session::isClienteLogado()
+            ? (int) Session::get('usuario_id')
+            : null;
 
-        // Busca itens e totais atuais
-        $itens  = $cartModel->getItems($carrinhoId);
-        $totals = $cartModel->getTotals($carrinhoId);
-
-        if (empty($itens)) {
-            $this->json(['ok' => false, 'msg' => 'Carrinho vazio.']);
-        }
-
-        // Busca vendedor atual do carrinho
-        $stmtCart = $db->prepare(
-            "SELECT c.codigo_vendedor, u.nome AS vendedor_nome
-            FROM carrinhos c
-            LEFT JOIN vendedores v ON v.codigo = c.codigo_vendedor AND v.ativo = 1
-            LEFT JOIN usuarios u   ON u.id     = v.usuario_id
-            WHERE c.id = ? LIMIT 1"
-        );
-        $stmtCart->execute([$carrinhoId]);
-        $cartData = $stmtCart->fetch();
-
-        // Monta snapshot dos itens
-        $snapshot = array_map(function ($item) {
-            return [
-                'produto_id'    => $item['produto_id'],
-                'nome'          => $item['nome_produto'] ?? $item['nome'] ?? 'Produto',
-                'slug'          => $item['produto_slug'] ?? $item['slug'] ?? '',
-                'imagem'        => $item['imagem'] ?? null,
-                'quantidade'    => (int)$item['quantidade'],
-                'preco'         => (float)($item['preco_unitario'] ?? $item['preco'] ?? 0),
-                'subtotal'      => (float)($item['subtotal'] ?? 0),
-                'opcoes'        => !empty($item['opcoes_snapshot'])
-                                ? json_decode($item['opcoes_snapshot'], true)
-                                : null,
-                'sku'           => $item['sku_legado'] ?? null,
-            ];
-        }, $itens);
-
-        // Identificação de quem compartilha
-        $usuarioId    = null;
-        $nomeVisitante = null;
-
-        if (Session::isClienteLogado()) {
-            $usuarioId = (int) Session::get('usuario_id');
-        } else {
-            $nomeVisitante = SecurityHelper::sanitizeString($_POST['nome'] ?? '') ?: null;
-        }
-
-        // Vendedor
-        $vendedorCodigo = $cartData['codigo_vendedor'] ?? null;
-        $vendedorNome   = $cartData['vendedor_nome']
-                    ?: ($vendedorCodigo ?: null);
-
-        $token    = SecurityHelper::generateToken(24);
-        $expiraEm = date('Y-m-d H:i:s', time() + (86400 * 7)); // 7 dias
-
-        $db->prepare(
-            "INSERT INTO carrinhos_compartilhados
-            (token, carrinho_id, itens_snapshot, subtotal, desconto, total,
-            vendedor_codigo, vendedor_nome, usuario_id, nome_visitante, expira_em)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?)"
-        )->execute([
-            $token,
+        $r = (new CarrinhoCompartilhadoService())->criar(
             $carrinhoId,
-            json_encode($snapshot, JSON_UNESCAPED_UNICODE),
-            (float)($totals['subtotal'] ?? 0),
-            (float)($totals['desconto'] ?? 0),
-            (float)($totals['total']    ?? 0),
-            $vendedorCodigo,
-            $vendedorNome,
             $usuarioId,
-            $nomeVisitante,
-            $expiraEm,
-        ]);
+            SecurityHelper::sanitizeString($_POST['nome'] ?? '')
+        );
 
-        $url = rtrim(BASE_URL, '/') . '/carrinho/compartilhado/' . $token;
+        if (empty($r['ok'])) {
+            $this->json(['ok' => false, 'msg' => $r['erro'] ?? 'Não foi possível compartilhar.']);
+        }
 
         $this->json([
             'ok'       => true,
-            'url'      => $url,
-            'expira_em'=> date('d/m/Y', strtotime($expiraEm)),
+            'url'      => $r['url'],
+            'expira_em'=> date('d/m/Y', strtotime((string)$r['expira_em'])),
         ]);
     }
 
@@ -813,10 +759,20 @@ class CartController extends Controller {
         // Itens do snapshot
         $itens = json_decode($compartilhado['itens_snapshot'], true) ?? [];
 
-        // Copia para o carrinho se solicitado
+        // Copia para o carrinho se solicitado. Mesmo caminho de copyShared():
+        // uma cópia só, com revalidação de preço e estoque e com o sku_id
+        // preservado — o copiarDoSnapshot() que existia aqui era uma segunda
+        // implementação da mesma coisa, e perdia a variação.
         $copiado = false;
         if (!empty($_GET['copiar'])) {
-            $copiado = $this->copiarDoSnapshot($itens, $compartilhado['vendedor_codigo']);
+            $r = (new CarrinhoCompartilhadoService())->copiar(
+                $token,
+                $this->getCarrinhoId(true),
+                'mesclar',
+                Session::isClienteLogado() ? (int)Session::getClienteId() : null,
+                $_SERVER['REMOTE_ADDR'] ?? null
+            );
+            $copiado = !empty($r['ok']) && $r['adicionados'] > 0;
         }
 
         SeoHelper::setTitle('Carrinho compartilhado');
@@ -840,148 +796,48 @@ class CartController extends Controller {
     public function copyShared(): void {
         $this->verifyCsrf();
 
-        $token  = preg_replace('/[^a-f0-9]/', '', $_POST['token'] ?? '');
-        $modo   = $_POST['modo'] ?? 'adicionar'; // 'adicionar' ou 'substituir'
+        $token = preg_replace('/[^a-f0-9]/', '', $_POST['token'] ?? '');
+        $modo  = (string)($_POST['modo'] ?? 'adicionar'); // 'adicionar' | 'substituir'
 
         if (empty($token)) {
             $this->json(['ok' => false, 'msg' => 'Token inválido.']);
         }
 
-        $db   = Database::getInstance()->getConnection();
-
-        // Busca o compartilhamento
-        $stmt = $db->prepare(
-            "SELECT * FROM carrinhos_compartilhados
-            WHERE token = ? AND expira_em > NOW()
-            LIMIT 1"
-        );
-        $stmt->execute([$token]);
-        $compartilhado = $stmt->fetch();
-
-        if (!$compartilhado) {
-            $this->json(['ok' => false, 'msg' => 'Link expirado ou inválido.']);
-        }
-
-        $itens          = json_decode($compartilhado['itens_snapshot'], true) ?? [];
-        $vendedorCodigo = $compartilhado['vendedor_codigo'];
-
-        if (empty($itens)) {
-            $this->json(['ok' => false, 'msg' => 'Carrinho compartilhado vazio.']);
-        }
-
-        // Obtém ou cria o carrinho atual
         $carrinhoId = $this->getCarrinhoId(true);
+        $db         = Database::getInstance()->getConnection();
 
-        // Verifica se já tem itens no carrinho atual
-        $stmtCheck = $db->prepare(
-            "SELECT COUNT(*) FROM carrinho_itens WHERE carrinho_id = ?"
-        );
-        $stmtCheck->execute([$carrinhoId]);
-        $temItens = (int)$stmtCheck->fetchColumn() > 0;
+        // Modo desconhecido com carrinho cheio: devolve o conflito para o JS
+        // perguntar antes de mexer no que a pessoa já tinha.
+        if (!in_array($modo, ['adicionar', 'substituir'], true)) {
+            $stmt = $db->prepare("SELECT COUNT(*) FROM carrinho_itens WHERE carrinho_id = ?");
+            $stmt->execute([$carrinhoId]);
 
-        // Se tem itens e não informou o modo, pede confirmação
-        if ($temItens && !in_array($modo, ['adicionar', 'substituir'])) {
-            $this->json([
-                'ok'        => false,
-                'conflito'  => true,
-                'msg'       => 'Você já tem itens no carrinho.',
-            ]);
-        }
-
-        // Modo substituir: esvazia o carrinho atual primeiro
-        if ($modo === 'substituir') {
-            $db->prepare(
-                "DELETE FROM carrinho_itens WHERE carrinho_id = ?"
-            )->execute([$carrinhoId]);
-        }
-
-        // Copia os itens do snapshot
-        $adicionados = 0;
-        $ignorados   = 0;
-
-        foreach ($itens as $item) {
-            if (empty($item['produto_id'])) continue;
-
-            // Verifica se o produto ainda está ativo
-            $stmtProd = $db->prepare(
-                "SELECT id, preco, preco_promo, estoque_total
-                FROM produtos
-                WHERE id = ? AND ativo = 1 AND deleted_at IS NULL
-                LIMIT 1"
-            );
-            $stmtProd->execute([$item['produto_id']]);
-            $produto = $stmtProd->fetch();
-
-            if (!$produto) { $ignorados++; continue; }
-
-            // Usa preço atual
-            $preco = (float)($produto['preco_promo'] ?: $produto['preco']);
-            $qty   = min((int)$item['quantidade'], (int)$produto['estoque_total']);
-
-            if ($qty <= 0) { $ignorados++; continue; }
-
-            // Verifica se já existe no carrinho (no modo adicionar)
-            $stmtExiste = $db->prepare(
-                "SELECT id, quantidade FROM carrinho_itens
-                WHERE carrinho_id = ? AND produto_id = ?
-                LIMIT 1"
-            );
-            $stmtExiste->execute([$carrinhoId, $item['produto_id']]);
-            $existe = $stmtExiste->fetch();
-
-            if ($existe) {
-                $novaQty = min(
-                    $existe['quantidade'] + $qty,
-                    (int)$produto['estoque_total']
-                );
-                $db->prepare(
-                    "UPDATE carrinho_itens
-                    SET quantidade = ?
-                    WHERE id = ?"
-                )->execute([$novaQty, $existe['id']]);
-
-            } else {
-                // Verifica qual coluna existe na sua tabela
-                // Tente primeiro sem subtotal — só produto_id, quantidade e preco
-                $db->prepare(
-                    "INSERT INTO carrinho_itens
-                    (carrinho_id, produto_id, quantidade, preco_unitario)
-                    VALUES (?, ?, ?, ?)"
-                )->execute([
-                    $carrinhoId,
-                    $item['produto_id'],
-                    $qty,
-                    $preco,
+            if ((int)$stmt->fetchColumn() > 0) {
+                $this->json([
+                    'ok'       => false,
+                    'conflito' => true,
+                    'msg'      => 'Você já tem itens no carrinho.',
                 ]);
             }
-
-            $adicionados++;
         }
 
-        // Aplica vendedor se tiver
-        if ($vendedorCodigo) {
-            $db->prepare(
-                "UPDATE carrinhos SET codigo_vendedor = ? WHERE id = ?"
-            )->execute([$vendedorCodigo, $carrinhoId]);
-        }
- 
-        // Víncula o token ao carrinho para rastrear pedidos futuros
-        $db->prepare(
-            "UPDATE carrinhos
-             SET compartilhado_token = COALESCE(compartilhado_token, ?)
-             WHERE id = ?"
-        )->execute([$token, $carrinhoId]);
- 
-        // Registra criação de carrinho no log
-        (new CartCompartilhado())->registrarUso(
+        // 'adicionar' na loja é o 'mesclar' do service — mesmo comportamento,
+        // nome que o app já usa no corpo da requisição.
+        $r = (new CarrinhoCompartilhadoService())->copiar(
             $token,
-            'criou_carrinho',
+            $carrinhoId,
+            $modo === 'substituir' ? 'substituir' : 'mesclar',
             Session::isClienteLogado() ? (int)Session::getClienteId() : null,
-            null,
             $_SERVER['REMOTE_ADDR'] ?? null
         );
 
-        // Atualiza contagem na sessão
+        if (empty($r['ok'])) {
+            $this->json(['ok' => false, 'msg' => $r['erro'] ?? 'Não foi possível copiar o carrinho.']);
+        }
+
+        $adicionados = (int)$r['adicionados'];
+        $ignorados   = (int)$r['ignorados'];
+
         $stmtCount = $db->prepare(
             "SELECT COALESCE(SUM(quantidade), 0) FROM carrinho_itens WHERE carrinho_id = ?"
         );
@@ -1005,84 +861,6 @@ class CartController extends Controller {
         ]);
     }
 
-    /**
-     * Copia itens do snapshot para o carrinho atual.
-     */
-    private function copiarDoSnapshot(array $itens, ?string $vendedorCodigo): bool {
-        try {
-            $carrinhoId = $this->getCarrinhoId(true);
-            $db         = Database::getInstance()->getConnection();
-
-            foreach ($itens as $item) {
-                if (empty($item['produto_id'])) continue;
-
-                // Verifica se o produto ainda existe e está ativo
-                $stmt = $db->prepare(
-                    "SELECT id, preco, preco_promo, estoque_total
-                    FROM produtos
-                    WHERE id = ? AND ativo = 1 AND deleted_at IS NULL
-                    LIMIT 1"
-                );
-                $stmt->execute([$item['produto_id']]);
-                $produto = $stmt->fetch();
-
-                if (!$produto) continue;
-
-                // Usa o preço atual, não o do snapshot
-                $preco = (float)($produto['preco_promo'] ?: $produto['preco']);
-                $qty   = min((int)$item['quantidade'], (int)$produto['estoque_total']);
-
-                if ($qty <= 0) continue;
-
-                // Verifica se já existe no carrinho
-                $stmtExiste = $db->prepare(
-                    "SELECT id, quantidade FROM carrinho_itens
-                    WHERE carrinho_id = ? AND produto_id = ?
-                    LIMIT 1"
-                );
-                $stmtExiste->execute([$carrinhoId, $item['produto_id']]);
-                $existe = $stmtExiste->fetch();
-
-                if ($existe) {
-                    $db->prepare(
-                        "UPDATE carrinho_itens
-                        SET quantidade = quantidade + ?, subtotal = (quantidade + ?) * preco_unitario
-                        WHERE id = ?"
-                    )->execute([$qty, $qty, $existe['id']]);
-                } else {
-                    $db->prepare(
-                        "INSERT INTO carrinho_itens
-                        (carrinho_id, produto_id, quantidade, preco_unitario, subtotal)
-                        VALUES (?, ?, ?, ?, ?)"
-                    )->execute([
-                        $carrinhoId,
-                        $item['produto_id'],
-                        $qty,
-                        $preco,
-                        $qty * $preco,
-                    ]);
-                }
-            }
-
-            // Aplica o vendedor se tiver
-            if ($vendedorCodigo) {
-                $db->prepare(
-                    "UPDATE carrinhos SET codigo_vendedor = ? WHERE id = ?"
-                )->execute([$vendedorCodigo, $carrinhoId]);
-            }
-
-            // Atualiza contagem na sessão
-            $stmtCount = $db->prepare(
-                "SELECT SUM(quantidade) FROM carrinho_itens WHERE carrinho_id = ?"
-            );
-            $stmtCount->execute([$carrinhoId]);
-            Session::set('carrinho_count', (int)$stmtCount->fetchColumn());
-
-            return true;
-        } catch (Exception $e) {
-            return false;
-        }
-    }
 
     /**
      * Copia todos os itens do carrinho compartilhado para o carrinho atual.

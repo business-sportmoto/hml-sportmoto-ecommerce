@@ -1,10 +1,10 @@
 <?php
 /**
  * View: Rastreios (lista admin).
- * Recebe: $transportadoras, $filtros. Detalhe/timeline em rastreios.js.
+ * Recebe: $transportadoras, $filtros. Detalhe/timeline em logistica.js.
  */
 $e = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
-$ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">' . (class_exists('IconLibrary') ? IconLibrary::render($n) : '') . '</span>';
+$ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">' . (class_exists('IconLibrary') ? IconLibrary::ref($n, '') : '') . '</span>';
 $f = $filtros ?? [];
 ?>
 

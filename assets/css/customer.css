@@ -2457,3 +2457,371 @@
   border-radius: 8px;
   font-size: 12.5px; font-weight: 700; color: #166534;
 }
+/* ═══════════════════════════════════════════════════════════════════
+   ÁREA DO CLIENTE — navegação (acct-) e visão geral (dash-)
+   ═══════════════════════════════════════════════════════════════════
+   O menu do celular virou a navegação de TODA a área do cliente, e a
+   raiz passou a ser um painel em vez de uma lista de links. Os dois
+   prefixos separam as duas coisas: `acct-` mora no layout, `dash-` só
+   na visão geral.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.customer-layout { grid-template-columns: 272px 1fr; gap: 24px; }
+
+/* ── Navegação ──────────────────────────────────────────────────── */
+.acct-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Cartão do perfil — a única superfície escura da coluna, para o olho
+   achar o topo sem precisar de borda. */
+.acct-me {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 16px;
+  background: linear-gradient(150deg, #101828 0%, #1e3a6e 100%);
+  box-shadow: 0 10px 24px -14px rgba(16, 24, 40, .55);
+  text-decoration: none;
+  transition: transform .16s ease, box-shadow .16s ease;
+}
+.acct-me:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px -14px rgba(16, 24, 40, .6);
+}
+.acct-me-avatar {
+  width: 46px; height: 46px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 2px solid rgba(255, 255, 255, .22);
+}
+.acct-me-avatar--initial {
+  background: var(--c-primary);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 19px; font-weight: 800; color: #fff;
+}
+.acct-me-info { flex: 1; min-width: 0; }
+.acct-me-info strong {
+  display: block;
+  font-size: 14px; font-weight: 700; color: #fff;
+  letter-spacing: -.2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.acct-me-info span {
+  display: block;
+  font-size: 11.5px; color: rgba(255, 255, 255, .55);
+  margin-top: 1px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.acct-me-tier {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 10.5px; font-weight: 700; font-style: normal;
+  letter-spacing: .3px;
+  padding: 3px 9px;
+  border-radius: 99px;
+}
+.acct-me-go { width: 16px; height: 16px; stroke: rgba(255, 255, 255, .35); flex-shrink: 0; }
+
+.acct-groups { display: flex; flex-direction: column; gap: 16px; }
+.acct-group-title {
+  margin: 0 0 7px 4px;
+  font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .7px;
+  color: #9aa3b2;
+}
+.acct-group-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.acct-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px;
+  text-decoration: none;
+  color: var(--c-dark);
+  border-bottom: 1px solid var(--c-border);
+  transition: background .13s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.acct-item:last-child { border-bottom: none; }
+.acct-item:hover { background: var(--c-bg); }
+
+/* Barra à esquerda em vez de fundo cheio: marca o item ativo sem
+   competir com os selos coloridos que ficam na mesma linha. */
+.acct-item.is-active { background: var(--c-primary-l); }
+.acct-item.is-active::before {
+  content: "";
+  position: absolute; left: 0; top: 6px; bottom: 6px;
+  width: 3px; border-radius: 0 3px 3px 0;
+  background: var(--c-primary);
+}
+.acct-item.is-active .acct-label { font-weight: 700; color: var(--c-primary-d); }
+.acct-item.is-active .acct-ico   { background: #fff; }
+.acct-item.is-active .acct-ico svg { stroke: var(--c-primary); }
+
+.acct-ico {
+  width: 32px; height: 32px;
+  border-radius: 9px;
+  background: var(--c-bg);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: background .13s ease;
+}
+.acct-ico svg { width: 16px; height: 16px; stroke: #64748b; }
+.acct-label { flex: 1; font-size: 13.5px; font-weight: 500; }
+
+.acct-badge {
+  font-size: 10.5px; font-weight: 700;
+  padding: 2px 7px; border-radius: 99px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.acct-badge--blue   { background: #dbeafe; color: #1d4ed8; }
+.acct-badge--orange { background: #ffedd5; color: #c2410c; }
+.acct-badge--gray   { background: #f1f3f6; color: #64748b; }
+
+.acct-chevron { width: 14px; height: 14px; stroke: #cbd2dc; flex-shrink: 0; }
+
+.acct-item--danger { color: #dc2626; }
+.acct-item--danger .acct-ico svg { stroke: #dc2626; }
+.acct-item--danger:hover { background: #fef2f2; }
+
+/* ── Visão geral ────────────────────────────────────────────────── */
+.dash { display: flex; flex-direction: column; gap: 20px; }
+
+.dash-hero {
+  padding: 22px 24px;
+  border-radius: 18px;
+  background: linear-gradient(140deg, #101828 0%, #1e3a6e 55%, #2563eb 140%);
+  color: #fff;
+  box-shadow: 0 16px 34px -20px rgba(16, 24, 40, .65);
+}
+.dash-hero-top {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; margin-bottom: 20px;
+}
+.dash-hello { margin: 0; font-size: 13px; color: rgba(255, 255, 255, .6); }
+.dash-name  {
+  margin: 2px 0 0;
+  font-size: 25px; font-weight: 800; letter-spacing: -.6px; color: #fff;
+}
+.dash-tier {
+  display: inline-flex; align-items: center; gap: 6px;
+  flex-shrink: 0;
+  padding: 6px 13px;
+  border-radius: 99px;
+  font-size: 12px; font-weight: 700;
+  color: #fff;
+  background: rgba(255, 255, 255, .12);
+  border: 1px solid rgba(255, 255, 255, .18);
+}
+.dash-tier svg { width: 13px; height: 13px; fill: currentColor; opacity: .9; }
+
+.dash-score-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 12px; margin-bottom: 8px;
+  font-size: 12.5px; color: rgba(255, 255, 255, .65);
+}
+.dash-score-head strong {
+  font-size: 17px; font-weight: 800; color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.dash-score-meta { font-size: 11.5px; }
+.dash-score-bar {
+  height: 6px; border-radius: 99px;
+  background: rgba(255, 255, 255, .14);
+  overflow: hidden;
+}
+.dash-score-bar i {
+  display: block; height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #60a5fa, #a78bfa);
+  transition: width .5s ease;
+}
+
+/* ── Ladrilhos ──────────────────────────────────────────────────── */
+.dash-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.dash-tile {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  text-decoration: none;
+  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+.dash-tile:hover {
+  transform: translateY(-2px);
+  border-color: #d6dce6;
+  box-shadow: 0 12px 24px -16px rgba(16, 24, 40, .35);
+}
+.dash-tile-ico {
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 8px;
+}
+.dash-tile-ico svg { width: 17px; height: 17px; }
+.dash-tile-ico--blue  { background: #e6f0fe; } .dash-tile-ico--blue  svg { stroke: #2563eb; }
+.dash-tile-ico--green { background: #e7f8f1; } .dash-tile-ico--green svg { stroke: #059669; }
+.dash-tile-ico--amber { background: #fef3e2; } .dash-tile-ico--amber svg { stroke: #d97706; }
+.dash-tile-ico--rose  { background: #fdeaee; } .dash-tile-ico--rose  svg { stroke: #e11d48; }
+.dash-tile-val {
+  font-size: 21px; font-weight: 800; color: var(--c-dark);
+  letter-spacing: -.7px; font-variant-numeric: tabular-nums;
+}
+.dash-tile-lbl { font-size: 12px; color: var(--c-text-muted); line-height: 1.35; }
+
+/* ── Blocos ─────────────────────────────────────────────────────── */
+.dash-block {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 16px;
+  padding: 18px 20px;
+}
+.dash-block-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 14px;
+}
+.dash-block-head h2 {
+  margin: 0; font-size: 15px; font-weight: 700;
+  color: var(--c-dark); letter-spacing: -.2px;
+}
+.dash-link {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 12.5px; font-weight: 600; color: var(--c-primary);
+  text-decoration: none;
+}
+.dash-link svg { width: 13px; height: 13px; }
+
+.dash-pedidos { display: flex; flex-direction: column; }
+.dash-pedido {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) auto minmax(0, 1fr) auto 14px;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 8px;
+  border-top: 1px solid var(--c-border);
+  text-decoration: none;
+  color: var(--c-dark);
+  border-radius: 8px;
+  transition: background .13s ease;
+}
+.dash-pedido:first-child { border-top: none; }
+.dash-pedido:hover { background: var(--c-bg); }
+.dash-pedido-cod {
+  font-size: 13.5px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+}
+.dash-pedido-cod em {
+  display: block;
+  font-size: 11.5px; font-weight: 400; font-style: normal;
+  color: var(--c-text-muted); margin-top: 1px;
+}
+.dash-pedido-itens { font-size: 12.5px; color: var(--c-text-muted); white-space: nowrap; }
+.dash-pedido-total {
+  font-size: 14px; font-weight: 700; text-align: right;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.dash-pedido-go { width: 14px; height: 14px; stroke: #cbd2dc; }
+
+.dash-tag {
+  justify-self: start;
+  font-size: 11px; font-weight: 700;
+  padding: 3px 9px; border-radius: 99px;
+  white-space: nowrap;
+}
+.dash-tag--success { background: #e7f8f1; color: #047857; }
+.dash-tag--info    { background: #e6f0fe; color: #1d4ed8; }
+.dash-tag--primary { background: #ede9fe; color: #6d28d9; }
+.dash-tag--warning { background: #fef3e2; color: #b45309; }
+.dash-tag--danger  { background: #fdeaee; color: #be123c; }
+
+.dash-vazio { text-align: center; padding: 28px 16px; color: var(--c-text-muted); }
+.dash-vazio svg { width: 40px; height: 40px; stroke: #cbd2dc; margin-bottom: 10px; }
+.dash-vazio p   { margin: 0 0 14px; font-size: 13.5px; }
+
+/* ── Atalhos ────────────────────────────────────────────────────── */
+.dash-atalhos { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.dash-atalho {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--c-border);
+  background: var(--c-bg);
+  text-decoration: none;
+  color: var(--c-dark);
+  transition: background .14s ease, border-color .14s ease;
+}
+.dash-atalho:hover { background: var(--c-surface); border-color: #d6dce6; }
+.dash-atalho svg { width: 18px; height: 18px; stroke: var(--c-primary); margin-bottom: 6px; }
+.dash-atalho strong { font-size: 13px; font-weight: 700; }
+.dash-atalho em {
+  font-size: 11.5px; font-style: normal; color: var(--c-text-muted);
+}
+
+.dash-rodape {
+  margin: 0; padding: 0 4px;
+  font-size: 12.5px; color: var(--c-text-muted); text-align: center;
+}
+.dash-rodape strong { color: var(--c-dark); font-variant-numeric: tabular-nums; }
+
+/* ── Responsivo ─────────────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  .customer-layout { grid-template-columns: 232px 1fr; }
+  .dash-tiles      { grid-template-columns: repeat(2, 1fr); }
+  .dash-atalhos    { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 768px) {
+  /* Repetido de propósito: a regra de 1024px acima também vale aqui e,
+     por vir num arquivo mais recente que o main.css, ganharia dele —
+     deixando a coluna de 232px no celular. */
+  .customer-layout { grid-template-columns: 1fr; }
+
+  /* O menu lateral some no celular (pwa-native.css) — o bottom nav ocupa
+     esse papel. Na RAIZ da conta ele volta, abaixo do painel: sem isto o
+     cliente perderia o caminho para as telas que não cabem no bottom nav. */
+  .customer-layout--home .customer-sidebar {
+    display: block;
+    position: static;
+    order: 2;
+    margin-top: 4px;
+  }
+  .customer-layout--home .acct-me { display: none; } /* o hero já apresenta a pessoa */
+
+  .dash-hero    { padding: 18px; border-radius: 16px; }
+  .dash-name    { font-size: 21px; }
+  .dash-hero-top{ margin-bottom: 16px; }
+  .dash-block   { padding: 16px; border-radius: 14px; }
+
+  /* Cabeçalho e valor em cima, detalhe embaixo: a grade de 5 colunas não
+     cabe em 360px sem espremer o código do pedido. */
+  .dash-pedido {
+    grid-template-columns: 1fr auto;
+    gap: 6px 12px;
+    padding: 12px 6px;
+  }
+  .dash-pedido-itens { display: none; }
+  .dash-pedido-go    { display: none; }
+  .dash-pedido-total { grid-row: 1; grid-column: 2; }
+  .dash-tag          { grid-column: 1 / -1; }
+}
+
+@media (max-width: 420px) {
+  .dash-tiles   { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .dash-atalhos { grid-template-columns: repeat(2, 1fr); }
+  .dash-tile    { padding: 13px; }
+  .dash-tile-val{ font-size: 18px; }
+}

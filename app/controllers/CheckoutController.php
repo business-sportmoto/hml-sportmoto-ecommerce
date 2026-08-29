@@ -2227,10 +2227,20 @@ class CheckoutController extends Controller {
         // Pix: dados para exibir QR
         $pixDados = null;
         if ($pedido['forma_pagamento'] === 'pix' && $pedido['pix_qr_code']) {
+            $expiraEm = $pedido['pix_expira_em'] ?? null;
+
             $pixDados = [
-                'qr_code'    => $pedido['pix_qr_code'],  // base64 ou URL
+                'qr_code'    => $pedido['pix_qr_code'],  // data: URI ou URL
                 'copia_cola' => $pedido['pix_copia_cola'] ?? $pedido['pix_qr_code'],
-                'expira_em'  => $pedido['pix_expira_em']  ?? null,
+                'expira_em'  => $expiraEm,
+
+                // QUEM DECIDE SE EXPIROU E O SERVIDOR.
+                //
+                // Antes so havia a contagem no navegador, e ela parava de
+                // atualizar no ultimo segundo — a tela ficava congelada em
+                // "Expira em 00:01" para sempre, oferecendo um QR que o banco
+                // ja tinha recusado. Aqui a pagina ja nasce sabendo.
+                'expirado'   => $expiraEm !== null && strtotime((string) $expiraEm) < time(),
             ];
         }
     
@@ -2944,6 +2954,10 @@ class CheckoutController extends Controller {
         $cardId       = null;
         $customerRef  = null;
         $gatewayId    = null;
+        // Nulos ate a adquirente responder. O modelo tem fallback proprio;
+        // o que nao pode e cravar um valor falso antes de perguntar.
+        $nomeTitular  = null;
+        $validade     = null;
 
         $dadosCliente = [
             'nome'      => $cliente['nome']     ?? 'Cliente',
@@ -2977,6 +2991,10 @@ class CheckoutController extends Controller {
                 $cardId      = $res['card_ref'];
                 if (!empty($res['bandeira'])) $bandeira = $res['bandeira'];
                 if (!empty($res['ultimos4'])) $ultimos4 = $res['ultimos4'];
+                // A adquirente e quem sabe: ela leu o token. Preferir o que
+                // ela devolveu evita gravar o placeholder da era hosted fields.
+                if (!empty($res['nome_titular'])) $nomeTitular = $res['nome_titular'];
+                if (!empty($res['validade']))     $validade    = $res['validade'];
 
             } else {
                 $malgaSvc        = MalgaService::fromCodigo('malga');
@@ -3023,8 +3041,8 @@ class CheckoutController extends Controller {
                 'token'        => $cardId,     // cardId permanente (ou tokenId como fallback)
                 'bandeira'     => $bandeira,
                 'ultimos_4'    => $ultimos4,
-                'nome_titular' => 'Titular',
-                'validade'     => '12/99',
+                'nome_titular' => $nomeTitular,
+                'validade'     => $validade,
                 'apelido'      => $apelido,
                 'principal'    => $principal,
             ]);

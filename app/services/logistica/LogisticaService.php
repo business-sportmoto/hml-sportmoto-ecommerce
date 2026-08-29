@@ -182,7 +182,7 @@ class LogisticaService
         )->fetchColumn();
         if ($atrasados > 0) {
             $alertas[] = [
-                'nivel' => 'danger', 'icone' => 'bi-exclamation-octagon',
+                'nivel' => 'danger', 'icone' => 'alerta',
                 'titulo' => "{$atrasados} envios atrasados",
                 'descricao' => 'Prazo estourado sem entrega confirmada.',
                 'link' => '/admin/logistica/rastreios?status=atrasado',
@@ -196,7 +196,7 @@ class LogisticaService
         )->fetchColumn();
         if ($paradas > 0) {
             $alertas[] = [
-                'nivel' => 'warn', 'icone' => 'bi-box',
+                'nivel' => 'warn', 'icone' => 'package',
                 'titulo' => "{$paradas} etiquetas paradas há +24h",
                 'descricao' => 'Emitidas, ainda não postadas.',
                 'link' => '/admin/logistica/etiquetas?status=aguardando_postagem',
@@ -209,7 +209,7 @@ class LogisticaService
         )->fetchColumn();
         if ($divAlto > 0) {
             $alertas[] = [
-                'nivel' => 'warn', 'icone' => 'bi-scale',
+                'nivel' => 'warn', 'icone' => 'scale',
                 'titulo' => 'Divergências de alto impacto',
                 'descricao' => "{$divAlto} em aberto acima do limite.",
                 'link' => '/admin/logistica/divergencias?impacto=alto',
@@ -219,7 +219,7 @@ class LogisticaService
         $falhas = $this->falhasIntegracao();
         if ($falhas > 0) {
             $alertas[] = [
-                'nivel' => 'info', 'icone' => 'bi-plug',
+                'nivel' => 'info', 'icone' => 'plug',
                 'titulo' => "{$falhas} transportadora(s) com falha de comunicação",
                 'descricao' => 'Verifique credenciais e sincronização.',
                 'link' => '/admin/logistica/transportadoras',

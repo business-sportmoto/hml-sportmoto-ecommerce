@@ -265,4 +265,56 @@ class Review extends Model {
         $this->db->prepare("INSERT INTO avaliacao_rate_limit (ip) VALUES (?)")->execute([$ip]);
         return true;
     }
+
+    // ── Votos "útil" em lote ─────────────────────────────
+    // A listagem da web chama jaVotou() dentro do laço: uma query por
+    // avaliação na tela. Aqui é uma só para a página inteira.
+    //
+    // Cliente logado é identificado por cliente_id; visitante, pela
+    // session_key — as duas colunas coexistem em avaliacao_util_votos.
+    //
+    // @param int[] $ids
+    // @return array<int,bool>  [avaliacao_id => votou]
+    public function votosEmLote(array $ids, ?int $clienteId, string $sessao): array {
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+        if (empty($ids)) return [];
+
+        // Sem identidade nenhuma não há como ter votado.
+        if (!$clienteId && $sessao === '') return [];
+
+        $in = implode(',', array_fill(0, count($ids), '?'));
+
+        if ($clienteId) {
+            $sql    = "SELECT avaliacao_id FROM avaliacao_util_votos
+                       WHERE avaliacao_id IN ({$in}) AND cliente_id = ?";
+            $params = array_merge($ids, [$clienteId]);
+        } else {
+            $sql    = "SELECT avaliacao_id FROM avaliacao_util_votos
+                       WHERE avaliacao_id IN ({$in}) AND session_key = ?";
+            $params = array_merge($ids, [$sessao]);
+        }
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+
+        $out = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN, 0) as $id) {
+            $out[(int)$id] = true;
+        }
+        return $out;
+    }
+
+    // ── Quantas avaliações do produto têm foto ou vídeo ──
+    // Alimenta o filtro "com mídia" do app: sem o número, o app teria de
+    // oferecer um filtro que pode não devolver nada.
+    public function contarComMidia(int $produtoId): int {
+        $stmt = $this->db->prepare(
+            "SELECT COUNT(DISTINCT a.id)
+             FROM avaliacoes a
+             JOIN avaliacao_midias m ON m.avaliacao_id = a.id AND m.aprovada = 1
+             WHERE a.produto_id = ? AND a.aprovado = 1"
+        );
+        $stmt->execute([$produtoId]);
+        return (int)$stmt->fetchColumn();
+    }
 }

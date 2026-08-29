@@ -182,4 +182,129 @@ class AppCarrinhoController extends AppApiController
 
         $this->ok(array_merge($extra, CartPresenter::montar($totais, $ctx)), $status);
     }
+
+    /* =================================================================
+       CARRINHO COMPARTILHADO
+       ================================================================= */
+
+    /**
+     * POST /api/app/v1/carrinho/compartilhar
+     * Corpo: { nome? }  — `nome` só para visitante, que não tem conta a exibir.
+     *
+     * Congela o carrinho atual num link de 7 dias. A URL aponta para o site
+     * porque é ela que a pessoa vai colar no WhatsApp: quem tiver o app abre
+     * pelo deep link, quem não tiver abre no navegador.
+     */
+    public function compartilhar(): void
+    {
+        $this->bootPublico();
+
+        $carrinhoId = (new AppCartService($this->db()))->carrinhoId();
+        if (!$carrinhoId) {
+            $this->falha(422, 'carrinho_vazio', 'Seu carrinho está vazio.');
+        }
+
+        $r = (new CarrinhoCompartilhadoService())->criar(
+            $carrinhoId,
+            $this->usuarioId,
+            trim((string)$this->campo('nome', ''))
+        );
+
+        $this->liberarSessao();
+
+        if (empty($r['ok'])) {
+            $this->falha(422, 'carrinho_vazio', (string)($r['erro'] ?? 'Não foi possível compartilhar.'));
+        }
+
+        $this->ok([
+            'token'     => $r['token'],
+            'url'       => $r['url'],
+            'expira_em' => date(DATE_ATOM, strtotime((string)$r['expira_em'])),
+        ], 201);
+    }
+
+    /**
+     * GET /api/app/v1/carrinho/compartilhado/{token}
+     *
+     * Só a visão do snapshot — nada é copiado aqui. Ver antes de decidir é o
+     * ponto: o carrinho de quem abre não pode mudar por abrir um link.
+     */
+    public function verCompartilhado(string $token = ''): void
+    {
+        $this->bootPublico();
+
+        $servico = new CarrinhoCompartilhadoService();
+        $c = $servico->abrir($token);
+
+        if (!$c) {
+            $this->liberarSessao();
+            $this->falha(404, 'link_invalido', 'Este link expirou ou não existe mais.');
+        }
+
+        $servico->registrarVisualizacao($token, $this->clienteId, $this->ipReal());
+
+        $ctx = $this->contexto();
+
+        // Quantos itens quem abriu já tem: é o que decide se o app precisa
+        // perguntar "somar ou substituir?" antes de copiar.
+        $meuCarrinho = (new AppCartService($this->db()))->contar();
+
+        $this->liberarSessao();
+
+        $this->ok([
+            'compartilhado'  => CarrinhoCompartilhadoPresenter::montar($c, $ctx),
+            'meus_itens'     => $meuCarrinho,
+            'precisa_decidir'=> $meuCarrinho > 0,
+        ]);
+    }
+
+    /**
+     * POST /api/app/v1/carrinho/compartilhado/{token}/copiar
+     * Corpo: { estrategia: "mesclar" | "substituir" }
+     *
+     * A loja pergunta "adicionar ou substituir?" com um confirm() e, se o modo
+     * vier em branco, devolve um erro pedindo para escolher. Aqui a escolha é
+     * explícita no corpo e o padrão é `mesclar` — o que nunca descarta o que a
+     * pessoa já tinha.
+     *
+     * Preço e estoque são reconferidos na cópia: o link vale uma semana e
+     * ninguém deve congelar uma promoção guardando a URL.
+     */
+    public function copiarCompartilhado(string $token = ''): void
+    {
+        $this->bootPublico();
+
+        $estrategia = (string)$this->campo('estrategia', 'mesclar');
+
+        // criar: true — quem chega por link normalmente ainda não tem carrinho.
+        $carrinhoId = (new AppCartService($this->db()))->carrinhoId(true);
+        if (!$carrinhoId) {
+            $this->falha(500, 'sem_carrinho', 'Não foi possível preparar seu carrinho.');
+        }
+
+        $r = (new CarrinhoCompartilhadoService())->copiar(
+            $token,
+            $carrinhoId,
+            $estrategia,
+            $this->clienteId,
+            $this->ipReal()
+        );
+
+        if (empty($r['ok'])) {
+            $this->falha(404, 'link_invalido', (string)($r['erro'] ?? 'Link inválido.'));
+        }
+
+        AppLog::info('Carrinho compartilhado copiado no app', [
+            'adicionados' => $r['adicionados'],
+            'ignorados'   => $r['ignorados'],
+            'estrategia'  => $estrategia,
+        ]);
+
+        // Devolve o carrinho inteiro, como toda escrita deste controller.
+        $this->responderCarrinho([
+            'copiados'        => $r['adicionados'],
+            'ignorados'       => $r['ignorados'],
+            'itens_ignorados' => $r['itens_ignorados'],
+        ]);
+    }
 }

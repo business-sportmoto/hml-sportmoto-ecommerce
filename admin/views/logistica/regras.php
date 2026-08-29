@@ -2,10 +2,10 @@
 /**
  * View: Regras de frete (lista).
  * Recebe: $regras, $campos, $opers, $filtros
- * Formulário (nova/editar) montado no cliente (frete.js) — condições e ações.
+ * Formulário (nova/editar) montado no cliente (logistica.js) — condições e ações.
  */
 $e = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
-$ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">' . (class_exists('IconLibrary') ? IconLibrary::render($n) : '') . '</span>';
+$ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">' . (class_exists('IconLibrary') ? IconLibrary::ref($n, '') : '') . '</span>';
 $f = $filtros ?? [];
 ?>
 
@@ -72,8 +72,8 @@ $f = $filtros ?? [];
                 ?>
                     <tr data-id="<?= (int)$r['id'] ?>">
                         <td><div class="log_ordem">
-                            <button type="button" class="log_btn log_btn--icon log_btn--xs js-mover" data-dir="cima" title="Subir"><?= $ico('arrow-up', 15) ?></button>
-                            <button type="button" class="log_btn log_btn--icon log_btn--xs js-mover" data-dir="baixo" title="Descer"><?= $ico('arrow-down', 15) ?></button>
+                            <button type="button" class="log_btn log_btn--icon log_btn--xs js-mover" data-dir="cima" title="Subir" aria-label="Subir"><?= $ico('arrow-up', 15) ?></button>
+                            <button type="button" class="log_btn log_btn--icon log_btn--xs js-mover" data-dir="baixo" title="Descer" aria-label="Descer"><?= $ico('arrow-down', 15) ?></button>
                         </div></td>
                         <td>
                             <div class="log_transp_info">
@@ -98,8 +98,8 @@ $f = $filtros ?? [];
                             </label>
                         </td>
                         <td class="log_col_acoes">
-                            <button type="button" class="log_btn log_btn--icon js-editar" title="Editar"><?= $ico('edit', 15) ?></button>
-                            <button type="button" class="log_btn log_btn--icon js-remover" title="Remover"><?= $ico('trash', 15) ?></button>
+                            <button type="button" class="log_btn log_btn--icon js-editar" title="Editar" aria-label="Editar"><?= $ico('edit', 15) ?></button>
+                            <button type="button" class="log_btn log_btn--icon log_btn--danger js-remover" title="Remover" aria-label="Remover"><?= $ico('trash', 15) ?></button>
                         </td>
                     </tr>
                 <?php endforeach; endif; ?>

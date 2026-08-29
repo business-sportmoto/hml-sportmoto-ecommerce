@@ -1,10 +1,10 @@
 <?php
 /**
  * View: Divergências + Alertas de produto (admin).
- * Recebe: $transportadoras, $filtros. Lógica em divergencias.js.
+ * Recebe: $transportadoras, $filtros. Lógica em logistica.js.
  */
 $e = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
-$ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">' . (class_exists('IconLibrary') ? IconLibrary::render($n) : '') . '</span>';
+$ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">' . (class_exists('IconLibrary') ? IconLibrary::ref($n, '') : '') . '</span>';
 $f = $filtros ?? [];
 ?>
 <link rel="stylesheet" href="/assets/css/logistica.css">
@@ -18,7 +18,7 @@ $f = $filtros ?? [];
         </div>
         <div class="log_head_actions">
             <a href="/admin/logistica" class="log_btn log_btn--sm"><?= $ico('caminhao', 15) ?> Torre</a>
-            <button type="button" class="log_btn log_btn--primary log_btn--sm" id="logDivNova"><i class="bi bi-plus-lg"></i> Nova divergência</button>
+            <button type="button" class="log_btn log_btn--primary log_btn--sm" id="logDivNova"><?= $ico('add', 15) ?> Nova divergência</button>
         </div>
     </div>
 
@@ -118,4 +118,3 @@ $f = $filtros ?? [];
     window.LOG_DIV_BASE = '/admin/logistica/divergencias';
     window.LOG_DIV_TRANSPORTADORAS = <?= json_encode($transportadoras ?? [], JSON_UNESCAPED_UNICODE) ?>;
 </script>
-<script src="/assets/js/divergencias.js" defer></script>

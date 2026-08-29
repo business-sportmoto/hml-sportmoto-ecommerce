@@ -270,10 +270,15 @@ $steps = array_map(function ($def) use ($nivelAtual, $isCancelado) {
                readonly value="<?= View::e($pixDados['copia_cola']) ?>">
         <button type="button" class="btn btn-primary" id="btn-copiar-pix">Copiar</button>
       </div>
-      <?php if ($pixDados['expira_em']): ?>
-      <div class="pix-timer">
+      <?php if (!empty($pixDados['expirado'])): ?>
+      <div class="pix-timer pix-timer--expirado" id="pix-timer">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+        Este QR Code expirou. <a href="<?= BASE_URL ?>/checkout">Refazer o pagamento</a>
+      </div>
+      <?php elseif ($pixDados['expira_em']): ?>
+      <div class="pix-timer" id="pix-timer">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        Expira em <strong id="pix-countdown">30:00</strong>
+        Expira em <strong id="pix-countdown">--:--</strong>
       </div>
       <?php endif; ?>
       <ol class="pix-steps">
@@ -283,15 +288,31 @@ $steps = array_map(function ($def) use ($nivelAtual, $isCancelado) {
         <li>Confirme o pagamento de <strong><?= PriceHelper::format((float)$pedido['total']) ?></strong></li>
       </ol>
     </div>
+    <?php
+    // So e imagem se der para colocar num <img>. O adapter ja normaliza o
+    // base64 cru do Mercado Pago em data: URI — antes disto a condicao dava
+    // falso sempre e a tela mostrava um retangulo cinza no lugar do QR.
+    $qr = (string) $pixDados['qr_code'];
+    $temImagem = str_starts_with($qr, 'data:') || str_starts_with($qr, 'http');
+    ?>
+    <?php if ($temImagem && empty($pixDados['expirado'])): ?>
     <div class="success-pix-qr">
-      <?php if (str_starts_with($pixDados['qr_code'],'data:') || str_starts_with($pixDados['qr_code'],'http')): ?>
-        <img src="<?= View::e($pixDados['qr_code']) ?>" alt="QR Code Pix" class="pix-qr-img">
-      <?php else: ?>
-        <div id="pix-qr-placeholder" data-code="<?= View::e($pixDados['qr_code']) ?>"
-             style="width:200px;height:200px;background:#f1f5f9;border-radius:12px;"></div>
-      <?php endif; ?>
+      <img src="<?= View::e($qr) ?>" alt="QR Code Pix" class="pix-qr-img">
       <small>Escaneie com a câmera do celular</small>
     </div>
+    <?php elseif (empty($pixDados['expirado'])): ?>
+    <div class="success-pix-qr success-pix-qr--sem-imagem">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+           stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM18 18h3v3h-3z"/>
+      </svg>
+      <small>
+        Esta operadora não gerou a imagem do QR Code.<br>
+        Use o botão <strong>Copiar</strong> e cole o código no app do banco.
+      </small>
+    </div>
+    <?php endif; ?>
   </div>
   <?php endif; ?>
 
@@ -551,46 +572,6 @@ $steps = array_map(function ($def) use ($nivelAtual, $isCancelado) {
 </script>
 <?php endif; ?>
 
-<script>
-$(function () {
-  setTimeout(function () {
-    $('.sh-circle').addClass('animated');
-    setTimeout(function () { $('.sh-check').addClass('animated'); }, 420);
-  }, 120);
-
-  $('#btn-copiar-pix').on('click', function () {
-    var $b = $(this), code = $('#pix-copia-input').val();
-    navigator.clipboard && navigator.clipboard.writeText(code).then(function () {
-      $b.text('Copiado ✓').addClass('btn-copied');
-      setTimeout(function () { $b.text('Copiar').removeClass('btn-copied'); }, 3000);
-    });
-  });
-
-  var expira = <?= !empty($pixDados['expira_em']) ? json_encode($pixDados['expira_em']) : 'null' ?>;
-  if (expira) {
-    var end = new Date(expira).getTime();
-    var iv  = setInterval(function () {
-      var d = Math.max(0, Math.floor((end - Date.now()) / 1000));
-      if (!d) { clearInterval(iv); $('#pix-timer').html('<span style="color:#dc2626">QR Code expirado.</span>'); return; }
-      $('#pix-countdown').text(String(Math.floor(d/60)).padStart(2,'0') + ':' + String(d%60).padStart(2,'0'));
-    }, 1000);
-  }
-
-  <?php if ($aprovado && $isCartao): ?>
-  (function () {
-    var c = document.createElement('canvas');
-    c.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:9998';
-    document.body.appendChild(c);
-    var ctx = c.getContext('2d'); c.width = innerWidth; c.height = innerHeight;
-    var P=[], cols=['#2563eb','#4ade80','#f59e0b','#f472b6','#a78bfa','#34d399'];
-    for(var i=0;i<140;i++) P.push({x:Math.random()*c.width,y:Math.random()*-c.height,w:7+Math.random()*6,h:4+Math.random()*4,vx:(Math.random()-.5)*4,vy:2.5+Math.random()*3,col:cols[i%cols.length],a:Math.random()*Math.PI*2,s:(Math.random()-.5)*.15});
-    var gone=false;
-    (function draw(){if(gone)return;ctx.clearRect(0,0,c.width,c.height);var all=true;P.forEach(function(p){p.vy+=.12;p.x+=p.vx;p.y+=p.vy;p.a+=p.s;if(p.y<c.height+10)all=false;ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.a);ctx.fillStyle=p.col;ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h);ctx.restore();});if(all){c.remove();gone=true;return;}requestAnimationFrame(draw);})();
-    setTimeout(function(){gone=true;c.remove();},5500);
-  })();
-  <?php endif; ?>
-});
-</script>
 
 
 <script>
@@ -612,20 +593,38 @@ $(function () {
   });
 
   // ── Countdown de expiração do PIX ────────────────────────────
-  var expira = <?= !empty($pixDados['expira_em']) ? json_encode($pixDados['expira_em']) : 'null' ?>;
-  if (expira) {
-    var end = new Date(expira).getTime();
-    var iv  = setInterval(function () {
-      var d = Math.max(0, Math.floor((end - Date.now()) / 1000));
-      if (!d) {
-        clearInterval(iv);
-        $('#pix-timer').html('<span style="color:#dc2626">QR Code expirado. <a href="<?= BASE_URL ?>">Novo pedido</a></span>');
-        return;
-      }
+  var expira = <?= !empty($pixDados['expira_em']) && empty($pixDados['expirado'])
+                    ? json_encode($pixDados['expira_em']) : 'null' ?>;
+
+  // Vem do MySQL como "2026-08-29 15:10:21". O Safari devolve Invalid Date
+  // para esse formato; trocar o espaco por "T" faz os dois lerem igual.
+  var fim = expira ? new Date(String(expira).replace(' ', 'T')).getTime() : NaN;
+
+  function expirou() {
+    $('#pix-timer')
+      .addClass('pix-timer--expirado')
+      .html('Este QR Code expirou. <a href="<?= BASE_URL ?>/checkout">Refazer o pagamento</a>');
+  }
+
+  if (expira && !isNaN(fim)) {
+    var pinta = function () {
+      var d = Math.max(0, Math.floor((fim - Date.now()) / 1000));
+
       $('#pix-countdown').text(
         String(Math.floor(d / 60)).padStart(2, '0') + ':' + String(d % 60).padStart(2, '0')
       );
-    }, 1000);
+
+      // Pinta ANTES de decidir parar. A versao anterior saia sem escrever,
+      // entao o ultimo valor visivel era 00:01 — e a tela ficava parada ali,
+      // oferecendo um QR que o banco ja tinha recusado.
+      if (d <= 0) { clearInterval(iv); expirou(); }
+    };
+    var iv = setInterval(pinta, 1000);
+    pinta();
+  } else if (expira) {
+    // Data ilegivel: melhor nao mostrar contagem nenhuma do que mostrar uma
+    // errada. O cliente ainda consegue pagar pelo copia e cola.
+    $('#pix-timer').remove();
   }
 
   // ── Confete (cartão aprovado) ─────────────────────────────────

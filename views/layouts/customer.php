@@ -4,18 +4,51 @@ $paginaAtual = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
 $categoryModel    = new Category();
 
-$menus = [
-    ['url' => '/minha-conta',           'label' => 'Dashboard',    'icon' => 'grid'],
-    ['url' => '/minha-conta/pedidos',   'label' => 'Meus pedidos', 'icon' => 'bag'],
-    ['url' => '/minha-conta/garagem',   'label' => 'Minha garagem', 'icon' => 'motorcycle'],
-    ['url' => '/minha-conta/favoritos', 'label' => 'Favoritos',    'icon' => 'heart'],
-    ['url' => '/minha-conta/carrinhos-compartilhados', 'label' => 'Cart compartilhados', 'icon' => 'share-cart'],
-    ['url' => '/minha-conta/historico', 'label' => 'Histórico', 'icon' => 'clock'],
-    ['url' => '/minha-conta/enderecos', 'label' => 'Endereços',    'icon' => 'pin'],
-    ['url' => '/minha-conta/cartoes',   'label' => 'Cartões',      'icon' => 'card'],
-    ['url' => '/minha-conta/perfil',    'label' => 'Meu perfil',   'icon' => 'user'],
-    ['url' => '/minha-conta/sessoes',   'label' => 'Segurança',    'icon' => 'shield'],
-    
+// Contadores dos selos. Vêm do model, como o $categoryModel logo acima —
+// o layout é o único consumidor, e replicar isso nos cinco controllers que
+// usam este layout só criaria cinco lugares para esquecer.
+$menuBadges = ['pedidos' => 0, 'devolucoes' => 0, 'motos' => 0, 'favoritos' => 0,
+               'enderecos' => 0, 'cartoes' => 0, 'tier' => 'bronze', 'score' => 0];
+try {
+    $menuBadges = (new Customer())->getMenuBadges((int) Session::getClienteId()) + $menuBadges;
+} catch (\Throwable $e) {
+    // Menu sem selo é menu; menu que derruba a página, não. O erro já foi
+    // registrado pelo handler global.
+}
+
+// A raiz da conta é a única página que também mostra o menu no celular —
+// lá o menu lateral fica escondido, e sem isto o cliente ficaria sem
+// caminho para as outras telas.
+$ehHome = rtrim($paginaAtual, '/') === '/minha-conta';
+
+/**
+ * Navegação agrupada. Antes era uma lista corrida de dez itens em que
+ * "Cartões" e "Segurança" pesavam o mesmo que "Meus pedidos". Agrupar separa
+ * o que o cliente usa toda semana do que ele abre duas vezes por ano.
+ *
+ * `badge` aponta para a chave em $menuBadges; null = sem selo.
+ */
+$grupos = [
+    ['titulo' => null, 'itens' => [
+        ['url' => '/minha-conta', 'label' => 'Visão geral', 'icon' => 'grid', 'badge' => null, 'exato' => true],
+    ]],
+    ['titulo' => 'Compras', 'itens' => [
+        ['url' => '/minha-conta/pedidos',    'label' => 'Meus pedidos',   'icon' => 'bag',        'badge' => 'pedidos',    'tom' => 'blue'],
+        ['url' => '/minha-conta/devolucoes', 'label' => 'Devoluções',     'icon' => 'refresh',    'badge' => 'devolucoes', 'tom' => 'orange'],
+        ['url' => '/minha-conta/carrinhos-compartilhados', 'label' => 'Carrinhos', 'icon' => 'share-cart', 'badge' => null],
+        ['url' => '/minha-conta/historico',  'label' => 'Histórico',      'icon' => 'clock',      'badge' => null],
+        ['url' => '/minha-conta/avaliacoes', 'label' => 'Avaliações',     'icon' => 'star',       'badge' => null],
+    ]],
+    ['titulo' => 'Minha garagem', 'itens' => [
+        ['url' => '/minha-conta/garagem',   'label' => 'Garagem',   'icon' => 'motorcycle', 'badge' => 'motos',     'tom' => 'gray'],
+        ['url' => '/minha-conta/favoritos', 'label' => 'Favoritos', 'icon' => 'heart',      'badge' => 'favoritos', 'tom' => 'gray'],
+    ]],
+    ['titulo' => 'Conta', 'itens' => [
+        ['url' => '/minha-conta/enderecos', 'label' => 'Endereços',  'icon' => 'pin',    'badge' => 'enderecos', 'tom' => 'gray'],
+        ['url' => '/minha-conta/cartoes',   'label' => 'Cartões',    'icon' => 'card',   'badge' => 'cartoes',   'tom' => 'gray'],
+        ['url' => '/minha-conta/perfil',    'label' => 'Meu perfil', 'icon' => 'user',   'badge' => null],
+        ['url' => '/minha-conta/sessoes',   'label' => 'Segurança',  'icon' => 'shield', 'badge' => null],
+    ]],
 ];
 
 $icons = [
@@ -28,7 +61,10 @@ $icons = [
     'user'  => '<path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>',
     'shield'=> '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
     'clock' => '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+    'star'  => '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+    'refresh' => '<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/>',
     'share-cart' => '<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/><path d="M17 14l4-4-4-4"/>',
+    'logout' => '<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
 ];
 ?>
 <!DOCTYPE html>
@@ -63,56 +99,98 @@ $icons = [
 
   <div class="customer-wrapper customer">
     <div class="container">
-      <div class="customer-layout">
+      <div class="customer-layout <?= $ehHome ? 'customer-layout--home' : '' ?>">
 
-        <!-- Sidebar da área do cliente -->
-        <aside class="customer-sidebar">
-          <div class="customer-profile-card">
-            <?php
-            $avatarUrl = !empty($perfil['avatar'] ?? '')
-                ? View::upload('avatars/' . $perfil['avatar'])
-                : null;
-            ?>
+        <!-- Navegação da área do cliente -->
+        <aside class="customer-sidebar acct-nav">
+
+          <?php
+          $avatarUrl = !empty($perfil['avatar'] ?? '')
+              ? View::upload('avatars/' . $perfil['avatar'])
+              : null;
+          $tiers = [
+              'bronze'   => ['Bronze',   '#b45309', 'rgba(251,191,36,.16)'],
+              'silver'   => ['Prata',    '#cbd5e1', 'rgba(203,213,225,.16)'],
+              'gold'     => ['Ouro',     '#fbbf24', 'rgba(251,191,36,.16)'],
+              'platinum' => ['Platinum', '#93c5fd', 'rgba(147,197,253,.16)'],
+          ];
+          $tierAtual = $tiers[$menuBadges['tier']] ?? $tiers['bronze'];
+          ?>
+
+          <a href="<?= BASE_URL ?>/minha-conta/perfil" class="acct-me">
             <?php if ($avatarUrl): ?>
-              <img src="<?= $avatarUrl ?>" alt="" class="customer-avatar">
+              <img src="<?= $avatarUrl ?>" alt="" class="acct-me-avatar">
             <?php else: ?>
-              <div class="customer-avatar customer-avatar--initial">
-                <?= strtoupper(mb_substr(Session::get('cliente_nome'), 0, 1)) ?>
+              <div class="acct-me-avatar acct-me-avatar--initial">
+                <?= strtoupper(mb_substr((string) Session::get('cliente_nome'), 0, 1)) ?>
               </div>
             <?php endif; ?>
-            <div class="customer-profile-info">
+            <div class="acct-me-info">
               <strong><?= View::e(Session::get('cliente_nome')) ?></strong>
               <span><?= View::e(Session::get('cliente_email')) ?></span>
+              <em class="acct-me-tier"
+                  style="color:<?= $tierAtual[1] ?>;background:<?= $tierAtual[2] ?>">
+                <?= $tierAtual[0] ?><?= $menuBadges['score'] > 0
+                    ? ' · ' . number_format($menuBadges['score']) . ' pts' : '' ?>
+              </em>
             </div>
-          </div>
+            <svg class="acct-me-go" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </a>
 
-          <nav class="customer-nav">
-            <?php foreach ($menus as $menu):
-              $isActive = str_starts_with($paginaAtual, $menu['url'])
-                       && ($menu['url'] === '/minha-conta' ? $paginaAtual === $menu['url'] : true);
-            ?>
-            <a href="<?= BASE_URL . $menu['url'] ?>"
-               class="customer-nav-item <?= $isActive ? 'active' : '' ?>">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                <?= $icons[$menu['icon']] ?>
-              </svg>
-              <?= $menu['label'] ?>
-            </a>
+          <nav class="acct-groups">
+            <?php foreach ($grupos as $grupo): ?>
+            <div class="acct-group">
+              <?php if ($grupo['titulo']): ?>
+                <h2 class="acct-group-title"><?= $grupo['titulo'] ?></h2>
+              <?php endif; ?>
+              <div class="acct-group-card">
+                <?php foreach ($grupo['itens'] as $item):
+                  // A raiz casa exata; as demais por prefixo, para que
+                  // /pedidos/123 mantenha "Meus pedidos" aceso.
+                  $ativo = !empty($item['exato'])
+                      ? rtrim($paginaAtual, '/') === $item['url']
+                      : str_starts_with($paginaAtual, $item['url']);
+                  $n = $item['badge'] ? (int) ($menuBadges[$item['badge']] ?? 0) : 0;
+                ?>
+                <a href="<?= BASE_URL . $item['url'] ?>"
+                   class="acct-item <?= $ativo ? 'is-active' : '' ?>">
+                  <span class="acct-ico">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <?= $icons[$item['icon']] ?>
+                    </svg>
+                  </span>
+                  <span class="acct-label"><?= $item['label'] ?></span>
+                  <?php if ($n > 0): ?>
+                    <span class="acct-badge acct-badge--<?= $item['tom'] ?? 'gray' ?>"><?= $n ?></span>
+                  <?php endif; ?>
+                  <svg class="acct-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </a>
+                <?php endforeach; ?>
+              </div>
+            </div>
             <?php endforeach; ?>
 
-            <a href="<?= BASE_URL ?>/sair" class="customer-nav-item customer-nav-item--logout">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
-                <polyline points="16 17 21 12 16 7"/>
-                <line x1="21" y1="12" x2="9" y2="12"/>
-              </svg>
-              Sair da conta
-            </a>
+            <div class="acct-group">
+              <div class="acct-group-card">
+                <a href="<?= BASE_URL ?>/sair" class="acct-item acct-item--danger">
+                  <span class="acct-ico">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <?= $icons['logout'] ?>
+                    </svg>
+                  </span>
+                  <span class="acct-label">Sair da conta</span>
+                  <svg class="acct-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </a>
+              </div>
+            </div>
           </nav>
         </aside>
-        
+
 
         <!-- Conteúdo principal -->
         <main class="customer-content">

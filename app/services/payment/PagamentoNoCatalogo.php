@@ -116,6 +116,12 @@ class PagamentoNoCatalogo
                      'tipo' => 'select',
                      'opcoes' => ['1' => 'Sim (recomendado)', '0' => 'Nao, sempre consultar'],
                      'padrao' => '1'],
+                    ['nome' => 'pular_se_liability_shift', 'rotulo' => 'Dispensar quando o 3DS transferir a responsabilidade',
+                     'tipo' => 'select',
+                     'opcoes' => ['0' => 'Nao (padrao)', '1' => 'Sim, aprovar direto'],
+                     'padrao' => '0',
+                     'ajuda' => 'Vale so para disputa de FRAUDE. "Nao recebi" e "nao era o que '
+                              . 'comprei" continuam sendo seus — nenhum 3DS evita isso.'],
                 ],
             ],
 

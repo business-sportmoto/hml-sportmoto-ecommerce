@@ -92,83 +92,38 @@ class ReviewController extends Controller {
         $this->json($result);
     }
 
-        public function uploadMidia(): void {
+    // ── POST /avaliacoes/upload-midia ─────────────────────
+    // A regra de upload (limite de 5, 5 MB por imagem, 30 MB por vídeo,
+    // thumbnail) mora em AvaliacaoMidiaService, porque o app faz o MESMO
+    // upload por /api/app/v1/avaliacoes/midias. O contrato JSON desta rota
+    // não mudou — o JS da loja continua lendo token, arquivo, url e thumb_url.
+    public function uploadMidia(): void {
         $this->verifyCsrf();
 
-        if (empty($_FILES['midia']['tmp_name'])) {
+        $arquivo = $_FILES['midia'] ?? null;
+        if (!is_array($arquivo)) {
             $this->json(['ok' => false, 'msg' => 'Nenhum arquivo enviado.']);
         }
 
-        $token = SecurityHelper::sanitizeString($_POST['token'] ?? '');
-        if (empty($token)) $token = bin2hex(random_bytes(16));
-
-        // Limite de 5 mídias por avaliação aplicado no servidor — o
-        // limite no JS (MAX=5) é só conveniência de UX, não proteção;
-        // sem isso, alguém poderia chamar o endpoint repetidamente e
-        // acumular dezenas de arquivos sob o mesmo token.
-        $stmtCount = Database::getInstance()->getConnection()->prepare(
-            "SELECT COUNT(*) FROM avaliacao_midias_temp WHERE token = ?"
+        $r = (new AvaliacaoMidiaService())->guardar(
+            $arquivo,
+            SecurityHelper::sanitizeString($_POST['token'] ?? ''),
+            $_SERVER['REMOTE_ADDR'] ?? null
         );
-        $stmtCount->execute([$token]);
-        if ((int)$stmtCount->fetchColumn() >= 5) {
-            $this->json(['ok' => false, 'msg' => 'Limite de 5 fotos/vídeos por avaliação.']);
+
+        if (empty($r['ok'])) {
+            $this->json(['ok' => false, 'msg' => $r['erro'] ?? 'Falha no envio.']);
         }
 
-        $file      = $_FILES['midia'];
-        $isImagem  = strpos($file['type'], 'image/') === 0;
-        $isVideo   = strpos($file['type'], 'video/') === 0;
-
-        if (!$isImagem && !$isVideo) {
-            $this->json(['ok' => false, 'msg' => 'Formato não permitido.']);
-        }
-
-        $maxSize = $isImagem ? 5 * 1024 * 1024 : 30 * 1024 * 1024;
-        if ($file['size'] > $maxSize) {
-            $this->json(['ok' => false, 'msg' => 'Arquivo muito grande.']);
-        }
-
-        $dir = UPLOAD_PATH . '/avaliacoes/';
-        if (!is_dir($dir)) mkdir($dir, 0755, true);
-
-        $ext     = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        $allowed = ['jpg','jpeg','png','webp','mp4','webm','mov'];
-        if (!in_array($ext, $allowed)) {
-            $this->json(['ok' => false, 'msg' => 'Extensão não permitida.']);
-        }
-
-        $hash    = bin2hex(random_bytes(8));
-        $arquivo = 'rev_' . $hash . '.' . $ext;
-
-        if (!move_uploaded_file($file['tmp_name'], $dir . $arquivo)) {
-            $this->json(['ok' => false, 'msg' => 'Erro ao salvar arquivo.']);
-        }
-
-        $thumb = null;
-
-        // Para imagem: gera thumb via GD
-        if ($isImagem && function_exists('imagecreatefromjpeg')) {
-            $thumb = $this->gerarThumb($dir . $arquivo, $dir, $hash, $ext);
-        }
-
-        // Para vídeo: extrai frame via ffmpeg
-        if ($isVideo) {
-            $thumb = $this->gerarThumbVideo($dir . $arquivo, $dir, $hash);
-        }
-
-        // Salva temporariamente
-        $tipo = $isImagem ? 'imagem' : 'video';
-        Database::getInstance()->getConnection()->prepare(
-            "INSERT INTO avaliacao_midias_temp (token, tipo, arquivo, thumb, ip)
-             VALUES (?,?,?,?,?)"
-        )->execute([$token, $tipo, $arquivo, $thumb, $_SERVER['REMOTE_ADDR'] ?? null]);
+        $m = $r['midia'];
 
         $this->json([
             'ok'        => true,
-            'token'     => $token,
-            'arquivo'   => $arquivo,
-            'thumb_url' => $thumb ? UPLOAD_URL . '/avaliacoes/' . $thumb : null,
-            'url'       => UPLOAD_URL . '/avaliacoes/' . $arquivo,
-            'tipo'      => $tipo,
+            'token'     => $m['token'],
+            'arquivo'   => $m['arquivo'],
+            'thumb_url' => $m['thumb'] ? UPLOAD_URL . '/avaliacoes/' . $m['thumb'] : null,
+            'url'       => UPLOAD_URL . '/avaliacoes/' . $m['arquivo'],
+            'tipo'      => $m['tipo'],
         ]);
     }
 
@@ -192,32 +147,13 @@ class ReviewController extends Controller {
             $this->json(['ok' => false]);
         }
 
-        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
-        $db = Database::getInstance()->getConnection();
-
-        $stmt = $db->prepare(
-            "SELECT id, arquivo, thumb FROM avaliacao_midias_temp
-             WHERE token = ? AND arquivo = ? AND ip = ?
-             LIMIT 1"
+        $ok = (new AvaliacaoMidiaService())->remover(
+            $token,
+            $arquivo,
+            $_SERVER['REMOTE_ADDR'] ?? ''
         );
-        $stmt->execute([$token, $arquivo, $ip]);
-        $row = $stmt->fetch();
 
-        if (!$row) {
-            // Idempotente: se já foi removida (ou nunca existiu), não é
-            // erro — o resultado final desejado (mídia ausente) já é real.
-            $this->json(['ok' => true]);
-        }
-
-        $dir = UPLOAD_PATH . '/avaliacoes/';
-        if (!empty($row['arquivo'])) @unlink($dir . $row['arquivo']);
-        if (!empty($row['thumb']))   @unlink($dir . $row['thumb']);
-
-        $db->prepare(
-            "DELETE FROM avaliacao_midias_temp WHERE id = ?"
-        )->execute([$row['id']]);
-
-        $this->json(['ok' => true]);
+        $this->json(['ok' => $ok]);
     }
 
     // ── POST /avaliacoes/enviar ───────────────────────────
@@ -320,97 +256,6 @@ class ReviewController extends Controller {
         $total = (int)$stmt->fetchColumn();
 
         $this->json(['ok' => true, 'votou' => $votou, 'total' => $total]);
-    }
-
-    private function gerarThumb(string $pathOrig, string $dir, string $hash, string $ext): ?string {
-        try {
-            $img = match ($ext) {
-                'jpg','jpeg' => imagecreatefromjpeg($pathOrig),
-                'png'  => imagecreatefrompng($pathOrig),
-                'webp' => imagecreatefromwebp($pathOrig),
-                default => null,
-            };
-            if (!$img) return null;
-
-            $w   = imagesx($img);
-            $h   = imagesy($img);
-            $max = 200;
-
-            if ($w > $max || $h > $max) {
-                $r   = min($max/$w, $max/$h);
-                $nw  = (int)($w * $r);
-                $nh  = (int)($h * $r);
-                $dst = imagecreatetruecolor($nw, $nh);
-                imagecopyresampled($dst, $img, 0, 0, 0, 0, $nw, $nh, $w, $h);
-                imagedestroy($img);
-                $img = $dst;
-            }
-
-            $thumb = 'th_' . $hash . '.webp';
-            imagewebp($img, $dir . $thumb, 80);
-            imagedestroy($img);
-            return $thumb;
-        } catch (\Exception $e) {
-            return null;
-        }
-    }
-
-    // ─────────────────────────────────────────────────────
-    /**
-     * Extrai um frame do vídeo usando ffmpeg e salva como thumb.
-     *
-     * Tenta capturar no segundo 1 (boa representação do conteúdo).
-     * Se o vídeo tiver menos de 1s, captura no frame 0.
-     * Salva como .webp (ou .jpg como fallback sem imagewebp).
-     *
-     * @return string|null  Nome do arquivo thumb ou null se falhou
-     */
-    private function gerarThumbVideo(
-        string $videoPath,
-        string $dir,
-        string $hash
-    ): ?string {
-        if (!file_exists($videoPath)) return null;
-
-        // Verifica disponibilidade do ffmpeg
-        exec('ffmpeg -version 2>&1', $out, $code);
-        if ($code !== 0) {
-            error_log('[ReviewController] ffmpeg não encontrado — thumb de vídeo ignorado.');
-            return null;
-        }
-
-        $ext       = function_exists('imagewebp') ? 'webp' : 'jpg';
-        $thumbFile = 'th_' . $hash . '.' . $ext;
-        $thumbPath = $dir . $thumbFile;
-
-        // Tenta capturar no segundo 1
-        $cmd = sprintf(
-            'ffmpeg -y -ss 00:00:01 -i %s -vframes 1 -q:v 2 ' .
-            '-vf "scale=320:320:force_original_aspect_ratio=decrease,pad=320:320:(320-iw)/2:(320-ih)/2,setsar=1" ' .
-            '%s 2>&1',
-            escapeshellarg($videoPath),
-            escapeshellarg($thumbPath)
-        );
-        exec($cmd, $out1, $code1);
-
-        // Fallback: captura no frame 0 (vídeos muito curtos)
-        if ($code1 !== 0 || !file_exists($thumbPath) || filesize($thumbPath) < 100) {
-            $cmd2 = sprintf(
-                'ffmpeg -y -i %s -vframes 1 -q:v 2 ' .
-                '-vf "scale=320:320:force_original_aspect_ratio=decrease,pad=320:320:(320-iw)/2:(320-ih)/2,setsar=1" ' .
-                '%s 2>&1',
-                escapeshellarg($videoPath),
-                escapeshellarg($thumbPath)
-            );
-            exec($cmd2, $out2, $code2);
-        }
-
-        if (!file_exists($thumbPath) || filesize($thumbPath) < 100) {
-            error_log('[ReviewController] gerarThumbVideo falhou para: ' . basename($videoPath));
-            return null;
-        }
-
-        return $thumbFile;
     }
 }
 

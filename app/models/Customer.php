@@ -562,4 +562,85 @@ class Customer extends Model {
             'tier'           => (string)($score['tier'] ?? 'bronze'),
         ];
     }
+
+    /**
+     * Contadores dos selos do menu da area do cliente.
+     *
+     * O menu vive no layout, entao aparece em TODA pagina da conta — por isso
+     * sao contagens simples e indexadas, nao agregacoes caras. Sem elas a view
+     * lia variaveis que ninguem definia e o PHP imprimia o warning no meio do
+     * menu, como aconteceu em conta.php.
+     *
+     * @return array{pedidos:int, devolucoes:int, motos:int, favoritos:int,
+     *               enderecos:int, cartoes:int}
+     */
+    public function getMenuBadges(int $clienteId): array
+    {
+        // Memoiza por requisicao: na home o dashboard pede os contadores e o
+        // layout pede de novo para o menu. Sao seis contagens — barato uma
+        // vez, desperdicio duas.
+        static $cache = [];
+        if (isset($cache[$clienteId])) return $cache[$clienteId];
+
+        $conta = function (string $sql) use ($clienteId): int {
+            $st = $this->db->prepare($sql);
+            $st->execute([$clienteId]);
+            return (int) $st->fetchColumn();
+        };
+
+        $badges = [
+            // "Ativo" e o que ainda pode mudar de estado. Pedido entregue,
+            // cancelado ou devolvido nao pede atencao do cliente.
+            'pedidos' => $conta(
+                "SELECT COUNT(*) FROM pedidos
+                  WHERE cliente_id = ?
+                    AND status_pedido NOT IN ('entregue','cancelado','devolvido')"
+            ),
+
+            // Mesma logica: so as solicitacoes ainda em curso.
+            'devolucoes' => $conta(
+                "SELECT COUNT(*) FROM solicitacoes_devolucao
+                  WHERE cliente_id = ?
+                    AND status NOT IN ('concluido','concluido_reprovado',
+                                       'cancelado','expirado','negado')"
+            ),
+
+            'motos'     => $conta("SELECT COUNT(*) FROM cliente_veiculos WHERE cliente_id = ?"),
+            'enderecos' => $conta("SELECT COUNT(*) FROM enderecos WHERE cliente_id = ?"),
+            'cartoes'   => $conta(
+                "SELECT COUNT(*) FROM cartoes_salvos WHERE cliente_id = ? AND ativo = 1"
+            ),
+            'favoritos' => $conta(
+                "SELECT COUNT(*) FROM wishlist_itens wi
+                   JOIN wishlist w ON w.id = wi.wishlist_id
+                  WHERE w.cliente_id = ?"
+            ),
+        ] + $this->tierDoCliente($clienteId);
+
+        return $cache[$clienteId] = $badges;
+    }
+
+    /**
+     * Tier e score para o selo do menu.
+     *
+     * Fica aqui, e nao so no getDashboardStats, porque o menu aparece em toda
+     * pagina da conta — e o selo sumir ao sair da home passaria a impressao de
+     * que o cliente perdeu o nivel.
+     *
+     * @return array{tier:string, score:int}
+     */
+    private function tierDoCliente(int $clienteId): array
+    {
+        $st = $this->db->prepare(
+            "SELECT score_total, tier FROM clientes_score WHERE cliente_id = ? LIMIT 1"
+        );
+        $st->execute([$clienteId]);
+        $r = $st->fetch() ?: [];
+
+        // Sem linha o cliente e novo: bronze/0 e a resposta certa.
+        return [
+            'tier'  => (string) ($r['tier'] ?? 'bronze'),
+            'score' => (int)    ($r['score_total'] ?? 0),
+        ];
+    }
 }

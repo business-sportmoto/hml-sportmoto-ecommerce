@@ -85,6 +85,44 @@ final class PagamentoClassificacao
     /** Cancelamento aceito porém ainda em processamento na adquirente (D+N). */
     public bool $cancelamentoPendente = false;
 
+    // ── 3-D Secure ──────────────────────────────────────────────────────────
+    /**
+     * RESULTADO DO 3DS, NÃO O PROTOCOLO DELE.
+     *
+     * Cada adquirente autentica de um jeito: o Mercado Pago resolve no
+     * servidor e devolve a URL do desafio; Cielo e Safra autenticam no
+     * NAVEGADOR antes da autorização e recebem CAVV/ECI junto. O que todas
+     * produzem no fim é a mesma coisa — houve ou não transferência de
+     * responsabilidade. É isso que o motor precisa saber, e é só isso que
+     * mora aqui; o resto fica dentro de cada adapter.
+     *
+     * true  = o emissor autenticou e assumiu o chargeback de fraude
+     * false = passou sem 3DS, ou o 3DS falhou
+     * null  = não se aplica (Pix, boleto) ou a adquirente não informou
+     */
+    public ?bool $liabilityShift = null;
+
+    /** ECI da bandeira ("05", "02"…) — prova do liability shift na disputa. */
+    public ?string $tresDsEci = null;
+
+    /** Versão do protocolo negociada ("2.2.0"). Só para auditoria. */
+    public ?string $tresDsVersao = null;
+
+    /**
+     * URL do desafio, quando o emissor exige interação do comprador.
+     *
+     * Enquanto existir, o pagamento está SUSPENSO: não pode ser recusado
+     * nem reapresentado em outra adquirente — o cliente ainda pode concluir,
+     * e uma segunda tentativa viraria cobrança dupla.
+     */
+    public ?string $tresDsDesafioUrl = null;
+
+    /** Houve transferência de responsabilidade nesta tentativa? */
+    public function comLiabilityShift(): bool
+    {
+        return $this->liabilityShift === true;
+    }
+
     /**
      * Classificação ABECS: a bandeira considera nova tentativa viável?
      *

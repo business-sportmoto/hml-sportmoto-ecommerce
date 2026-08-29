@@ -101,7 +101,7 @@ function view_logistica_alertas(array $alertas): string
 
 endif; // function_exists guard
 
-$ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">' . (class_exists('IconLibrary') ? IconLibrary::render($n) : '') . '</span>';
+$ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">' . (class_exists('IconLibrary') ? IconLibrary::ref($n, '') : '') . '</span>';
 ?>
 
 <div class="log_shell" id="logTorre" data-endpoint="/admin/logistica/torre/dados">
@@ -112,7 +112,7 @@ $ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int
             <p>Visão geral da operação logística · <span id="logAtualizado"><?= $e($periodo ?? '') ?></span></p>
         </div>
         <div class="log_head_actions">
-            <button type="button" class="log_btn log_btn--icon" id="logRefresh" title="Atualizar">
+            <button type="button" class="log_btn log_btn--icon" id="logRefresh" title="Atualizar" aria-label="Atualizar">
                 <?= $ico('reload', 20) ?>
             </button>
             <a href="/admin/logistica/rastreios" class="log_btn log_btn--sm">

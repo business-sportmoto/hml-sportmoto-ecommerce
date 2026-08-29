@@ -36,6 +36,11 @@ function adminIsActive(string $path): string {
 </head>
 <body class="admin-body">
 
+<?php if (trim(adminIsActive('/admin/logistica')) === 'active') {
+    // Sprite de icones do modulo; precisa vir antes do conteudo que o referencia.
+    include __DIR__ . '/../logistica/_sprite.php';
+} ?>
+
 <!-- ── Sidebar ──────────────────────────────────────────── -->
 <aside class="admin-sidebar" id="adminSidebar">
 
@@ -524,15 +529,8 @@ function adminIsActive(string $path): string {
 <?php } ?>
 
 <?php if(trim(adminIsActive('/admin/logistica')) == 'active'){ ?>
+<?php // Arquivo unico do modulo (espelha logistica.css); cada tela se ativa pelo seu elemento raiz. ?>
 <script src="<?= PerformanceHelper::assetVersion('js/logistica.js', true) ?>"></script>
-<script src="<?= PerformanceHelper::assetVersion('js/transportadoras.js', true) ?>"></script>
-<script src="<?= PerformanceHelper::assetVersion('js/frete.js', true) ?>"></script>
-<script src="<?= PerformanceHelper::assetVersion('js/etiquetas.js', true) ?>"></script>
-<script src="<?= PerformanceHelper::assetVersion('js/rastreios.js', true) ?>"></script>
-<script src="<?= PerformanceHelper::assetVersion('js/reversas.js', true) ?>"></script>
-<script src="<?= PerformanceHelper::assetVersion('js/divergencias.js', true) ?>"></script>
-<script src="<?= PerformanceHelper::assetVersion('js/api-keys.js', true) ?>"></script>
-<script src="<?= PerformanceHelper::assetVersion('js/frete-fallback.js', true) ?>"></script>
 <?php } ?>
 </body>
 </html>

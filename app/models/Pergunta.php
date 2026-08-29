@@ -240,4 +240,61 @@ class Pergunta extends Model {
             'util_count' => (int)$stmt->fetchColumn(),
         ];
     }
+
+    /**
+     * Votos "útil" em lote — mesma razão de Review::votosEmLote():
+     * PerguntaController::listar() chama jaVotouUtil() dentro do laço.
+     *
+     * @param int[] $ids
+     * @return array<int,bool>  [pergunta_id => votou]
+     */
+    public function votosEmLote(array $ids, ?int $clienteId, string $sessao): array {
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+        if (empty($ids)) return [];
+        if (!$clienteId && $sessao === '') return [];
+
+        $in = implode(',', array_fill(0, count($ids), '?'));
+
+        if ($clienteId) {
+            $sql    = "SELECT pergunta_id FROM pergunta_util_votos
+                       WHERE pergunta_id IN ({$in}) AND cliente_id = ?";
+            $params = array_merge($ids, [$clienteId]);
+        } else {
+            $sql    = "SELECT pergunta_id FROM pergunta_util_votos
+                       WHERE pergunta_id IN ({$in}) AND session_key = ?";
+            $params = array_merge($ids, [$sessao]);
+        }
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+
+        $out = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN, 0) as $id) {
+            $out[(int)$id] = true;
+        }
+        return $out;
+    }
+
+    /**
+     * Pergunta idêntica já feita neste produto (mesmo hash de criar()).
+     *
+     * A coluna pergunta_hash existe desde sempre e nunca foi consultada: dois
+     * clientes perguntando a mesma coisa geravam duas linhas e duas chamadas
+     * à IA. No app, onde repetir a pergunta é um toque, isso pesa mais.
+     */
+    public function jaRespondida(int $produtoId, string $pergunta): ?array {
+        $hash = hash('sha256', $produtoId . '|' . mb_strtolower(trim($pergunta)));
+
+        $stmt = $this->db->prepare(
+            "SELECT id, pergunta, resposta, resposta_fonte, respondida_em,
+                    status, util_count, criado_em, cliente_id, autor_nome
+             FROM produto_perguntas
+             WHERE produto_id = ? AND pergunta_hash = ?
+               AND status = 'respondida' AND visivel = 1
+             ORDER BY respondida_em DESC
+             LIMIT 1"
+        );
+        $stmt->execute([$produtoId, $hash]);
+        return $stmt->fetch() ?: null;
+    }
 }

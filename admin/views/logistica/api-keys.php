@@ -1,10 +1,10 @@
 <?php
 /**
  * View: API — chaves de acesso (admin).
- * Recebe: $escopos (lista disponível). Lógica em api-keys.js.
+ * Recebe: $escopos (lista disponível). Lógica em logistica.js.
  */
 $e = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
-$ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">' . (class_exists('IconLibrary') ? IconLibrary::render($n) : '') . '</span>';
+$ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">' . (class_exists('IconLibrary') ? IconLibrary::ref($n, '') : '') . '</span>';
 ?>
 <link rel="stylesheet" href="/assets/css/logistica.css">
 
@@ -17,7 +17,7 @@ $ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int
         </div>
         <div class="log_head_actions">
             <a href="/admin/logistica" class="log_btn log_btn--sm"><?= $ico('caminhao', 15) ?> Torre</a>
-            <button type="button" class="log_btn log_btn--primary log_btn--sm" id="logApiNova"><i class="bi bi-plus-lg"></i> Nova chave</button>
+            <button type="button" class="log_btn log_btn--primary log_btn--sm" id="logApiNova"><?= $ico('add', 15) ?> Nova chave</button>
         </div>
     </div>
 
@@ -56,4 +56,3 @@ Content-Type: application/json
     window.LOG_API_BASE = '/admin/logistica/api-keys';
     window.LOG_API_ESCOPOS = <?= json_encode($escopos ?? [], JSON_UNESCAPED_UNICODE) ?>;
 </script>
-<script src="/assets/js/api-keys.js" defer></script>

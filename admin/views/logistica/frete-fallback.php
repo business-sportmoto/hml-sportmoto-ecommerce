@@ -1,8 +1,8 @@
 <?php
 /**
- * View: Frete — tabela de fallback (admin). Lógica em frete-fallback.js.
+ * View: Frete — tabela de fallback (admin). Lógica em logistica.js.
  */
-$ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">' . (class_exists('IconLibrary') ? IconLibrary::render($n) : '') . '</span>';
+$ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">' . (class_exists('IconLibrary') ? IconLibrary::ref($n, '') : '') . '</span>';
 ?>
 <link rel="stylesheet" href="/assets/css/logistica.css">
 
@@ -15,7 +15,7 @@ $ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int
         </div>
         <div class="log_head_actions">
             <a href="/admin/logistica" class="log_btn log_btn--sm"><?= $ico('caminhao', 15) ?> Torre</a>
-            <button type="button" class="log_btn log_btn--primary log_btn--sm" id="logFallNova"><i class="bi bi-plus-lg"></i> Nova linha</button>
+            <button type="button" class="log_btn log_btn--primary log_btn--sm" id="logFallNova"><?= $ico('add', 15) ?> Nova linha</button>
         </div>
     </div>
 
@@ -43,4 +43,3 @@ $ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int
 <script>
     window.LOG_FALL_BASE = '/admin/logistica/frete-fallback';
 </script>
-<script src="/assets/js/frete-fallback.js" defer></script>

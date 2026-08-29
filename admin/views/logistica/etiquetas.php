@@ -2,10 +2,10 @@
 /**
  * View: Etiquetas (lista + ações + lote/manifesto).
  * Recebe: $transportadoras (com serviços), $filtros
- * Ações por linha e formulário "nova etiqueta" montados em etiquetas.js.
+ * Ações por linha e formulário "nova etiqueta" montados em logistica.js.
  */
 $e = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
-$ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">' . (class_exists('IconLibrary') ? IconLibrary::render($n) : '') . '</span>';
+$ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">' . (class_exists('IconLibrary') ? IconLibrary::ref($n, '') : '') . '</span>';
 $f = $filtros ?? [];
 ?>
 
@@ -19,7 +19,7 @@ $f = $filtros ?? [];
         </div>
         <div class="log_head_actions">
             <a href="/admin/logistica" class="log_btn log_btn--sm"><?= $ico('caminhao', 15) ?> Torre</a>
-            <button type="button" class="log_btn log_btn--primary log_btn--sm" id="logEtqNova"><i class="bi bi-plus-lg"></i> Nova etiqueta</button>
+            <button type="button" class="log_btn log_btn--primary log_btn--sm" id="logEtqNova"><?= $ico('add', 15) ?> Nova etiqueta</button>
         </div>
     </div>
 
@@ -53,8 +53,8 @@ $f = $filtros ?? [];
     <div class="log_sel_bar" id="logEtqSelBar" style="display:none;">
         <strong id="logEtqSelCount">0</strong> selecionada(s)
         <div class="log_sel_actions">
-            <button type="button" class="log_btn log_btn--sm js-lote-comprar"><?= $ico('carrinho', 15) ?> Comprar em lote</button>
-            <button type="button" class="log_btn log_btn--sm js-manifesto"><?= $ico('manifesto', 15) ?> Gerar manifesto</button>
+            <button type="button" class="log_btn log_btn--sm js-lote-comprar"><?= $ico('payments', 15) ?> Comprar em lote</button>
+            <button type="button" class="log_btn log_btn--sm js-manifesto"><?= $ico('docs', 15) ?> Gerar manifesto</button>
         </div>
     </div>
 
@@ -68,7 +68,7 @@ $f = $filtros ?? [];
                         <th>Transportadora / serviço</th>
                         <th style="width:150px">Rastreio</th>
                         <th style="width:120px">Status</th>
-                        <th style="width:220px" class="log_col_acoes">Ações</th>
+                        <th style="width:260px" class="log_col_acoes">Ações</th>
                     </tr>
                 </thead>
                 <tbody id="logEtqBody">

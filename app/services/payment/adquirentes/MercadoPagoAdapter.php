@@ -243,11 +243,18 @@ class MercadoPagoAdapter implements AdquirenteInterface
         // do antifraude precisa para reprovar sem custo de estorno.
         $corpo['capture_mode'] = ($d['captura'] ?? '') === 'manual' ? 'manual' : 'automatic';
 
-        // 3DS desligado por padrão: ligado, o MP pode devolver um desafio que
-        // precisa ser renderizado no checkout, e isso ainda não existe aqui.
-        $corpo['config'] = ['online' => [
-            'transaction_security' => ['validation' => $this->opcao('tres_ds') ?: 'never'],
-        ]];
+        // 3DS. `liability_shift` E O QUE MOVE O CHARGEBACK PARA O EMISSOR —
+        // sem ele, ligar a autenticacao so adiciona atrito e nao transfere
+        // responsabilidade nenhuma. A doc e explicita nos dois sentidos:
+        // `required` e o unico valor aceito, e nao pode acompanhar `never`.
+        $validacao = $this->opcao('tres_ds') ?: 'never';
+
+        $seguranca = ['validation' => $validacao];
+        if ($validacao !== 'never') {
+            $seguranca['liability_shift'] = 'required';
+        }
+
+        $corpo['config'] = ['online' => ['transaction_security' => $seguranca]];
 
         return $this->criar($corpo, $d, 'cartao');
     }
@@ -446,8 +453,89 @@ class MercadoPagoAdapter implements AdquirenteInterface
             'card_ref'     => isset($c['id']) ? (string) $c['id'] : null,
             'bandeira'     => (string) ($c['payment_method']['id'] ?? '') ?: null,
             'ultimos4'     => (string) ($c['last_four_digits'] ?? '') ?: null,
+            // O TITULAR E A VALIDADE VOLTAM AQUI — nao precisam ser inventados.
+            //
+            // Com hosted fields esses dados nunca saiam do iframe, entao o
+            // registro guardava 'TITULAR' e '12/99'. O Mercado Pago devolve os
+            // dois na resposta do cartao, e o titular importa: e ele que
+            // mostra ao cliente que o cartao salvo e o da mae, nao o dele.
+            'nome_titular' => self::titularDe($c),
+            'validade'     => self::validadeDe($c),
             'erro'         => null,
         ];
+    }
+
+    /**
+     * Traduz o 3DS do Mercado Pago para o resultado que o motor entende.
+     *
+     * O MP autentica no servidor e devolve tudo dentro de
+     * `payment_method.transaction_security`. Outras adquirentes autenticam no
+     * navegador e entregam CAVV/ECI — o formato muda, a conclusao nao: houve
+     * ou nao transferencia de responsabilidade.
+     */
+    private function lerTresDs(PagamentoClassificacao $c, array $mp, string $detalhe): void
+    {
+        $ts = $mp['transaction_security'] ?? null;
+        if (!is_array($ts)) return;
+
+        $c->tresDsEci    = (string) ($ts['eci'] ?? '') ?: null;
+        $c->tresDsVersao = (string) ($ts['version'] ?? '') ?: null;
+
+        // Desafio pendente: o pagamento fica SUSPENSO. `pending_challenge` ja
+        // classifica como INCERTO, que nao retenta em outra adquirente — e
+        // essa e a parte que importa: o cliente ainda pode concluir, e uma
+        // segunda apresentacao viraria cobranca dupla.
+        if ($detalhe === 'pending_challenge' || !empty($ts['url'])) {
+            $c->tresDsDesafioUrl = (string) ($ts['url'] ?? '') ?: null;
+            $c->liabilityShift   = null;   // ainda nao se sabe
+            return;
+        }
+
+        // Sem desafio e com a autenticacao pedida: o MP resolveu no
+        // frictionless. So conta como shift se ele confirmou o `required` que
+        // mandamos — pedir nao e o mesmo que conseguir.
+        $pedido    = (string) ($ts['validation'] ?? '');
+        $confirmou = (string) ($ts['liability_shift'] ?? '');
+
+        if ($pedido !== '' && $pedido !== 'never') {
+            $c->liabilityShift = $confirmou === 'required';
+        }
+    }
+
+    /**
+     * Deixa o QR pronto para o `src` de um <img>.
+     *
+     * Aceita o que ja vem pronto (data: ou http) para nao quebrar adquirente
+     * que devolva URL, e embrulha o base64 cru das que devolvem so os bytes.
+     */
+    private static function comoImagem(?string $b64): ?string
+    {
+        $b64 = trim((string) $b64);
+        if ($b64 === '') return null;
+
+        if (str_starts_with($b64, 'data:') || str_starts_with($b64, 'http')) {
+            return $b64;
+        }
+
+        return 'data:image/png;base64,' . $b64;
+    }
+
+    /** Nome impresso no cartao, como a adquirente guardou. */
+    private static function titularDe(array $c): ?string
+    {
+        $n = trim((string) ($c['cardholder']['name'] ?? ''));
+        return $n !== '' ? mb_substr($n, 0, 120) : null;
+    }
+
+    /** MM/AA — o formato do char(5) em cartoes_salvos. */
+    private static function validadeDe(array $c): ?string
+    {
+        $mes = (int) ($c['expiration_month'] ?? 0);
+        $ano = (int) ($c['expiration_year'] ?? 0);
+
+        if ($mes < 1 || $mes > 12 || $ano < 2000) return null;
+
+        return sprintf('%02d/%02d', $mes, $ano % 100);
     }
 
     /**
@@ -546,7 +634,12 @@ class MercadoPagoAdapter implements AdquirenteInterface
             null
         );
 
-        $ok = $r['erro'] === null && $r['http'] >= 200 && $r['http'] < 300;
+        // 404 E SUCESSO AQUI. O objetivo e "o cartao nao esta mais na
+        // adquirente", e um cartao que ja nao existe la satisfaz isso.
+        // Tratar como falha prenderia o cliente: um cartao apagado pelo
+        // painel do Mercado Pago nunca mais sairia da lista da loja.
+        $ok = $r['erro'] === null
+              && (($r['http'] >= 200 && $r['http'] < 300) || $r['http'] === 404);
 
         if (!$ok) {
             LogService::error('Mercado Pago recusou remover o cartao', [
@@ -778,11 +871,21 @@ class MercadoPagoAdapter implements AdquirenteInterface
         $mp = $pg['payment_method'] ?? [];
         $c->bandeira = isset($mp['id']) ? (string) $mp['id'] : null;
 
+        $this->lerTresDs($c, $mp, $det);
+
         // ── Instrumentos ────────────────────────────────────────────
         if (!empty($mp['qr_code'])) {
-            $c->pixQrCode       = (string) $mp['qr_code'];
-            $c->pixQrCodeBase64 = (string) ($mp['qr_code_base64'] ?? '') ?: null;
-            $c->pixExpiraEm     = (string) ($pg['date_of_expiration'] ?? '') ?: null;
+            $c->pixQrCode = (string) $mp['qr_code'];
+
+            // BASE64 CRU NAO E IMAGEM. O Mercado Pago devolve so os bytes
+            // ("iVBORw0KGgo..."); a tela testava se comecava com `data:` ou
+            // `http` para decidir se era imagem e, como nao era nenhum dos
+            // dois, caia num quadro cinza vazio. Normalizar aqui deixa todas
+            // as adquirentes entregando a mesma coisa: algo que vai direto
+            // no src de um <img>.
+            $c->pixQrCodeBase64 = self::comoImagem($mp['qr_code_base64'] ?? null);
+
+            $c->pixExpiraEm = (string) ($pg['date_of_expiration'] ?? '') ?: null;
         }
 
         $linha = (string) ($mp['digitable_line'] ?? '');

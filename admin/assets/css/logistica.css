@@ -1,10 +1,23 @@
+/* ---------------------------------------------------------------------------
+   Tokens base do modulo.
+
+   ATENCAO: as cores daqui NAO chegam a tela. Mais abaixo no arquivo existe um
+   segundo bloco com o MESMO seletor (.log_shell,.admin-drawer) declarando a
+   paleta escura; por vir depois e ter a mesma especificidade, ele vence sempre.
+   O painel inteiro e escuro (html{color-scheme:dark} em admin.css), entao isso
+   e proposital — mas mexer nas cores aqui nao produz efeito nenhum. Edite o
+   bloco escuro (procure por "color-scheme:dark").
+
+   O que este bloco define de fato e usado: as formas (--log-radius*) e a
+   font-family, que o bloco escuro nao redeclara.
+   --------------------------------------------------------------------------- */
 .log_shell,.admin-drawer {
 --log-bg:#f4f4f7;
 --log-surface:#fff;
 --log-surface-2:#fafafb;
 --log-border:#e7e7ee;
 --log-border-strong:#d9d9e3;
---log-shadow:0 1px 2px #11111a0a 0 4px 16px #11111a0d;
+--log-shadow:0 1px 2px #11111a0a, 0 4px 16px #11111a0d;
 --log-shadow-lg:0 8px 32px #11111a1a;
 --log-ink:#17171f;
 --log-ink-2:#55555f;
@@ -57,9 +70,10 @@ align-items:center;
 gap:10px
 }
 
-.log_head h1 .bi {
+.log_head h1 .log_ico {
 color:var(--log-brand);
-font-size:20px
+width:20px;
+height:20px
 }
 
 .log_head p {
@@ -93,8 +107,9 @@ transition:background .15s,border-color .15s,transform .05s,box-shadow .15s;
 white-space:nowrap
 }
 
-.log_btn .bi {
-font-size:15px
+.log_btn .log_ico {
+width:17px;
+height:17px
 }
 
 .log_btn:hover {
@@ -133,9 +148,9 @@ color:var(--log-brand-700)
 }
 
 .log_btn--icon {
-padding:9px;
-width:38px;
-height:38px;
+padding:11px;
+width:44px;
+height:44px;
 justify-content:center
 }
 
@@ -147,6 +162,23 @@ font-size:12.5px
 .log_btn:disabled {
 opacity:.5;
 cursor:not-allowed
+}
+
+/* Acao destrutiva precisa se distinguir a olho nu. Antes "Remover" era um
+   quadrado identico ao "Imprimir", encostado nele na coluna de acoes — so
+   o tooltip separava os dois. */
+.log_btn--danger {
+color:var(--log-danger)
+}
+
+.log_btn--danger:hover {
+background:var(--log-danger-soft);
+border-color:var(--log-danger);
+color:var(--log-danger)
+}
+
+.log_btn--danger:focus-visible {
+box-shadow:0 0 0 4px color-mix(in srgb, var(--log-danger) 28%, transparent)
 }
 
 .log_card {
@@ -296,8 +328,9 @@ color:var(--log-neutral);
 white-space:nowrap
 }
 
-.log_badge .bi {
-font-size:12px
+.log_badge .log_ico {
+width:13px;
+height:13px
 }
 
 .log_badge::before {
@@ -772,10 +805,19 @@ padding:16px
 }
 
 .log_btn--xs {
-padding:4px;
-min-width:26px;
-height:26px;
+padding:5px;
+min-width:32px;
+height:32px;
 border-radius:8px
+}
+
+/* Combinado com --icon, o quadrado precisa fechar: --icon fixa width:44px e
+   --xs fixa height:32px, o que deixava o botao 44x32. */
+.log_btn--icon.log_btn--xs {
+width:36px;
+min-width:36px;
+height:36px;
+padding:7px
 }
 
 .log_ordem {
@@ -929,11 +971,6 @@ grid-template-columns:1fr
 .log_svc {
 grid-template-columns:1fr 1fr
 }
-}
-
-.log_ico {
-display:inline-block;
-vertical-align:-3px
 }
 
 h1 .log_ico,h3 .log_ico,h4 .log_ico {
@@ -1095,6 +1132,29 @@ vertical-align:-.15em
 width:1em;
 height:1em;
 display:block
+}
+
+/* Icones do sprite (IconLibrary::sprite) — usados pelo markup gerado em JS.
+   Substituem a webfont Bootstrap Icons, que o codigo referenciava mas que
+   nunca foi carregada em lugar nenhum: todo <i class="bi ..."> saia vazio.
+   As views usam o wrapper .log_iw, dimensionado por font-size. */
+.log_ico {
+width:18px;
+height:18px;
+flex:0 0 auto;
+fill:currentColor;
+display:inline-block;
+vertical-align:-.18em
+}
+
+.log_btn--icon .log_ico {
+width:20px;
+height:20px
+}
+
+.log_btn--xs .log_ico {
+width:15px;
+height:15px
 }
 
 .log_etq_pdf {
@@ -1420,7 +1480,7 @@ font-size:13px;
 line-height:1.4
 }
 
-.log_note .bi {
+.log_note .log_ico {
 color:var(--log-brand);
 margin-top:1px
 }
@@ -1468,8 +1528,9 @@ margin-bottom:14px;
 font-size:13.5px
 }
 
-.log_fall_saude .bi {
-font-size:16px
+.log_fall_saude .log_ico {
+width:16px;
+height:16px
 }
 
 .log_fall_saude.is-ok {
@@ -1506,8 +1567,9 @@ font-weight:600;
 line-height:1.3
 }
 
-.frete_cta .bi {
-font-size:16px;
+.frete_cta .log_ico {
+width:16px;
+height:16px;
 flex:0 0 auto
 }
 
@@ -1939,6 +2001,11 @@ width:100%
 }
 }
 
+/* ---------------------------------------------------------------------------
+   Paleta efetiva do modulo (escura). Mesmo seletor do bloco do topo do arquivo
+   e declarado depois, portanto e esta que prevalece. Alterar cores AQUI.
+   Formas e tipografia continuam vindo do bloco do topo.
+   --------------------------------------------------------------------------- */
 .log_shell,.admin-drawer {
 color-scheme:dark;
 --log-bg:#080c12;
@@ -1946,8 +2013,8 @@ color-scheme:dark;
 --log-surface-2:#181e29;
 --log-border:#283140;
 --log-border-strong:#394557;
---log-shadow:0 1px 2px #00000057 0 8px 24px #0000002e inset 0 1px 0 #ffffff06;
---log-shadow-lg:0 18px 48px #00000057 inset 0 1px 0 #ffffff09;
+--log-shadow:0 1px 2px #00000057, 0 8px 24px #0000002e, inset 0 1px 0 #ffffff06;
+--log-shadow-lg:0 18px 48px #00000057, inset 0 1px 0 #ffffff09;
 --log-ink:#f1f5f9;
 --log-ink-2:#c2cad6;
 --log-ink-3:#8995a7;

@@ -1,10 +1,10 @@
 <?php
 /**
  * View: Reversas (lista admin).
- * Recebe: $transportadoras (com serviços), $filtros. Detalhe/ações em reversas.js.
+ * Recebe: $transportadoras (com serviços), $filtros. Detalhe/ações em logistica.js.
  */
 $e = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
-$ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">' . (class_exists('IconLibrary') ? IconLibrary::render($n) : '') . '</span>';
+$ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">' . (class_exists('IconLibrary') ? IconLibrary::ref($n, '') : '') . '</span>';
 $f = $filtros ?? [];
 ?>
 <link rel="stylesheet" href="/assets/css/logistica.css">
@@ -84,4 +84,3 @@ $f = $filtros ?? [];
     window.LOG_REV_PUBLICO = '/rastreio/';
     window.LOG_REV_TRANSPORTADORAS = <?= json_encode($transportadoras ?? [], JSON_UNESCAPED_UNICODE) ?>;
 </script>
-<script src="/assets/js/reversas.js" defer></script>

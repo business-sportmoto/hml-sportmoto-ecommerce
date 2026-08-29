@@ -351,6 +351,11 @@ class PagamentoRoteador
         $ctx['modo_antifraude'] = (string) ($cfg['modo'] ?? 'pos_captura');
         $ctx['tentativa_id']    = $r->tentativaIdAtual;
 
+        // O 3DS aconteceu na TENTATIVA que acabou de aprovar, entao o
+        // resultado vem da classificacao — nao do contexto do checkout, que
+        // nao tem como saber se o emissor autenticou.
+        $ctx['liability_shift'] = $r->classificacao->comLiabilityShift();
+
         try {
             $res = (new AntifraudeExecutor($this->db))->executar($ctx, $cfg);
         } catch (\Throwable $e) {
@@ -641,13 +646,22 @@ class PagamentoRoteador
                 "UPDATE pgto_tentativas
                     SET resultado = ?, classe_erro = ?, codigo_adquirente = ?,
                         mensagem_adquirente = ?, mensagem_cliente = ?, charge_id = ?,
-                        duracao_ms = ?, http_status = ?
+                        duracao_ms = ?, http_status = ?,
+                        liability_shift = ?, tres_ds_eci = ?, tres_ds_versao = ?
                   WHERE id = ?"
             )->execute([
                 $c->resultado(), $c->classeErro, $c->codigoAdquirente,
                 $c->mensagemAdquirente !== null ? mb_substr($c->mensagemAdquirente, 0, 255) : null,
                 mb_substr($c->mensagemCliente, 0, 255), $c->chargeId,
-                $c->duracaoMs, $c->httpStatus, $id,
+                $c->duracaoMs, $c->httpStatus,
+
+                // Quem dispensa o antifraude por causa do 3DS precisa poder
+                // provar o 3DS depois. O ECI e a evidencia na disputa — sem
+                // ele, abrimos mao da analise E da defesa.
+                $c->liabilityShift === null ? null : ($c->liabilityShift ? 1 : 0),
+                $c->tresDsEci, $c->tresDsVersao,
+
+                $id,
             ]);
         } catch (\Throwable $e) {
             LogService::exception($e, 'error', 'pagamento', ['acao' => 'fechar_tentativa']);

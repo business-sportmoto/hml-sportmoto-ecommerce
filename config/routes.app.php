@@ -60,10 +60,22 @@ AppRouter::get ($v . '/marcas/{slug}',         'AppCatalogoController@marca');
 // ── Produto ─────────────────────────────────────────────────────────────────
 // As rotas com sufixo usam {id:\d+}, e a de detalhe usa {slug}: como \d+ não
 // casa com um slug textual, a ordem entre elas é segura em qualquer sentido.
-AppRouter::get ($v . '/produtos/{id:\d+}/avaliacoes',     'AppProdutoController@avaliacoes');
+AppRouter::get ($v . '/produtos/{id:\d+}/avaliacoes',     'AppAvaliacoesController@index');
+AppRouter::post($v . '/produtos/{id:\d+}/avaliacoes',     'AppAvaliacoesController@criar');
+AppRouter::get ($v . '/produtos/{id:\d+}/perguntas',      'AppPerguntasController@index');
+AppRouter::post($v . '/produtos/{id:\d+}/perguntas',      'AppPerguntasController@criar');
 AppRouter::get ($v . '/produtos/{id:\d+}/clips',          'AppProdutoController@clips');
 AppRouter::post($v . '/produtos/{id:\d+}/avisar-estoque', 'AppProdutoController@avisarEstoque');
 AppRouter::get ($v . '/produtos/{slug}',                  'AppProdutoController@detalhe');
+
+// ── Avaliações e perguntas fora do prefixo /produtos ────────────────────────
+// A mídia sobe ANTES de a avaliação existir e fica amarrada por um token — por
+// isso /avaliacoes/midias não tem id de avaliação na URL. Literal antes de
+// {id}, senão "midias" seria capturado como id.
+AppRouter::post  ($v . '/avaliacoes/midias',        'AppAvaliacoesController@enviarMidia');
+AppRouter::delete($v . '/avaliacoes/midias',        'AppAvaliacoesController@removerMidia');
+AppRouter::post  ($v . '/avaliacoes/{id:\d+}/util', 'AppAvaliacoesController@util');
+AppRouter::post  ($v . '/perguntas/{id:\d+}/util',  'AppPerguntasController@util');
 
 // ── Carrinho ────────────────────────────────────────────────────────────────
 // Funciona anônimo: o carrinho de visitante vive no banco, chaveado pela ponte
@@ -75,6 +87,13 @@ AppRouter::patch ($v . '/carrinho/itens/{id:\d+}',  'AppCarrinhoController@atual
 AppRouter::delete($v . '/carrinho/itens/{id:\d+}',  'AppCarrinhoController@remover');
 AppRouter::post  ($v . '/carrinho/cupom',           'AppCarrinhoController@aplicarCupom');
 AppRouter::delete($v . '/carrinho/cupom',           'AppCarrinhoController@removerCupom');
+
+// Carrinho compartilhado. A rota com sufixo /copiar vem primeiro por convenção
+// do arquivo; aqui as duas são seguras em qualquer ordem, porque {token} vira
+// ([^/]+) e a regex é ancorada — "abc/copiar" não casa com "{token}".
+AppRouter::post  ($v . '/carrinho/compartilhar',                  'AppCarrinhoController@compartilhar');
+AppRouter::post  ($v . '/carrinho/compartilhado/{token}/copiar',  'AppCarrinhoController@copiarCompartilhado');
+AppRouter::get   ($v . '/carrinho/compartilhado/{token}',         'AppCarrinhoController@verCompartilhado');
 
 // ── Conta ───────────────────────────────────────────────────────────────────
 AppRouter::get   ($v . '/conta/perfil',                'AppContaController@perfil');

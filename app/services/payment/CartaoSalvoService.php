@@ -1,0 +1,199 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * app/services/payment/CartaoSalvoService.php
+ *
+ * Cartão salvo existe em DOIS lugares: a linha em `cartoes_salvos` e o cartão
+ * dentro da adquirente. Quem apaga só a linha não remove nada — apenas perde
+ * o endereço do que continua lá, cobrável e contando contra o limite de
+ * cartões por cliente da adquirente (Mercado Pago, erro 129).
+ *
+ * Este service mantém os dois lados juntos.
+ */
+class CartaoSalvoService
+{
+    private PDO $db;
+
+    public function __construct(?PDO $db = null)
+    {
+        $this->db = $db ?? Database::getInstance()->getConnection();
+    }
+
+    /**
+     * Cartão do cliente com a adquirente que o emitiu.
+     *
+     * O `cliente_id` entra na consulta, não numa checagem depois: cartão de
+     * outra pessoa tem de ser invisível, não "encontrado e negado".
+     */
+    public function daPessoa(int $cartaoId, int $clienteId): ?array
+    {
+        $st = $this->db->prepare(
+            "SELECT cs.*, g.codigo AS adquirente
+               FROM cartoes_salvos cs
+               LEFT JOIN pgto_gateways g ON g.id = cs.gateway_id
+              WHERE cs.id = :id AND cs.cliente_id = :cid
+              LIMIT 1"
+        );
+        $st->execute([':id' => $cartaoId, ':cid' => $clienteId]);
+
+        return $st->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
+    /**
+     * Remove o cartão na adquirente e, só então, apaga a linha local.
+     *
+     * A ORDEM IMPORTA. Apagando a linha primeiro, uma falha na adquirente
+     * deixaria o cartão lá para sempre, sem ninguém que soubesse o
+     * customer_ref/card_ref para ir buscar depois.
+     *
+     * @return array{ok:bool, msg:string}
+     */
+    public function remover(int $cartaoId, int $clienteId): array
+    {
+        $cartao = $this->daPessoa($cartaoId, $clienteId);
+
+        if ($cartao === null) {
+            return ['ok' => false, 'msg' => 'Cartão não encontrado.'];
+        }
+
+        $naAdquirente = $this->removerNaAdquirente($cartao);
+
+        // Falha temporária: a linha FICA. Dizer "removido" com o cartão ainda
+        // cobrável na adquirente seria mentir sobre o que aconteceu.
+        if ($naAdquirente === false) {
+            return ['ok' => false, 'msg' =>
+                'Não foi possível remover o cartão na operadora agora. Tente novamente.'];
+        }
+
+        $st = $this->db->prepare(
+            "DELETE FROM cartoes_salvos WHERE id = :id AND cliente_id = :cid"
+        );
+        $st->execute([':id' => $cartaoId, ':cid' => $clienteId]);
+
+        // rowCount, não o retorno do execute: um DELETE que não casou nada
+        // também "deu certo", e devolvia "Cartão removido." sem remover nada.
+        if ($st->rowCount() === 0) {
+            return ['ok' => false, 'msg' => 'Cartão não encontrado.'];
+        }
+
+        // Sumiu o cartão principal? O cliente fica sem padrão e o checkout
+        // volta a perguntar. Promover o mais recente evita isso.
+        if (!empty($cartao['principal'])) {
+            $this->promoverMaisRecente($clienteId);
+        }
+
+        LogService::audit('Cartao salvo removido', [
+            'cliente_id'    => $clienteId,
+            'cartao_id'     => $cartaoId,
+            'adquirente'    => $cartao['adquirente'] ?? null,
+            'na_adquirente' => $naAdquirente === true ? 'removido' : 'nao_aplicavel',
+        ]);
+
+        return ['ok' => true, 'msg' => 'Cartão removido.'];
+    }
+
+    /**
+     * @return true|null|false  true = removeu · null = nada a remover lá ·
+     *                          false = a adquirente recusou (não apagar local)
+     */
+    private function removerNaAdquirente(array $cartao): ?bool
+    {
+        $codigo   = (string) ($cartao['adquirente'] ?? '');
+        $customer = (string) ($cartao['customer_ref'] ?? '');
+        $card     = (string) ($cartao['card_ref'] ?? '');
+
+        // Cartão antigo, salvo antes de existir o par customer/card: não há o
+        // que remover lá, e travar a exclusão prenderia o cliente a um
+        // registro que ele não consegue apagar.
+        if ($codigo === '' || $customer === '' || $card === '') return null;
+
+        $adapter = AdquirenteFactory::porCodigo($codigo);
+
+        // Adquirente sem adapter de remoção (Malga, legado): o registro local
+        // sai, e o log fica para reconciliar depois.
+        if ($adapter === null || !method_exists($adapter, 'removerCartao')) {
+            LogService::warning('Cartao removido so localmente', [
+                'adquirente' => $codigo,
+                'motivo'     => 'adapter sem removerCartao',
+            ], 'pagamento');
+            return null;
+        }
+
+        return $adapter->removerCartao($customer, $card) ? true : false;
+    }
+
+    private function promoverMaisRecente(int $clienteId): void
+    {
+        $this->db->prepare(
+            "UPDATE cartoes_salvos SET principal = 1
+              WHERE cliente_id = :cid AND ativo = 1
+              ORDER BY criado_em DESC
+              LIMIT 1"
+        )->execute([':cid' => $clienteId]);
+    }
+
+    /**
+     * Preenche titular e validade lendo a adquirente.
+     *
+     * Serve os cartões salvos antes de o código passar a guardar esses dados
+     * — ficaram com 'TITULAR' e '12/99', que a tela mostrava como se fossem
+     * do cartão.
+     *
+     * @return array{lidos:int, atualizados:int, erros:int}
+     */
+    public function reconciliar(bool $aplicar = false): array
+    {
+        $r = ['lidos' => 0, 'atualizados' => 0, 'erros' => 0];
+
+        $sql = "SELECT cs.id, cs.customer_ref, cs.card_ref, g.codigo AS adquirente
+                  FROM cartoes_salvos cs
+                  JOIN pgto_gateways g ON g.id = cs.gateway_id
+                 WHERE cs.customer_ref IS NOT NULL AND cs.card_ref IS NOT NULL
+                   AND (cs.nome_titular IS NULL OR cs.nome_titular = 'TITULAR'
+                        OR cs.validade IS NULL OR cs.validade = '12/99')";
+
+        $up = $this->db->prepare(
+            "UPDATE cartoes_salvos SET nome_titular = :n, validade = :v WHERE id = :id"
+        );
+
+        foreach ($this->db->query($sql) as $c) {
+            $r['lidos']++;
+
+            $adapter = AdquirenteFactory::porCodigo((string) $c['adquirente']);
+            if ($adapter === null || !method_exists($adapter, 'listarCartoes')) continue;
+
+            try {
+                $achado = null;
+                foreach ($adapter->listarCartoes((string) $c['customer_ref']) as $card) {
+                    if ((string) ($card['id'] ?? '') === (string) $c['card_ref']) {
+                        $achado = $card;
+                        break;
+                    }
+                }
+                if ($achado === null) { $r['erros']++; continue; }
+
+                $nome = trim((string) ($achado['cardholder']['name'] ?? '')) ?: null;
+                $mes  = (int) ($achado['expiration_month'] ?? 0);
+                $ano  = (int) ($achado['expiration_year'] ?? 0);
+                $val  = ($mes >= 1 && $mes <= 12 && $ano >= 2000)
+                        ? sprintf('%02d/%02d', $mes, $ano % 100) : null;
+
+                if ($nome === null && $val === null) continue;
+
+                if ($aplicar) {
+                    $up->execute([
+                        ':n'  => $nome !== null ? mb_substr(strtoupper($nome), 0, 120) : null,
+                        ':v'  => $val,
+                        ':id' => (int) $c['id'],
+                    ]);
+                }
+                $r['atualizados']++;
+            } catch (\Throwable $e) {
+                $r['erros']++;
+            }
+        }
+
+        return $r;
+    }
+}

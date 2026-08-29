@@ -22,7 +22,7 @@ $dataBR = static function (?string $d): string {
     $ts = strtotime($d);
     return $ts ? date('d/m/Y H:i', $ts) : (string)$d;
 };
-$pin = class_exists('IconLibrary') ? IconLibrary::render('localizacao') : '';
+$pin = class_exists('IconLibrary') ? IconLibrary::render('globe-location') : '';
 if ($pin === '') $pin = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
 ?><!DOCTYPE html>
 <html lang="pt-BR">

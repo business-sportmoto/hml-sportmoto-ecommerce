@@ -47,7 +47,8 @@ class AntifraudeExecutor
 
     /**
      * @param array $ctx   contexto do pagamento (cliente_id, order_id_loja, pedido_id...)
-     * @param array $cfg   config do nó (modo, pular_se_aprovado_local)
+     * @param array $cfg   config do nó (modo, pular_se_aprovado_local,
+     *                     pular_se_liability_shift)
      * @return array{porta:string, decisao:string, regra:string, motivo:string,
      *               consultou:bool, status_clearsale:?string}
      */
@@ -55,6 +56,38 @@ class AntifraudeExecutor
     {
         $clienteId = (int) ($ctx['cliente_id'] ?? 0);
         $pularSePossivel = ($cfg['pular_se_aprovado_local'] ?? '1') !== '0';
+
+        // ── 0. Autenticado pelo emissor ──────────────────────────────
+        //
+        // Com liability shift, o chargeback DE FRAUDE é do emissor: gastar
+        // consulta para decidir sobre um risco que não é mais nosso é pagar
+        // duas vezes pela mesma proteção.
+        //
+        // ATENÇÃO AO QUE ISTO NÃO COBRE. Liability shift vale para disputa de
+        // fraude. "Não recebi" e "não era o que comprei" continuam sendo
+        // nossos, e nenhum 3DS os evita. Por isso a chave é POR FLUXO — quem
+        // vende item de alto giro de golpe pode querer analisar mesmo assim.
+        $comShift = !empty($ctx['liability_shift']);
+        $pularSeShift = ($cfg['pular_se_liability_shift'] ?? '0') === '1';
+
+        if ($comShift && $pularSeShift) {
+            $motivo = 'Autenticado pelo emissor (3DS) — responsabilidade transferida.';
+            $local  = ['decisao' => AntifraudeDecisor::APROVAR,
+                       'regra'   => 'liability_shift',
+                       'motivo'  => $motivo,
+                       'score'   => null];
+
+            $this->registrar($ctx, $local, null, self::PORTA_APROVADO, false, $motivo);
+
+            return [
+                'porta'            => self::PORTA_APROVADO,
+                'decisao'          => AntifraudeDecisor::APROVAR,
+                'regra'            => 'liability_shift',
+                'motivo'           => $motivo,
+                'consultou'        => false,
+                'status_clearsale' => null,
+            ];
+        }
 
         // ── 1. Decisão local, sem gastar consulta ────────────────────
         $local = $this->decisor->decidir($clienteId, $ctx);

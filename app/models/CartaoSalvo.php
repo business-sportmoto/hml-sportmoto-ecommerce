@@ -44,8 +44,10 @@ class CartaoSalvo {
      * Campos obrigatórios: cliente_id, token, bandeira, ultimos_4
      * Campos opcionais:    nome_titular, validade, apelido, principal
      *
-     * nome_titular e validade são opcionais porque com hosted fields
-     * esses dados não saem mais do iframe da Malga.
+     * nome_titular e validade são opcionais porque com hosted fields esses
+     * dados não saem do iframe. Quando a adquirente devolve (o Mercado Pago
+     * devolve), vêm preenchidos; quando não, ficam NULOS — nunca um valor
+     * inventado que a tela exibiria como se fosse do cartão.
      */
     public function salvar(array $data): int {
         $clienteId = (int) $data['cliente_id'];
@@ -89,15 +91,22 @@ class CartaoSalvo {
             ':token'        => SecurityHelper::sanitizeString((string) $data['token']),
             ':bandeira'     => SecurityHelper::sanitizeString(strtolower((string) $data['bandeira'])),
             ':ultimos_4'    => $ultimos4,
-            ':nome_titular' => SecurityHelper::sanitizeString(
-                mb_substr(strtoupper((string) ($data['nome_titular'] ?? 'Titular')), 0, 120)
-            ),
+            // NULO QUANDO NAO SE SABE, nunca um placeholder.
+            //
+            // Gravar 'TITULAR' e '12/99' fazia a tela mostrar dado inventado
+            // com cara de dado real — o cliente nao tinha como perceber que
+            // aquilo nao veio do cartao dele. Nulo a view sabe tratar.
+            ':nome_titular' => !empty($data['nome_titular'])
+                ? SecurityHelper::sanitizeString(
+                      mb_substr(strtoupper((string) $data['nome_titular']), 0, 120)
+                  )
+                : null,
             ':apelido'      => !empty($data['apelido'])
                 ? SecurityHelper::sanitizeString((string) $data['apelido'])
                 : null,
-            ':validade'     => SecurityHelper::sanitizeString(
-                (string) ($data['validade'] ?? '12/99')
-            ),
+            ':validade'     => !empty($data['validade'])
+                ? SecurityHelper::sanitizeString(mb_substr((string) $data['validade'], 0, 5))
+                : null,
             ':principal'    => $principal,
         ]);
 

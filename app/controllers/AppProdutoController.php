@@ -37,46 +37,6 @@ class AppProdutoController extends AppApiController
         $this->ok(['produto' => ProductDetailPresenter::montar($produto, $this->contexto())]);
     }
 
-    /**
-     * GET /api/app/v1/produtos/{id}/avaliacoes
-     * Lista paginada. O resumo e a distribuição já vêm em /produtos/{slug}.
-     */
-    public function avaliacoes(string $id = '0'): void
-    {
-        $this->bootOpcional();
-        $this->liberarSessao();
-
-        $produtoId = (int)$id;
-        $pagina    = $this->pagina(10, 30);
-        $ctx       = $this->contexto();
-
-        $modelo = new Product();
-        $rows   = $modelo->getReviews($produtoId, $pagina['limit'], $pagina['offset']);
-        $stats  = $modelo->getReviewStats($produtoId);
-
-        $this->okPaginado(
-            'avaliacoes',
-            array_values(array_map(static fn(array $a) => [
-                'id'        => (int)$a['id'],
-                'nota'      => (int)$a['nota'],
-                'titulo'    => $a['titulo'] ?? null,
-                'comentario'=> $a['comentario'] ?? null,
-                'autor'     => [
-                    'nome'   => $a['cliente_nome'] ?? 'Cliente',
-                    'avatar' => $ctx->url($a['avatar'] ?? null),
-                ],
-                'criado_em' => !empty($a['criado_em'])
-                    ? date(DATE_ATOM, strtotime($a['criado_em']))
-                    : null,
-                'util' => [
-                    'sim' => (int)($a['util_sim'] ?? 0),
-                    'nao' => (int)($a['util_nao'] ?? 0),
-                ],
-            ], $rows)),
-            (int)($stats['total'] ?? 0),
-            $pagina
-        );
-    }
 
     /**
      * GET /api/app/v1/produtos/{id}/clips
