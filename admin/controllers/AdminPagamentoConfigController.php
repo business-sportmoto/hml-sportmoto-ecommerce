@@ -166,31 +166,135 @@ class AdminPagamentoConfigController extends Controller
             $this->json(['ok' => false, 'msg' => 'Adquirente não encontrada.']);
         }
 
-        // Campos de segredo vão CRUS: sanitizeString escaparia caracteres e
-        // corromperia a chave. A proteção deles é não voltar para a tela.
+        // Salva pelo MESMO esquema que a tela desenhou. Antes a lista de
+        // campos era fixa aqui, e diferente da lista da view — foi assim que
+        // a chave publica do Mercado Pago nao tinha onde ser digitada nem
+        // como ser gravada.
         $dados = [
-            'nome'             => SecurityHelper::sanitizeString($_POST['nome'] ?? $g['nome']),
-            'sandbox'          => !empty($_POST['sandbox']) ? 1 : 0,
-            'client_id'        => trim((string) ($_POST['client_id'] ?? $g['client_id'])),
-            'merchant_id'      => trim((string) ($_POST['merchant_id'] ?? $g['merchant_id'])),
-            'webhook_endpoint' => trim((string) ($_POST['webhook_endpoint'] ?? '')),
-            'api_key'          => (string) ($_POST['api_key'] ?? ''),
-            'webhook_secret'   => (string) ($_POST['webhook_secret'] ?? ''),
+            'nome'    => SecurityHelper::sanitizeString($_POST['nome'] ?? $g['nome']),
+            'sandbox' => !empty($_POST['sandbox']) ? 1 : 0,
         ];
+
+        $trocouSegredo = [];
+
+        foreach (PagamentoAdquirente::camposDe($g['codigo']) as $campo) {
+            $col = $campo['coluna'];
+            if (!array_key_exists($col, $_POST)) continue;
+
+            if ($campo['tipo'] === 'segredo') {
+                // Segredo vai CRU: sanitizeString escaparia caracteres e
+                // corromperia a chave. A protecao dele e nunca voltar a tela.
+                // Vazio significa "manter o atual" — quem decide e o model.
+                $dados[$col] = (string) $_POST[$col];
+                if (trim($dados[$col]) !== '') $trocouSegredo[] = $col;
+            } else {
+                $dados[$col] = trim((string) $_POST[$col]);
+            }
+        }
+
+        // Opcoes livres da adquirente, preservando o que ja existia.
+        $extras = PagamentoAdquirente::extrasDe($g['codigo']);
+        if ($extras && isset($_POST['extra']) && is_array($_POST['extra'])) {
+            $cfg = json_decode((string) ($g['config_extra'] ?? ''), true) ?: [];
+
+            foreach ($extras as $ex) {
+                if (!array_key_exists($ex['chave'], $_POST['extra'])) continue;
+                $v = $_POST['extra'][$ex['chave']];
+
+                // So aceita valor previsto: um select nao pode virar campo livre.
+                if ($ex['tipo'] === 'select') {
+                    if (!isset($ex['opcoes'][$v])) continue;
+                    $cfg[$ex['chave']] = (string) $v;
+                } else {
+                    $cfg[$ex['chave']] = max(0, (int) $v);
+                }
+            }
+
+            $dados['config_extra'] = json_encode($cfg, JSON_UNESCAPED_UNICODE);
+        }
 
         $this->adquirentes->salvar($id, $dados);
 
         // [LOG] audit: NUNCA o valor das credenciais — só o fato de terem
         // sido trocadas, para dar rastro sem virar vazamento.
         LogService::audit('Adquirente configurada', [
-            'adquirente'      => $g['codigo'],
-            'por'             => AuthHelper::usuarioId(),
-            'sandbox'         => $dados['sandbox'],
-            'trocou_api_key'  => trim($dados['api_key']) !== '',
-            'trocou_webhook'  => trim($dados['webhook_secret']) !== '',
+            'adquirente' => $g['codigo'],
+            'por'        => AuthHelper::usuarioId(),
+            'sandbox'    => $dados['sandbox'],
+            // Quais segredos mudaram, nunca o valor deles.
+            'trocou'     => $trocouSegredo,
         ]);
 
         $this->json(['ok' => true, 'msg' => 'Adquirente atualizada.']);
+    }
+
+    /**
+     * POST /admin/pagamentos/adquirentes/logo
+     *
+     * Sobe o logo da adquirente para o Cloudflare R2.
+     *
+     * Passa pelo ImageUploadService, nao pelo R2MediaService direto: e ele que
+     * valida o $_FILES, confere o MIME real, redimensiona e converte para
+     * WebP. Falar com o R2 direto daqui pularia tudo isso e deixaria a porta
+     * aberta para subir qualquer arquivo com extensao de imagem.
+     */
+    public function logoAdquirente(): void
+    {
+        AuthHelper::requireAdminLevel('super');
+        $this->verifyCsrf();
+
+        $id = (int) ($_POST['id'] ?? 0);
+        $g  = $id > 0 ? $this->adquirentes->find($id) : null;
+        if (!$g) {
+            $this->json(['ok' => false, 'msg' => 'Adquirente não encontrada.']);
+        }
+
+        // Remover: veio o pedido explicito de limpar.
+        if (!empty($_POST['remover'])) {
+            $img = ImageUploadService::fromEnv();
+            $img->delete($g['logo_url'] ?? null);
+            $this->adquirentes->salvar($id, ['logo_url' => null]);
+
+            LogService::audit('Logo da adquirente removido', [
+                'adquirente' => $g['codigo'], 'por' => AuthHelper::usuarioId(),
+            ]);
+
+            $this->json(['ok' => true, 'msg' => 'Logo removido.', 'url' => null]);
+        }
+
+        if (empty($_FILES['logo']['name'] ?? '')) {
+            $this->json(['ok' => false, 'msg' => 'Escolha um arquivo de imagem.']);
+        }
+
+        try {
+            $img = ImageUploadService::fromEnv();
+
+            // 320px basta: o logo aparece em 44px no card e ~64px no drawer.
+            // Guardar maior so gasta banda de quem abre a tela.
+            $url = $img->uploadUnica($_FILES['logo'], 'adquirentes', 320);
+
+            if (!$url) {
+                $this->json(['ok' => false, 'msg' => 'Não foi possível ler a imagem.']);
+            }
+
+            // O anterior sai depois do novo entrar: se o upload falhar, a
+            // adquirente continua com o logo que tinha.
+            $anterior = $g['logo_url'] ?? null;
+            $this->adquirentes->salvar($id, ['logo_url' => $url]);
+            if ($anterior) $img->delete($anterior);
+
+            LogService::audit('Logo da adquirente atualizado', [
+                'adquirente' => $g['codigo'], 'por' => AuthHelper::usuarioId(),
+            ]);
+
+            $this->json(['ok' => true, 'msg' => 'Logo atualizado.', 'url' => $url]);
+
+        } catch (\Throwable $e) {
+            LogService::exception($e, 'error', 'pagamento', [
+                'acao' => 'logo_adquirente', 'adquirente' => $g['codigo'],
+            ]);
+            $this->json(['ok' => false, 'msg' => 'Falha ao enviar a imagem. Tente outro arquivo.']);
+        }
     }
 
     /** POST /admin/pagamentos/adquirentes/alternar */

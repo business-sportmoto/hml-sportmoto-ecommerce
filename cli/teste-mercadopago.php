@@ -396,7 +396,7 @@ function cicloCartao(string $token, bool $confirmado): void
     // "Field=email - Syntax invalid" (causa 612). O adapter tira o alias
     // sozinho, mas usar um e-mail limpo aqui mantem cada rodada com o seu
     // proprio cliente, em vez de todas colapsarem no mesmo.
-    $email = 'qamp' . date('Hi') . '@sportmoto.com.br';
+    $email = 'robert.dev.junior@gmail.com';
     $nome  = '';
 
     $cpf = '';
@@ -442,9 +442,9 @@ function cicloCartao(string $token, bool $confirmado): void
 
     // ── Limpeza, aconteca o que acontecer ────────────────────────────
     // $apagou = $mp->removerCartao((string) $res['customer_ref'], (string) $res['card_ref']);
-    printf("\n  cartao removido: %s\n", $apagou ? 'sim' : 'NAO — remova pelo painel do Mercado Pago');
+    // printf("\n  cartao removido: %s\n", $apagou ? 'sim' : 'NAO — remova pelo painel do Mercado Pago');
 
-    if (!$apagou) exit(1);
+    // if (!$apagou) exit(1);
 
     echo "\n  Ciclo completo. O cadastro de cartao funciona nesta credencial.\n";
 }

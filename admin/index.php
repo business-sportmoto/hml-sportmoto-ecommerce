@@ -26,6 +26,12 @@ spl_autoload_register(function (string $class): void {
         ROOT_PATH . '/app/services/logistica/',
         ROOT_PATH . '/app/services/logistica/transportadoras/',
         ROOT_PATH . '/app/services/payment/',
+        // Estes dois faltavam aqui, embora estejam no index.php da loja e no
+        // bootstrap-cli. Resultado: adapter e antifraude carregavam no
+        // checkout e no CLI, mas o painel morria com "class not found" ao
+        // consultar uma transacao.
+        ROOT_PATH . '/app/services/payment/adquirentes/',
+        ROOT_PATH . '/app/services/payment/antifraude/',
         ROOT_PATH . '/admin/controllers/',
     ];
     foreach ($paths as $path) {

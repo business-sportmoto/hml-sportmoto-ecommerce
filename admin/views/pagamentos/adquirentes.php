@@ -3,11 +3,31 @@
 // $adquirentes e $suportadas injetados pelo AdminPagamentoConfigController
 //
 // SEGREDOS: os campos de chave chegam aqui SEM valor — o model já os removeu.
-// A tela mostra apenas "configurado" ou "pendente". Um segredo renderizado num
+// A tela mostra apenas "configurada" ou "pendente". Um segredo renderizado num
 // input acaba em cache do navegador, em print de suporte e no autocomplete.
+//
+// A TELA RESPONDE UMA PERGUNTA ANTES DE QUALQUER CLIQUE:
+//   "minha malha de pagamento está de pé?" — daí a faixa de resumo no topo e
+//   o ponto de estado em cada card. Configurar é a exceção, não a regra: por
+//   isso o formulário mora no drawer, e não empilhado na página.
+//
+// Os campos de cada adquirente vêm de PagamentoAdquirente::camposDe(), e não
+// de uma lista escrita aqui. Duas listas divergem — foi assim que a chave
+// pública do Mercado Pago ficou sem lugar na tela.
+
+$total      = count($adquirentes);
+$ativas     = 0;
+$pendentes  = 0;
+$emProducao = 0;
+
+foreach ($adquirentes as $a) {
+    if ($a['ativo']) $ativas++;
+    if (empty($a['merchant_id']) && empty($a['api_key_preenchido'])) $pendentes++;
+    if ($a['ativo'] && empty($a['sandbox'])) $emProducao++;
+}
 ?>
 
-<div class="admin-page">
+<div class="admin-page adq-page">
 
   <div class="admin-page-header">
     <div>
@@ -21,143 +41,399 @@
     <a href="<?= ADMIN_URL ?>/pagamentos/formas" class="btn btn-outline">← Formas de pagamento</a>
   </div>
 
-  <div class="admin-card" style="margin-bottom:18px;padding:14px 20px;background:#fffbeb;border-color:#fde68a;">
-    <div style="font-size:12.5px;color:#92400e;">
-      <strong>Chaves nunca são exibidas.</strong> Deixe o campo em branco para manter a
-      chave atual — preencher só é necessário quando você quer trocá-la.
+  <?php if ($total): ?>
+  <!-- Resumo: o estado da malha em três números, antes de rolar a página. -->
+  <div class="adq-resumo">
+    <div class="adq-resumo-item">
+      <span class="adq-resumo-num"><?= $ativas ?><small>/<?= $total ?></small></span>
+      <span class="adq-resumo-rot">ativas</span>
     </div>
+    <div class="adq-resumo-item <?= $emProducao ? 'is-forte' : '' ?>">
+      <span class="adq-resumo-num"><?= $emProducao ?></span>
+      <span class="adq-resumo-rot">em produção</span>
+    </div>
+    <div class="adq-resumo-item <?= $pendentes ? 'is-alerta' : '' ?>">
+      <span class="adq-resumo-num"><?= $pendentes ?></span>
+      <span class="adq-resumo-rot">sem credencial</span>
+    </div>
+    <p class="adq-resumo-nota">
+      <?php if ($emProducao): ?>
+        Cobranças reais estão habilitadas.
+      <?php elseif ($ativas): ?>
+        Tudo em sandbox — nenhuma cobrança real acontece.
+      <?php else: ?>
+        Nenhuma adquirente ativa. O checkout não processa pagamentos.
+      <?php endif; ?>
+    </p>
   </div>
 
-  <?php foreach ($adquirentes as $a):
-      $configurada = !empty($a['merchant_id']) && !empty($a['api_key_preenchido']);
-      $emUso       = !empty($a['fluxos']);
-  ?>
-  <form class="admin-card form-adquirente" data-id="<?= (int) $a['id'] ?>"
-        data-codigo="<?= View::e($a['codigo']) ?>" style="margin-bottom:16px;padding:20px;">
-    <?= SecurityHelper::csrfField() ?>
-    <input type="hidden" name="id" value="<?= (int) $a['id'] ?>">
+  <div class="adq-grid">
+    <?php foreach ($adquirentes as $a):
+        $configurada = !empty($a['merchant_id']) || !empty($a['api_key_preenchido']);
+        $emUso       = !empty($a['fluxos']);
+        $semAdapter  = empty($a['tem_adapter']);
+        $logo        = trim((string) ($a['logo_url'] ?? ''));
 
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px;">
-      <div>
-        <div style="display:flex;align-items:center;gap:10px;">
-          <h3 style="margin:0;font-size:16px;"><?= View::e($a['nome']) ?></h3>
+        // O ponto de estado resume o card numa cor só, para varrer a grade
+        // sem ler tag nenhuma.
+        $estado = !$a['ativo'] ? 'off'
+                : (($semAdapter || !$configurada) ? 'atencao'
+                : (empty($a['sandbox']) ? 'live' : 'teste'));
+    ?>
+    <article class="adq-card is-<?= $estado ?>" data-id="<?= (int) $a['id'] ?>">
 
-          <?php if ($a['ativo']): ?>
-            <span style="background:#f0fdf4;color:#15803d;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;">ATIVA</span>
+      <header class="adq-head">
+        <div class="adq-marca<?= $logo ? ' tem-logo' : '' ?>">
+          <?php if ($logo): ?>
+            <img src="<?= View::e($logo) ?>" alt="<?= View::e($a['nome']) ?>" loading="lazy">
           <?php else: ?>
-            <span style="background:#f8fafc;color:#64748b;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;">INATIVA</span>
-          <?php endif; ?>
-
-          <?php if (!empty($a['sandbox'])): ?>
-            <span style="background:#fffbeb;color:#92400e;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;">SANDBOX</span>
-          <?php endif; ?>
-
-          <?php if (empty($a['tem_adapter'])): ?>
-            <span style="background:#fef2f2;color:#b91c1c;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;"
-                  title="Não existe adapter implementado para esta adquirente">SEM ADAPTER</span>
+            <?= IconLibrary::adquirente($a['codigo']) ?>
           <?php endif; ?>
         </div>
 
-        <div style="font-size:11.5px;color:var(--c-text-muted);margin-top:4px;">
-          código <code><?= View::e($a['codigo']) ?></code>
-          · credenciais: <?= $configurada
-              ? '<span style="color:#15803d;font-weight:600;">configuradas</span>'
-              : '<span style="color:#b45309;font-weight:600;">pendentes</span>' ?>
+        <div class="adq-ident">
+          <h3>
+            <span class="adq-ponto" aria-hidden="true"></span>
+            <?= View::e($a['nome']) ?>
+          </h3>
+          <code><?= View::e($a['codigo']) ?></code>
         </div>
 
-        <?php if ($emUso): ?>
-        <div style="font-size:11.5px;color:#1d4ed8;margin-top:6px;">
-          Em uso no fluxo:
-          <?= View::e(implode(', ', array_column($a['fluxos'], 'nome'))) ?>
-        </div>
+        <!-- Interruptor no card: ativar e desativar é a ação mais frequente
+             desta tela e não merece dois cliques dentro de um drawer. -->
+        <label class="adq-switch" title="<?= $a['ativo'] ? 'Desativar' : 'Ativar' ?>">
+          <input type="checkbox" class="adq-toggle" <?= $a['ativo'] ? 'checked' : '' ?>
+                 data-id="<?= (int) $a['id'] ?>"
+                 aria-label="<?= $a['ativo'] ? 'Desativar' : 'Ativar' ?> <?= View::e($a['nome']) ?>">
+          <span class="adq-trilho"><span class="adq-bola"></span></span>
+        </label>
+      </header>
+
+      <div class="adq-tags">
+        <span class="adq-tag <?= $a['ativo'] ? 'ok' : 'neutra' ?>"><?= $a['ativo'] ? 'Ativa' : 'Inativa' ?></span>
+
+        <?php if (!empty($a['sandbox'])): ?>
+          <span class="adq-tag aviso" title="Nenhuma cobrança real é feita">Sandbox</span>
+        <?php else: ?>
+          <span class="adq-tag forte" title="Cobranças aqui movimentam dinheiro real">Produção</span>
         <?php endif; ?>
+
+        <?php if ($semAdapter): ?>
+          <span class="adq-tag erro" title="Não existe código de integração — esta adquirente não processa nada">Sem adapter</span>
+        <?php endif; ?>
+
+        <span class="adq-tag <?= $configurada ? 'ok' : 'erro' ?>"
+              title="<?= $configurada ? 'Merchant ID ou chave presentes' : 'Faltam as credenciais' ?>">
+          <?= $configurada ? 'Credenciais ok' : 'Sem credencial' ?>
+        </span>
       </div>
 
-      <div style="display:flex;gap:8px;align-items:center;">
-        <button type="button" class="btn btn-outline btn-testar">Testar conexão</button>
-        <button type="button" class="btn <?= $a['ativo'] ? 'btn-outline' : 'btn-primary' ?> btn-alternar"
-                data-ativar="<?= $a['ativo'] ? '0' : '1' ?>">
-          <?= $a['ativo'] ? 'Desativar' : 'Ativar' ?>
+      <p class="adq-uso <?= $emUso ? '' : 'vazio' ?>">
+        <?php if ($emUso): ?>
+          Em uso no fluxo <strong><?= View::e(implode(', ', array_column($a['fluxos'], 'nome'))) ?></strong>
+        <?php else: ?>
+          Fora de qualquer fluxo publicado
+        <?php endif; ?>
+      </p>
+
+      <footer class="adq-pe">
+        <button type="button" class="btn btn-outline btn-sm adq-testar" data-id="<?= (int) $a['id'] ?>">
+          Testar
         </button>
-      </div>
-    </div>
+        <button type="button" class="btn btn-primary btn-sm adq-configurar" data-id="<?= (int) $a['id'] ?>">
+          Configurar
+        </button>
+      </footer>
 
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;">
-      <div class="form-group">
-        <label>Nome de exibição</label>
-        <input type="text" name="nome" class="form-control" value="<?= View::e($a['nome']) ?>">
-      </div>
-      <div class="form-group">
-        <label>Merchant ID</label>
-        <input type="text" name="merchant_id" class="form-control"
-               value="<?= View::e($a['merchant_id'] ?? '') ?>" autocomplete="off">
-      </div>
-      <div class="form-group">
-        <label>Client ID</label>
-        <input type="text" name="client_id" class="form-control"
-               value="<?= View::e($a['client_id'] ?? '') ?>" autocomplete="off">
-      </div>
+      <!-- Formulário do drawer, em <template> para nascer do HTML já escapado
+           pelo PHP em vez de concatenado em JS. -->
+      <template class="adq-tpl">
+        <form class="form-adquirente" data-id="<?= (int) $a['id'] ?>"
+              data-codigo="<?= View::e($a['codigo']) ?>">
+          <?= SecurityHelper::csrfField() ?>
+          <input type="hidden" name="id" value="<?= (int) $a['id'] ?>">
 
-      <div class="form-group">
-        <label>
-          Chave de API
-          <?php if (!empty($a['api_key_preenchido'])): ?>
-            <span style="color:#15803d;font-size:11px;">• já configurada</span>
+          <!-- ── Logo ────────────────────────────────────────────── -->
+          <div class="adq-logo-bloco">
+            <div class="adq-logo-previa">
+              <?php if ($logo): ?>
+                <img src="<?= View::e($logo) ?>" alt="">
+              <?php else: ?>
+                <?= IconLibrary::adquirente($a['codigo'], 56) ?>
+              <?php endif; ?>
+            </div>
+            <div class="adq-logo-acoes">
+              <strong>Logo</strong>
+              <p>PNG, JPG ou WebP. Vai para o Cloudflare R2 e é convertido para WebP.
+                 Sem logo, fica o monograma.</p>
+              <div class="adq-logo-btns">
+                <label class="btn btn-outline btn-sm">
+                  Enviar imagem
+                  <input type="file" class="adq-logo-input" accept="image/*" hidden>
+                </label>
+                <button type="button" class="btn btn-ghost btn-sm adq-logo-remover"
+                        <?= $logo ? '' : 'hidden' ?>>Remover</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="adq-aviso">
+            As chaves nunca são exibidas. Deixe em branco para manter a atual —
+            preencher só é necessário para trocá-la.
+          </div>
+
+          <div class="form-group">
+            <label>Nome de exibição</label>
+            <input type="text" name="nome" class="form-control" value="<?= View::e($a['nome']) ?>">
+          </div>
+
+          <?php foreach (PagamentoAdquirente::camposDe($a['codigo']) as $campo):
+              $col     = $campo['coluna'];
+              $segredo = $campo['tipo'] === 'segredo';
+              $jaTem   = $segredo && !empty($a[$col . '_preenchido']);
+          ?>
+          <div class="form-group">
+            <label>
+              <?= View::e($campo['rotulo']) ?>
+              <?php if (!empty($campo['obrigatorio'])): ?>
+                <span class="adq-obrig">obrigatório</span>
+              <?php endif; ?>
+              <?php if ($jaTem): ?>
+                <span class="adq-ok-inline">• já configurado</span>
+              <?php endif; ?>
+            </label>
+
+            <?php if ($segredo): ?>
+              <input type="password" name="<?= View::e($col) ?>" class="form-control"
+                     autocomplete="new-password"
+                     placeholder="<?= $jaTem ? 'deixe em branco para manter' : (!empty($campo['obrigatorio']) ? 'obrigatório' : 'opcional') ?>">
+            <?php else: ?>
+              <input type="text" name="<?= View::e($col) ?>" class="form-control" autocomplete="off"
+                     value="<?= View::e((string) ($a[$col] ?? '')) ?>"
+                     <?= $campo['tipo'] === 'url'
+                         ? 'placeholder="' . View::e(BASE_URL . '/webhooks/' . $a['codigo']) . '"'
+                         : '' ?>>
+            <?php endif; ?>
+
+            <?php if (!empty($campo['ajuda'])): ?>
+              <small class="form-help"><?= View::e($campo['ajuda']) ?></small>
+            <?php endif; ?>
+          </div>
+          <?php endforeach; ?>
+
+          <?php
+          $extras = PagamentoAdquirente::extrasDe($a['codigo']);
+          $cfg    = json_decode((string) ($a['config_extra'] ?? ''), true) ?: [];
+          if ($extras):
+          ?>
+          <h4 class="adq-secao">Opções desta adquirente</h4>
+          <div class="adq-grid-2">
+            <?php foreach ($extras as $ex): $valor = $cfg[$ex['chave']] ?? $ex['padrao'] ?? ''; ?>
+            <div class="form-group">
+              <label><?= View::e($ex['rotulo']) ?></label>
+              <?php if ($ex['tipo'] === 'select'): ?>
+                <select name="extra[<?= View::e($ex['chave']) ?>]" class="form-control">
+                  <?php foreach ($ex['opcoes'] as $v => $rot): ?>
+                    <option value="<?= View::e($v) ?>" <?= (string) $valor === (string) $v ? 'selected' : '' ?>>
+                      <?= View::e($rot) ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+              <?php else: ?>
+                <input type="number" name="extra[<?= View::e($ex['chave']) ?>]"
+                       class="form-control" value="<?= View::e((string) $valor) ?>">
+              <?php endif; ?>
+              <?php if (!empty($ex['ajuda'])): ?>
+                <small class="form-help"><?= View::e($ex['ajuda']) ?></small>
+              <?php endif; ?>
+            </div>
+            <?php endforeach; ?>
+          </div>
           <?php endif; ?>
-        </label>
-        <input type="password" name="api_key" class="form-control" autocomplete="new-password"
-               placeholder="<?= !empty($a['api_key_preenchido']) ? 'deixe em branco para manter' : 'obrigatória' ?>">
-      </div>
 
-      <div class="form-group">
-        <label>
-          Segredo do webhook
-          <?php if (!empty($a['webhook_secret_preenchido'])): ?>
-            <span style="color:#15803d;font-size:11px;">• já configurado</span>
-          <?php endif; ?>
-        </label>
-        <input type="password" name="webhook_secret" class="form-control" autocomplete="new-password"
-               placeholder="<?= !empty($a['webhook_secret_preenchido']) ? 'deixe em branco para manter' : 'opcional' ?>">
-      </div>
-
-      <div class="form-group">
-        <label>URL de notificação</label>
-        <input type="text" name="webhook_endpoint" class="form-control"
-               value="<?= View::e($a['webhook_endpoint'] ?? '') ?>"
-               placeholder="<?= View::e(BASE_URL) ?>/webhooks/<?= View::e($a['codigo']) ?>">
-      </div>
-    </div>
-
-    <label class="check-label" style="margin-top:14px;">
-      <input type="checkbox" name="sandbox" value="1" <?= !empty($a['sandbox']) ? 'checked' : '' ?>>
-      <span class="check-custom"></span> Ambiente de testes (sandbox)
-    </label>
-
-    <div style="display:flex;align-items:center;gap:12px;margin-top:16px;">
-      <button type="submit" class="btn btn-primary">Salvar</button>
-      <span class="form-feedback" style="font-size:12.5px;"></span>
-    </div>
-  </form>
-  <?php endforeach; ?>
-
-  <?php if (!$adquirentes): ?>
-  <div class="admin-card" style="padding:40px;text-align:center;color:var(--c-text-muted);">
+          <h4 class="adq-secao">Ambiente</h4>
+          <label class="check-label adq-sandbox">
+            <input type="checkbox" name="sandbox" value="1" <?= !empty($a['sandbox']) ? 'checked' : '' ?>>
+            <span class="check-custom"></span>
+            <span>
+              Ambiente de testes (sandbox)
+              <small>Desmarcado, as cobranças passam a ser reais.</small>
+            </span>
+          </label>
+        </form>
+      </template>
+    </article>
+    <?php endforeach; ?>
+  </div>
+  <?php else: ?>
+  <div class="admin-card adq-vazio">
     Nenhuma adquirente cadastrada. Rode <code>migration-pagamentos.sql</code>.
   </div>
   <?php endif; ?>
 
 </div>
 
+<style>
+/* ── Tema ──────────────────────────────────────────────────────
+   As cores moram aqui e sao trocadas em bloco no escuro. Suporta os dois
+   caminhos: a preferencia do sistema e o atributo data-theme, que o painel
+   ja declara como gancho para um interruptor futuro. */
+.adq-page{
+  --adq-sup:#fff;        --adq-sup2:#f8fafc;
+  --adq-bd:#e6e9ef;      --adq-bd2:#cfd6e0;
+  --adq-tx:#0f172a;      --adq-tx2:#64748b;
+  --adq-sombra:0 6px 20px -8px rgba(15,23,42,.18);
+}
+@media (prefers-color-scheme: dark){
+  html:not([data-theme="light"]) .adq-page{
+    --adq-sup:#1c1c1e;   --adq-sup2:#161618;
+    --adq-bd:#2c2c2e;    --adq-bd2:#3a3a3d;
+    --adq-tx:#f4f4f5;    --adq-tx2:#a1a1aa;
+    --adq-sombra:0 8px 24px rgba(0,0,0,.55);
+  }
+}
+html[data-theme="dark"] .adq-page{
+  --adq-sup:#1c1c1e;   --adq-sup2:#161618;
+  --adq-bd:#2c2c2e;    --adq-bd2:#3a3a3d;
+  --adq-tx:#f4f4f5;    --adq-tx2:#a1a1aa;
+  --adq-sombra:0 8px 24px rgba(0,0,0,.55);
+}
+
+/* ── Resumo ───────────────────────────────────────────────────── */
+.adq-resumo{display:flex;align-items:center;gap:28px;flex-wrap:wrap;
+  background:var(--adq-sup);border:1px solid var(--adq-bd);border-radius:14px;
+  padding:16px 22px;margin-bottom:18px}
+.adq-resumo-item{display:flex;flex-direction:column;line-height:1.1}
+.adq-resumo-num{font-size:26px;font-weight:800;color:var(--adq-tx);
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.adq-resumo-num small{font-size:15px;font-weight:600;color:var(--adq-tx2)}
+.adq-resumo-rot{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--adq-tx2);margin-top:3px}
+.adq-resumo-item.is-forte .adq-resumo-num{color:#1d4ed8}
+.adq-resumo-item.is-alerta .adq-resumo-num{color:#b45309}
+.adq-resumo-nota{margin:0 0 0 auto;font-size:12.5px;color:var(--adq-tx2);
+  padding-left:20px;border-left:1px solid var(--adq-bd)}
+
+/* ── Grade ────────────────────────────────────────────────────── */
+.adq-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px}
+
+.adq-card{position:relative;background:var(--adq-sup);border:1px solid var(--adq-bd);
+  border-radius:14px;padding:18px 18px 16px;display:flex;flex-direction:column;gap:13px;
+  overflow:hidden;transition:border-color .16s,box-shadow .16s,transform .16s}
+.adq-card:hover{border-color:var(--adq-bd2);box-shadow:var(--adq-sombra);transform:translateY(-1px)}
+/* Trilho de estado: a cor identifica o card de longe, sem ler tag. */
+.adq-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--adq-bd2)}
+.adq-card.is-live::before{background:#1d4ed8}
+.adq-card.is-teste::before{background:#16a34a}
+.adq-card.is-atencao::before{background:#d97706}
+.adq-card.is-off::before{background:#cbd5e1}
+
+.adq-head{display:flex;align-items:center;gap:13px}
+.adq-marca{flex:0 0 auto;width:44px;height:44px;line-height:0;border-radius:11px;overflow:hidden}
+.adq-marca.tem-logo{background:var(--adq-sup2);border:1px solid var(--adq-bd);
+  display:flex;align-items:center;justify-content:center;padding:5px}
+.adq-marca img{max-width:100%;max-height:100%;object-fit:contain}
+
+.adq-ident{flex:1;min-width:0}
+.adq-ident h3{margin:0;font-size:15px;font-weight:650;color:var(--adq-tx);
+  display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.adq-ident code{font-size:11px;color:var(--adq-tx2)}
+.adq-ponto{width:7px;height:7px;border-radius:50%;flex:0 0 auto;background:#cbd5e1}
+.is-live .adq-ponto{background:#1d4ed8;box-shadow:0 0 0 3px rgba(29,78,216,.14)}
+.is-teste .adq-ponto{background:#16a34a;box-shadow:0 0 0 3px rgba(22,163,74,.14)}
+.is-atencao .adq-ponto{background:#d97706;box-shadow:0 0 0 3px rgba(217,119,6,.16)}
+
+.adq-switch{flex:0 0 auto;cursor:pointer;display:inline-flex}
+.adq-switch input{position:absolute;opacity:0;width:0;height:0}
+.adq-trilho{width:40px;height:23px;border-radius:99px;background:#cbd5e1;
+  display:inline-block;position:relative;transition:background .18s}
+.adq-bola{position:absolute;top:3px;left:3px;width:17px;height:17px;border-radius:50%;
+  background:#fff;transition:transform .18s;box-shadow:0 1px 3px rgba(0,0,0,.28)}
+.adq-switch input:checked + .adq-trilho{background:#16a34a}
+.adq-switch input:checked + .adq-trilho .adq-bola{transform:translateX(17px)}
+.adq-switch input:disabled + .adq-trilho{opacity:.5;cursor:wait}
+.adq-switch input:focus-visible + .adq-trilho{outline:2px solid #2563eb;outline-offset:2px}
+
+.adq-tags{display:flex;flex-wrap:wrap;gap:6px}
+.adq-tag{font-size:10px;font-weight:700;letter-spacing:.05em;padding:3px 9px;border-radius:20px;
+  text-transform:uppercase}
+.adq-tag.ok{background:#f0fdf4;color:#15803d}
+.adq-tag.neutra{background:#f1f5f9;color:#64748b}
+.adq-tag.aviso{background:#fffbeb;color:#92400e}
+.adq-tag.forte{background:#eff6ff;color:#1d4ed8}
+.adq-tag.erro{background:#fef2f2;color:#b91c1c}
+
+.adq-uso{margin:0;font-size:12px;color:#1d4ed8;line-height:1.45}
+.adq-uso.vazio{color:var(--adq-tx2)}
+
+.adq-pe{display:flex;gap:8px;margin-top:auto;padding-top:3px}
+.adq-pe .btn{flex:1}
+.btn-sm{padding:7px 12px;font-size:12.5px}
+.btn-ghost{background:transparent;border:1px solid transparent;color:#b91c1c}
+.btn-ghost:hover{background:#fef2f2}
+
+.adq-vazio{padding:40px;text-align:center;color:var(--adq-tx2)}
+
+/* ── Drawer ───────────────────────────────────────────────────── */
+.adq-logo-bloco{display:flex;gap:14px;align-items:flex-start;padding:14px;
+  background:var(--adq-sup2);border:1px solid var(--adq-bd);border-radius:12px;margin-bottom:16px}
+.adq-logo-previa{flex:0 0 auto;width:56px;height:56px;border-radius:12px;background:var(--adq-sup);
+  border:1px solid var(--adq-bd);display:flex;align-items:center;justify-content:center;
+  overflow:hidden;padding:5px;line-height:0;transition:opacity .18s}
+.adq-logo-previa img{max-width:100%;max-height:100%;object-fit:contain}
+.adq-logo-previa.enviando{opacity:.4}
+.adq-logo-acoes{flex:1;min-width:0}
+.adq-logo-acoes strong{display:block;font-size:13px;color:var(--adq-tx)}
+.adq-logo-acoes p{margin:3px 0 9px;font-size:11.5px;line-height:1.5;color:var(--adq-tx2)}
+.adq-logo-btns{display:flex;gap:7px;align-items:center}
+.adq-logo-btns .btn{margin:0}
+
+.adq-aviso{background:var(--adq-aviso-bg,#fffbeb);border:1px solid var(--adq-aviso-bd,#fde68a);color:var(--adq-aviso-tx,#92400e);
+  font-size:12.5px;line-height:1.5;padding:11px 14px;border-radius:9px;margin-bottom:16px}
+.adq-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:560px){
+  .adq-grid-2{grid-template-columns:1fr}
+  .adq-resumo-nota{margin:8px 0 0;padding:0;border:0}
+}
+.adq-ok-inline{color:#15803d;font-size:11px;font-weight:600}
+.adq-obrig{color:#b45309;font-size:10.5px;font-weight:600}
+.adq-secao{margin:22px 0 10px;font-size:11px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--adq-tx2);
+  padding-bottom:7px;border-bottom:1px solid var(--adq-bd)}
+.adq-sandbox{align-items:flex-start}
+.adq-sandbox small{display:block;color:var(--adq-tx2);font-size:11.5px;margin-top:2px}
+.adq-drawer-pe{display:flex;gap:8px}
+.adq-drawer-pe .btn{flex:1}
+
+/* Tags no escuro: os fundos claros virariam blocos brilhantes. */
+@media (prefers-color-scheme: dark){
+  html:not([data-theme="light"]) .adq-tag.ok{background:#0f2a18;color:#4ade80}
+  html:not([data-theme="light"]) .adq-tag.neutra{background:#232326;color:#a1a1aa}
+  html:not([data-theme="light"]) .adq-tag.aviso{background:#2a2013;color:#fcd34d}
+  html:not([data-theme="light"]) .adq-tag.forte{background:#12203a;color:#7dabf8}
+  html:not([data-theme="light"]) .adq-tag.erro{background:#2a1416;color:#fca5a5}
+}
+html[data-theme="dark"] .adq-tag.ok{background:#0f2a18;color:#4ade80}
+html[data-theme="dark"] .adq-tag.neutra{background:#232326;color:#a1a1aa}
+html[data-theme="dark"] .adq-tag.aviso{background:#2a2013;color:#fcd34d}
+html[data-theme="dark"] .adq-tag.forte{background:#12203a;color:#7dabf8}
+html[data-theme="dark"] .adq-tag.erro{background:#2a1416;color:#fca5a5}
+
+/* Aviso amarelo do drawer */
+@media (prefers-color-scheme: dark){
+  html:not([data-theme="light"]) .adq-page{--adq-aviso-bg:#2a2013;--adq-aviso-bd:#4a3410;--adq-aviso-tx:#fcd34d}
+}
+html[data-theme="dark"] .adq-page{--adq-aviso-bg:#2a2013;--adq-aviso-bd:#4a3410;--adq-aviso-tx:#fcd34d}
+</style>
+
 <script>
 (function () {
   'use strict';
   var BASE = '<?= ADMIN_URL ?>';
 
-  function post(url, form, extra) {
-    var fd = new FormData(form);
-    Object.keys(extra || {}).forEach(function (k) { fd.append(k, extra[k]); });
+  function post(url, dados) {
     return fetch(BASE + url, {
-      method: 'POST', body: fd, credentials: 'same-origin',
+      method: 'POST', body: dados, credentials: 'same-origin',
       headers: { 'X-Requested-With': 'XMLHttpRequest' }
     }).then(function (r) { return r.json(); });
   }
@@ -167,73 +443,163 @@
     else { alert(msg); }
   }
 
-  document.querySelectorAll('.form-adquirente').forEach(function (form) {
-    var feedback = form.querySelector('.form-feedback');
+  function card(id) { return document.querySelector('.adq-card[data-id="' + id + '"]'); }
 
-    form.addEventListener('submit', function (e) {
-      e.preventDefault();
-      var btn = form.querySelector('button[type="submit"]');
-      btn.disabled = true;
+  /**
+   * FormData da adquirente.
+   *
+   * Recebe o formulário quando a chamada parte do drawer; sem ele, monta a
+   * partir do <template>. Escopar assim, em vez de procurar no documento
+   * inteiro, evita pegar o formulário de um drawer que ainda não saiu do DOM.
+   */
+  function dadosDe(id, form, extra) {
+    var origem = form || card(id).querySelector('.adq-tpl').content.querySelector('form');
+    var fd = new FormData(origem);
+    Object.keys(extra || {}).forEach(function (k) { fd.append(k, extra[k]); });
+    return fd;
+  }
 
-      post('/pagamentos/adquirentes/salvar', form).then(function (res) {
-        btn.disabled = false;
-        aviso(res.ok, res.msg || 'Não foi possível salvar.');
-        feedback.textContent = res.msg || '';
-        feedback.style.color = res.ok ? '#15803d' : '#b91c1c';
-        // Limpa os campos de segredo depois de salvar: o valor digitado não
-        // deve continuar na tela nem no histórico do formulário.
-        if (res.ok) {
-          form.querySelectorAll('input[type="password"]').forEach(function (i) { i.value = ''; });
-        }
-      }).catch(function () {
-        btn.disabled = false;
-        aviso(false, 'Erro de conexão.');
-      });
-    });
+  // ── Ativar / desativar direto no card ──────────────────────────────
+  document.querySelectorAll('.adq-toggle').forEach(function (sw) {
+    sw.addEventListener('change', function () {
+      var id = sw.dataset.id, ativar = sw.checked ? '1' : '0';
+      sw.disabled = true;
 
-    form.querySelector('.btn-testar').addEventListener('click', function () {
-      var b = this;
-      b.disabled = true;
-      var txt = b.textContent;
-      b.textContent = 'Testando...';
+      var enviar = function (confirmado) {
+        return post('/pagamentos/adquirentes/alternar',
+                    dadosDe(id, null, { ativar: ativar, confirmado: confirmado ? '1' : '' }));
+      };
 
-      post('/pagamentos/adquirentes/testar', form).then(function (res) {
-        b.disabled = false; b.textContent = txt;
-        aviso(res.ok, res.msg);
-        feedback.textContent = res.msg || '';
-        feedback.style.color = res.ok ? '#15803d' : '#b91c1c';
-      }).catch(function () {
-        b.disabled = false; b.textContent = txt;
-        aviso(false, 'Erro de conexão.');
-      });
-    });
-
-    form.querySelector('.btn-alternar').addEventListener('click', function () {
-      var b = this;
-      var ativar = b.getAttribute('data-ativar');
-      b.disabled = true;
-
-      post('/pagamentos/adquirentes/alternar', form, { ativar: ativar }).then(function (res) {
-        b.disabled = false;
-
-        // Desativar adquirente em uso num fluxo publicado pede confirmação:
-        // pode interromper pagamentos em andamento.
+      enviar(false).then(function (res) {
+        // Desativar adquirente que está num fluxo publicado deixa o roteamento
+        // sem saída. Pergunta antes, mas deixa seguir: pode ser exatamente o
+        // que o lojista quer quando a adquirente cai.
         if (!res.ok && res.confirmar) {
-          if (!confirm(res.msg)) return;
-          b.disabled = true;
-          return post('/pagamentos/adquirentes/alternar', form,
-                      { ativar: ativar, confirmado: '1' }).then(function (r2) {
-            b.disabled = false;
+          if (!confirm(res.msg)) { sw.checked = !sw.checked; sw.disabled = false; return; }
+          return enviar(true).then(function (r2) {
             aviso(r2.ok, r2.msg);
-            if (r2.ok) location.reload();
+            if (r2.ok) location.reload(); else { sw.checked = !sw.checked; sw.disabled = false; }
           });
         }
-
         aviso(res.ok, res.msg);
         if (res.ok) location.reload();
+        else { sw.checked = !sw.checked; sw.disabled = false; }
       }).catch(function () {
-        b.disabled = false;
+        sw.checked = !sw.checked; sw.disabled = false;
         aviso(false, 'Erro de conexão.');
+      });
+    });
+  });
+
+  // ── Testar sem abrir o drawer ──────────────────────────────────────
+  document.querySelectorAll('.adq-testar').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var id = b.dataset.id, txt = b.textContent;
+      b.disabled = true; b.textContent = 'Testando…';
+      post('/pagamentos/adquirentes/testar', dadosDe(id, null)).then(function (res) {
+        b.disabled = false; b.textContent = txt;
+        aviso(res.ok, res.msg);
+      }).catch(function () {
+        b.disabled = false; b.textContent = txt;
+        aviso(false, 'Erro de conexão.');
+      });
+    });
+  });
+
+  // ── Configurar: drawer ─────────────────────────────────────────────
+  document.querySelectorAll('.adq-configurar').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var id = b.dataset.id, el = card(id);
+
+      var drawer = adminDrawer({
+        titulo:    el.querySelector('.adq-ident h3').textContent.trim(),
+        subtitulo: 'Credenciais e ambiente · ' + el.querySelector('.adq-ident code').textContent,
+        tamanho:   'md',
+        conteudo:  el.querySelector('.adq-tpl').content.cloneNode(true),
+        acoes:     '<div class="adq-drawer-pe">'
+                 +   '<button type="button" class="btn btn-outline btn-sm" data-acao="testar">Testar conexão</button>'
+                 +   '<button type="button" class="btn btn-primary btn-sm" data-acao="salvar">Salvar</button>'
+                 + '</div>'
+      });
+
+      // O formulário vive no corpo DESTE drawer.
+      var corpo  = drawer.corpo();
+      var form   = corpo.querySelector('.form-adquirente');
+      var previa = corpo.querySelector('.adq-logo-previa');
+
+      // ── Logo ─────────────────────────────────────────────────────
+      // Sobe na hora da escolha, não no Salvar: a resposta traz a URL do R2 e
+      // a prévia passa a mostrar o arquivo que o servidor realmente guardou,
+      // não um preview local que pode divergir dele.
+      function enviarLogo(fd) {
+        previa.classList.add('enviando');
+        fd.append('id', id);
+        fd.append('_csrf_token', form.querySelector('[name="_csrf_token"]').value);
+
+        return post('/pagamentos/adquirentes/logo', fd).then(function (res) {
+          previa.classList.remove('enviando');
+          aviso(res.ok, res.msg);
+          if (!res.ok) return res;
+
+          var marca    = el.querySelector('.adq-marca');
+          var remover  = corpo.querySelector('.adq-logo-remover');
+
+          if (res.url) {
+            previa.innerHTML = '<img src="' + res.url + '" alt="">';
+            marca.classList.add('tem-logo');
+            marca.innerHTML = '<img src="' + res.url + '" alt="" loading="lazy">';
+            if (remover) remover.hidden = false;
+          } else {
+            // Voltou ao monograma: recarrega para o SVG vir do servidor, em
+            // vez de o JS tentar redesenhar a marca.
+            location.reload();
+          }
+          return res;
+        }).catch(function () {
+          previa.classList.remove('enviando');
+          aviso(false, 'Erro de conexão.');
+        });
+      }
+
+      drawer.escutar('change', '.adq-logo-input', function (e) {
+        var arq = e.target.files && e.target.files[0];
+        if (!arq) return;
+        var fd = new FormData();
+        fd.append('logo', arq);
+        enviarLogo(fd);
+        e.target.value = '';   // permite reenviar o mesmo arquivo
+      });
+
+      drawer.escutar('click', '.adq-logo-remover', function () {
+        var fd = new FormData();
+        fd.append('remover', '1');
+        enviarLogo(fd);
+      });
+
+      // ── Salvar / testar ──────────────────────────────────────────
+      drawer.escutar('click', '[data-acao="salvar"]', function (e) {
+        var btn = e.currentTarget;
+        btn.disabled = true;
+        post('/pagamentos/adquirentes/salvar', dadosDe(id, form)).then(function (res) {
+          btn.disabled = false;
+          aviso(res.ok, res.msg || 'Não foi possível salvar.');
+          if (res.ok) location.reload();
+        }).catch(function () {
+          btn.disabled = false;
+          aviso(false, 'Erro de conexão.');
+        });
+      });
+
+      drawer.escutar('click', '[data-acao="testar"]', function (e) {
+        var btn = e.currentTarget, txt = btn.textContent;
+        btn.disabled = true; btn.textContent = 'Testando…';
+        post('/pagamentos/adquirentes/testar', dadosDe(id, form)).then(function (res) {
+          btn.disabled = false; btn.textContent = txt;
+          aviso(res.ok, res.msg);
+        }).catch(function () {
+          btn.disabled = false; btn.textContent = txt;
+          aviso(false, 'Erro de conexão.');
+        });
       });
     });
   });

@@ -313,6 +313,7 @@ AdminRouter::post('/pagamentos/fluxos/rascunho',         'AdminPagamentoFluxoCon
 AdminRouter::post('/pagamentos/adquirentes/salvar',      'AdminPagamentoConfigController@salvarAdquirente');
 AdminRouter::post('/pagamentos/adquirentes/alternar',    'AdminPagamentoConfigController@alternarAdquirente');
 AdminRouter::post('/pagamentos/adquirentes/testar',      'AdminPagamentoConfigController@testarAdquirente');
+AdminRouter::post('/pagamentos/adquirentes/logo',        'AdminPagamentoConfigController@logoAdquirente');
 
 AdminRouter::get ('/configuracoes/pwa',                   'AdminPwaController@index');
 AdminRouter::post('/configuracoes/pwa/salvar',            'AdminPwaController@salvar');

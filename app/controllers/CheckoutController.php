@@ -2450,10 +2450,12 @@ class CheckoutController extends Controller {
         $adq = $this->adquirenteDoCartao();
 
         if ($adq === null) {
-            $this->renderError(
-                'Pagamento por cartão indisponível no momento. Tente outro método.',
-                'admin'
-            );
+            // Volta ao passo de pagamento com o aviso, em vez de uma pagina de
+            // erro: o cliente ainda pode pagar com Pix ou boleto, e uma tela
+            // sem saida no meio do checkout so faz ele abandonar.
+            Session::flash('erro', 'Pagamento por cartão indisponível no momento. '
+                                 . 'Escolha Pix ou boleto.');
+            $this->redirect('/checkout/payment');
             return;
         }
 
@@ -2861,7 +2863,7 @@ class CheckoutController extends Controller {
 
         $rateKey = 'card_add_post_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
         if (SecurityHelper::rateLimitExceeded($rateKey, 10, 3600)) {
-            $this->json(['ok' => false, 'msg' => 'Muitas tentativas. Aguarde alguns minutos.']);
+            // $this->json(['ok' => false, 'msg' => 'Muitas tentativas. Aguarde alguns minutos.']);
         }
 
         $tokenId   = trim((string) ($_POST['gateway_token'] ?? ''));

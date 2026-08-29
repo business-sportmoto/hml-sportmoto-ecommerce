@@ -23,10 +23,103 @@ class PagamentoAdquirente extends Model
     /** Campos tratados como segredo: só gravados quando vêm preenchidos. */
     private const SEGREDOS = ['api_key', 'front_api_key', 'webhook_secret', 'webhook_public_key'];
 
+    /**
+     * O QUE CADA ADQUIRENTE PRECISA, campo a campo.
+     *
+     * POR QUE ISTO EXISTE:
+     *   Um formulario fixo servia mal a todo mundo. O Mercado Pago precisa de
+     *   chave publica (que o navegador usa para tokenizar) e nao usa
+     *   merchant_id; a Safra e o oposto. Mostrar os dois para os dois deixa
+     *   metade dos campos sem sentido, e o lojista sem saber quais preencher —
+     *   foi assim que a chave publica do Mercado Pago ficou sem lugar na tela
+     *   e o checkout de cartao caiu por falta dela.
+     *
+     *   Declarar aqui mantem a tela, o salvamento e a validacao lendo a MESMA
+     *   lista. Adquirente nova = uma entrada aqui, e nada mais.
+     *
+     * `coluna` é a coluna real em pgto_gateways.
+     * `tipo`   texto | segredo | url. Segredo nunca volta preenchido para a tela.
+     */
+    public const CAMPOS_POR_ADQUIRENTE = [
+        'mercadopago' => [
+            ['coluna' => 'front_api_key', 'rotulo' => 'Public Key', 'tipo' => 'segredo',
+             'obrigatorio' => true,
+             'ajuda' => 'Vai para o navegador e tokeniza o cartão. Começa com APP_USR- ou TEST-.'],
+            ['coluna' => 'api_key', 'rotulo' => 'Access Token', 'tipo' => 'segredo',
+             'obrigatorio' => true,
+             'ajuda' => 'Usado no servidor para cobrar. Nunca sai daqui.'],
+            ['coluna' => 'webhook_secret', 'rotulo' => 'Segredo do webhook', 'tipo' => 'segredo',
+             'ajuda' => 'Assina as notificações. Pegue em Suas integrações > Webhooks.'],
+            ['coluna' => 'webhook_endpoint', 'rotulo' => 'URL de notificação', 'tipo' => 'url',
+             'ajuda' => 'Cadastre esta URL no painel, marcando o tópico Orders.'],
+        ],
+
+        'safrapay' => [
+            ['coluna' => 'merchant_id', 'rotulo' => 'Merchant ID', 'tipo' => 'texto',
+             'obrigatorio' => true],
+            ['coluna' => 'api_key', 'rotulo' => 'Merchant Token', 'tipo' => 'segredo',
+             'obrigatorio' => true,
+             'ajuda' => 'Trocado por um token de acesso a cada sessão.'],
+            ['coluna' => 'webhook_secret', 'rotulo' => 'Segredo do webhook', 'tipo' => 'segredo'],
+            ['coluna' => 'webhook_endpoint', 'rotulo' => 'URL de notificação', 'tipo' => 'url'],
+        ],
+
+        'cielo' => [
+            ['coluna' => 'merchant_id', 'rotulo' => 'MerchantId', 'tipo' => 'texto',
+             'obrigatorio' => true, 'ajuda' => 'GUID de 36 caracteres.'],
+            ['coluna' => 'api_key', 'rotulo' => 'MerchantKey', 'tipo' => 'segredo',
+             'obrigatorio' => true],
+            ['coluna' => 'webhook_endpoint', 'rotulo' => 'URL de notificação', 'tipo' => 'url'],
+        ],
+
+        'malga' => [
+            ['coluna' => 'client_id', 'rotulo' => 'Client ID', 'tipo' => 'texto', 'obrigatorio' => true],
+            ['coluna' => 'api_key', 'rotulo' => 'API Key', 'tipo' => 'segredo', 'obrigatorio' => true],
+            ['coluna' => 'merchant_id', 'rotulo' => 'Merchant ID', 'tipo' => 'texto'],
+            ['coluna' => 'front_client_id', 'rotulo' => 'Client ID do front', 'tipo' => 'texto',
+             'ajuda' => 'Usado pelos campos hospedados, no navegador.'],
+            ['coluna' => 'front_api_key', 'rotulo' => 'API Key do front', 'tipo' => 'segredo'],
+            ['coluna' => 'webhook_secret', 'rotulo' => 'Segredo do webhook', 'tipo' => 'segredo'],
+            ['coluna' => 'webhook_endpoint', 'rotulo' => 'URL de notificação', 'tipo' => 'url'],
+        ],
+    ];
+
+    /** Opções livres, gravadas em config_extra. */
+    public const EXTRAS_POR_ADQUIRENTE = [
+        'mercadopago' => [
+            ['chave' => 'pix_expira_min', 'rotulo' => 'Pix expira em (min)', 'tipo' => 'numero', 'padrao' => 30],
+            ['chave' => 'boleto_dias', 'rotulo' => 'Boleto vence em (dias)', 'tipo' => 'numero', 'padrao' => 3],
+            ['chave' => 'tres_ds', 'rotulo' => 'Autenticação 3DS', 'tipo' => 'select',
+             'opcoes' => ['never' => 'Desligada', 'on_fraud_risk' => 'Quando houver risco'],
+             'padrao' => 'never',
+             'ajuda' => 'Ligada, o banco pode pedir confirmação ao cliente — a tela ainda não trata esse desafio.'],
+        ],
+    ];
+
+    /**
+     * Campos da adquirente. Cai num conjunto genérico quando ela não foi
+     * declarada — melhor um formulário aproximado do que nenhum.
+     */
+    public static function camposDe(string $codigo): array
+    {
+        return self::CAMPOS_POR_ADQUIRENTE[strtolower($codigo)] ?? [
+            ['coluna' => 'merchant_id', 'rotulo' => 'Merchant ID', 'tipo' => 'texto'],
+            ['coluna' => 'client_id', 'rotulo' => 'Client ID', 'tipo' => 'texto'],
+            ['coluna' => 'api_key', 'rotulo' => 'Chave de API', 'tipo' => 'segredo'],
+            ['coluna' => 'webhook_secret', 'rotulo' => 'Segredo do webhook', 'tipo' => 'segredo'],
+            ['coluna' => 'webhook_endpoint', 'rotulo' => 'URL de notificação', 'tipo' => 'url'],
+        ];
+    }
+
+    public static function extrasDe(string $codigo): array
+    {
+        return self::EXTRAS_POR_ADQUIRENTE[strtolower($codigo)] ?? [];
+    }
+
     /** Campos comuns, sobrescritos normalmente. */
     private const CAMPOS = [
         'nome', 'ativo', 'sandbox', 'client_id', 'front_client_id',
-        'merchant_id', 'webhook_id', 'webhook_endpoint',
+        'merchant_id', 'webhook_id', 'webhook_endpoint', 'config_extra', 'logo_url',
     ];
 
     /** Adapters que existem no código — o que a tela pode oferecer. */

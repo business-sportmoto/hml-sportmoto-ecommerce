@@ -343,13 +343,16 @@ class MercadoPagoAdapter implements AdquirenteInterface
             return $this->falhaCartao('e-mail do cliente ou token ausente');
         }
 
-        $customerId = $this->acharOuCriarCliente($cliente, $email);
-        if ($customerId === null) {
+        $cli = $this->acharOuCriarCliente($cliente, $email);
+        if ($cli === null) {
             return $this->falhaCartao('nao foi possivel criar o cliente na adquirente');
         }
 
-        $r = $this->http('POST', '/v1/customers/' . rawurlencode($customerId) . '/cards',
-                         ['token' => $token]);
+        $customerId = $cli['id'];
+
+        $r = $this->http('POST', '/v1/customers/' . rawurlencode($customerId) . '/cards', ['token' => $token]);
+
+        LogService::audit('customers', [$token, $customerId]);
 
         if ($r['erro'] !== null || $r['http'] < 200 || $r['http'] >= 300) {
             $motivo = (string) ($r['body']['message'] ?? $r['raw']);
@@ -357,15 +360,38 @@ class MercadoPagoAdapter implements AdquirenteInterface
             LogService::error('Mercado Pago recusou salvar o cartao', [
                 'customer' => $customerId, 'http' => $r['http'],
                 'motivo'   => mb_substr($motivo, 0, 200),
-                'cliente'=>$cliente, 'tef'=>$cliente['documento'].'tef'
+                // A resposta crua ajuda a depurar e nao carrega segredo.
+                // O TOKEN nao entra aqui: e credencial de pagamento, e log
+                // fica em banco, em backup e em print de suporte.
+                'resposta' => $r['body'] ?? null,
             ], 'pagamento');
 
             // "invalid card owner" significa que o titular do token nao bate
             // com o cadastro do cliente na adquirente. Vale dizer isso em vez
             // de um erro generico: quem le o log precisa saber onde olhar.
             if (stripos($motivo, 'card owner') !== false) {
+                // Dois motivos distintos caem no mesmo "invalid card owner", e
+                // confundi-los custa horas: ou o CPF do token esta invalido, ou
+                // o cliente ja existe com o CPF de OUTRA pessoa colado nele.
+                // A segunda so acontece com cadastro antigo, e nao se resolve
+                // tentando de novo — tem de mexer no cliente.
+                if ($cli['cpf'] !== '') {
+                    LogService::audit('Cliente na adquirente tem CPF de outra pessoa', [
+                        'customer' => $customerId,
+                        'cpf_do_cliente' => preg_replace('/\d(?=\d{4})/', '*', $cli['cpf']),
+                        'dica' => 'cadastro anterior a remocao da identificacao; '
+                                . 'apague o cliente no painel ou use outro e-mail',
+                    ]);
+
+                    return $this->falhaCartao(
+                        'o cadastro deste cliente na adquirente esta com o CPF de outra pessoa '
+                        . '(final ' . mb_substr($cli['cpf'], -4) . '), entao cartao de terceiro '
+                        . 'nao vincula. Apague esse cliente no painel da adquirente.'
+                    );
+                }
+
                 return $this->falhaCartao(
-                    'os dados do titular nao conferem com o cadastro do cliente na adquirente'
+                    'a adquirente recusou os dados do titular — confira o CPF digitado'
                 );
             }
 
@@ -402,14 +428,26 @@ class MercadoPagoAdapter implements AdquirenteInterface
      * o cliente pode ja existir de uma compra anterior, ou de outro cadastro
      * nosso que nao guardou o id.
      */
-    private function acharOuCriarCliente(array $cliente, string $email): ?string
+    /**
+     * @return array{id:string, cpf:string, novo:bool}|null
+     */
+    private function acharOuCriarCliente(array $cliente, string $email): ?array
     {
         $busca = $this->http('GET', '/v1/customers/search?email=' . urlencode($email), null);
 
         // LogService::audit('acharOuCriarCliente', [$busca]);
 
-        $achado = $busca['body']['results'][0]['id'] ?? null;
-        if ($achado) return (string) $achado;
+        // Leva junto a identificacao que o cliente JA tem. E ela que decide se
+        // um cartao de terceiro vai poder ser vinculado, e sem carregar esse
+        // dado a falha vira um "invalid card owner" sem explicacao.
+        $achado = $busca['body']['results'][0] ?? null;
+        if (!empty($achado['id'])) {
+            return [
+                'id'  => (string) $achado['id'],
+                'cpf' => (string) ($achado['identification']['number'] ?? ''),
+                'novo' => false,
+            ];
+        }
 
         $nome = trim((string) ($cliente['nome'] ?? ''));
         $part = $nome !== '' ? (preg_split('/\s+/', $nome) ?: []) : [];
@@ -439,7 +477,7 @@ class MercadoPagoAdapter implements AdquirenteInterface
         $r = $this->http('POST', '/v1/customers', $corpo);
 
         if ($r['http'] >= 200 && $r['http'] < 300 && isset($r['body']['id'])) {
-            return (string) $r['body']['id'];
+            return ['id' => (string) $r['body']['id'], 'cpf' => '', 'novo' => true];
         }
 
         // `cause` e onde mora a explicacao. O `message` sozinho diz

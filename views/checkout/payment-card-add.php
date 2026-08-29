@@ -353,6 +353,7 @@ $adq       = defined('CHECKOUT_ADQUIRENTE') ? CHECKOUT_ADQUIRENTE : 'malga';
 $publicKey = defined('CHECKOUT_PUBLIC_KEY') ? CHECKOUT_PUBLIC_KEY : '';
 $clientId  = defined('CHECKOUT_CLIENT_ID')  ? CHECKOUT_CLIENT_ID  : '';
 $sandbox   = defined('CHECKOUT_SANDBOX')    ? CHECKOUT_SANDBOX    : true;
+
 ?>
 <?php if ($adq === 'mercadopago'): ?>
   <!--

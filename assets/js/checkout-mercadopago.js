@@ -59,6 +59,38 @@
 
   var valido = { cardNumber: false, expirationDate: false, securityCode: false };
 
+  /** Digito verificador do CPF. */
+  function cpfValido(d) {
+    if (!/^\d{11}$/.test(d)) return false;
+    // Digitos todos iguais passam no calculo do verificador,
+    // entao precisam de barreira propria.
+    if (d.split('').every(function (x) { return x === d[0]; })) return false;
+    for (var t = 9; t < 11; t++) {
+      var soma = 0;
+      for (var i = 0; i < t; i++) soma += parseInt(d[i], 10) * (t + 1 - i);
+      var resto = (soma * 10) % 11 % 10;
+      if (resto !== parseInt(d[t], 10)) return false;
+    }
+    return true;
+  }
+
+  /** Digito verificador do CNPJ. */
+  function cnpjValido(d) {
+    if (!/^\d{14}$/.test(d)) return false;
+    if (d.split('').every(function (x) { return x === d[0]; })) return false;
+    var calc = function (base) {
+      var peso = base.length === 12 ? 5 : 6, soma = 0;
+      for (var i = 0; i < base.length; i++) {
+        soma += parseInt(base[i], 10) * peso;
+        peso = peso === 2 ? 9 : peso - 1;
+      }
+      var r = soma % 11;
+      return r < 2 ? 0 : 11 - r;
+    };
+    return calc(d.slice(0, 12)) === parseInt(d[12], 10)
+        && calc(d.slice(0, 13)) === parseInt(d[13], 10);
+  }
+
   var SportMotoMercadoPagoCheckout = {
 
     init: function (opts) {
@@ -113,8 +145,17 @@
       }
 
       var doc = String((dados && dados.documento) || '').replace(/\D/g, '');
-      if (doc.length !== 11 && doc.length !== 14) {
-        this._falhar('Informe um CPF ou CNPJ válido para o titular.');
+
+      // Confere o digito verificador, nao so o tamanho.
+      //
+      // Um CPF com um digito trocado tem 11 numeros e passa por qualquer
+      // checagem de comprimento. O Mercado Pago recusa la na frente com
+      // "invalid card owner" — mensagem que nao aponta para o CPF, e manda
+      // quem esta depurando procurar no lugar errado.
+      if (!cpfValido(doc) && !cnpjValido(doc)) {
+        this._falhar(doc.length > 11
+          ? 'CNPJ do titular inválido.'
+          : 'CPF do titular inválido. Confira os números.');
         return;
       }
 
@@ -232,7 +273,16 @@
       $('#card-add-error').hide().text('');
     },
 
-    showError: function (msg) { this._falhar(msg); },
+    /**
+     * Mostra um erro na tela, sem avisar ninguem.
+     *
+     * SEPARADO DE `_falhar` DE PROPOSITO: `_falhar` notifica via onError, e a
+     * view costuma responder ao onError chamando showError. Se os dois fossem
+     * a mesma coisa, isso viraria recursao infinita — e virou, ate esta
+     * separacao existir. Quem ja sabe do erro chama showError; quem descobre
+     * o erro chama _falhar.
+     */
+    showError: function (msg) { this._exibir(msg); },
 
     // ───────────────────────────────────────────────────────────────
 
@@ -385,9 +435,15 @@
       return 'Não foi possível validar o cartão. Confira os dados.';
     },
 
-    _falhar: function (msg) {
+    /** Só pinta a mensagem. Não avisa a view. */
+    _exibir: function (msg) {
       var $e = $('#card-add-error');
       if ($e.length) $e.text(msg).show();
+    },
+
+    /** Pinta E avisa a view. Ponto de entrada de todo erro nascido aqui. */
+    _falhar: function (msg) {
+      this._exibir(msg);
       cb.onError && cb.onError(msg);
     }
   };

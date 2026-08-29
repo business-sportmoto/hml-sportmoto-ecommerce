@@ -368,6 +368,43 @@ SVG;
     }
  
     // ── Genérico ─────────────────────────────────────────
+    /**
+     * Marca de uma adquirente, para as telas do painel.
+     *
+     * NAO e o logo oficial: e um monograma na cor da marca. Desenhar o logo
+     * de terceiro a mao sai errado e ainda entra em terreno de marca
+     * registrada — o monograma identifica igual, numa grade consistente, e
+     * qualquer adquirente nova ja nasce com aparencia decente.
+     */
+    public static function adquirente(string $codigo, int $tamanho = 44): string
+    {
+        $mapa = [
+            'mercadopago' => ['MP', '#00A6E0'],
+            'safrapay'    => ['SA', '#0B2C5B'],
+            'cielo'       => ['CI', '#0067B1'],
+            'malga'       => ['ML', '#6D28D9'],
+            'stone'       => ['ST', '#00A868'],
+            'pagseguro'   => ['PS', '#F5A623'],
+            'rede'        => ['RE', '#CC0033'],
+            'fake'        => ['FK', '#94A3B8'],
+        ];
+
+        $c = strtolower(trim($codigo));
+        [$sigla, $cor] = $mapa[$c] ?? [mb_strtoupper(mb_substr($c, 0, 2)), '#64748B'];
+
+        $sigla = htmlspecialchars($sigla, ENT_QUOTES, 'UTF-8');
+        $fonte = $tamanho * 0.36;
+
+        return <<<SVG
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" width="{$tamanho}" height="{$tamanho}" role="img" aria-label="{$sigla}">
+  <rect width="44" height="44" rx="11" fill="{$cor}"/>
+  <text x="22" y="27.5" text-anchor="middle"
+        font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"
+        font-size="15" font-weight="700" fill="#fff" letter-spacing="0.4">{$sigla}</text>
+</svg>
+SVG;
+    }
+
     private static function generic(int $w, int $h, string $brand): string {
         $label = strtoupper(substr($brand, 0, 4));
         return <<<SVG

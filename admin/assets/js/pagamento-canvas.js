@@ -83,6 +83,23 @@
   }
 
   /** Escreve o nome de cada porta ao lado do respectivo ponto de saída. */
+  /**
+   * Familia visual de cada porta.
+   *
+   * Espelha a leitura do motor (PagamentoClassificacao):
+   *   ok      passou
+   *   espera  instrumento criado, dinheiro ainda nao
+   *   nega    decisao do emissor — NUNCA retenta
+   *   tec     falha nossa ou da adquirente — pode cair para outra
+   */
+  function classeDaPorta(porta) {
+    if (porta === 'aprovado') return 'pg-p-ok';
+    if (porta === 'pendente' || porta === 'analise') return 'pg-p-espera';
+    if (porta === 'erro_tecnico' || porta === 'indisponivel' || porta === 'erro') return 'pg-p-tec';
+    if (porta.indexOf('negado') === 0 || porta === 'reprovado') return 'pg-p-nega';
+    return 'pg-p-neutra';
+  }
+
   function rotularPortas(idDrawflow, tipo) {
     var meta = CAT[tipo];
     if (!meta || !meta.portas || !meta.portas.length) return;
@@ -93,6 +110,14 @@
     meta.portas.forEach(function (porta, i) {
       var ponto = el.querySelector('.output_' + (i + 1));
       if (!ponto || ponto.querySelector('.pg-porta-lbl')) return;
+
+      // A cor da porta diz o que ela significa, e isso decide se o motor pode
+      // retentar noutra adquirente. Vermelho e recusa do emissor — ligar
+      // numa segunda adquirente e retentativa proibida pelas bandeiras.
+      // Com tudo cinza, so se enxerga um fluxo mal ligado lendo rotulo a
+      // rotulo; com cor, um vermelho apontando para adquirente salta.
+      ponto.classList.add(classeDaPorta(porta));
+
       var lbl = document.createElement('span');
       lbl.className = 'pg-porta-lbl';
       lbl.textContent = ROTULO_PORTA[porta] || porta;

@@ -96,7 +96,9 @@ class PaymentController extends Controller
         $listSvc = new PaymentListService();
         $tx = $listSvc->detalheTransacao($id);
         if (!$tx) {
-            $this->renderError('Transação não encontrada.', 'admin');
+            // renderError nunca existiu no projeto: chamar aqui era erro
+            // fatal em vez de pagina de erro.
+            $this->render('errors/404', [], 'admin');
             return;
         }
 
@@ -255,7 +257,7 @@ class PaymentController extends Controller
         $listSvc = new PaymentListService();
         $log = $listSvc->detalheWebhook($id);
         if (!$log) {
-            $this->renderError('Webhook não encontrado.', 'admin');
+            $this->render('errors/404', [], 'admin');
             return;
         }
 

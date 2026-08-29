@@ -447,7 +447,7 @@
 /* @media (prefers-color-scheme: dark) {
 :root{--pgto-bg:#0b0b0d;--pgto-surface:#161618;--pgto-surface-2:#1c1c1f;--pgto-border:#2a2a2e;--pgto-border-soft:#232327;--pgto-text:#f5f5f7;--pgto-text-muted:#a1a1aa;--pgto-text-soft:#71717a;--pgto-blue-soft:#388ae029;--pgto-green-soft:#22c55e29;--pgto-amber-soft:#f59e0b2e;--pgto-red-soft:#f8717129;--pgto-shadow-sm:0 1px 2px #0006 0 0 0 1px #ffffff0a;--pgto-shadow:0 1px 3px #00000080 0 4px 12px #0006 0 0 0 1px #ffffff0a;--pgto-shadow-lg:0 4px 8px #0009 0 24px 48px #0009}
 } */
-.pgto_wrapper{font-family:var(--pgto-font);color:var(--pgto-text);background:var(--pgto-bg);min-height:100vh;padding:28px 32px 64px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-feature-settings:var(--pgto-tabular)}
+.pgto_wrapper{font-family:var(--pgto-font);color:var(--pgto-text);;min-height:100vh;padding:28px 32px 64px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-feature-settings:var(--pgto-tabular)}
 @media (max-width: 640px) {
 .pgto_wrapper{padding:16px 14px 48px}
 }
@@ -1731,7 +1731,7 @@ html { color-scheme: dark; }
 .ap-hist-dot { border-color: #111821; }
 
 /* Payment module: force token-driven dark surfaces */
-.pgto_wrapper { background: var(--pgto-bg); color: var(--pgto-text); }
+.pgto_wrapper { color: var(--pgto-text); }
 .pgto_alerta_aviso { color: #fde68a; }
 .pgto_alerta_erro { color: #fda4af; }
 .pgto_alerta_ok { color: #86efac; }

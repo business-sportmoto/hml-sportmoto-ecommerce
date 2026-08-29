@@ -13,53 +13,159 @@ $badge = [
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.css">
 
 <style>
-/* Estilos do editor de pagamento. Escopados em pg- para não colidir com o
-   editor de marketing (fx-), que usa o mesmo Drawflow na mesma instalação. */
-.pg-wrap { display:grid; grid-template-columns:190px 1fr 300px; gap:0;
-           height:calc(100vh - 230px); min-height:460px; border:1px solid var(--c-border);
-           border-radius:10px; overflow:hidden; background:#fff; }
-#pg-paleta { border-right:1px solid var(--c-border); background:#fafafa; overflow-y:auto; padding:10px; }
-.pg-paleta-grupo { font-size:10.5px; font-weight:700; text-transform:uppercase;
-                   color:#94a3b8; margin:12px 0 6px; letter-spacing:.4px; }
-.pg-paleta-item { background:#fff; border:1px solid var(--c-border); border-radius:6px;
-                  padding:8px 10px; margin-bottom:5px; font-size:12.5px; cursor:grab; }
-.pg-paleta-item:hover { border-color:#94a3b8; background:#f8fafc; }
-#pg-canvas { position:relative; background:#f8fafc;
-             background-image:radial-gradient(#e2e8f0 1px, transparent 1px);
-             background-size:18px 18px; }
-#pg-painel { border-left:1px solid var(--c-border); background:#fff; overflow-y:auto;
-             padding:14px; display:none; }
-#pg-painel.aberto { display:block; }
-#pg-painel-titulo { font-weight:700; font-size:14px; margin-bottom:4px; }
-#pg-painel-desc { font-size:11.5px; color:var(--c-text-muted); margin-bottom:14px; line-height:1.5; }
-.pg-no { padding:9px 12px; min-width:150px; }
-.pg-no-titulo { font-weight:700; font-size:12.5px; }
-.pg-no-sub { font-size:11px; color:#64748b; margin-top:3px; }
-.pg-porta-lbl { position:absolute; left:16px; top:-6px; font-size:9.5px; color:#64748b;
-                white-space:nowrap; background:#fff; padding:0 3px; border-radius:3px; }
-.drawflow .drawflow-node { border-radius:8px; border:1px solid var(--c-border);
-                           box-shadow:0 1px 3px rgba(0,0,0,.07); padding:0; background:#fff; }
-.drawflow .drawflow-node.selected { border-color:#2563eb; box-shadow:0 0 0 2px #2563eb22; }
-.drawflow .output { background:#94a3b8; }
-.pg-alerta { padding:9px 12px; border-radius:6px; font-size:12.5px; margin-bottom:6px; }
-.pg-erro  { background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; }
-.pg-aviso { background:#fffbeb; color:#92400e; border:1px solid #fde68a; }
-.pg-toolbar { display:flex; align-items:center; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+/* Editor de fluxo de pagamento.
+   Escopado em pg- para nao colidir com o editor de marketing (fx-), que usa o
+   mesmo Drawflow na mesma instalacao.
+
+   TEMA POR TOKEN: as cores moram nas variaveis abaixo e sao trocadas em bloco
+   no escuro. Antes cada regra trazia a cor no corpo, e adicionar o tema
+   escuro exigiria reescrever todas — agora e um bloco so. */
+.pg-editor{
+  --pg-fundo:#f8fafc;      --pg-superficie:#fff;
+  --pg-recuo:#fafafa;      --pg-borda:#e6e9ef;
+  --pg-borda2:#cbd5e1;     --pg-texto:#0f172a;
+  --pg-texto2:#64748b;     --pg-grade:#e2e8f0;
+  --pg-sombra:0 1px 3px rgba(15,23,42,.08);
+  --pg-sombra-no:0 2px 10px -4px rgba(15,23,42,.22);
+}
+@media (prefers-color-scheme: dark){
+  html:not([data-theme="light"]) .pg-editor{
+    --pg-fundo:#161618;     --pg-superficie:#1c1c1e;
+    --pg-recuo:#161618;     --pg-borda:#2c2c2e;
+    --pg-borda2:#3a3a3d;    --pg-texto:#f4f4f5;
+    --pg-texto2:#a1a1aa;    --pg-grade:#2c2c2e;
+    --pg-sombra:0 1px 3px rgba(0,0,0,.5);
+    --pg-sombra-no:0 4px 16px rgba(0,0,0,.55);
+  }
+}
+html[data-theme="dark"] .pg-editor{
+  --pg-fundo:#161618;     --pg-superficie:#1c1c1e;
+  --pg-recuo:#161618;     --pg-borda:#2c2c2e;
+  --pg-borda2:#3a3a3d;    --pg-texto:#f4f4f5;
+  --pg-texto2:#a1a1aa;    --pg-grade:#2c2c2e;
+  --pg-sombra:0 1px 3px rgba(0,0,0,.5);
+  --pg-sombra-no:0 4px 16px rgba(0,0,0,.55);
+}
+
+/* Barra */
+.pg-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.pg-titulo{margin:0;font-size:18px;font-weight:700;color:var(--pg-texto);letter-spacing:-.01em}
+.pg-selo{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.02em}
+.pg-zoom{display:inline-flex;border:1px solid var(--pg-borda);border-radius:8px;overflow:hidden}
+.pg-zoom button{border:0;background:var(--pg-superficie);color:var(--pg-texto2);
+  padding:7px 11px;font-size:12.5px;font-weight:600;cursor:pointer;line-height:1;
+  border-right:1px solid var(--pg-borda);transition:background .14s,color .14s}
+.pg-zoom button:last-child{border-right:0}
+.pg-zoom button:hover{background:var(--pg-fundo);color:var(--pg-texto)}
+
+/* Moldura */
+.pg-wrap{display:grid;grid-template-columns:206px 1fr 310px;
+  height:calc(100vh - 250px);min-height:480px;
+  border:1px solid var(--pg-borda);border-radius:12px;overflow:hidden;
+  background:var(--pg-superficie);box-shadow:var(--pg-sombra)}
+
+/* Paleta */
+#pg-paleta{border-right:1px solid var(--pg-borda);background:var(--pg-recuo);
+  overflow-y:auto;padding:12px 11px}
+.pg-paleta-grupo{font-size:10px;font-weight:700;text-transform:uppercase;
+  color:var(--pg-texto2);margin:14px 0 7px;letter-spacing:.07em}
+.pg-paleta-grupo:first-child{margin-top:2px}
+.pg-paleta-item{position:relative;background:var(--pg-superficie);
+  border:1px solid var(--pg-borda);border-radius:8px;
+  padding:9px 11px 9px 20px;margin-bottom:6px;font-size:12.5px;
+  color:var(--pg-texto);cursor:grab;transition:border-color .14s,transform .14s,box-shadow .14s}
+/* Faixa da cor do grupo: identifica o tipo antes de ler o nome. */
+.pg-paleta-item::before{content:"";position:absolute;left:8px;top:50%;
+  transform:translateY(-50%);width:4px;height:16px;border-radius:2px;
+  background:currentColor;opacity:.6}
+.pg-paleta-item:hover{border-color:var(--pg-borda2);transform:translateX(2px);
+  box-shadow:var(--pg-sombra)}
+.pg-paleta-item:active{cursor:grabbing}
+
+/* Canvas */
+#pg-canvas{position:relative;background-color:var(--pg-fundo);
+  background-image:radial-gradient(var(--pg-grade) 1px,transparent 1px);
+  background-size:18px 18px}
+
+.drawflow .drawflow-node{border-radius:10px;border:1px solid var(--pg-borda);
+  box-shadow:var(--pg-sombra-no);padding:0;background:var(--pg-superficie);
+  transition:box-shadow .16s,border-color .16s}
+.drawflow .drawflow-node:hover{border-color:var(--pg-borda2)}
+.drawflow .drawflow-node.selected{border-color:#2563eb;
+  box-shadow:0 0 0 2px rgba(37,99,235,.28),var(--pg-sombra-no)}
+
+.pg-no{padding:10px 13px;min-width:158px}
+.pg-no-titulo{font-weight:700;font-size:12.5px;letter-spacing:-.01em}
+.pg-no-sub{font-size:11px;color:var(--pg-texto2);margin-top:3px}
+
+/* PORTAS — a informacao mais densa desta tela.
+   Num fluxo de pagamento, o que cada saida significa decide se o motor pode
+   retentar. Verde aprova, vermelho e recusa do emissor (nunca retenta), ambar
+   e falha tecnica (pode cair para outra adquirente). Com tudo cinza, so
+   lendo rotulo a rotulo se enxerga um fluxo mal ligado. */
+.drawflow .output{background:#94a3b8;width:11px;height:11px;
+  border:2px solid var(--pg-superficie);transition:transform .14s}
+.drawflow .output:hover{transform:scale(1.25)}
+.drawflow .output.pg-p-ok{background:#16a34a}
+.drawflow .output.pg-p-espera{background:#0891b2}
+.drawflow .output.pg-p-nega{background:#dc2626}
+.drawflow .output.pg-p-tec{background:#d97706}
+.drawflow .input{width:11px;height:11px;border:2px solid var(--pg-superficie);background:#64748b}
+
+.pg-porta-lbl{position:absolute;left:16px;top:-6px;font-size:9.5px;
+  color:var(--pg-texto2);white-space:nowrap;background:var(--pg-superficie);
+  padding:0 4px;border-radius:3px;border:1px solid var(--pg-borda)}
+
+.drawflow svg .main-path{stroke:var(--pg-borda2);stroke-width:2.2px}
+.drawflow svg .main-path:hover{stroke:#2563eb}
+
+/* Painel */
+#pg-painel{border-left:1px solid var(--pg-borda);background:var(--pg-superficie);
+  overflow-y:auto;padding:16px;display:none;color:var(--pg-texto)}
+#pg-painel.aberto{display:block}
+#pg-painel-titulo{font-weight:700;font-size:14.5px;margin-bottom:5px;color:var(--pg-texto)}
+#pg-painel-desc{font-size:11.5px;color:var(--pg-texto2);margin-bottom:16px;line-height:1.55;
+  padding-bottom:14px;border-bottom:1px solid var(--pg-borda)}
+#pg-painel label{display:block;font-size:11.5px;font-weight:600;
+  color:var(--pg-texto2);margin-bottom:5px}
+#pg-painel .form-control{background:var(--pg-superficie);border-color:var(--pg-borda);
+  color:var(--pg-texto)}
+
+/* Alertas */
+.pg-alerta{padding:10px 13px;border-radius:8px;font-size:12.5px;margin-bottom:7px;line-height:1.5}
+.pg-erro{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca}
+.pg-aviso{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+@media (prefers-color-scheme: dark){
+  html:not([data-theme="light"]) .pg-erro{background:#2a1416;color:#fca5a5;border-color:#4c1d1d}
+  html:not([data-theme="light"]) .pg-aviso{background:#2a2013;color:#fcd34d;border-color:#4a3410}
+}
+html[data-theme="dark"] .pg-erro{background:#2a1416;color:#fca5a5;border-color:#4c1d1d}
+html[data-theme="dark"] .pg-aviso{background:#2a2013;color:#fcd34d;border-color:#4a3410}
+
+/* Legenda */
+.pg-legenda{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+  margin-top:12px;font-size:11.5px;color:var(--pg-texto2)}
+.pg-legenda b{display:inline-flex;align-items:center;gap:5px;font-weight:600}
+.pg-legenda i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.pg-dica{font-size:11.5px;color:var(--pg-texto2);margin-top:10px;line-height:1.6}
+.pg-dica strong{color:var(--pg-texto)}
 </style>
 
-<div class="admin-page">
+<div class="admin-page pg-editor">
 
   <div class="pg-toolbar">
     <a href="<?= ADMIN_URL ?>/pagamentos/fluxos" class="btn btn-outline">← Fluxos</a>
-    <h1 class="admin-page-title" style="margin:0;font-size:18px;"><?= View::e($fluxo['nome']) ?></h1>
-    <span style="background:<?= $stBg ?>;color:<?= $stCor ?>;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">
+    <h1 class="pg-titulo"><?= View::e($fluxo['nome']) ?></h1>
+    <span class="pg-selo" style="background:<?= $stBg ?>;color:<?= $stCor ?>;">
       <?= $stLbl ?> · v<?= (int) $fluxo['versao'] ?>
     </span>
     <span style="flex:1;"></span>
 
-    <button type="button" id="pg-zoom-out"   class="btn btn-outline" title="Zoom −">−</button>
-    <button type="button" id="pg-zoom-reset" class="btn btn-outline" title="100%">100%</button>
-    <button type="button" id="pg-zoom-in"    class="btn btn-outline" title="Zoom +">+</button>
+    <div class="pg-zoom">
+      <button type="button" id="pg-zoom-out"   title="Diminuir zoom">−</button>
+      <button type="button" id="pg-zoom-reset" title="Voltar a 100%">100%</button>
+      <button type="button" id="pg-zoom-in"    title="Aumentar zoom">+</button>
+    </div>
 
     <?php if ($publicado): ?>
       <button type="button" class="btn btn-primary" id="pg-criar-rascunho"
@@ -93,12 +199,19 @@ $badge = [
     </div>
   </div>
 
-  <p style="font-size:11.5px;color:var(--c-text-muted);margin-top:10px;">
+  <div class="pg-legenda">
+    <b><i style="background:#16a34a"></i> aprovado</b>
+    <b><i style="background:#0891b2"></i> aguardando pagamento</b>
+    <b><i style="background:#dc2626"></i> recusa do emissor</b>
+    <b><i style="background:#d97706"></i> falha técnica</b>
+  </div>
+
+  <p class="pg-dica">
     Arraste da paleta para o canvas · clique num nó para configurar ·
     arraste de uma bolinha de saída até a entrada de outro nó para conectar.
-    <strong>As saídas de recusa do emissor</strong> (sem saldo, antifraude, dados inválidos)
-    devem terminar em <em>Recusar</em> — ligá-las noutra adquirente é retentativa proibida
-    pelas bandeiras, e o motor recusa em execução.
+    <strong>As saídas em vermelho devem terminar em Recusar</strong> — ligá-las
+    noutra adquirente é retentativa proibida pelas bandeiras, e o motor recusa
+    em execução. As em âmbar são as que podem cair para outra adquirente.
   </p>
 </div>
 

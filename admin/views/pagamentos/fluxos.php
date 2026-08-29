@@ -9,7 +9,55 @@ $badge = [
 ];
 ?>
 
-<div class="admin-page">
+
+<style>
+/* ── Tema ──────────────────────────────────────────────────────
+   Mesmas superficies do resto do painel (#1c1c1e / #2c2c2e / #f4f4f5).
+   Suporta a preferencia do sistema e o atributo data-theme, que o painel
+   ja declara como gancho para um interruptor futuro. */
+.fx-page{
+  --fx-sup:#fff;      --fx-bd:#e6e9ef;
+  --fx-tx:#0f172a;    --fx-tx2:#64748b;
+  --fx-erro-bg:#fef2f2; --fx-erro-bd:#fecaca; --fx-erro-tx:#b91c1c;
+}
+@media (prefers-color-scheme: dark){
+  html:not([data-theme="light"]) .fx-page{
+    --fx-sup:#1c1c1e;   --fx-bd:#2c2c2e;
+    --fx-tx:#f4f4f5;    --fx-tx2:#a1a1aa;
+    --fx-erro-bg:#2a1416; --fx-erro-bd:#4c1d1d; --fx-erro-tx:#fca5a5;
+  }
+  /* Selos de status vem com cor do PHP; no escuro precisam de fundo proprio,
+     senao um #f0fdf4 vira um bloco branco sobre a superficie escura. */
+  html:not([data-theme="light"]) .fx-page .admin-table td span[style],
+  html:not([data-theme="light"]) .fx-page h3 + div span[style]{
+    background:#232326 !important;filter:brightness(1.35)
+  }
+}
+html[data-theme="dark"] .fx-page{
+  --fx-sup:#1c1c1e;   --fx-bd:#2c2c2e;
+  --fx-tx:#f4f4f5;    --fx-tx2:#a1a1aa;
+  --fx-erro-bg:#2a1416; --fx-erro-bd:#4c1d1d; --fx-erro-tx:#fca5a5;
+}
+html[data-theme="dark"] .fx-page .admin-table td span[style]{
+  background:#232326 !important;filter:brightness(1.35)
+}
+
+.fx-page .admin-card{background:var(--fx-sup);border-color:var(--fx-bd);
+  transition:border-color .16s,box-shadow .16s}
+.fx-page .admin-card:hover{border-color:var(--fx-bd);
+  box-shadow:0 6px 20px -10px rgba(15,23,42,.16)}
+.fx-page h3{color:var(--fx-tx)}
+.fx-page code{color:var(--fx-tx2)}
+.fx-page .admin-table th{color:var(--fx-tx2);border-color:var(--fx-bd)}
+.fx-page .admin-table td{color:var(--fx-tx);border-color:var(--fx-bd);
+  font-variant-numeric:tabular-nums}
+
+.fx-sem-fluxo{margin-top:14px;padding:11px 14px;border-radius:8px;font-size:12.5px;
+  line-height:1.5;background:var(--fx-erro-bg);border:1px solid var(--fx-erro-bd);
+  color:var(--fx-erro-tx)}
+</style>
+
+<div class="admin-page fx-page">
 
   <div class="admin-page-header">
     <div>
@@ -64,8 +112,7 @@ $badge = [
     </div>
 
     <?php if (!$publicado): ?>
-      <div class="pg-sem-fluxo" style="margin-top:14px;padding:10px 14px;background:#fef2f2;
-           border:1px solid #fecaca;border-radius:6px;font-size:12.5px;color:#b91c1c;">
+      <div class="fx-sem-fluxo">
         <strong>Sem fluxo publicado.</strong> Pagamentos nesta forma são recusados —
         o motor não escolhe adquirente por conta própria.
       </div>
