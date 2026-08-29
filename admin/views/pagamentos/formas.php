@@ -209,31 +209,21 @@ $rotulos = [
 
 <style>
 /* ── Tema ──────────────────────────────────────────────────────
-   As cores moram em variaveis e sao trocadas em bloco no escuro. Suporta os
-   dois caminhos: a preferencia do sistema e o atributo data-theme, que o
-   painel ja declara como gancho para um interruptor futuro. */
+   Estes tokens APONTAM para o sistema pgto_ (admin/assets/css/pages.css),
+   que ja define claro e escuro. Valores proprios aqui virariam uma segunda
+   paleta para manter em sincronia — e paleta duplicada e paleta que
+   diverge. O escuro chega de graca, junto com o resto do painel. */
 .fp-page{
-  --fp-sup:#fff;        --fp-sup2:#f8fafc;
-  --fp-bd:#e6e9ef;      --fp-bd2:#cfd6e0;
-  --fp-tx:#0f172a;      --fp-tx2:#64748b;
-  --fp-sombra:0 6px 20px -8px rgba(15,23,42,.18);
-  --fp-juros-bg:#fffbeb; --fp-juros-bd:#fde68a; --fp-juros-tx:#92400e;
-}
-@media (prefers-color-scheme: dark){
-  html:not([data-theme="light"]) .fp-page{
-    --fp-sup:#1c1c1e;   --fp-sup2:#161618;
-    --fp-bd:#2c2c2e;    --fp-bd2:#3a3a3d;
-    --fp-tx:#f4f4f5;    --fp-tx2:#a1a1aa;
-    --fp-sombra:0 8px 24px rgba(0,0,0,.55);
-    --fp-juros-bg:#2a2013; --fp-juros-bd:#4a3410; --fp-juros-tx:#fcd34d;
-  }
-}
-html[data-theme="dark"] .fp-page{
-  --fp-sup:#1c1c1e;   --fp-sup2:#161618;
-  --fp-bd:#2c2c2e;    --fp-bd2:#3a3a3d;
-  --fp-tx:#f4f4f5;    --fp-tx2:#a1a1aa;
-  --fp-sombra:0 8px 24px rgba(0,0,0,.55);
-  --fp-juros-bg:#2a2013; --fp-juros-bd:#4a3410; --fp-juros-tx:#fcd34d;
+  --fp-sup:var(--pgto-surface);
+  --fp-sup2:var(--pgto-surface-2);
+  --fp-bd:var(--pgto-border);
+  --fp-bd2:var(--pgto-border-soft);
+  --fp-tx:var(--pgto-text);
+  --fp-tx2:var(--pgto-text-muted);
+  --fp-sombra:var(--pgto-shadow);
+  --fp-juros-bg:var(--pgto-amber-soft);
+  --fp-juros-bd:#f59e0b4d;
+  --fp-juros-tx:#b45309;
 }
 
 .fp-legenda{display:flex;flex-wrap:wrap;gap:8px 22px;font-size:12px;color:var(--fp-tx2);
@@ -268,10 +258,10 @@ html[data-theme="dark"] .fp-page{
 .fp-tags{display:flex;flex-wrap:wrap;gap:6px}
 .fp-tag{font-size:10.5px;font-weight:700;letter-spacing:.02em;padding:3px 9px;border-radius:20px;
   text-transform:uppercase}
-.fp-tag--ok{background:#f0fdf4;color:#15803d}
-.fp-tag--neutra{background:#f1f5f9;color:#64748b}
-.fp-tag--info{background:#eff6ff;color:#1d4ed8}
-.fp-tag--desconto{background:#fdf4ff;color:#a21caf}
+.fp-tag--ok{background:var(--pgto-green-soft);color:var(--pgto-green)}
+.fp-tag--neutra{background:var(--pgto-border-soft);color:var(--pgto-text-muted)}
+.fp-tag--info{background:var(--pgto-blue-soft);color:var(--pgto-blue)}
+.fp-tag--desconto{background:var(--pgto-purple-soft);color:var(--pgto-purple)}
 
 .fp-resumo{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;margin:0;
   padding:12px 0;border-top:1px solid var(--fp-bd);border-bottom:1px solid var(--fp-bd)}
@@ -306,19 +296,14 @@ html[data-theme="dark"] .fp-page{
 .fp-simulacao-cab small{font-weight:400;color:var(--fp-tx2)}
 .simulacao-linhas{display:flex;flex-wrap:wrap;gap:6px}
 
-/* Tags e selos no escuro. */
+
 @media (prefers-color-scheme: dark){
-  html:not([data-theme="light"]) .fp-tag--ok{background:#0f2a18;color:#4ade80}
-  html:not([data-theme="light"]) .fp-tag--neutra{background:#232326;color:#a1a1aa}
-  html:not([data-theme="light"]) .fp-tag--info{background:#12203a;color:#7dabf8}
-  html:not([data-theme="light"]) .fp-tag--desconto{background:#2a1430;color:#e879f9}
-  html:not([data-theme="light"]) .fp-selo{background:#232326 !important;color:#e4e4e7 !important}
+  html:not([data-theme="light"]) .fp-page{--fp-juros-tx:#fcd34d}
+  /* O selo do metodo vem com cor inline do PHP; no escuro precisa de fundo proprio. */
+  html:not([data-theme="light"]) .fp-selo{background:var(--pgto-surface-2) !important;color:var(--pgto-text) !important}
 }
-html[data-theme="dark"] .fp-tag--ok{background:#0f2a18;color:#4ade80}
-html[data-theme="dark"] .fp-tag--neutra{background:#232326;color:#a1a1aa}
-html[data-theme="dark"] .fp-tag--info{background:#12203a;color:#7dabf8}
-html[data-theme="dark"] .fp-tag--desconto{background:#2a1430;color:#e879f9}
-html[data-theme="dark"] .fp-selo{background:#232326 !important;color:#e4e4e7 !important}
+html[data-theme="dark"] .fp-page{--fp-juros-tx:#fcd34d}
+html[data-theme="dark"] .fp-selo{background:var(--pgto-surface-2) !important;color:var(--pgto-text) !important}
 </style>
 
 <script>

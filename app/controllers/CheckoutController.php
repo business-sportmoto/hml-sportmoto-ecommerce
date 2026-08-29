@@ -1910,6 +1910,20 @@ class CheckoutController extends Controller {
                     }
                 } elseif ($cartaoTemp) {
                     $tokenCartao = $cartaoTemp['gateway_token'] ?? $cartaoTemp['token'] ?? null;
+
+                    // CARTAO NOVO TAMBEM PRENDE A ADQUIRENTE.
+                    //
+                    // O token nasceu no navegador, com a chave publica de UMA
+                    // adquirente, e so ela consegue decifra-lo. Sem prender,
+                    // uma falha tecnica autoriza o motor a cair para outra
+                    // adquirente — que receberia um token que nao entende e
+                    // recusaria por um motivo falso, gastando uma tentativa e
+                    // sujando o historico do cliente.
+                    //
+                    // O cartao salvo ja tinha essa trava; o novo nao tinha
+                    // porque nenhuma falha tecnica chegava ate aqui.
+                    $donaDoToken   = $this->adquirenteDoCartao();
+                    $adquirenteFix = $donaDoToken['codigo'] ?? '';
                 }
 
                 if (empty($tokenCartao)) {

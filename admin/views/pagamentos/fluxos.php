@@ -12,34 +12,26 @@ $badge = [
 
 <style>
 /* ── Tema ──────────────────────────────────────────────────────
-   Mesmas superficies do resto do painel (#1c1c1e / #2c2c2e / #f4f4f5).
-   Suporta a preferencia do sistema e o atributo data-theme, que o painel
-   ja declara como gancho para um interruptor futuro. */
+   Aponta para o sistema pgto_ (pages.css), que ja define claro e escuro. */
 .fx-page{
-  --fx-sup:#fff;      --fx-bd:#e6e9ef;
-  --fx-tx:#0f172a;    --fx-tx2:#64748b;
-  --fx-erro-bg:#fef2f2; --fx-erro-bd:#fecaca; --fx-erro-tx:#b91c1c;
+  --fx-sup:var(--pgto-surface);
+  --fx-bd:var(--pgto-border);
+  --fx-tx:var(--pgto-text);
+  --fx-tx2:var(--pgto-text-muted);
+  --fx-erro-bg:var(--pgto-red-soft);
+  --fx-erro-bd:#dc26264d;
+  --fx-erro-tx:var(--pgto-red);
 }
+/* Selos de status vem com cor inline do PHP; no escuro precisam de fundo
+   proprio, senao um #f0fdf4 vira um bloco branco sobre a superficie escura. */
 @media (prefers-color-scheme: dark){
-  html:not([data-theme="light"]) .fx-page{
-    --fx-sup:#1c1c1e;   --fx-bd:#2c2c2e;
-    --fx-tx:#f4f4f5;    --fx-tx2:#a1a1aa;
-    --fx-erro-bg:#2a1416; --fx-erro-bd:#4c1d1d; --fx-erro-tx:#fca5a5;
-  }
-  /* Selos de status vem com cor do PHP; no escuro precisam de fundo proprio,
-     senao um #f0fdf4 vira um bloco branco sobre a superficie escura. */
   html:not([data-theme="light"]) .fx-page .admin-table td span[style],
   html:not([data-theme="light"]) .fx-page h3 + div span[style]{
-    background:#232326 !important;filter:brightness(1.35)
+    background:var(--pgto-surface-2) !important;filter:brightness(1.3)
   }
 }
-html[data-theme="dark"] .fx-page{
-  --fx-sup:#1c1c1e;   --fx-bd:#2c2c2e;
-  --fx-tx:#f4f4f5;    --fx-tx2:#a1a1aa;
-  --fx-erro-bg:#2a1416; --fx-erro-bd:#4c1d1d; --fx-erro-tx:#fca5a5;
-}
 html[data-theme="dark"] .fx-page .admin-table td span[style]{
-  background:#232326 !important;filter:brightness(1.35)
+  background:var(--pgto-surface-2) !important;filter:brightness(1.3)
 }
 
 .fx-page .admin-card{background:var(--fx-sup);border-color:var(--fx-bd);

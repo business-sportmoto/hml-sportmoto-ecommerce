@@ -124,6 +124,35 @@ class MercadoPagoAdapter implements AdquirenteInterface
         'cc_rejected_max_attempts'             => PagamentoClassificacao::NEGADO_GENERICO,
         'cc_rejected_other_reason'             => PagamentoClassificacao::NEGADO_GENERICO,
         'cc_rejected_card_error'               => PagamentoClassificacao::NEGADO_GENERICO,
+
+        // ── Enum oficial da Orders API ──────────────────────────────
+        // Retirados da referencia (mercadopago-orders.md, secao
+        // `data[].status_detail`). Sem eles, a heuristica de substring
+        // decidia por conta propria — e errava em dois casos que importam.
+
+        // NAO E RECUSA. A doc diz literalmente "There was an error during
+        // processing". O emissor nao chegou a responder: quem falhou foi o
+        // Mercado Pago. Classificar como recusa do emissor dizia ao cliente
+        // que o banco negou (mentira, o cartao tinha saldo) e proibia a
+        // unica retentativa que e legitima — a que nao gera multa de
+        // bandeira, porque nao houve decisao de emissor para reapresentar.
+        'processing_error'          => PagamentoClassificacao::ERRO_TECNICO,
+
+        // Token errado ou ja usado: falha NOSSA, nao do cartao.
+        'invalid_card_token'        => PagamentoClassificacao::ERRO_TECNICO,
+
+        // Decisoes do emissor — nenhuma retenta.
+        'required_call_for_authorize' => PagamentoClassificacao::NEGADO_GENERICO,
+        'max_attempts_exceeded'       => PagamentoClassificacao::NEGADO_GENERICO,
+        'amount_limit_exceeded'       => PagamentoClassificacao::NEGADO_GENERICO,
+        // Cartao bloqueado e decisao do emissor, nao erro de digitacao: a
+        // heuristica de 'disabled' mandava o cliente "conferir os dados",
+        // conselho que nao resolve um cartao bloqueado.
+        'card_disabled'               => PagamentoClassificacao::NEGADO_GENERICO,
+
+        'card_insufficient_amount'    => PagamentoClassificacao::NEGADO_SALDO,
+        'invalid_installments'        => PagamentoClassificacao::NEGADO_DADOS,
+        'high_risk'                   => PagamentoClassificacao::NEGADO_ANTIFRAUDE,
     ];
 
     /** Mensagem ao comprador. Nunca o motivo cru do emissor. */
@@ -715,6 +744,15 @@ class MercadoPagoAdapter implements AdquirenteInterface
         //
         // Enquanto vier um pedido no corpo, isto e decisao de negocio, nao
         // falha de transporte — independente do codigo HTTP.
+        // A RAZAO REAL DA FALHA VEM EM `errors`, FORA DO `data`.
+        //
+        // A propria referencia diz, no 402: "Order was created but some
+        // transaction failed. Check the `errors` field for more information."
+        // O pedido, dentro de `data`, so carrega `processing_error` — que
+        // traduzido e "deu erro". Ler isto ANTES de desembrulhar e o que
+        // impede a falha de chegar ao log sem motivo nenhum.
+        $erros = $b['errors'] ?? null;
+
         $b = $b['data'] ?? $b;
 
         $temPedido = isset($b['id']) && isset($b['transactions']);
@@ -754,6 +792,38 @@ class MercadoPagoAdapter implements AdquirenteInterface
             $c->boletoCodigoBarras   = $barra ?: null;
             $c->boletoUrl            = (string) ($mp['ticket_url'] ?? '') ?: null;
             $c->boletoVencimento     = (string) ($pg['date_of_expiration'] ?? '') ?: null;
+        }
+
+        // PEDIDO QUE VOLTA FALHADO NAO PASSAVA POR NENHUM LOG.
+        //
+        // So o caminho de erro de transporte registrava. Uma recusa em
+        // producao terminava com um `processing_error` gravado na tentativa
+        // e nada mais — sem o `errors`, que e justamente onde o Mercado Pago
+        // escreve o motivo. Foi assim que uma falha real ficou sem
+        // diagnostico possivel depois do fato.
+        $desfecho = [PagamentoClassificacao::APROVADO, PagamentoClassificacao::PENDENTE];
+
+        if (!in_array($c->porta, $desfecho, true)) {
+            LogService::error('Mercado Pago nao processou o pagamento', [
+                'tipo'     => $tipo,
+                'http'     => $http,
+                'pedido'   => $c->chargeId,
+                'status'   => $status,
+                'detalhe'  => $det,
+                'porta'    => $c->porta,
+                // Sem isto o motivo se perde — foi o que ja custou caro aqui.
+                'errors'   => $erros !== null ? json_encode($erros) : null,
+            ], 'pagamento');
+        }
+
+        // O detalhe do MP e generico demais para o painel. Quando vier um
+        // `errors`, a primeira descricao explica muito mais que "failed".
+        if (is_array($erros) && isset($erros[0])) {
+            $e0 = $erros[0];
+            $txt = (string) ($e0['description'] ?? $e0['message'] ?? $e0['code'] ?? '');
+            if ($txt !== '') {
+                $c->mensagemAdquirente = mb_substr($status . ': ' . $txt, 0, 200);
+            }
         }
 
         return $c;

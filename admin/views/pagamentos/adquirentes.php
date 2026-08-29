@@ -275,28 +275,21 @@ foreach ($adquirentes as $a) {
 
 <style>
 /* ── Tema ──────────────────────────────────────────────────────
-   As cores moram aqui e sao trocadas em bloco no escuro. Suporta os dois
-   caminhos: a preferencia do sistema e o atributo data-theme, que o painel
-   ja declara como gancho para um interruptor futuro. */
+   Estes tokens APONTAM para o sistema pgto_ (admin/assets/css/pages.css),
+   que ja define claro e escuro. Valores proprios aqui virariam uma segunda
+   paleta para manter em sincronia — e paleta duplicada e paleta que
+   diverge. O escuro chega de graca, junto com o resto do painel. */
 .adq-page{
-  --adq-sup:#fff;        --adq-sup2:#f8fafc;
-  --adq-bd:#e6e9ef;      --adq-bd2:#cfd6e0;
-  --adq-tx:#0f172a;      --adq-tx2:#64748b;
-  --adq-sombra:0 6px 20px -8px rgba(15,23,42,.18);
-}
-@media (prefers-color-scheme: dark){
-  html:not([data-theme="light"]) .adq-page{
-    --adq-sup:#1c1c1e;   --adq-sup2:#161618;
-    --adq-bd:#2c2c2e;    --adq-bd2:#3a3a3d;
-    --adq-tx:#f4f4f5;    --adq-tx2:#a1a1aa;
-    --adq-sombra:0 8px 24px rgba(0,0,0,.55);
-  }
-}
-html[data-theme="dark"] .adq-page{
-  --adq-sup:#1c1c1e;   --adq-sup2:#161618;
-  --adq-bd:#2c2c2e;    --adq-bd2:#3a3a3d;
-  --adq-tx:#f4f4f5;    --adq-tx2:#a1a1aa;
-  --adq-sombra:0 8px 24px rgba(0,0,0,.55);
+  --adq-sup:var(--pgto-surface);
+  --adq-sup2:var(--pgto-surface-2);
+  --adq-bd:var(--pgto-border);
+  --adq-bd2:var(--pgto-border-soft);
+  --adq-tx:var(--pgto-text);
+  --adq-tx2:var(--pgto-text-muted);
+  --adq-sombra:var(--pgto-shadow);
+  --adq-aviso-bg:var(--pgto-amber-soft);
+  --adq-aviso-bd:#f59e0b4d;
+  --adq-aviso-tx:#92400e;
 }
 
 /* ── Resumo ───────────────────────────────────────────────────── */
@@ -357,20 +350,20 @@ html[data-theme="dark"] .adq-page{
 .adq-tags{display:flex;flex-wrap:wrap;gap:6px}
 .adq-tag{font-size:10px;font-weight:700;letter-spacing:.05em;padding:3px 9px;border-radius:20px;
   text-transform:uppercase}
-.adq-tag.ok{background:#f0fdf4;color:#15803d}
-.adq-tag.neutra{background:#f1f5f9;color:#64748b}
-.adq-tag.aviso{background:#fffbeb;color:#92400e}
-.adq-tag.forte{background:#eff6ff;color:#1d4ed8}
-.adq-tag.erro{background:#fef2f2;color:#b91c1c}
+.adq-tag.ok{background:var(--pgto-green-soft);color:var(--pgto-green)}
+.adq-tag.neutra{background:var(--pgto-border-soft);color:var(--pgto-text-muted)}
+.adq-tag.aviso{background:var(--pgto-amber-soft);color:var(--pgto-amber,#b45309)}
+.adq-tag.forte{background:var(--pgto-blue-soft);color:var(--pgto-blue)}
+.adq-tag.erro{background:var(--pgto-red-soft);color:var(--pgto-red)}
 
-.adq-uso{margin:0;font-size:12px;color:#1d4ed8;line-height:1.45}
+.adq-uso{margin:0;font-size:12px;color:var(--pgto-blue);line-height:1.45}
 .adq-uso.vazio{color:var(--adq-tx2)}
 
 .adq-pe{display:flex;gap:8px;margin-top:auto;padding-top:3px}
 .adq-pe .btn{flex:1}
 .btn-sm{padding:7px 12px;font-size:12.5px}
-.btn-ghost{background:transparent;border:1px solid transparent;color:#b91c1c}
-.btn-ghost:hover{background:#fef2f2}
+.btn-ghost{background:transparent;border:1px solid transparent;color:var(--pgto-red)}
+.btn-ghost:hover{background:var(--pgto-red-soft)}
 
 .adq-vazio{padding:40px;text-align:center;color:var(--adq-tx2)}
 
@@ -388,7 +381,7 @@ html[data-theme="dark"] .adq-page{
 .adq-logo-btns{display:flex;gap:7px;align-items:center}
 .adq-logo-btns .btn{margin:0}
 
-.adq-aviso{background:var(--adq-aviso-bg,#fffbeb);border:1px solid var(--adq-aviso-bd,#fde68a);color:var(--adq-aviso-tx,#92400e);
+.adq-aviso{background:var(--adq-aviso-bg);border:1px solid var(--adq-aviso-bd);color:var(--adq-aviso-tx);
   font-size:12.5px;line-height:1.5;padding:11px 14px;border-radius:9px;margin-bottom:16px}
 .adq-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:560px){
@@ -405,25 +398,15 @@ html[data-theme="dark"] .adq-page{
 .adq-drawer-pe{display:flex;gap:8px}
 .adq-drawer-pe .btn{flex:1}
 
-/* Tags no escuro: os fundos claros virariam blocos brilhantes. */
-@media (prefers-color-scheme: dark){
-  html:not([data-theme="light"]) .adq-tag.ok{background:#0f2a18;color:#4ade80}
-  html:not([data-theme="light"]) .adq-tag.neutra{background:#232326;color:#a1a1aa}
-  html:not([data-theme="light"]) .adq-tag.aviso{background:#2a2013;color:#fcd34d}
-  html:not([data-theme="light"]) .adq-tag.forte{background:#12203a;color:#7dabf8}
-  html:not([data-theme="light"]) .adq-tag.erro{background:#2a1416;color:#fca5a5}
-}
-html[data-theme="dark"] .adq-tag.ok{background:#0f2a18;color:#4ade80}
-html[data-theme="dark"] .adq-tag.neutra{background:#232326;color:#a1a1aa}
-html[data-theme="dark"] .adq-tag.aviso{background:#2a2013;color:#fcd34d}
-html[data-theme="dark"] .adq-tag.forte{background:#12203a;color:#7dabf8}
-html[data-theme="dark"] .adq-tag.erro{background:#2a1416;color:#fca5a5}
 
 /* Aviso amarelo do drawer */
+
+/* O fundo do aviso vem do token translucido e ja serve aos dois temas;
+   so o texto precisa clarear. */
 @media (prefers-color-scheme: dark){
-  html:not([data-theme="light"]) .adq-page{--adq-aviso-bg:#2a2013;--adq-aviso-bd:#4a3410;--adq-aviso-tx:#fcd34d}
+  html:not([data-theme="light"]) .adq-page{--adq-aviso-tx:#fcd34d;--adq-aviso-bd:#f59e0b40}
 }
-html[data-theme="dark"] .adq-page{--adq-aviso-bg:#2a2013;--adq-aviso-bd:#4a3410;--adq-aviso-tx:#fcd34d}
+html[data-theme="dark"] .adq-page{--adq-aviso-tx:#fcd34d;--adq-aviso-bd:#f59e0b40}
 </style>
 
 <script>

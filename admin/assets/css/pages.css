@@ -444,9 +444,16 @@
 
 :root{--pgto-blue:#0a66c2;--pgto-blue-soft:#0a66c21a;--pgto-blue-ring:#0a66c22e;--pgto-green:#16a34a;--pgto-green-soft:#16a34a1a;--pgto-amber:#f59e0b;--pgto-amber-soft:#f59e0b1f;
   --pgto-red:#dc2626;--pgto-red-soft:#dc26261a;--pgto-purple:#7c3aed;--pgto-purple-soft:#7c3aed1a;--pgto-bg:#f8fafc;--pgto-surface:#fff;--pgto-surface-2:#fafafa;--pgto-border:#e5e7eb;--pgto-border-soft:#f1f1f4;--pgto-text:#0f172a;--pgto-text-muted:#64748b;--pgto-text-soft:#94a3b8;--pgto-shadow-sm:0 1px 2px #00000008 0 0 0 1px #00000005;--pgto-shadow:0 1px 3px #0000000d 0 4px 12px #0000000a 0 0 0 1px #00000006;--pgto-shadow-lg:0 4px 8px #0000000f 0 24px 48px #00000014;--pgto-r-sm:8px;--pgto-r-md:12px;--pgto-r-lg:16px;--pgto-r-xl:20px;--pgto-r-2xl:24px;--pgto-font:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display",Inter,-apple-system-body,"Segoe UI",system-ui,sans-serif;--pgto-easing:cubic-bezier(0.16,1,0.3,1);--pgto-tabular:tnum 1,lnum 1}
-/* @media (prefers-color-scheme: dark) {
-:root{--pgto-bg:#0b0b0d;--pgto-surface:#161618;--pgto-surface-2:#1c1c1f;--pgto-border:#2a2a2e;--pgto-border-soft:#232327;--pgto-text:#f5f5f7;--pgto-text-muted:#a1a1aa;--pgto-text-soft:#71717a;--pgto-blue-soft:#388ae029;--pgto-green-soft:#22c55e29;--pgto-amber-soft:#f59e0b2e;--pgto-red-soft:#f8717129;--pgto-shadow-sm:0 1px 2px #0006 0 0 0 1px #ffffff0a;--pgto-shadow:0 1px 3px #00000080 0 4px 12px #0006 0 0 0 1px #ffffff0a;--pgto-shadow-lg:0 4px 8px #0009 0 24px 48px #0009}
-} */
+/* TEMA ESCURO DO SISTEMA pgto_.
+   Estava comentado, mas os ajustes que DEPENDEM dele nao estavam:
+   .pgto_alerta_aviso{color:#fcd34d} continuava ativo no escuro e caia
+   sobre uma superficie branca. Ligar fecha essa inconsistencia.
+   Dois caminhos: a preferencia do sistema e o atributo data-theme,
+   que o admin.css ja declara como gancho para um interruptor. */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) {--pgto-bg:#0b0b0d;--pgto-surface:#161618;--pgto-surface-2:#1c1c1f;--pgto-border:#2a2a2e;--pgto-border-soft:#232327;--pgto-text:#f5f5f7;--pgto-text-muted:#a1a1aa;--pgto-text-soft:#71717a;--pgto-blue-soft:#388ae029;--pgto-green-soft:#22c55e29;--pgto-amber-soft:#f59e0b2e;--pgto-red-soft:#f8717129;--pgto-shadow-sm:0 1px 2px #0006 0 0 0 1px #ffffff0a;--pgto-shadow:0 1px 3px #00000080 0 4px 12px #0006 0 0 0 1px #ffffff0a;--pgto-shadow-lg:0 4px 8px #0009 0 24px 48px #0009}
+}
+html[data-theme="dark"] {--pgto-bg:#0b0b0d;--pgto-surface:#161618;--pgto-surface-2:#1c1c1f;--pgto-border:#2a2a2e;--pgto-border-soft:#232327;--pgto-text:#f5f5f7;--pgto-text-muted:#a1a1aa;--pgto-text-soft:#71717a;--pgto-blue-soft:#388ae029;--pgto-green-soft:#22c55e29;--pgto-amber-soft:#f59e0b2e;--pgto-red-soft:#f8717129;--pgto-shadow-sm:0 1px 2px #0006 0 0 0 1px #ffffff0a;--pgto-shadow:0 1px 3px #00000080 0 4px 12px #0006 0 0 0 1px #ffffff0a;--pgto-shadow-lg:0 4px 8px #0009 0 24px 48px #0009}
 .pgto_wrapper{font-family:var(--pgto-font);color:var(--pgto-text);;min-height:100vh;padding:28px 32px 64px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-feature-settings:var(--pgto-tabular)}
 @media (max-width: 640px) {
 .pgto_wrapper{padding:16px 14px 48px}

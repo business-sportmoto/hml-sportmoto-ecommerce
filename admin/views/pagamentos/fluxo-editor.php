@@ -21,30 +21,16 @@ $badge = [
    no escuro. Antes cada regra trazia a cor no corpo, e adicionar o tema
    escuro exigiria reescrever todas — agora e um bloco so. */
 .pg-editor{
-  --pg-fundo:#f8fafc;      --pg-superficie:#fff;
-  --pg-recuo:#fafafa;      --pg-borda:#e6e9ef;
-  --pg-borda2:#cbd5e1;     --pg-texto:#0f172a;
-  --pg-texto2:#64748b;     --pg-grade:#e2e8f0;
-  --pg-sombra:0 1px 3px rgba(15,23,42,.08);
-  --pg-sombra-no:0 2px 10px -4px rgba(15,23,42,.22);
-}
-@media (prefers-color-scheme: dark){
-  html:not([data-theme="light"]) .pg-editor{
-    --pg-fundo:#161618;     --pg-superficie:#1c1c1e;
-    --pg-recuo:#161618;     --pg-borda:#2c2c2e;
-    --pg-borda2:#3a3a3d;    --pg-texto:#f4f4f5;
-    --pg-texto2:#a1a1aa;    --pg-grade:#2c2c2e;
-    --pg-sombra:0 1px 3px rgba(0,0,0,.5);
-    --pg-sombra-no:0 4px 16px rgba(0,0,0,.55);
-  }
-}
-html[data-theme="dark"] .pg-editor{
-  --pg-fundo:#161618;     --pg-superficie:#1c1c1e;
-  --pg-recuo:#161618;     --pg-borda:#2c2c2e;
-  --pg-borda2:#3a3a3d;    --pg-texto:#f4f4f5;
-  --pg-texto2:#a1a1aa;    --pg-grade:#2c2c2e;
-  --pg-sombra:0 1px 3px rgba(0,0,0,.5);
-  --pg-sombra-no:0 4px 16px rgba(0,0,0,.55);
+  --pg-fundo:var(--pgto-bg);
+  --pg-superficie:var(--pgto-surface);
+  --pg-recuo:var(--pgto-surface-2);
+  --pg-borda:var(--pgto-border);
+  --pg-borda2:var(--pgto-border-soft);
+  --pg-texto:var(--pgto-text);
+  --pg-texto2:var(--pgto-text-muted);
+  --pg-grade:var(--pgto-border);
+  --pg-sombra:var(--pgto-shadow-sm);
+  --pg-sombra-no:var(--pgto-shadow);
 }
 
 /* Barra */
@@ -131,16 +117,11 @@ html[data-theme="dark"] .pg-editor{
 #pg-painel .form-control{background:var(--pg-superficie);border-color:var(--pg-borda);
   color:var(--pg-texto)}
 
-/* Alertas */
+/* Alertas — os fundos *-soft do sistema sao translucidos e ja
+   funcionam nos dois temas; so o texto precisa clarear no escuro. */
 .pg-alerta{padding:10px 13px;border-radius:8px;font-size:12.5px;margin-bottom:7px;line-height:1.5}
-.pg-erro{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca}
-.pg-aviso{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
-@media (prefers-color-scheme: dark){
-  html:not([data-theme="light"]) .pg-erro{background:#2a1416;color:#fca5a5;border-color:#4c1d1d}
-  html:not([data-theme="light"]) .pg-aviso{background:#2a2013;color:#fcd34d;border-color:#4a3410}
-}
-html[data-theme="dark"] .pg-erro{background:#2a1416;color:#fca5a5;border-color:#4c1d1d}
-html[data-theme="dark"] .pg-aviso{background:#2a2013;color:#fcd34d;border-color:#4a3410}
+.pg-erro{background:var(--pgto-red-soft);color:var(--pgto-red);border:1px solid #dc26264d}
+.pg-aviso{background:var(--pgto-amber-soft);color:#b45309;border:1px solid #f59e0b4d}
 
 /* Legenda */
 .pg-legenda{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
@@ -149,6 +130,12 @@ html[data-theme="dark"] .pg-aviso{background:#2a2013;color:#fcd34d;border-color:
 .pg-legenda i{width:9px;height:9px;border-radius:50%;display:inline-block}
 .pg-dica{font-size:11.5px;color:var(--pg-texto2);margin-top:10px;line-height:1.6}
 .pg-dica strong{color:var(--pg-texto)}
+@media (prefers-color-scheme: dark){
+  html:not([data-theme="light"]) .pg-erro{color:#fca5a5}
+  html:not([data-theme="light"]) .pg-aviso{color:#fcd34d}
+}
+html[data-theme="dark"] .pg-erro{color:#fca5a5}
+html[data-theme="dark"] .pg-aviso{color:#fcd34d}
 </style>
 
 <div class="admin-page pg-editor">
