@@ -133,8 +133,26 @@ class ChatInstagramService
 
             return ['ok' => true];
         } catch (Throwable $e) {
-            $this->registrarErro($contaId, $e->getMessage());
-            return ['ok' => false, 'erro' => $e->getMessage()];
+            $msg = $e->getMessage();
+
+            // Faltar pages_messaging aqui NÃO impede o canal de funcionar: os
+            // comentários chegam pela assinatura do objeto `instagram` no
+            // painel do app, que é outro mecanismo. Só o DM de entrada
+            // depende desta assinatura de página.
+            if (str_contains($msg, 'pages_messaging')) {
+                $this->registrarErro($contaId, 'sem pages_messaging para assinar a página');
+                return [
+                    'ok'      => false,
+                    'parcial' => true,
+                    'erro'    => 'Falta a permissão pages_messaging no token para assinar a página. '
+                               . 'Comentários continuam chegando normalmente (eles vêm pela assinatura '
+                               . 'do objeto "instagram" no painel do app). Só o direct de ENTRADA '
+                               . 'depende desta assinatura.',
+                ];
+            }
+
+            $this->registrarErro($contaId, $msg);
+            return ['ok' => false, 'erro' => $msg];
         }
     }
 

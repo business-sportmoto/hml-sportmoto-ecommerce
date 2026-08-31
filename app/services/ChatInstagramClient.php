@@ -49,6 +49,7 @@ class ChatInstagramClient
 {
     private string $token;
     private string $igUserId;
+    private string $pageId;
     private string $apiVersion;
     private string $baseUrl;
     private int    $timeout;
@@ -77,10 +78,11 @@ class ChatInstagramClient
     /** Tags de mensagem aceitas fora da janela padrão. */
     public const TAG_HUMAN_AGENT = 'HUMAN_AGENT';
 
-    public function __construct(string $pageToken, string $igUserId)
+    public function __construct(string $pageToken, string $igUserId, string $pageId = '')
     {
         $this->token    = trim($pageToken);
         $this->igUserId = trim($igUserId);
+        $this->pageId   = trim($pageId);
 
         if ($this->token === '')    throw new InvalidArgumentException('ChatIg: token da página vazio');
         if ($this->igUserId === '') throw new InvalidArgumentException('ChatIg: ig_user_id vazio');
@@ -94,7 +96,30 @@ class ChatInstagramClient
     /** Constrói a partir de uma linha de chat_ig_contas. */
     public static function daConta(array $conta): self
     {
-        return new self((string)($conta['page_token'] ?? ''), (string)($conta['ig_user_id'] ?? ''));
+        return new self(
+            (string)($conta['page_token'] ?? ''),
+            (string)($conta['ig_user_id'] ?? ''),
+            (string)($conta['page_id'] ?? '')
+        );
+    }
+
+    /**
+     * Nó do endpoint /messages.
+     *
+     * A Meta tem DOIS modelos de autenticação para DM do Instagram, e eles não
+     * se misturam:
+     *   · Instagram API com login do Facebook  → POST /{page-id}/messages
+     *     com token da PÁGINA (é o nosso caso)
+     *   · Instagram API com login do Instagram → POST /{ig-user-id}/messages
+     *     com token de usuário do Instagram
+     *
+     * Usar o ig_user_id com token de página devolve o enganoso
+     * "(#3) Application does not have the capability to make this API call",
+     * que parece falta de permissão mas é só o endpoint errado.
+     */
+    private function noDeMensagens(): string
+    {
+        return $this->pageId !== '' ? $this->pageId : 'me';
     }
 
     // =========================================================================
@@ -272,7 +297,7 @@ class ChatInstagramClient
     {
         if (!in_array($acao, ['typing_on', 'typing_off', 'mark_seen'], true)) return false;
         try {
-            $this->post("/{$this->igUserId}/messages", [
+            $this->post("/" . $this->noDeMensagens() . "/messages", [
                 'recipient'     => ['id' => $igsid],
                 'sender_action' => $acao,
             ]);
@@ -462,11 +487,24 @@ class ChatInstagramClient
      * Assina o app nos eventos da página. Sem isto o webhook não chega,
      * mesmo com a URL cadastrada no painel.
      */
+    /**
+     * Assina o app nos eventos DA PÁGINA (mensagens).
+     *
+     * Atenção aos dois níveis de assinatura, que são coisas diferentes:
+     *   · App → objeto `instagram` (no painel, Webhooks): entrega comentários,
+     *     menções e mensagens de TODAS as contas conectadas. É o principal.
+     *   · Página → subscribed_apps (esta chamada): habilita os eventos de
+     *     conversa naquela página específica.
+     *
+     * `comments` e `live_comments` NÃO são campos válidos aqui — a lista de
+     * campos da Página é outra, e mandá-los faz a chamada inteira falhar com
+     * erro 100. Comentário se assina no objeto `instagram`, no painel.
+     */
     public function assinarWebhook(string $pageId): array
     {
         return $this->post('/' . rawurlencode($pageId) . '/subscribed_apps', [
             'subscribed_fields' => 'messages,messaging_postbacks,messaging_optins,'
-                                 . 'message_reactions,messaging_seen,comments,live_comments',
+                                 . 'message_reactions,messaging_referrals,message_reads',
         ]);
     }
 
@@ -497,7 +535,7 @@ class ChatInstagramClient
             }
         }
 
-        $r = $this->post("/{$this->igUserId}/messages", $body);
+        $r = $this->post("/" . $this->noDeMensagens() . "/messages", $body);
 
         return [
             'wamid' => (string)($r['message_id'] ?? ''),   // mesma chave do WhatsApp: o resto do módulo não precisa saber a diferença

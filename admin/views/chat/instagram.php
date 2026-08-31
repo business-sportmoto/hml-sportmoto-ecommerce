@@ -39,7 +39,7 @@ $pronto = $d['token_valido'] && empty($d['faltando']) && $d['contas'] > 0;
 
           <?php if (!empty($d['faltando'])): ?>
             <div style="margin:8px 0;">
-              Faltam <?= count($d['faltando']) ?> permissão(ões) no token:
+              Faltam <?= count($d['faltando']) ?> permissão(ões) obrigatória(s) no token:
               <ul style="margin:6px 0 0;padding-left:20px;">
                 <?php foreach ($d['faltando'] as $escopo => $paraQue): ?>
                   <li><code><?= $h($escopo) ?></code> — <?= $h($paraQue) ?></li>
@@ -66,6 +66,21 @@ $pronto = $d['token_valido'] && empty($d['faltando']) && $d['contas'] > 0;
   <?php else: ?>
     <div class="ch-aviso ch-aviso--ok">
       <div><strong>Canal pronto</strong> <?= $d['contas'] ?> conta(s) conectada(s) e permissões completas.</div>
+    </div>
+  <?php endif; ?>
+
+  <?php // Recomendados: dá para viver sem, com um contorno manual ?>
+  <?php if (!empty($d['recomendados'])): ?>
+    <div class="ch-aviso ch-aviso--info">
+      <div>
+        <strong>Permissões opcionais ausentes</strong>
+        O canal funciona sem elas, com um contorno:
+        <ul style="margin:6px 0 0;padding-left:20px;">
+          <?php foreach ($d['recomendados'] as $escopo => $paraQue): ?>
+            <li><code><?= $h($escopo) ?></code> — <?= $h($paraQue) ?></li>
+          <?php endforeach; ?>
+        </ul>
+      </div>
     </div>
   <?php endif; ?>
 
@@ -295,8 +310,15 @@ $pronto = $d['token_valido'] && empty($d['faltando']) && $d['contas'] > 0;
   $('.ch-ig-assinar').on('click', function () {
     var b = $(this).prop('disabled', true).text('Assinando...');
     post('/admin/chat/instagram/' + $(this).data('id') + '/assinar').done(function (r) {
-      if (r.ok) { aviso('<strong>Webhook assinado.</strong>', 'ok'); setTimeout(function () { location.reload(); }, 1200); }
-      else aviso('<strong>Não assinou</strong>' + esc(r.erro || ''), 'erro');
+      if (r.ok) {
+        aviso('<strong>Webhook assinado.</strong>', 'ok');
+        setTimeout(function () { location.reload(); }, 1200);
+      } else if (r.parcial) {
+        // Falta só a permissão da assinatura de página — comentários seguem funcionando
+        aviso('<strong>Assinatura de página não concluída</strong>' + esc(r.erro || ''), 'aviso');
+      } else {
+        aviso('<strong>Não assinou</strong>' + esc(r.erro || ''), 'erro');
+      }
     }).always(function () { b.prop('disabled', false).text('Assinar webhook'); });
   });
 

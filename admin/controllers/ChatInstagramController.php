@@ -65,6 +65,7 @@ class ChatInstagramController extends Controller
             'token_tipo'      => null,
             'escopos'         => [],
             'faltando'        => [],
+            'recomendados'    => [],
             'app_secret'      => ChatMetaClient::temAppSecret(),
             'contas'          => count($this->svc->contas(true)),
         ];
@@ -86,18 +87,31 @@ class ChatInstagramController extends Controller
                 ? 'nunca'
                 : date('d/m/Y H:i', (int)$dd['expires_at']);
 
-            // Escopos que o canal exige de fato
+            // Escopos SEM os quais o canal não funciona. Verificado contra a
+            // API real, não contra a lista genérica da documentação:
+            // `pages_messaging` é do Messenger (página do Facebook), não do
+            // Instagram — o DM do IG passa com estes quatro.
             $exigidos = [
-                'instagram_basic'            => 'ver a conta do Instagram',
-                'instagram_manage_messages'  => 'enviar e receber DM',
-                'instagram_manage_comments'  => 'ler e responder comentários',
-                'pages_show_list'            => 'descobrir a página vinculada',
-                'pages_manage_metadata'      => 'assinar o webhook da página',
-                'pages_messaging'            => 'entregar mensagens pela plataforma',
+                'instagram_basic'           => 'ver a conta do Instagram',
+                'instagram_manage_messages' => 'enviar e receber direct',
+                'instagram_manage_comments' => 'ler e responder comentários',
+                'pages_show_list'           => 'descobrir a página e o token dela',
             ];
             foreach ($exigidos as $escopo => $paraQue) {
                 if (!in_array($escopo, $d['escopos'], true)) {
                     $d['faltando'][$escopo] = $paraQue;
+                }
+            }
+
+            // Recomendados: o canal roda sem eles, mas com limitação
+            $opcionais = [
+                'pages_manage_metadata' => 'assinar o webhook pela tela (sem ele, assine o objeto '
+                                         . '"instagram" manualmente no painel do app)',
+                'pages_read_engagement' => 'ler dados de engajamento da página',
+            ];
+            foreach ($opcionais as $escopo => $paraQue) {
+                if (!in_array($escopo, $d['escopos'], true)) {
+                    $d['recomendados'][$escopo] = $paraQue;
                 }
             }
         } catch (Throwable $e) {
