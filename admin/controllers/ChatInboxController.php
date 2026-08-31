@@ -187,7 +187,7 @@ class ChatInboxController extends Controller
             'status'      => $m['status'],
             'erro'        => $m['erro_detalhe'],
             'origem'      => $m['origem'],
-            'autor'       => $m['autor_nome'],
+            'autor'       => $m['autor_nome'] ?? null,
             'hora'        => $m['hora'],
             'dia'         => $m['dia'],
             'criado_em'   => $m['criado_em'],

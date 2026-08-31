@@ -61,6 +61,29 @@ class AdminSeparacaoController extends Controller
         ], 'impressao');
     }
 
+
+    // ── GET /admin/pedidos/checkout/estacao ───────────────
+    //
+    // Estacao de bipagem: uma tela so, o operador bipa e o pedido aparece.
+    // Layout proprio (sem sidebar) porque isso fica aberto o dia inteiro numa
+    // maquina de bancada — cada pixel de menu e espaco que nao vira pedido.
+    public function estacao(): void
+    {
+        $this->render('pedidos/checkout-estacao', [
+            'page_title' => 'Estação de bipagem',
+            'metodos'    => $this->separacao->metodosDeEnvio(),
+        ], 'admin');
+    }
+
+    // ── POST /admin/pedidos/checkout/estacao/buscar ───────
+    public function estacaoBuscar(): void
+    {
+        $this->verifyCsrf();
+        $this->json($this->separacao->buscarPorCodigo(
+            SecurityHelper::sanitizeString($_POST['codigo'] ?? '')
+        ));
+    }
+
     // ── GET /admin/pedidos/checkout/{id} ──────────────────
     public function conferir(int $id): void
     {

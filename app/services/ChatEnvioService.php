@@ -468,7 +468,9 @@ class ChatEnvioService
     public function assinatura(int $usuarioId, string $canal = 'whatsapp', string $tipoSpec = 'texto'): string
     {
         if ($usuarioId < 1 || $tipoSpec === 'template') return '';
-        if (!ChatConfig::bool('assinatura_agente', false)) return '';
+        // Ligada por padrão: saber com quem está falando é o comportamento
+        // esperado do atendimento, não um extra que alguém precisa descobrir.
+        if (!ChatConfig::bool('assinatura_agente', true)) return '';
 
         $nome = $this->nomeAgente($usuarioId);
         if ($nome === null || $nome === '') return '';

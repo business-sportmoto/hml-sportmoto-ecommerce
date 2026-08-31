@@ -243,9 +243,20 @@ class ChatMensagemService
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    /**
+     * O JOIN com usuarios não é enfeite: é este método que devolve a mensagem
+     * recém-enviada para o inbox desenhar a bolha. Sem ele, a mensagem nova
+     * saía sem autor e só ganhava nome depois de recarregar a página, quando o
+     * thread() — que tem o JOIN — assumia.
+     */
     public function obter(int $id): ?array
     {
-        $st = $this->db->prepare("SELECT * FROM chat_mensagens WHERE id = :id LIMIT 1");
+        $st = $this->db->prepare(
+            "SELECT m.*, u.nome AS autor_nome
+             FROM chat_mensagens m
+             LEFT JOIN usuarios u ON u.id = m.autor_usuario_id
+             WHERE m.id = :id LIMIT 1"
+        );
         $st->execute([':id' => $id]);
         $m = $st->fetch(PDO::FETCH_ASSOC);
         return $m ? $this->hidratar($m) : null;

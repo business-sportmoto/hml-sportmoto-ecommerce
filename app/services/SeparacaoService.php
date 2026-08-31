@@ -203,6 +203,148 @@ class SeparacaoService
         return ['ok' => false, 'msg' => 'Código não pertence a este pedido.'];
     }
 
+
+    /* =================================================================
+       ESTACAO DE BIPAGEM
+       ================================================================= */
+
+    /** Metodos de envio presentes na fila, para o filtro da estacao. */
+    public function metodosDeEnvio(): array
+    {
+        $st = $this->db->prepare(
+            "SELECT DISTINCT frete_servico
+               FROM pedidos
+              WHERE status_pedido IN (:a, :b)
+                AND frete_servico IS NOT NULL AND frete_servico <> ''
+           ORDER BY frete_servico"
+        );
+        $st->execute([':a' => self::STATUS_ORIGEM, ':b' => self::STATUS_SEPARACAO]);
+        return $st->fetchAll(PDO::FETCH_COLUMN) ?: [];
+    }
+
+    /**
+     * Resolve o que veio do leitor para um pedido.
+     *
+     * A estacao aceita qualquer coisa que esteja impressa e possa ser lida:
+     *   - o ID do pedido (o QR da etiqueta de separacao carrega isso)
+     *   - o codigo do pedido (ex.: ACA8BE72)
+     *   - o codigo de rastreio da transportadora
+     *   - a chave de acesso da NF-e (44 digitos)
+     *
+     * A ordem importa: chave de NF-e e rastreio sao os mais especificos e
+     * entram primeiro, senao uma chave de 44 digitos cairia na busca por ID.
+     */
+    public function buscarPorCodigo(string $codigo): array
+    {
+        $codigo = trim($codigo);
+        if ($codigo === '') return ['ok' => false, 'msg' => 'Código vazio.'];
+
+        $soDigitos = preg_replace('/\D/', '', $codigo) ?? '';
+        $id = null;
+        $via = '';
+
+        // 1) chave da NF-e (44 digitos)
+        if (strlen($soDigitos) === 44) {
+            // O JOIN nao e enfeite: ha nota apontando para pedido que nao existe
+            // mais, e chave repetida entre notas. Sem ele, um LIMIT 1 pode cair
+            // justamente na orfa e a bipagem morre com "pedido nao encontrado"
+            // mesmo havendo um pedido valido com aquela chave.
+            $st = $this->db->prepare(
+                "SELECT n.pedido_id
+                   FROM pedidos_nfe n
+                   JOIN pedidos p ON p.id = n.pedido_id
+                  WHERE n.chaveAcesso = ?
+               ORDER BY n.id DESC LIMIT 1"
+            );
+            $st->execute([$soDigitos]);
+            $v = $st->fetchColumn();
+            if ($v !== false) { $id = (int) $v; $via = 'chave da NF-e'; }
+        }
+
+        // 2) codigo de rastreio
+        if ($id === null) {
+            $st = $this->db->prepare("SELECT id FROM pedidos WHERE codigo_rastreio = ? LIMIT 1");
+            $st->execute([strtoupper($codigo)]);
+            $v = $st->fetchColumn();
+            if ($v !== false) { $id = (int) $v; $via = 'rastreio'; }
+        }
+
+        // 3) codigo do pedido
+        if ($id === null) {
+            $st = $this->db->prepare("SELECT id FROM pedidos WHERE codigo = ? LIMIT 1");
+            $st->execute([strtoupper($codigo)]);
+            $v = $st->fetchColumn();
+            if ($v !== false) { $id = (int) $v; $via = 'código do pedido'; }
+        }
+
+        // 4) ID (o que o QR da etiqueta carrega)
+        if ($id === null && $soDigitos !== '' && $soDigitos === $codigo) {
+            $st = $this->db->prepare("SELECT id FROM pedidos WHERE id = ? LIMIT 1");
+            $st->execute([(int) $soDigitos]);
+            $v = $st->fetchColumn();
+            if ($v !== false) { $id = (int) $v; $via = 'ID do pedido'; }
+        }
+
+        if ($id === null) {
+            return ['ok' => false, 'msg' => 'Nenhum pedido encontrado para "' . $codigo . '".'];
+        }
+
+        $pedido = $this->paraConferencia($id);
+        if (!$pedido) return ['ok' => false, 'msg' => 'Pedido não encontrado.'];
+
+        return [
+            'ok'     => true,
+            'via'    => $via,
+            'pedido' => $this->resumoEstacao($pedido),
+        ];
+    }
+
+    /**
+     * Recorte do pedido que a estacao mostra.
+     *
+     * Enxuto de proposito: a estacao roda numa maquina de expedicao e o
+     * operador bipa dezenas por hora — nao ha razao para trafegar o pedido
+     * inteiro a cada leitura.
+     */
+    private function resumoEstacao(array $p): array
+    {
+        $itens = [];
+        foreach ($p['itens'] as $i) {
+            $itens[] = [
+                'id'        => (int) $i['id'],
+                'nome'      => (string) $i['nome'],
+                'variacao'  => (string) ($i['variacao_texto'] ?? ''),
+                'sku'       => (string) ($i['sku_real'] ?? ''),
+                'ean'       => (string) ($i['ean'] ?? ''),
+                'quantidade'=> (int) $i['quantidade'],
+                'preco'     => (float) $i['preco_unitario'],
+                'imagem'    => $i['imagem_snapshot'] ? (string) $i['imagem_snapshot'] : null,
+            ];
+        }
+
+        return [
+            'id'              => (int) $p['id'],
+            'codigo'          => (string) $p['codigo'],
+            'status'          => (string) $p['status_pedido'],
+            'cliente'         => (string) ($p['cliente_nome'] ?? ''),
+            'destinatario'    => (string) ($p['nome_destinatario'] ?: ($p['cliente_nome'] ?? '')),
+            'cidade_uf'       => trim(((string) $p['cidade']) . '/' . ((string) $p['estado']), '/'),
+            'cep'             => (string) ($p['cep'] ?? ''),
+            'metodo_envio'    => (string) ($p['frete_servico'] ?: ($p['frete_descricao'] ?? '')),
+            'codigo_rastreio' => (string) ($p['codigo_rastreio'] ?? ''),
+            'total'           => (float) $p['total'],
+            'pecas'           => array_sum(array_column($itens, 'quantidade')),
+            'nfe_ok'          => (bool) $p['nfe_ok'],
+            'nfe_numero'      => (string) ($p['nfe_numero'] ?? ''),
+            'etiqueta'        => $p['etiqueta'] ? [
+                'codigo_rastreio' => (string) ($p['etiqueta']['codigo_rastreio'] ?? ''),
+                'url_pdf'         => (string) ($p['etiqueta']['url_pdf'] ?? ''),
+            ] : null,
+            'itens'           => $itens,
+            'url_conferencia' => '/admin/pedidos/checkout/' . (int) $p['id'],
+        ];
+    }
+
     /* =================================================================
        ETIQUETA
        ================================================================= */

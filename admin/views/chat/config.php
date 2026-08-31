@@ -275,7 +275,7 @@ $on   = fn(string $k, bool $d = false) => in_array(strtolower((string)($config[$
         <div class="ch-campo">
           <label class="ch-check">
             <input type="checkbox" name="assinatura_agente" value="1" id="ch-ass-on"
-                   <?= $on('assinatura_agente', false) ? 'checked' : '' ?>>
+                   <?= $on('assinatura_agente', true) ? 'checked' : '' ?>>
             <span>
               <strong>Assinar as respostas com o nome de quem atendeu</strong>
               <div class="ch-ajuda">
