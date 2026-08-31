@@ -3,23 +3,23 @@
 // Variáveis: $rows, $total, $page, $totalPaginas, $filtros, $responsaveis
 
 $statusCfg = [
-  'novo'                => ['Novo',            '#64748b', '#f8fafc'],
-  'abandonado'          => ['Abandonado',      '#dc2626', '#fef2f2'],
-  'em_recuperacao'      => ['Em recuperação',  '#d97706', '#fffbeb'],
-  'msg_enviada'         => ['Msg enviada',     '#1d4ed8', '#eff6ff'],
-  'aguardando_resposta' => ['Aguardando',      '#7c3aed', '#f5f3ff'],
-  'respondeu'           => ['Respondeu',       '#0891b2', '#ecfeff'],
-  'negociacao'          => ['Negociação',      '#c026d3', '#fdf4ff'],
-  'recuperado'          => ['Recuperado ✓',    '#16a34a', '#f0fdf4'],
-  'perdido'             => ['Perdido',         '#475569', '#f1f5f9'],
-  'ignorado'            => ['Ignorado',        '#94a3b8', '#f8fafc'],
-  'sem_contato'         => ['Sem contato',     '#dc2626', '#fff1f2'],
+  'novo'                => ['Novo',            'var(--text-2)', 'var(--bg)'],
+  'abandonado'          => ['Abandonado',      'var(--danger)', 'var(--danger-lt)'],
+  'em_recuperacao'      => ['Em recuperação',  'var(--warning)', 'var(--warning-lt)'],
+  'msg_enviada'         => ['Msg enviada',     'var(--blue)', 'var(--blue-lt)'],
+  'aguardando_resposta' => ['Aguardando',      'var(--purple)', 'var(--purple-lt)'],
+  'respondeu'           => ['Respondeu',       'var(--info)', 'var(--info-lt)'],
+  'negociacao'          => ['Negociação',      'var(--purple)', 'var(--purple-lt)'],
+  'recuperado'          => ['Recuperado ✓',    'var(--success)', 'var(--success-lt)'],
+  'perdido'             => ['Perdido',         'var(--text-2)', 'var(--surface2)'],
+  'ignorado'            => ['Ignorado',        'var(--text-3)', 'var(--bg)'],
+  'sem_contato'         => ['Sem contato',     'var(--danger)', 'var(--danger-lt)'],
 ];
 $prioCfg = [
-  'imediata' => ['🔥 Imediata', '#dc2626', '#fef2f2'],
-  'alta'     => ['Alta',        '#d97706', '#fffbeb'],
-  'media'    => ['Média',       '#1d4ed8', '#eff6ff'],
-  'baixa'    => ['Baixa',       '#64748b', '#f8fafc'],
+  'imediata' => ['🔥 Imediata', 'var(--danger)', 'var(--danger-lt)'],
+  'alta'     => ['Alta',        'var(--warning)', 'var(--warning-lt)'],
+  'media'    => ['Média',       'var(--blue)', 'var(--blue-lt)'],
+  'baixa'    => ['Baixa',       'var(--text-2)', 'var(--bg)'],
 ];
 
 function tempoDesde(string $dt): string {
@@ -33,7 +33,7 @@ function tempoDesde(string $dt): string {
   <div>
     <h1 style="font-size:22px;font-weight:800;margin:0;">
       Carrinhos abandonados
-      <span class="badge" style="background:#fef2f2;color:#dc2626;font-size:12px;
+      <span class="badge" style="background:var(--danger-lt);color:var(--danger);font-size:12px;
             vertical-align:middle;margin-left:6px;"><?= (int)$total ?></span>
     </h1>
   </div>
@@ -138,8 +138,8 @@ function tempoDesde(string $dt): string {
 
 <div style="display:flex;flex-direction:column;gap:10px;">
 <?php foreach ($rows as $r):
-  [$stLabel, $stCor, $stBg]   = $statusCfg[$r['status']]     ?? ['?', '#64748b', '#f8fafc'];
-  [$prLabel, $prCor, $prBg]   = $prioCfg[$r['prioridade']]   ?? ['—', '#64748b', '#f8fafc'];
+  [$stLabel, $stCor, $stBg]   = $statusCfg[$r['status']]     ?? ['?', 'var(--text-2)', 'var(--bg)'];
+  [$prLabel, $prCor, $prBg]   = $prioCfg[$r['prioridade']]   ?? ['—', 'var(--text-2)', 'var(--bg)'];
   $temTel  = !empty($r['cliente_telefone']);
   $temMail = !empty($r['cliente_email']);
 ?>
@@ -156,7 +156,7 @@ function tempoDesde(string $dt): string {
       <div style="font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <?= $r['cliente_nome'] ? View::e($r['cliente_nome']) : '<span style="color:var(--c-text-muted);">Não identificado</span>' ?>
         <?php if ((int)$r['pedidos_anteriores'] > 0): ?>
-          <span class="badge" style="background:#f0fdf4;color:#16a34a;font-size:10px;">
+          <span class="badge" style="background:var(--success-lt);color:var(--success);font-size:10px;">
             Cliente recorrente</span>
         <?php endif; ?>
       </div>
@@ -170,8 +170,8 @@ function tempoDesde(string $dt): string {
         <?php else: ?>
           <button class="btn btn-capturar" data-id="<?= (int)$r['id'] ?>"
                   onclick="event.preventDefault();event.stopPropagation();"
-                  style="font-size:11px;padding:3px 10px;background:#f0fdf4;
-                        color:#16a34a;border:1px solid #bbf7d0;">⚡ Capturar</button>
+                  style="font-size:11px;padding:3px 10px;background:var(--success-lt);
+                        color:var(--success);border:1px solid var(--success-bd);">⚡ Capturar</button>
         <?php endif; ?>
       </div>
     </div>

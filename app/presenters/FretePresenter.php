@@ -53,20 +53,61 @@ final class FretePresenter
     {
         $gratis = !empty($o['frete_gratis']);
         $valor  = (float)($o['valor'] ?? 0);
+        $prazo  = (int)($o['prazo_dias'] ?? 0);
 
         return [
             'transportadora' => $o['transportadora'] ?? null,
             'servico'        => $o['servico'] ?? null,
             'servico_codigo' => $o['servico_codigo'] ?? null,
             'categoria'      => $o['categoria'] ?? 'padrao',
-            'prazo_dias'     => (int)($o['prazo_dias'] ?? 0),
+            'prazo_dias'     => $prazo,
             // Frete grátis é zero, e não "o valor que seria cobrado": o app
             // soma isto no total.
             'valor'          => PrecoPresenter::dec($gratis ? 0 : $valor),
             'frete_gratis'   => $gratis,
             'mais_barato'    => !empty($o['mais_barato']),
             'mais_rapido'    => !empty($o['mais_rapido']),
+
+            // A DATA, não só a contagem de dias. "Chega quinta-feira" responde
+            // à pergunta que a pessoa realmente tem; "até 3 dias úteis" obriga
+            // cada cliente a contar no calendário — e a contar errado, porque
+            // sábado e domingo não são dias úteis.
+            //
+            // O cálculo mora aqui porque é o servidor que sabe o que é dia útil
+            // neste negócio. O app só escolhe como escrever a data.
+            'data_entrega'   => self::diaUtil($prazo),
         ];
+    }
+
+    /**
+     * Data de entrega a partir do prazo em dias ÚTEIS.
+     *
+     * Conta a partir de amanhã: um pedido fechado hoje não é postado hoje.
+     * Feriados nacionais ficam de fora — a loja não mantém esse calendário, e
+     * inventar um daria uma data errada com cara de precisa.
+     */
+    private static function diaUtil(int $prazoDias): ?string
+    {
+        if ($prazoDias <= 0) {
+            return null;
+        }
+
+        $data  = new DateTimeImmutable('tomorrow');
+        $uteis = 0;
+
+        // Teto de segurança: um prazo absurdo vindo da transportadora não pode
+        // virar laço infinito dentro de um request.
+        for ($i = 0; $i < 400; $i++) {
+            if ((int)$data->format('N') <= 5) {
+                $uteis++;
+                if ($uteis >= $prazoDias) {
+                    break;
+                }
+            }
+            $data = $data->modify('+1 day');
+        }
+
+        return $data->format('Y-m-d');
     }
 
     /**

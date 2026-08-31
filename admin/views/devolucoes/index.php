@@ -138,13 +138,13 @@ foreach ($lista as $sol) {
             $st = $statusLabels[$s['status']] ?? ['cor'=>'info','label'=>$s['status']];
             $urgente = in_array($s['status'], $prioritarios);
           ?>
-          <tr <?= $urgente ? 'style="background:#fffbeb;"' : '' ?>>
+          <tr <?= $urgente ? 'style="background:var(--warning-lt);"' : '' ?>>
             <td>
               <span style="font-family:'SF Mono',monospace;font-size:13px;font-weight:700;">
                 #<?= (int)$s['id'] ?>
               </span>
               <?php if ($urgente): ?>
-                <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#f59e0b;margin-left:4px;"></span>
+                <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--warning);margin-left:4px;"></span>
               <?php endif; ?>
             </td>
             <td>

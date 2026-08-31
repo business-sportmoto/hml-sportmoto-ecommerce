@@ -1,10 +1,10 @@
 <?php
 // views/admin/clientes/score-credito.php
 $tierCores = [
-    'bronze'   => ['bg'=>'#fef3c7','text'=>'#92400e','border'=>'#fcd34d'],
-    'silver'   => ['bg'=>'#f1f5f9','text'=>'#475569','border'=>'#cbd5e1'],
-    'gold'     => ['bg'=>'#fef9c3','text'=>'#713f12','border'=>'#fde047'],
-    'platinum' => ['bg'=>'#eff6ff','text'=>'#1e3a8a','border'=>'#93c5fd'],
+    'bronze'   => ['bg'=>'var(--warning-lt)','text'=>'var(--warning)','border'=>'var(--warning-bd)'],
+    'silver'   => ['bg'=>'var(--surface2)','text'=>'var(--text-2)','border'=>'var(--border2)'],
+    'gold'     => ['bg'=>'var(--warning-lt)','text'=>'var(--warning)','border'=>'var(--warning-bd)'],
+    'platinum' => ['bg'=>'var(--blue-lt)','text'=>'var(--blue)','border'=>'var(--blue-bd)'],
 ];
 $tc  = $tierCores[$scoreRow['tier'] ?? 'bronze'];
 $max = 600;
@@ -27,7 +27,7 @@ $max = 600;
       <div style="padding:20px;border-bottom:1px solid var(--c-border);display:flex;justify-content:space-between;align-items:center;">
         <h3 style="margin:0;font-size:15px;font-weight:800;">Score do cliente</h3>
         <?php if ($scoreRow['override_manual']): ?>
-          <span style="font-size:11px;background:#fef2f2;color:#dc2626;padding:3px 10px;border-radius:99px;border:1px solid #fca5a5;font-weight:700;">
+          <span style="font-size:11px;background:var(--danger-lt);color:var(--danger);padding:3px 10px;border-radius:99px;border:1px solid var(--danger-bd);font-weight:700;">
             Override manual ativo
           </span>
         <?php endif; ?>
@@ -49,7 +49,7 @@ $max = 600;
               <?= ScoreService::TIERS[$scoreRow['tier'] ?? 'bronze']['label'] ?>
             </span>
             <div style="margin-top:10px;">
-              <div style="height:8px;background:#f1f5f9;border-radius:99px;overflow:hidden;">
+              <div style="height:8px;background:var(--surface2);border-radius:99px;overflow:hidden;">
                 <div id="sc-barra"
                      style="height:100%;width:<?= min(100,round(($scoreRow['score_total']??0)/$max*100)) ?>%;
                             background:linear-gradient(90deg,#16a34a,#22c55e);border-radius:99px;transition:width .5s ease;"></div>
@@ -78,11 +78,11 @@ $max = 600;
             foreach (array_merge($fatores,$penalidades) as $f):
               $pos = $f['pts'] >= 0;
           ?>
-          <div style="background:#f8fafc;border-radius:8px;padding:9px 12px;border:1px solid var(--c-border);">
+          <div style="background:var(--bg);border-radius:8px;padding:9px 12px;border:1px solid var(--c-border);">
             <div style="font-size:11px;color:var(--c-text-muted);font-weight:600;"><?= $f['label'] ?></div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
               <span style="font-size:13px;font-weight:700;color:var(--c-dark);"><?= $f['val'] ?></span>
-              <span style="font-size:11.5px;font-weight:800;color:<?= $pos?'#16a34a':'#dc2626' ?>;">
+              <span style="font-size:11.5px;font-weight:800;color:<?= $pos?'var(--success)':'var(--danger)' ?>;">
                 <?= $pos?'+':'' ?><?= round($f['pts'],1) ?> pts
               </span>
             </div>
@@ -92,9 +92,9 @@ $max = 600;
 
         <!-- Override manual -->
         <?php if ($scoreRow['override_manual']): ?>
-        <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 12px;margin-bottom:12px;">
-          <div style="font-size:12.5px;color:#991b1b;font-weight:700;">Override ativo por: <?= View::e($scoreRow['override_admin_id'] ?? 'admin') ?></div>
-          <div style="font-size:12px;color:#991b1b;margin-top:2px;"><?= View::e($scoreRow['override_motivo'] ?? '') ?></div>
+        <div style="background:var(--danger-lt);border:1px solid var(--danger-bd);border-radius:8px;padding:10px 12px;margin-bottom:12px;">
+          <div style="font-size:12.5px;color:var(--danger);font-weight:700;">Override ativo por: <?= View::e($scoreRow['override_admin_id'] ?? 'admin') ?></div>
+          <div style="font-size:12px;color:var(--danger);margin-top:2px;"><?= View::e($scoreRow['override_motivo'] ?? '') ?></div>
           <button type="button" class="btn btn-outline btn-sm" id="btn-remover-override"
                   style="margin-top:8px;">Remover override</button>
         </div>
@@ -115,20 +115,20 @@ $max = 600;
     <div class="admin-card">
       <div style="padding:20px;border-bottom:1px solid var(--c-border);display:flex;justify-content:space-between;align-items:center;">
         <h3 style="margin:0;font-size:15px;font-weight:800;">Saldo de crédito</h3>
-        <span style="font-size:26px;font-weight:900;color:#16a34a;" id="saldo-display">
+        <span style="font-size:26px;font-weight:900;color:var(--success);" id="saldo-display">
           <?= PriceHelper::format($saldo) ?>
         </span>
       </div>
       <div style="padding:16px 20px;">
         <?php if (!empty($expirando)): ?>
-        <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;color:#92400e;">
+        <div style="background:var(--warning-lt);border:1px solid var(--warning-bd);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;color:var(--warning);">
           ⚠ <?= count($expirando) ?> crédito(s) expiram nos próximos 60 dias.
         </div>
         <?php endif; ?>
 
         <!-- Lançar crédito -->
-        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px;margin-bottom:14px;">
-          <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#15803d;margin-bottom:10px;">
+        <div style="background:var(--success-lt);border:1px solid var(--success-bd);border-radius:10px;padding:14px;margin-bottom:14px;">
+          <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--success);margin-bottom:10px;">
             Lançar crédito
           </div>
           <div style="display:grid;grid-template-columns:1fr 80px;gap:8px;margin-bottom:8px;">
@@ -149,9 +149,9 @@ $max = 600;
         <div style="max-height:280px;overflow-y:auto;">
           <?php foreach ($historico as $tx):
             $isCredito = str_starts_with($tx['tipo'], 'credito');
-            $cor       = $isCredito ? '#16a34a' : '#dc2626';
+            $cor       = $isCredito ? 'var(--success)' : 'var(--danger)';
           ?>
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:8px 0;border-bottom:1px solid #f8fafc;gap:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--bg);gap:8px;">
             <div style="flex:1;min-width:0;">
               <div style="font-size:13px;font-weight:600;color:var(--c-dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                 <?= View::e($tx['descricao']) ?>
@@ -159,9 +159,9 @@ $max = 600;
               <div style="font-size:11.5px;color:var(--c-text-muted);">
                 <?= date('d/m/Y H:i', strtotime($tx['criado_em'])) ?>
                 <?php if ($tx['expira_em'] && !$tx['expirado']): ?>
-                  · <span style="color:#d97706;">Expira <?= date('d/m/Y', strtotime($tx['expira_em'])) ?></span>
+                  · <span style="color:var(--warning);">Expira <?= date('d/m/Y', strtotime($tx['expira_em'])) ?></span>
                 <?php elseif ($tx['expirado']): ?>
-                  · <span style="color:#9ca3af;">Expirado</span>
+                  · <span style="color:var(--text-3);">Expirado</span>
                 <?php endif; ?>
               </div>
             </div>
@@ -183,7 +183,7 @@ $max = 600;
         </div>
 
         <button type="button" class="btn btn-ghost btn-sm"
-                id="btn-debitar" style="margin-top:10px;color:#dc2626;">
+                id="btn-debitar" style="margin-top:10px;color:var(--danger);">
           − Débito manual
         </button>
       </div>
@@ -211,7 +211,7 @@ $max = 600;
         <textarea id="ov-motivo" class="form-control" rows="3"
                   placeholder="Ex: Cliente com histórico VIP importado de sistema anterior"></textarea>
       </div>
-      <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;color:#92400e;">
+      <div style="background:var(--warning-lt);border:1px solid var(--warning-bd);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;color:var(--warning);">
         ⚠ O override congela o score automático. O cron não irá sobrescrevê-lo até você remover o override.
       </div>
       <button type="button" class="btn btn-primary" id="btn-confirmar-override">Aplicar override</button>
@@ -238,7 +238,7 @@ $max = 600;
         <input type="text" id="db-desc" class="form-control" placeholder="Ex: Crédito lançado indevidamente">
       </div>
       <button type="button" class="btn btn-primary" id="btn-confirmar-debito"
-              style="background:#dc2626;border-color:#dc2626;">
+              style="background:var(--danger);border-color:var(--danger);">
         Confirmar débito
       </button>
       <div id="debito-msg" class="form-alert" style="display:none;margin-top:10px;"></div>

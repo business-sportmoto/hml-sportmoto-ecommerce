@@ -3,51 +3,11 @@
 // $metodos e $porMetodo injetados pelo AdminPagamentoFluxoController
 
 $badge = [
-    'rascunho'  => ['Rascunho',  '#b45309', '#fffbeb'],
-    'publicado' => ['Publicado', '#15803d', '#f0fdf4'],
-    'arquivado' => ['Arquivado', '#64748b', '#f8fafc'],
+    'rascunho'  => ['Rascunho',  'var(--warning)', 'var(--warning-lt)'],
+    'publicado' => ['Publicado', 'var(--success)', 'var(--success-lt)'],
+    'arquivado' => ['Arquivado', 'var(--text-2)', 'var(--bg)'],
 ];
 ?>
-
-
-<style>
-/* ── Tema ──────────────────────────────────────────────────────
-   Aponta para o sistema pgto_ (pages.css), que ja define claro e escuro. */
-.fx-page{
-  --fx-sup:var(--pgto-surface);
-  --fx-bd:var(--pgto-border);
-  --fx-tx:var(--pgto-text);
-  --fx-tx2:var(--pgto-text-muted);
-  --fx-erro-bg:var(--pgto-red-soft);
-  --fx-erro-bd:#dc26264d;
-  --fx-erro-tx:var(--pgto-red);
-}
-/* Selos de status vem com cor inline do PHP; no escuro precisam de fundo
-   proprio, senao um #f0fdf4 vira um bloco branco sobre a superficie escura. */
-@media (prefers-color-scheme: dark){
-  html:not([data-theme="light"]) .fx-page .admin-table td span[style],
-  html:not([data-theme="light"]) .fx-page h3 + div span[style]{
-    background:var(--pgto-surface-2) !important;filter:brightness(1.3)
-  }
-}
-html[data-theme="dark"] .fx-page .admin-table td span[style]{
-  background:var(--pgto-surface-2) !important;filter:brightness(1.3)
-}
-
-.fx-page .admin-card{background:var(--fx-sup);border-color:var(--fx-bd);
-  transition:border-color .16s,box-shadow .16s}
-.fx-page .admin-card:hover{border-color:var(--fx-bd);
-  box-shadow:0 6px 20px -10px rgba(15,23,42,.16)}
-.fx-page h3{color:var(--fx-tx)}
-.fx-page code{color:var(--fx-tx2)}
-.fx-page .admin-table th{color:var(--fx-tx2);border-color:var(--fx-bd)}
-.fx-page .admin-table td{color:var(--fx-tx);border-color:var(--fx-bd);
-  font-variant-numeric:tabular-nums}
-
-.fx-sem-fluxo{margin-top:14px;padding:11px 14px;border-radius:8px;font-size:12.5px;
-  line-height:1.5;background:var(--fx-erro-bg);border:1px solid var(--fx-erro-bd);
-  color:var(--fx-erro-tx)}
-</style>
 
 <div class="admin-page fx-page">
 
@@ -79,7 +39,7 @@ html[data-theme="dark"] .fx-page .admin-table td span[style]{
         <div style="font-size:11.5px;color:var(--c-text-muted);">
           código <code><?= View::e($m['codigo']) ?></code>
           <?php if (!$m['ativo']): ?>
-            · <span style="color:#b45309;">forma desativada no checkout</span>
+            · <span style="color:var(--warning);">forma desativada no checkout</span>
           <?php endif; ?>
         </div>
       </div>
@@ -117,7 +77,7 @@ html[data-theme="dark"] .fx-page .admin-table td span[style]{
       </thead>
       <tbody>
         <?php foreach (array_slice($lista, 0, 5) as $f):
-            [$lbl, $cor, $bg] = $badge[$f['status']] ?? ['—', '#64748b', '#f8fafc']; ?>
+            [$lbl, $cor, $bg] = $badge[$f['status']] ?? ['—', 'var(--text-2)', 'var(--bg)']; ?>
         <tr>
           <td>v<?= (int) $f['versao'] ?></td>
           <td><span style="background:<?= $bg ?>;color:<?= $cor ?>;padding:2px 8px;

@@ -42,6 +42,69 @@
   --info:       #0284c7;
   --info-lt:    #e0f2fe;
   --muted-lt:   #f1f5f9;
+  /* Bordas das familias semanticas (tom claro sobre fundo -lt). Existem porque
+     os avisos inline usavam #bbf7d0/#fecaca/#fde68a/#bfdbfe soltos no HTML e
+     essas bordas precisam clarear/escurecer junto com o tema. */
+  /* Roxo e cor semantica do dominio (status "aguardando resposta", tipo de
+     promocao "brinde", aviso de super admin) e vivia so como literal no HTML. */
+  /* -------------------------------------------------------------------------
+     Tokens de modulos legados (--c-*, --lw-*, --em-*, --adq-*) e genericos.
+
+     Eles so existiam dentro das camadas de tema escuro, que antes redeclaravam
+     :root sem escopo. Com o seletor de tema, essas camadas passaram a valer so
+     sob [data-theme="dark"] — sem os valores claros abaixo, os modulos que os
+     usam ficariam sem cor no tema claro (o titulo da pagina, por exemplo, some).
+     ------------------------------------------------------------------------- */
+  --c-bg:          #f8fafc;
+  --c-surface:     #ffffff;
+  --c-border:      #e2e8f0;
+  --c-dark:        #0f172a;
+  --c-text:        #475569;
+  --c-text-muted:  #64748b;
+  --c-muted:       #64748b;
+  --c-primary:     #2563eb;
+  --c-primary-l:   #eff6ff;
+  --c-primary-rgb: 37, 99, 235;
+  --c-accent:      #2563eb;
+  --c-accent-l:    #eff6ff;
+  --c-success:     #059669;
+
+  --surface-2:     #f1f5f9;
+  --surface-3:     #e2e8f0;
+  --text-0:        #0f172a;
+  --text-1:        #475569;
+  --line:          #e2e8f0;
+  --line-hi:       #cbd5e1;
+  --shadow:        0 8px 24px rgba(0,0,0,.08);
+  --ok:            #059669;
+  --error:         #ea580c;
+  --critical:      #dc2626;
+  --debug:         #64748b;
+
+  /* Visualizador de logs */
+  --lw-surface:    #ffffff;
+  --lw-line:       #e2e8f0;
+  --lw-t0:         #0f172a;
+  --lw-t1:         #475569;
+  --lw-t2:         #64748b;
+  --lw-ok:         #059669;
+  --lw-warning:    #d97706;
+  --lw-error:      #ea580c;
+  --lw-critical:   #dc2626;
+
+  /* E-mail marketing / adquirentes */
+  --em-bg-card:    #ffffff;
+  --em-text-muted: #64748b;
+  --adq-aviso-tx:  #92400e;
+  --accent-sf:     rgba(230,57,70,.10);
+
+  --purple:     #7c3aed;
+  --purple-lt:  #f5f3ff;
+  --purple-bd:  #ddd6fe;
+  --success-bd: #bbf7d0;
+  --danger-bd:  #fecaca;
+  --warning-bd: #fde68a;
+  --blue-bd:    #bfdbfe;
   --dartk: #1a1a2e;
 
   /* Geometria */
@@ -470,6 +533,21 @@ input, select, textarea { font-family: var(--font); }
   padding: 0 10px;;
   font-size: 0.8em;
 }
+
+/* Alternador de tema — mostra o icone do tema para o qual vai MUDAR, nao o do
+   tema atual: no escuro aparece o sol (clique para clarear) e vice-versa.
+   Os dois icones ficam no HTML e o CSS escolhe qual exibir, de modo que a troca
+   e instantanea e nao depende do JS ter carregado. */
+.admin-tema-btn { color: var(--text-2); }
+
+.admin-tema-ico { display: none; line-height: 0; }
+.admin-tema-ico svg { width: 18px; height: 18px; display: block; }
+
+.admin-tema-ico--escuro { display: inline-flex; }
+.admin-tema-ico--claro  { display: none; }
+
+html[data-theme="dark"] .admin-tema-ico--escuro { display: none; }
+html[data-theme="dark"] .admin-tema-ico--claro  { display: inline-flex; }
 
 .admin-topbar-btn.power svg {
   margin-right: 6px;
@@ -5374,7 +5452,7 @@ a.pd-dash-card:hover{box-shadow:0 8px 22px rgba(15,23,42,.07);transform:translat
    cascata. Nenhuma classe, ID, breakpoint ou animação existente foi removida.
    ============================================================================= */
 
-:root {
+html[data-theme="dark"] {
   color-scheme: dark;
 
   /* Brand */
@@ -5406,6 +5484,13 @@ a.pd-dash-card:hover{box-shadow:0 8px 22px rgba(15,23,42,.07);transform:translat
   --info: #38bdf8;
   --info-lt: #082f49;
   --muted-lt: #182230;
+  --purple:     #a78bfa;
+  --purple-lt:  #2e1065;
+  --purple-bd:  #4c1d95;
+  --success-bd: #14532d;
+  --danger-bd:  #7f1d1d;
+  --warning-bd: #78350f;
+  --blue-bd:    #1e3a5f;
   --dartk: #090d14;
 
   /* Elevated shadows for dark surfaces */
@@ -5451,391 +5536,222 @@ a.pd-dash-card:hover{box-shadow:0 8px 22px rgba(15,23,42,.07);transform:translat
   --cl-shadow: 0 10px 30px rgba(0,0,0,.30);
 }
 
-html,
-body,
-body.admin-body {
+html[data-theme="dark"], html[data-theme="dark"] body, html[data-theme="dark"] body.admin-body {
   background: var(--bg);
   color: var(--text);
 }
 
-html { color-scheme: dark; }
+html[data-theme="dark"] { color-scheme: dark; }
 
-::selection {
+html[data-theme="dark"] ::selection {
   background: rgba(96,165,250,.30);
   color: #fff;
 }
 
-body.admin-body,
-.admin-sidebar,
-.admin-topbar,
-.admin-card,
-.admin-stat-card,
-.admin-empty-state,
-.admin-confirm-box,
-.admin-toast,
-.pe-nav,
-.pe-topbar,
-.pe-card,
-.pe-modal,
-.attr-papel-card,
-.benefit-admin-item {
+html[data-theme="dark"] body.admin-body, html[data-theme="dark"] .admin-sidebar, html[data-theme="dark"] .admin-topbar, html[data-theme="dark"] .admin-card, html[data-theme="dark"] .admin-stat-card, html[data-theme="dark"] .admin-empty-state, html[data-theme="dark"] .admin-confirm-box, html[data-theme="dark"] .admin-toast, html[data-theme="dark"] .pe-nav, html[data-theme="dark"] .pe-topbar, html[data-theme="dark"] .pe-card, html[data-theme="dark"] .pe-modal, html[data-theme="dark"] .attr-papel-card, html[data-theme="dark"] .benefit-admin-item {
   background-color: var(--surface);
 }
 
-.admin-topbar,
-.admin-sidebar,
-.admin-sidebar-logo,
-.admin-sidebar-footer,
-.admin-card,
-.admin-card-header,
-.admin-stat-card,
-.admin-empty-state,
-.admin-confirm-box,
-.admin-toast,
-.pe-nav,
-.pe-topbar,
-.pe-card,
-.pe-modal,
-.pe-modal-header,
-.pe-modal-footer {
+html[data-theme="dark"] .admin-topbar, html[data-theme="dark"] .admin-sidebar, html[data-theme="dark"] .admin-sidebar-logo, html[data-theme="dark"] .admin-sidebar-footer, html[data-theme="dark"] .admin-card, html[data-theme="dark"] .admin-card-header, html[data-theme="dark"] .admin-stat-card, html[data-theme="dark"] .admin-empty-state, html[data-theme="dark"] .admin-confirm-box, html[data-theme="dark"] .admin-toast, html[data-theme="dark"] .pe-nav, html[data-theme="dark"] .pe-topbar, html[data-theme="dark"] .pe-card, html[data-theme="dark"] .pe-modal, html[data-theme="dark"] .pe-modal-header, html[data-theme="dark"] .pe-modal-footer {
   border-color: var(--border);
 }
 
 /* Native controls */
-input,
-select,
-textarea,
-button {
+html[data-theme="dark"] input, html[data-theme="dark"] select, html[data-theme="dark"] textarea, html[data-theme="dark"] button {
   color-scheme: dark;
 }
 
-input,
-select,
-textarea,
-.form-control,
-.admin-search-input,
-.admin-topbar-search input,
-.color-picker-hex,
-.pe-price-input,
-.pe-estoque-input {
+html[data-theme="dark"] input, html[data-theme="dark"] select, html[data-theme="dark"] textarea, html[data-theme="dark"] .form-control, html[data-theme="dark"] .admin-search-input, html[data-theme="dark"] .admin-topbar-search input, html[data-theme="dark"] .color-picker-hex, html[data-theme="dark"] .pe-price-input, html[data-theme="dark"] .pe-estoque-input {
   caret-color: var(--blue);
 }
 
-select option {
+html[data-theme="dark"] select option {
   color: var(--text);
   background: var(--surface);
 }
 
-input:-webkit-autofill,
-input:-webkit-autofill:hover,
-input:-webkit-autofill:focus,
-textarea:-webkit-autofill,
-select:-webkit-autofill {
+html[data-theme="dark"] input:-webkit-autofill, html[data-theme="dark"] input:-webkit-autofill:hover, html[data-theme="dark"] input:-webkit-autofill:focus, html[data-theme="dark"] textarea:-webkit-autofill, html[data-theme="dark"] select:-webkit-autofill {
   -webkit-text-fill-color: var(--text) !important;
   -webkit-box-shadow: 0 0 0 1000px var(--surface) inset !important;
   box-shadow: 0 0 0 1000px var(--surface) inset !important;
   caret-color: var(--text);
 }
 
-:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+html[data-theme="dark"] :where(a, button, input, select, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 2px;
 }
 
 /* Scrollbars */
-* {
+html[data-theme="dark"] * {
   scrollbar-color: var(--border2) transparent;
 }
-*::-webkit-scrollbar { width: 10px; height: 10px; }
-*::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb {
+html[data-theme="dark"] *::-webkit-scrollbar { width: 10px; height: 10px; }
+html[data-theme="dark"] *::-webkit-scrollbar-track { background: transparent; }
+html[data-theme="dark"] *::-webkit-scrollbar-thumb {
   background: var(--border2);
   border: 3px solid transparent;
   border-radius: 999px;
   background-clip: padding-box;
 }
-*::-webkit-scrollbar-thumb:hover { background-color: #52637c; }
+html[data-theme="dark"] *::-webkit-scrollbar-thumb:hover { background-color: #52637c; }
 
 /* Topbar, search and navigation */
-.admin-topbar-search,
-.admin-topbar-btn,
-.input-prefix,
-.pe-input-prefix,
-.pe-slug-regen,
-.pe-price-prefix,
-.pe-estoque-btn,
-.pe-unit,
-.pe-promo-periodo,
-.pe-frete-preview,
-.pe-audit-card,
-.attr-display-preview,
-.modal-ag-opcoes-grid,
-.attr-valores-panel,
-.pe-sku-card {
+html[data-theme="dark"] .admin-topbar-search, html[data-theme="dark"] .admin-topbar-btn, html[data-theme="dark"] .input-prefix, html[data-theme="dark"] .pe-input-prefix, html[data-theme="dark"] .pe-slug-regen, html[data-theme="dark"] .pe-price-prefix, html[data-theme="dark"] .pe-estoque-btn, html[data-theme="dark"] .pe-unit, html[data-theme="dark"] .pe-promo-periodo, html[data-theme="dark"] .pe-frete-preview, html[data-theme="dark"] .pe-audit-card, html[data-theme="dark"] .attr-display-preview, html[data-theme="dark"] .modal-ag-opcoes-grid, html[data-theme="dark"] .attr-valores-panel, html[data-theme="dark"] .pe-sku-card {
   background: var(--bg);
   border-color: var(--border);
 }
 
-.admin-nav-item:hover,
-.admin-user-card:hover,
-.admin-topbar-btn:hover,
-.admin-toast-close:hover,
-.pe-nav-item:hover,
-.pe-modal-close:hover,
-.benefit-admin-drag:hover,
-.admin-drag-handle:hover {
+html[data-theme="dark"] .admin-nav-item:hover, html[data-theme="dark"] .admin-user-card:hover, html[data-theme="dark"] .admin-topbar-btn:hover, html[data-theme="dark"] .admin-toast-close:hover, html[data-theme="dark"] .pe-nav-item:hover, html[data-theme="dark"] .pe-modal-close:hover, html[data-theme="dark"] .benefit-admin-drag:hover, html[data-theme="dark"] .admin-drag-handle:hover {
   background: var(--surface2);
 }
 
-.admin-nav-item.active,
-.pe-nav-item.active {
+html[data-theme="dark"] .admin-nav-item.active, html[data-theme="dark"] .pe-nav-item.active {
   background: var(--grad-primary-soft);
   color: var(--blue);
 }
 
-.admin-nav-item:hover .admin-nav-icon,
-.admin-nav-item.active .admin-nav-icon {
+html[data-theme="dark"] .admin-nav-item:hover .admin-nav-icon, html[data-theme="dark"] .admin-nav-item.active .admin-nav-icon {
   background: rgba(96,165,250,.14);
 }
 
 /* Notifications */
-.ntf-modal {
+html[data-theme="dark"] .ntf-modal {
   background: #111821;
   border-color: #2b394c;
   box-shadow: var(--shadow-lg);
 }
-.ntf-modal-head,
-.ntf-filtros,
-.ntf-modal-foot { border-color: #263244; }
-.ntf-modal-title,
-.ntf-item-titulo { color: var(--text); }
-.ntf-item { border-color: #202b3a; }
-.ntf-item:hover { background: #182230; }
-.ntf-item-naolida { background: #10233d; }
-.ntf-item-naolida:hover { background: #142b49; }
-.ntf-item-msg { color: #a8b5c7; }
-.ntf-item-tempo,
-.ntf-vazio { color: #718096; }
-.ntf-chip { background: #202b3a; color: #a8b5c7; }
-.ntf-chip-ativa { background: #e5e7eb; color: #0b111b; }
-.ntf-bell:hover { background: rgba(255,255,255,.07); }
+html[data-theme="dark"] .ntf-modal-head, html[data-theme="dark"] .ntf-filtros, html[data-theme="dark"] .ntf-modal-foot { border-color: #263244; }
+html[data-theme="dark"] .ntf-modal-title, html[data-theme="dark"] .ntf-item-titulo { color: var(--text); }
+html[data-theme="dark"] .ntf-item { border-color: #202b3a; }
+html[data-theme="dark"] .ntf-item:hover { background: #182230; }
+html[data-theme="dark"] .ntf-item-naolida { background: #10233d; }
+html[data-theme="dark"] .ntf-item-naolida:hover { background: #142b49; }
+html[data-theme="dark"] .ntf-item-msg { color: #a8b5c7; }
+html[data-theme="dark"] .ntf-item-tempo, html[data-theme="dark"] .ntf-vazio { color: #718096; }
+html[data-theme="dark"] .ntf-chip { background: #202b3a; color: #a8b5c7; }
+html[data-theme="dark"] .ntf-chip-ativa { background: #e5e7eb; color: #0b111b; }
+html[data-theme="dark"] .ntf-bell:hover { background: rgba(255,255,255,.07); }
 
 /* Tables */
-.admin-table th,
-.pe-skus-table th {
+html[data-theme="dark"] .admin-table th, html[data-theme="dark"] .pe-skus-table th {
   background: #0c121b;
   color: var(--text-3);
   border-color: var(--border);
 }
-.admin-table td,
-.pe-skus-table td { border-color: var(--border); }
-.admin-table tbody tr:hover td,
-.pe-skus-table tbody tr:hover td,
-.admin-top-item:hover { background: #151f2c; }
-.admin-codigo,
-.pe-sku-badge,
-.attr-display-pill,
-.attr-valor-preview-btn,
-.coupon-code-badge,
-.badge-gray,
-.status-badge--gray,
-.prod-badge--bling-off,
-.pd-visto-rank {
+html[data-theme="dark"] .admin-table td, html[data-theme="dark"] .pe-skus-table td { border-color: var(--border); }
+html[data-theme="dark"] .admin-table tbody tr:hover td, html[data-theme="dark"] .pe-skus-table tbody tr:hover td, html[data-theme="dark"] .admin-top-item:hover { background: #151f2c; }
+html[data-theme="dark"] .admin-codigo, html[data-theme="dark"] .pe-sku-badge, html[data-theme="dark"] .attr-display-pill, html[data-theme="dark"] .attr-valor-preview-btn, html[data-theme="dark"] .coupon-code-badge, html[data-theme="dark"] .badge-gray, html[data-theme="dark"] .status-badge--gray, html[data-theme="dark"] .prod-badge--bling-off, html[data-theme="dark"] .pd-visto-rank {
   background: var(--surface2);
   border-color: var(--border);
   color: var(--text-2);
 }
 
 /* Forms and uploads */
-.form-control,
-.input-with-prefix,
-.pe-input-prefix-wrap,
-.pe-price-input-wrap,
-.pe-estoque-wrap,
-.color-picker-input,
-.color-picker-clear,
-.pe-color-swatch-input,
-.pe-color-swatch-input-lg,
-.benefit-icon-select {
+html[data-theme="dark"] .form-control, html[data-theme="dark"] .input-with-prefix, html[data-theme="dark"] .pe-input-prefix-wrap, html[data-theme="dark"] .pe-price-input-wrap, html[data-theme="dark"] .pe-estoque-wrap, html[data-theme="dark"] .color-picker-input, html[data-theme="dark"] .color-picker-clear, html[data-theme="dark"] .pe-color-swatch-input, html[data-theme="dark"] .pe-color-swatch-input-lg, html[data-theme="dark"] .benefit-icon-select {
   background: var(--surface);
   color: var(--text);
   border-color: var(--border2);
 }
-.form-control::placeholder,
-.admin-search-input::placeholder,
-.admin-topbar-search input::placeholder { color: #66768c; }
-.form-control:disabled,
-.form-control[readonly] {
+html[data-theme="dark"] .form-control::placeholder, html[data-theme="dark"] .admin-search-input::placeholder, html[data-theme="dark"] .admin-topbar-search input::placeholder { color: #66768c; }
+html[data-theme="dark"] .form-control:disabled, html[data-theme="dark"] .form-control[readonly] {
   background: #0c121b;
   color: var(--text-3);
   opacity: 1;
 }
-.admin-upload-area,
-.pe-upload-area,
-.clip-upload-area {
+html[data-theme="dark"] .admin-upload-area, html[data-theme="dark"] .pe-upload-area, html[data-theme="dark"] .clip-upload-area {
   background: #0c121b;
   border-color: var(--border2);
 }
-.admin-upload-area:hover,
-.admin-upload-area.upload-area--over,
-.pe-upload-area:hover,
-.pe-upload-area.drag-over,
-.clip-upload-area:hover,
-.clip-upload-area.is-dragover {
+html[data-theme="dark"] .admin-upload-area:hover, html[data-theme="dark"] .admin-upload-area.upload-area--over, html[data-theme="dark"] .pe-upload-area:hover, html[data-theme="dark"] .pe-upload-area.drag-over, html[data-theme="dark"] .clip-upload-area:hover, html[data-theme="dark"] .clip-upload-area.is-dragover {
   background: #10233d;
   border-color: var(--blue);
 }
 
 /* Cards, editor and nested surfaces */
-.cat-row--child { background: rgba(12,18,27,.55); }
-.pe-gallery-skeleton,
-.ac-skeleton {
+html[data-theme="dark"] .cat-row--child { background: rgba(12,18,27,.55); }
+html[data-theme="dark"] .pe-gallery-skeleton, html[data-theme="dark"] .ac-skeleton {
   background: linear-gradient(90deg, #182230 25%, #253247 50%, #182230 75%);
   background-size: 200% 100%;
 }
-.pe-google-preview {
+html[data-theme="dark"] .pe-google-preview {
   background: #0c121b;
   border-color: var(--border);
 }
-.pe-google-url { color: #6ee7b7; }
-.pe-google-title { color: #8ab4f8; }
-.pe-google-desc { color: #bdc7d5; }
-.pe-danger-zone { border-color: rgba(251,113,133,.35); }
-.pe-midia-alert,
-.pe-estoque-sku-info,
-.pe-estoque-variacao-aviso {
+html[data-theme="dark"] .pe-google-url { color: #6ee7b7; }
+html[data-theme="dark"] .pe-google-title { color: #8ab4f8; }
+html[data-theme="dark"] .pe-google-desc { color: #bdc7d5; }
+html[data-theme="dark"] .pe-danger-zone { border-color: rgba(251,113,133,.35); }
+html[data-theme="dark"] .pe-midia-alert, html[data-theme="dark"] .pe-estoque-sku-info, html[data-theme="dark"] .pe-estoque-variacao-aviso {
   background: #10233d;
   color: #93c5fd;
 }
-.pe-discount-badge {
+html[data-theme="dark"] .pe-discount-badge {
   background: var(--success-lt);
   color: var(--success);
   border-color: #0d6047;
 }
 
 /* Hardcoded surfaces from dashboard/product/moto/banner/clip/coupon modules */
-.pd-dash-card,
-.pd-dash-vistos,
-.moto-montadora-card,
-.moto-sidebar-card,
-.banner-preview-toolbar,
-.mod-btn--rejeitar,
-.btn-cancel,
-.rv-btn--aprovar,
-.rv-btn--rejeitar,
-.rv-btn--destaque,
-.rv-btn--excluir,
-.stat-card {
+html[data-theme="dark"] .pd-dash-card, html[data-theme="dark"] .pd-dash-vistos, html[data-theme="dark"] .moto-montadora-card, html[data-theme="dark"] .moto-sidebar-card, html[data-theme="dark"] .banner-preview-toolbar, html[data-theme="dark"] .mod-btn--rejeitar, html[data-theme="dark"] .btn-cancel, html[data-theme="dark"] .rv-btn--aprovar, html[data-theme="dark"] .rv-btn--rejeitar, html[data-theme="dark"] .rv-btn--destaque, html[data-theme="dark"] .rv-btn--excluir, html[data-theme="dark"] .stat-card {
   background: var(--surface);
   border-color: var(--border);
   color: var(--text);
 }
-.pd-visto-item:hover,
-.moto-montadora-logo,
-.moto-moto-resumo-logo,
-.moto-trocar-btn,
-.moto-sidebar-search-wrap,
-.moto-modelo-thumb-empty,
-.mod-card-img,
-.uso-bar {
+html[data-theme="dark"] .pd-visto-item:hover, html[data-theme="dark"] .moto-montadora-logo, html[data-theme="dark"] .moto-moto-resumo-logo, html[data-theme="dark"] .moto-trocar-btn, html[data-theme="dark"] .moto-sidebar-search-wrap, html[data-theme="dark"] .moto-modelo-thumb-empty, html[data-theme="dark"] .mod-card-img, html[data-theme="dark"] .uso-bar {
   background: var(--surface2);
 }
-.moto-modelo-item:hover,
-.moto-ano-item:hover { background: #1b2736; }
+html[data-theme="dark"] .moto-modelo-item:hover, html[data-theme="dark"] .moto-ano-item:hover { background: #1b2736; }
 
-.pd-dash-value,
-.pd-dash-vistos-head,
-.pd-visto-nome,
-.moto-section-header h2,
-.moto-montadora-nome,
-.moto-breadcrumb span,
-.moto-moto-resumo-nome,
-.moto-sidebar-search-wrap input,
-.moto-modelo-nome,
-.moto-ano-num,
-.moto-catalogo-titulo,
-.coupon-code-badge {
+html[data-theme="dark"] .pd-dash-value, html[data-theme="dark"] .pd-dash-vistos-head, html[data-theme="dark"] .pd-visto-nome, html[data-theme="dark"] .moto-section-header h2, html[data-theme="dark"] .moto-montadora-nome, html[data-theme="dark"] .moto-breadcrumb span, html[data-theme="dark"] .moto-moto-resumo-nome, html[data-theme="dark"] .moto-sidebar-search-wrap input, html[data-theme="dark"] .moto-modelo-nome, html[data-theme="dark"] .moto-ano-num, html[data-theme="dark"] .moto-catalogo-titulo, html[data-theme="dark"] .coupon-code-badge {
   color: var(--text);
 }
-.pd-dash-label,
-.pd-dash-vistos-head svg,
-.pd-visto-num,
-.moto-section-header p,
-.moto-montadora-meta span,
-.moto-breadcrumb,
-.moto-sidebar-titulo,
-.moto-moto-resumo-nome em,
-.moto-moto-resumo-count,
-.moto-trocar-btn,
-.moto-modelo-count,
-.moto-catalogo-sub {
+html[data-theme="dark"] .pd-dash-label, html[data-theme="dark"] .pd-dash-vistos-head svg, html[data-theme="dark"] .pd-visto-num, html[data-theme="dark"] .moto-section-header p, html[data-theme="dark"] .moto-montadora-meta span, html[data-theme="dark"] .moto-breadcrumb, html[data-theme="dark"] .moto-sidebar-titulo, html[data-theme="dark"] .moto-moto-resumo-nome em, html[data-theme="dark"] .moto-moto-resumo-count, html[data-theme="dark"] .moto-trocar-btn, html[data-theme="dark"] .moto-modelo-count, html[data-theme="dark"] .moto-catalogo-sub {
   color: var(--text-3);
 }
 
-.clip-produto-search-input:focus { background: var(--surface); }
-.form-toggle:has(input:checked),
-.clip-admin-action--edit:hover {
+html[data-theme="dark"] .clip-produto-search-input:focus { background: var(--surface); }
+html[data-theme="dark"] .form-toggle:has(input:checked), html[data-theme="dark"] .clip-admin-action--edit:hover {
   background: var(--blue-lt);
 }
 
 /* Semantic badges in dark mode */
-.admin-badge--success,
-.badge-green,
-.status-badge--green { background: var(--success-lt); color: #6ee7b7; }
-.admin-badge--warning,
-.badge-orange,
-.status-badge--orange,
-.prod-badge--bling-parcial,
-.pe-sku-bling.is-nosync { background: var(--warning-lt); color: #fcd34d; }
-.admin-badge--danger,
-.badge-red,
-.status-badge--red { background: var(--danger-lt); color: #fda4af; }
-.admin-badge--info,
-.badge-blue,
-.status-badge--blue { background: var(--blue-lt); color: #93c5fd; }
+html[data-theme="dark"] .admin-badge--success, html[data-theme="dark"] .badge-green, html[data-theme="dark"] .status-badge--green { background: var(--success-lt); color: #6ee7b7; }
+html[data-theme="dark"] .admin-badge--warning, html[data-theme="dark"] .badge-orange, html[data-theme="dark"] .status-badge--orange, html[data-theme="dark"] .prod-badge--bling-parcial, html[data-theme="dark"] .pe-sku-bling.is-nosync { background: var(--warning-lt); color: #fcd34d; }
+html[data-theme="dark"] .admin-badge--danger, html[data-theme="dark"] .badge-red, html[data-theme="dark"] .status-badge--red { background: var(--danger-lt); color: #fda4af; }
+html[data-theme="dark"] .admin-badge--info, html[data-theme="dark"] .badge-blue, html[data-theme="dark"] .status-badge--blue { background: var(--blue-lt); color: #93c5fd; }
 
 /* Buttons */
-.btn-outline {
+html[data-theme="dark"] .btn-outline {
   background: transparent;
   color: var(--text-2);
   border-color: var(--border2);
 }
-.btn-outline:hover {
+html[data-theme="dark"] .btn-outline:hover {
   background: var(--blue-lt);
   color: #bfdbfe;
   border-color: var(--blue);
 }
-.btn-ghost:hover { background: var(--surface2); }
-.btn-danger { background: var(--danger-lt); color: #fda4af; }
-.btn-danger:hover { background: #be123c; color: #fff; }
+html[data-theme="dark"] .btn-ghost:hover { background: var(--surface2); }
+html[data-theme="dark"] .btn-danger { background: var(--danger-lt); color: #fda4af; }
+html[data-theme="dark"] .btn-danger:hover { background: #be123c; color: #fff; }
 
 /* Keep switch thumbs and media overlay controls bright for contrast */
-.admin-toggle-thumb,
-.pe-toggle-thumb-inner,
-.pe-toggle-mini-track::after,
-.pe-toggle-thumb::after,
-.toggle-slider::after,
-.pe-gallery-btn {
+html[data-theme="dark"] .admin-toggle-thumb, html[data-theme="dark"] .pe-toggle-thumb-inner, html[data-theme="dark"] .pe-toggle-mini-track::after, html[data-theme="dark"] .pe-toggle-thumb::after, html[data-theme="dark"] .toggle-slider::after, html[data-theme="dark"] .pe-gallery-btn {
   background: #f8fafc;
   color: #0f172a;
 }
 
 /* Improve image preview contrast without altering images */
-:where(.cat-thumb, .marca-logo-thumb, .pe-gallery-item, .moto-montadora-logo img) {
+html[data-theme="dark"] :where(.cat-thumb, .marca-logo-thumb, .pe-gallery-item, .moto-montadora-logo img) {
   border-color: var(--border2);
 }
 
 /* Compatibility classes for a future JS theme switch */
-html[data-theme="dark"],
-html.theme-dark,
-body.dark-mode { color-scheme: dark; }
+html[data-theme="dark"], html[data-theme="dark"].theme-dark, html[data-theme="dark"] body.dark-mode { color-scheme: dark; }
 
 @media (prefers-reduced-motion: reduce) {
-  .admin-content,
-  .admin-page > *,
-  .admin-stat-card,
-  .admin-card,
-  .pe-section {
+  html[data-theme="dark"] .admin-content, html[data-theme="dark"] .admin-page > *, html[data-theme="dark"] .admin-stat-card, html[data-theme="dark"] .admin-card, html[data-theme="dark"] .pe-section {
     animation: none !important;
   }
 }

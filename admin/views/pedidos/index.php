@@ -157,7 +157,7 @@ $pagMap = [
               </a>
               <?php if ($p['codigo_rastreio']): ?>
                 <div style="margin-top:3px;">
-                  <code style="font-size:10.5px;color:#64748b;"><?= View::e($p['codigo_rastreio']) ?></code>
+                  <code style="font-size:10.5px;color:var(--text-2);"><?= View::e($p['codigo_rastreio']) ?></code>
                 </div>
               <?php endif; ?>
             </td>
@@ -168,7 +168,7 @@ $pagMap = [
             <td>
               <div style="display:flex;align-items:center;gap:8px;">
                 <img src="<?= View::e($img) ?>" width="36" height="36"
-                     style="border-radius:6px;object-fit:cover;background:#f1f5f9;">
+                     style="border-radius:6px;object-fit:cover;background:var(--surface2);">
                 <span style="font-size:12.5px;color:var(--c-text-muted);">
                   <?= (int)$p['total_itens'] ?> <?= (int)$p['total_itens']===1?'item':'itens' ?>
                 </span>

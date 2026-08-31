@@ -46,6 +46,8 @@ class AppHomeController extends AppApiController
             'veiculo_ativo'  => $this->veiculoAtivo($ctx),
             'categorias'     => $this->categorias($ctx),
             'menu'           => $this->menu($ctx),
+            'marcas'         => $this->marcasDestaque($ctx),
+            'comunidade'     => $this->comunidade($ctx),
         ]);
     }
 
@@ -149,6 +151,89 @@ class AppHomeController extends AppApiController
         }
 
         return ClipPresenter::colecao($clips, $ctx);
+    }
+
+    /**
+     * "Navegue por marcas" — a grade de marcas em destaque.
+     *
+     * Mesma consulta de views/partials/brands-section.php: ativas, marcadas
+     * como destaque, em ordem alfabética, no máximo 12.
+     *
+     * Reusa a chave de cache `brands_destaque` DE PROPÓSITO — é a mesma que o
+     * partial da loja grava, e compartilhar significa que mexer numa marca no
+     * admin limpa os dois de uma vez. (Hoje o partial ignora o cache na
+     * leitura: a primeira linha dele é `$marcasDestaque = false;//CacheHelper…`,
+     * comentário de depuração que ficou. Aqui a leitura é feita de verdade.)
+     *
+     * @return array<int,array>
+     */
+    private function marcasDestaque(PresenterContext $ctx): array
+    {
+        try {
+            $rows = CacheHelper::get('brands_destaque');
+
+            if (!$rows) {
+                $st = $this->db()->query(
+                    "SELECT id, nome, slug, logo, bg_cor FROM marcas
+                     WHERE ativo = 1 AND destaque = 1
+                     ORDER BY nome ASC LIMIT 12"
+                );
+                $rows = $st->fetchAll();
+                CacheHelper::set('brands_destaque', $rows, 3600);
+            }
+        } catch (\Throwable $e) {
+            AppLog::exception($e, ['acao' => 'home_marcas']);
+            return [];
+        }
+
+        return $rows ? MarcaPresenter::colecao($rows, $ctx) : [];
+    }
+
+    /**
+     * "A nossa comunidade" — as motos dos clientes.
+     *
+     * Mesma consulta de views/partials/nossos-clientes.php: só foto pública E
+     * aprovada, em ordem aleatória. O RAND() é de propósito — a seção existe
+     * para dar visibilidade a quem publicou, e uma ordem fixa daria sempre aos
+     * mesmos.
+     *
+     * @return array{titulo:string,subtitulo:string,fotos:array<int,array>}|null
+     */
+    private function comunidade(PresenterContext $ctx): ?array
+    {
+        try {
+            $st = $this->db()->prepare(
+                "SELECT f.id, f.arquivo_thumb, f.arquivo_medium, f.arquivo_full, f.legenda,
+                        c.insta_cliente,
+                        cv.apelido AS moto_apelido, cv.ano AS moto_ano,
+                        mm.nome AS montadora, mo.nome AS modelo
+                 FROM cliente_veiculo_fotos f
+                 JOIN cliente_veiculos cv ON cv.id = f.veiculo_id
+                 JOIN clientes c          ON c.id  = f.cliente_id
+                 JOIN moto_montadoras mm  ON mm.id = cv.montadora_id
+                 LEFT JOIN moto_modelos mo ON mo.id = cv.modelo_id
+                 WHERE f.visibilidade = 'publico'
+                   AND f.status_moderacao = 'aprovada'
+                 ORDER BY RAND()
+                 LIMIT 12"
+            );
+            $st->execute();
+            $fotos = $st->fetchAll();
+        } catch (\Throwable $e) {
+            AppLog::exception($e, ['acao' => 'home_comunidade']);
+            return null;
+        }
+
+        if (!$fotos) {
+            return null;
+        }
+
+        return [
+            'titulo'    => 'A nossa comunidade',
+            'subtitulo' => 'Mais de 2.000 motociclistas já estão com a gente',
+            'cta'       => 'Envie sua foto',
+            'fotos'     => ComunidadePresenter::colecao($fotos, $ctx),
+        ];
     }
 
     /**

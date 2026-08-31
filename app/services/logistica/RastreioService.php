@@ -429,6 +429,43 @@ class RastreioService
         }
     }
 
+    /**
+     * View pública do rastreio de UM pedido.
+     *
+     * Usada pela tela de acompanhamento do cliente, que já provou ser dono do
+     * pedido — por isso entra por `pedido_id` e não por token. Sai pelo mesmo
+     * sanitizador das outras: a tela do comprador não vê mais do que a
+     * página pública veria.
+     */
+    public function porPedido(int $pedidoId): ?array
+    {
+        if ($pedidoId <= 0) return null;
+
+        try {
+            $st = $this->pdo->prepare(
+                "SELECT r.*, t.nome AS transportadora_nome
+                   FROM log_rastreios r
+                   LEFT JOIN log_transportadoras t ON t.id = r.transportadora_id
+                  WHERE r.pedido_id = :p
+                  ORDER BY r.id DESC LIMIT 1"
+            );
+            $st->execute([':p' => $pedidoId]);
+            $r = $st->fetch(PDO::FETCH_ASSOC);
+            if (!$r) return null;
+
+            $dados = self::sanitizarPublico($r, $this->timeline((int)$r['id']));
+            // O token deixa o cliente abrir a pagina publica completa e
+            // compartilhar com quem vai receber, sem expor id interno.
+            $dados['token_publico'] = $r['token_publico'] ?? null;
+            return $dados;
+        } catch (\Throwable $e) {
+            LogService::error('Falha ao consultar rastreio do pedido', [
+                'pedido_id' => $pedidoId, 'erro' => $e->getMessage(),
+            ]);
+            return null;
+        }
+    }
+
     /** View sanitizada por código de rastreio (usada pela API). */
     public function porCodigo(string $codigo): ?array
     {

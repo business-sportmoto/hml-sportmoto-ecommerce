@@ -239,3 +239,60 @@
 
 // // Redirect
 // CK.redirect('/admin/cupons');
+
+
+/* ===========================================================================
+   Tema claro/escuro do painel.
+
+   O tema e aplicado por <html data-theme="dark|light">. Quem grava o atributo
+   na carga e o script inline do <head> — ele roda antes do CSS pintar, senao a
+   pagina piscaria no tema anterior a cada navegacao. Aqui so fica o botao.
+
+   A escolha vive em localStorage (por navegador, nao por usuario). Padrao do
+   painel: escuro, que era o unico tema existente antes do seletor.
+   =========================================================================== */
+(function () {
+    'use strict';
+
+    var CHAVE = 'admin-tema';
+    var raiz = document.documentElement;
+
+    function lerPreferencia() {
+        try {
+            var t = localStorage.getItem(CHAVE);
+            return (t === 'claro' || t === 'escuro') ? t : 'escuro';
+        } catch (e) {
+            return 'escuro';   // modo privativo / storage bloqueado
+        }
+    }
+
+    function aplicar(tema) {
+        raiz.setAttribute('data-theme', tema === 'escuro' ? 'dark' : 'light');
+        try { localStorage.setItem(CHAVE, tema); } catch (e) { /* sem persistencia */ }
+
+        var btn = document.getElementById('adminTemaBtn');
+        if (!btn) return;
+        var escuro = tema === 'escuro';
+        btn.setAttribute('aria-pressed', escuro ? 'true' : 'false');
+        btn.setAttribute('title', escuro ? 'Mudar para tema claro' : 'Mudar para tema escuro');
+        btn.setAttribute('aria-label', escuro ? 'Mudar para tema claro' : 'Mudar para tema escuro');
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        var btn = document.getElementById('adminTemaBtn');
+        if (!btn) return;
+
+        aplicar(lerPreferencia());   // sincroniza o rotulo do botao com o que o <head> ja aplicou
+
+        btn.addEventListener('click', function () {
+            aplicar(lerPreferencia() === 'escuro' ? 'claro' : 'escuro');
+        });
+    });
+
+    // Outra aba mudou o tema: acompanha, para nao ficarem divergentes.
+    window.addEventListener('storage', function (e) {
+        if (e.key === CHAVE && (e.newValue === 'claro' || e.newValue === 'escuro')) {
+            aplicar(e.newValue);
+        }
+    });
+})();

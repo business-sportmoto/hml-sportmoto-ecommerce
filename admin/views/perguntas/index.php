@@ -96,10 +96,6 @@
   <?php endif; ?>
 </div>
 
-<style>
-
-</style>
-
 <script>
 
 </script>

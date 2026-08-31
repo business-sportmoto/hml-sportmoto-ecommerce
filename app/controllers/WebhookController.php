@@ -602,6 +602,69 @@ class WebhookController extends Controller
     }
 
     /**
+     * POST /webhook/cielo — "Post de Notificação".
+     *
+     * O AVISO NÃO PROVA NADA. O corpo é só
+     * `{"PaymentId":"...","ChangeType":1}` e a Cielo não assina nada: o que
+     * ela oferece são headers fixos configuráveis no painel, que qualquer um
+     * que os descubra repete. Então o aviso serve para dizer que ALGO mudou;
+     * o status real vem de consultar a API deles.
+     *
+     * Sempre 200: eles reenviam a cada 30 minutos, mais três tentativas, e um
+     * 4xx aqui viraria reenvio eterno de algo que retentar não conserta.
+     */
+    public function cielo(): void
+    {
+        $rawBody = file_get_contents('php://input') ?: '';
+        $ip      = $_SERVER['REMOTE_ADDR'] ?? null;
+
+        $payload = json_decode($rawBody, true);
+        if (!is_array($payload)) {
+            LogService::warning('[Webhook cielo] corpo nao e JSON', [
+                'ip' => $ip, 'corpo' => mb_substr($rawBody, 0, 200),
+            ], 'pagamento');
+            $this->respond(200, ['ok' => true]);
+            return;
+        }
+
+        $paymentId  = trim((string) ($payload['PaymentId'] ?? ''));
+        $changeType = (int) ($payload['ChangeType'] ?? 0);
+
+        // GUID de 36 caracteres. Recusar o que não tem essa cara evita virar
+        // um proxy de consulta para qualquer string que mandarem.
+        if (!preg_match('/^[0-9a-f-]{36}$/i', $paymentId)) {
+            LogService::warning('[Webhook cielo] PaymentId ausente ou fora do formato', [
+                'ip' => $ip, 'change_type' => $changeType,
+            ], 'pagamento');
+            $this->respond(200, ['ok' => true]);
+            return;
+        }
+
+        LogService::info('[Webhook cielo] notificacao recebida', [
+            'payment_id' => $paymentId, 'change_type' => $changeType, 'ip' => $ip,
+        ], 'pagamento');
+
+        // ChangeType 1 é mudança de status da transação — o que baixa Pix e
+        // boleto. Os outros (recorrência, antifraude, chargeback) têm
+        // tratamento próprio e não devem passar por aqui como se fossem
+        // pagamento confirmado.
+        if ($changeType !== CieloRetornoService::MUDANCA_DE_STATUS) {
+            $this->respond(200, ['ok' => true]);
+            return;
+        }
+
+        $this->responderEProcessar(static function () use ($paymentId): void {
+            try {
+                (new CieloRetornoService())->aplicar($paymentId);
+            } catch (\Throwable $e) {
+                // Já respondemos 200. Eles reenviam, e reaplicar é idempotente.
+                LogService::exception($e, 'error', 'pagamento',
+                    ['acao' => 'webhook_cielo', 'payment_id' => $paymentId]);
+            }
+        });
+    }
+
+    /**
      * Assinatura x-signature do Mercado Pago.
      *
      * Sem segredo cadastrado, aceita — a verificacao e opcional no painel

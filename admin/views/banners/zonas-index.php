@@ -64,7 +64,7 @@ $isEdit = false;
             <?= $fmtLabel ?>
           </span>
           <?php if (!$z['ativo']): ?>
-          <span class="bz-formato-badge" style="background:#f1f5f9;color:#64748b;">Inativo</span>
+          <span class="bz-formato-badge" style="background:var(--surface2);color:var(--text-2);">Inativo</span>
           <?php endif; ?>
         </div>
 
@@ -142,7 +142,7 @@ $isEdit = false;
                 data-id="<?= $z['id'] ?>"
                 data-nome="<?= View::e($z['nome']) ?>"
                 data-banners="<?= (int)$z['total_banners'] ?>"
-                style="color:var(--danger,#dc2626)">
+                style="color:var(--danger,var(--danger))">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
             <polyline points="3 6 5 6 21 6"/>
             <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
@@ -154,34 +154,6 @@ $isEdit = false;
   </div>
   <?php endif; ?>
 </div>
-
-<style>
-.bz-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:14px; }
-@media(max-width:768px){ .bz-grid{grid-template-columns:1fr;} }
-
-.bz-card { background:var(--surface); border:1.5px solid var(--border); border-radius:var(--r-xl); padding:18px; display:flex; gap:14px; transition:box-shadow .15s,transform .15s; }
-.bz-card:hover { box-shadow:0 4px 18px rgba(0,0,0,.07); transform:translateY(-1px); }
-.bz-card.is-inativo { opacity:.55; }
-.bz-card.is-inativo:hover { opacity:1; }
-
-.bz-card-icon { width:46px; height:46px; border-radius:12px; background:var(--bg); border:1.5px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--text-2); flex-shrink:0; }
-.bz-card-body { flex:1; min-width:0; }
-.bz-card-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px; }
-.bz-card-nome { font-size:14px; font-weight:800; color:var(--text); margin:0; }
-.bz-chave { display:inline-block; font-family:'Fira Code','Courier New',monospace; font-size:11px; color:var(--text-3); background:var(--bg); padding:2px 6px; border-radius:4px; margin-bottom:6px; }
-.bz-card-desc { font-size:12.5px; color:var(--text-3); line-height:1.45; margin:0 0 8px; }
-.bz-card-meta { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-.bz-meta-item { display:inline-flex; align-items:center; gap:4px; font-size:11.5px; color:var(--text-3); font-weight:600; }
-.bz-meta-item--active { color:var(--success,#16a34a); }
-.bz-ativos-dot { display:inline-block; width:6px; height:6px; background:var(--success,#16a34a); border-radius:50%; }
-.bz-formato-badge { padding:2px 8px; border-radius:99px; font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.4px; }
-.bz-formato-badge--slider     { background:#f5f3ff; color:#7c3aed; }
-.bz-formato-badge--grid       { background:#fff7ed; color:#ea580c; }
-.bz-formato-badge--full_width { background:#fef3c7; color:#d97706; }
-.bz-formato-badge--single     { background:#eff6ff; color:#1d4ed8; }
-.bz-card-actions { display:flex; flex-direction:column; gap:4px; flex-shrink:0; align-items:flex-end; }
-.btn-xs { padding:5px 10px; font-size:11.5px; }
-</style>
 
 <script>
     let isEditZonaBanner = <?= $isEdit ? 'true' : 'false' ?>;

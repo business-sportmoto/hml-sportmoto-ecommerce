@@ -18,9 +18,12 @@ class AppClipsController extends AppApiController
 
         $pagina   = $this->pagina(10, 20);
         $destaque = (bool)$this->query('destaque', false);
+        // `inicial` abre o feed num clip específico — é o que liga "tocar neste
+        // vídeo" ao vídeo certo, em vez de mandar a pessoa para o começo.
+        $inicial  = (int)$this->query('inicial', 0);
 
         $modelo = new Clip();
-        $clips  = $modelo->getFeed($pagina['page'], $pagina['limit'], $destaque);
+        $clips  = $modelo->getFeed($pagina['page'], $pagina['limit'], $destaque, $inicial);
         $total  = $modelo->countFeed($destaque);
 
         $clips = $this->marcarCurtidos($clips);

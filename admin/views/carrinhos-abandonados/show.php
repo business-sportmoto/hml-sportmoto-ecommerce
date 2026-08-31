@@ -3,12 +3,12 @@
 // Variáveis: $rec, $itens, $eventos, $responsaveis, $templatesWpp, $templatesMail
 
 $statusCfg = [
-  'novo' => ['Novo','#64748b'], 'abandonado' => ['Abandonado','#dc2626'],
-  'em_recuperacao' => ['Em recuperação','#d97706'], 'msg_enviada' => ['Msg enviada','#1d4ed8'],
-  'aguardando_resposta' => ['Aguardando resposta','#7c3aed'], 'respondeu' => ['Respondeu','#0891b2'],
-  'negociacao' => ['Negociação','#c026d3'], 'recuperado' => ['Recuperado','#16a34a'],
-  'perdido' => ['Perdido','#475569'], 'ignorado' => ['Ignorado','#94a3b8'],
-  'sem_contato' => ['Sem contato','#dc2626'],
+  'novo' => ['Novo','var(--text-2)'], 'abandonado' => ['Abandonado','var(--danger)'],
+  'em_recuperacao' => ['Em recuperação','var(--warning)'], 'msg_enviada' => ['Msg enviada','var(--blue)'],
+  'aguardando_resposta' => ['Aguardando resposta','var(--purple)'], 'respondeu' => ['Respondeu','var(--info)'],
+  'negociacao' => ['Negociação','var(--purple)'], 'recuperado' => ['Recuperado','var(--success)'],
+  'perdido' => ['Perdido','var(--text-2)'], 'ignorado' => ['Ignorado','var(--text-3)'],
+  'sem_contato' => ['Sem contato','var(--danger)'],
 ];
 $eventoIcones = [
   'abandono_detectado' => '🛒', 'status_alterado' => '🔄', 'whatsapp_enviado' => '💬',
@@ -31,8 +31,8 @@ $semOptIn = isset($rec['aceita_marketing']) && !(int)$rec['aceita_marketing'];
 </div>
 
 <?php if ($semOptIn && ($rec['cliente_telefone'] || $rec['cliente_email'])): ?>
-<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;
-     padding:12px 16px;margin:14px 0;font-size:13px;color:#92400e;">
+<div style="background:var(--warning-lt);border:1px solid var(--warning-bd);border-radius:10px;
+     padding:12px 16px;margin:14px 0;font-size:13px;color:var(--warning);">
   ⚠️ <strong>LGPD:</strong> este cliente não possui opt-in de marketing registrado.
   Contato de recuperação é permitido com base em legítimo interesse, mas registre
   a justificativa e interrompa imediatamente se o cliente pedir.
@@ -53,7 +53,7 @@ $semOptIn = isset($rec['aceita_marketing']) && !(int)$rec['aceita_marketing'];
       <?php foreach ($itens as $i): ?>
       <div style="display:flex;gap:14px;align-items:center;padding:12px 18px;
                   border-top:1px solid var(--c-border);">
-        <div style="width:56px;height:56px;border-radius:8px;background:#f1f5f9;
+        <div style="width:56px;height:56px;border-radius:8px;background:var(--surface2);
                     overflow:hidden;flex-shrink:0;">
           <?php if ($i['imagem']): ?>
           <img src="<?= UPLOAD_URL ?>/produtos/<?= View::e($i['imagem']) ?>"
@@ -104,9 +104,9 @@ $semOptIn = isset($rec['aceita_marketing']) && !(int)$rec['aceita_marketing'];
         <?php if ($rec['cliente_id']): ?>
           <div style="font-weight:700;font-size:15px;"><?= View::e($rec['cliente_nome']) ?></div>
           <div>📱 <?= $rec['cliente_telefone'] ? View::e($rec['cliente_telefone'])
-                 : '<span style="color:#dc2626;">sem telefone</span>' ?></div>
+                 : '<span style="color:var(--danger);">sem telefone</span>' ?></div>
           <div>✉ <?= $rec['cliente_email'] ? View::e($rec['cliente_email'])
-                 : '<span style="color:#dc2626;">sem e-mail</span>' ?></div>
+                 : '<span style="color:var(--danger);">sem e-mail</span>' ?></div>
           <?php if ($rec['cliente_cpf']): ?><div>🪪 <?= View::e($rec['cliente_cpf']) ?></div><?php endif; ?>
         <?php else: ?>
           <p style="color:var(--c-text-muted);margin:0;">Visitante não identificado —
@@ -120,23 +120,23 @@ $semOptIn = isset($rec['aceita_marketing']) && !(int)$rec['aceita_marketing'];
       <div style="padding:14px 18px;display:flex;flex-direction:column;gap:8px;">
         <?php if (empty($rec['responsavel_id'])): ?>
         <button class="btn" id="btn-capturar"
-                style="background:#0f172a;color:#fff;">⚡ Capturar este carrinho</button>
+                style="background:var(--text);color:var(--surface);">⚡ Capturar este carrinho</button>
         <?php elseif ((int)$rec['responsavel_id'] !== (int)Session::get('usuario_id')): ?>
-        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;
-            padding:10px 12px;font-size:12.5px;color:#92400e;">
+        <div style="background:var(--warning-lt);border:1px solid var(--warning-bd);border-radius:8px;
+            padding:10px 12px;font-size:12.5px;color:var(--warning);">
           🔒 Capturado por <strong><?= View::e($rec['responsavel_nome']) ?></strong>
         </div>
         <?php elseif ((int)$rec['responsavel_id'] == (int)Session::get('usuario_id')): ?>
-        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;
-            padding:10px 12px;font-size:12.5px;color:#92400e;">
+        <div style="background:var(--warning-lt);border:1px solid var(--warning-bd);border-radius:8px;
+            padding:10px 12px;font-size:12.5px;color:var(--warning);">
           🔒 Meu carrinho
         </div>
         <?php endif; ?>
-        <button class="btn" id="btn-whatsapp" style="background:#16a34a;color:#fff;"
+        <button class="btn" id="btn-whatsapp" style="background:var(--success);color:var(--surface);"
                 <?= !$rec['cliente_telefone'] ? 'disabled title="Sem telefone"' : '' ?>>
           💬 Enviar WhatsApp</button>
 
-        <button class="btn" id="btn-email" style="background:#1d4ed8;color:#fff;"
+        <button class="btn" id="btn-email" style="background:var(--blue);color:var(--surface);"
                 <?= !$rec['cliente_email'] ? 'disabled title="Sem e-mail"' : '' ?>>
           ✉ Enviar e-mail</button>              
 
@@ -177,7 +177,7 @@ $semOptIn = isset($rec['aceita_marketing']) && !(int)$rec['aceita_marketing'];
             </select>
           </div>
         <?php elseif ($temDono && $ehGestor && !$ehSuper): ?>
-          <div style="background:#f8fafc;border:1px solid var(--c-border);border-radius:8px;
+          <div style="background:var(--bg);border:1px solid var(--c-border);border-radius:8px;
               padding:10px 12px;font-size:12px;color:var(--c-text-muted);">
             🔒 Carrinho de <strong><?= View::e($rec['responsavel_nome'] ?? 'vendedor') ?></strong>.
             Apenas um super admin pode transferir.
@@ -198,13 +198,13 @@ $semOptIn = isset($rec['aceita_marketing']) && !(int)$rec['aceita_marketing'];
 <!-- Modal de templates (WhatsApp / e-mail) -->
 <div id="modal-tpl" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);
      z-index:200;align-items:center;justify-content:center;padding:20px;">
-  <div style="background:#fff;border-radius:14px;max-width:520px;width:100%;
+  <div style="background:var(--surface);border-radius:14px;max-width:520px;width:100%;
               max-height:85vh;overflow-y:auto;padding:22px;">
     <h3 style="margin:0 0 4px;font-size:16px;font-weight:800;" id="tpl-titulo"></h3>
     <p style="margin:0 0 14px;font-size:12.5px;color:var(--c-text-muted);">
       Escolha um template — a prévia usa os dados reais deste carrinho.</p>
     <div id="tpl-lista" style="display:flex;flex-direction:column;gap:8px;"></div>
-    <div id="tpl-preview" style="display:none;margin-top:14px;background:#f8fafc;
+    <div id="tpl-preview" style="display:none;margin-top:14px;background:var(--bg);
          border:1px solid var(--c-border);border-radius:10px;padding:14px;
          font-size:13px;white-space:pre-wrap;"></div>
     <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end;">
@@ -291,7 +291,7 @@ jQuery(function ($) {
     lista.forEach(function (t) {
       $('<button class="btn" style="text-align:left;display:block;width:100%;">')
         .html('<strong>' + $('<i>').text(t.nome).html() + '</strong><br>' +
-              '<span style="font-size:11.5px;color:#64748b;">' +
+              '<span style="font-size:11.5px;color:var(--text-2);">' +
               $('<i>').text(t.uso_recomendado || '').html() + '</span>')
         .on('click', function () {
           templateSel = t;

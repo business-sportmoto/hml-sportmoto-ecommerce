@@ -14,21 +14,21 @@
 </div>
 
 <?php if (!empty($salvo)): ?>
-<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;
-     padding:12px 16px;margin:14px 0;font-size:13.5px;color:#15803d;">
+<div style="background:var(--success-lt);border:1px solid var(--success-bd);border-radius:10px;
+     padding:12px 16px;margin:14px 0;font-size:13.5px;color:var(--success);">
   ✓ Configuração salva. As novas regras valem a partir da próxima execução do cron (até 30 min).
 </div>
 <?php endif; ?>
 
 <?php if (!empty($erro)): ?>
-<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;
-     padding:12px 16px;margin:14px 0;font-size:13.5px;color:#dc2626;">
+<div style="background:var(--danger-lt);border:1px solid var(--danger-bd);border-radius:10px;
+     padding:12px 16px;margin:14px 0;font-size:13.5px;color:var(--danger);">
   ⚠ <?= View::e($erro) ?> Nenhum valor fora dos limites foi salvo.
 </div>
 <?php endif; ?>
 
-<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;
-     padding:12px 16px;margin:14px 0;font-size:13px;color:#92400e;">
+<div style="background:var(--warning-lt);border:1px solid var(--warning-bd);border-radius:10px;
+     padding:12px 16px;margin:14px 0;font-size:13px;color:var(--warning);">
   ⚠️ <strong>Impacto operacional:</strong> a <em>janela de abandono</em> e o
   <em>valor mínimo</em> controlam a detecção global — reduzir demais a janela
   pode marcar carrinhos de clientes ainda ativos e disparar contatos indevidos.

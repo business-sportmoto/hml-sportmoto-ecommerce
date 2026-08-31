@@ -13,9 +13,6 @@ $b = $banner ?? [];
 $isEdit = !empty($b);
 ?>
 
-
-
-
 <!-- ═══════════════════════════════════════════════════
      COUNTDOWN
 ═══════════════════════════════════════════════════ -->
@@ -58,7 +55,7 @@ $isEdit = !empty($b);
 
       <!-- Preview do contador com tempo calculado -->
       <div id="bn-countdown-preview"
-           style="background:#1e293b;padding:14px 18px;border-radius:10px;
+           style="background:var(--text);padding:14px 18px;border-radius:10px;
                   display:flex;flex-direction:column;gap:8px;margin-top:4px;">
         <div style="font-size:11px;color:rgba(255,255,255,.5);font-weight:700;letter-spacing:.6px;
                     text-transform:uppercase;display:flex;align-items:center;gap:6px;">
@@ -73,7 +70,7 @@ $isEdit = !empty($b);
           <div style="flex:1;background:rgba(255,255,255,.12);border-radius:8px;padding:10px 6px;
                       text-align:center;">
             <div id="bn-prev-<?= strtolower($u) ?>"
-                 style="font-size:22px;font-weight:900;color:#fff;font-variant-numeric:tabular-nums;">--</div>
+                 style="font-size:22px;font-weight:900;color:var(--surface);font-variant-numeric:tabular-nums;">--</div>
             <div style="font-size:9px;font-weight:800;color:rgba(255,255,255,.5);
                         letter-spacing:.6px;text-transform:uppercase;margin-top:2px;"><?= $u ?></div>
           </div>
@@ -84,7 +81,6 @@ $isEdit = !empty($b);
     </div>
   </div>
 </div>
-
 
 <!-- ═══════════════════════════════════════════════════
      BOTÕES CTA — Pré-visualização de estilos
@@ -250,9 +246,9 @@ $isEdit = !empty($b);
       </label>
       <div id="bn-badge-preview"
            style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;
-                  background:#1e293b;border:1px solid rgba(255,255,255,.2);
+                  background:var(--text);border:1px solid rgba(255,255,255,.2);
                   border-radius:99px;font-size:11px;font-weight:800;
-                  letter-spacing:.7px;text-transform:uppercase;color:#fff;
+                  letter-spacing:.7px;text-transform:uppercase;color:var(--surface);
                   min-width:80px;">
         <svg id="bn-badge-icon-preview" width="13" height="13"
              viewBox="0 0 24 24" fill="none" stroke="white"
@@ -264,59 +260,3 @@ $isEdit = !empty($b);
   </div>
 </div>
 
-<style>
-/* ── Seletor de ícone ──────────────────────────────── */
-.bn-icon-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
-  gap: 6px;
-}
-.bn-icon-opt {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-  padding: 10px 6px;
-  border: 1.5px solid var(--border);
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 10.5px;
-  font-weight: 700;
-  color: var(--text-3);
-  text-align: center;
-  background: var(--bg);
-  transition: all .15s;
-}
-.bn-icon-opt input[type="radio"] { display: none; }
-.bn-icon-opt svg { width: 20px; height: 20px; color: var(--text-2); transition: color .15s; }
-.bn-icon-opt:hover { border-color: var(--blue); color: var(--blue); }
-.bn-icon-opt:hover svg { color: var(--blue); }
-.bn-icon-opt.is-selected {
-  border-color: var(--blue);
-  background: #eff6ff;
-  color: var(--blue);
-}
-.bn-icon-opt.is-selected svg { color: var(--blue); }
-
-/* ── Seletor de estilo do CTA ──────────────────────── */
-.bn-cta-style-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 5px;
-}
-.bn-cta-style-opt {
-  padding: 7px 10px;
-  border: 1.5px solid var(--border);
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-2);
-  text-align: center;
-  background: var(--bg);
-  transition: all .15s;
-}
-.bn-cta-style-opt input[type="radio"] { display: none; }
-.bn-cta-style-opt:hover { border-color: var(--blue); color: var(--blue); }
-.bn-cta-style-opt.is-selected { border-color: var(--blue); background: #eff6ff; color: var(--blue); }
-</style>

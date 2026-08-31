@@ -128,12 +128,12 @@ $isEdit = !empty($m);
               <input type="color"
                     id="marca-bg-cor"
                     name="bg_cor"
-                    value="<?= View::e($m['bg_cor'] ?? '#ffffff') ?>"
+                    value="<?= View::e($m['bg_cor'] ?? 'var(--surface)') ?>"
                     class="color-picker-input">
               <input type="text"
                     id="marca-bg-cor-hex"
                     class="form-control form-control--sm color-picker-hex"
-                    value="<?= View::e($m['bg_cor'] ?? '#ffffff') ?>"
+                    value="<?= View::e($m['bg_cor'] ?? 'var(--surface)') ?>"
                     maxlength="7"
                     placeholder="#ffffff">
               <button type="button" class="color-picker-clear" id="btn-clear-color"
@@ -152,12 +152,12 @@ $isEdit = !empty($m);
 
             <!-- Preview -->
             <div class="color-picker-preview" id="color-preview"
-                style="display:none; background:<?= View::e($m['bg_cor'] ?? '#ffffff') ?>">
+                style="display:none; background:<?= View::e($m['bg_cor'] ?? 'var(--surface)') ?>">
               <?php if (!empty($m['logo'])): ?>
               <img src="<?= View::upload('brands/' . $m['logo']) ?>"
                   alt="" style="max-height:40px;object-fit:contain;">
               <?php else: ?>
-              <span style="font-size:12px;font-weight:700;color:#666;letter-spacing:1px;">
+              <span style="font-size:12px;font-weight:700;color:var(--text-2);letter-spacing:1px;">
                 PREVIEW
               </span>
               <?php endif; ?>

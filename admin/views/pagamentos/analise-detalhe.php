@@ -22,7 +22,7 @@ $tier      = (string) ($pedido['tier'] ?? 'bronze');
   </div>
 
   <!-- Por que foi retido -->
-  <div class="admin-card" style="margin-bottom:16px;padding:20px;border-left:3px solid #b45309;">
+  <div class="admin-card" style="margin-bottom:16px;padding:20px;border-left:3px solid var(--warning);">
     <h3 style="margin:0 0 10px;font-size:14px;">Por que este pedido foi retido</h3>
     <?php if ($antifraude): ?>
       <div style="font-size:13px;margin-bottom:6px;">
@@ -61,7 +61,7 @@ $tier      = (string) ($pedido['tier'] ?? 'bronze');
         <tr><td style="color:var(--c-text-muted);padding:3px 0;">Score</td>
             <td class="num"><strong><?= (int) ($pedido['score_total'] ?? 0) ?></strong>
               <?php if ((int) ($pedido['penalidade_pontos'] ?? 0) > 0): ?>
-                <span style="color:#b91c1c;">− <?= (int) $pedido['penalidade_pontos'] ?> de penalidade</span>
+                <span style="color:var(--danger);">− <?= (int) $pedido['penalidade_pontos'] ?> de penalidade</span>
               <?php endif; ?>
               (<?= strtoupper($tier) ?>)</td></tr>
         <tr><td style="color:var(--c-text-muted);padding:3px 0;">Pedidos</td>
@@ -76,8 +76,8 @@ $tier      = (string) ($pedido['tier'] ?? 'bronze');
             <td class="num"><?= (int) ($pedido['dias_conta'] ?? 0) ?> dias</td></tr>
       </table>
       <?php if (!empty($pedido['fraude_confirmada'])): ?>
-        <div style="margin-top:10px;padding:8px 12px;background:#fef2f2;border-radius:6px;
-                    color:#b91c1c;font-size:12px;font-weight:700;">
+        <div style="margin-top:10px;padding:8px 12px;background:var(--danger-lt);border-radius:6px;
+                    color:var(--danger);font-size:12px;font-weight:700;">
           Cliente marcado com fraude confirmada.
         </div>
       <?php endif; ?>
@@ -103,8 +103,8 @@ $tier      = (string) ($pedido['tier'] ?? 'bronze');
 
       <!-- A consequência financeira da recusa, explícita ANTES do clique -->
       <div style="margin-top:12px;padding:10px 12px;border-radius:6px;font-size:12px;
-                  background:<?= $capturado ? '#fef2f2' : '#f0fdf4' ?>;
-                  color:<?= $capturado ? '#b91c1c' : '#15803d' ?>;">
+                  background:<?= $capturado ? 'var(--danger-lt)' : 'var(--success-lt)' ?>;
+                  color:<?= $capturado ? 'var(--danger)' : 'var(--success)' ?>;">
         <?php if ($capturado): ?>
           <strong>O valor já foi capturado.</strong> Recusar aqui dispara estorno
           na adquirente — com custo e prazo de devolução ao cliente.
@@ -166,7 +166,7 @@ $tier      = (string) ($pedido['tier'] ?? 'bronze');
       <div style="display:flex;gap:10px;margin-top:14px;align-items:center;">
         <button type="button" class="btn btn-primary" id="btn-aprovar">Liberar pedido</button>
         <button type="button" class="btn btn-outline" id="btn-recusar"
-                style="color:#b91c1c;border-color:#fecaca;">
+                style="color:var(--danger);border-color:var(--danger-bd);">
           <?= $capturado ? 'Recusar e estornar' : 'Recusar' ?>
         </button>
         <span class="form-feedback" style="font-size:12.5px;"></span>
@@ -186,13 +186,13 @@ $tier      = (string) ($pedido['tier'] ?? 'bronze');
     var motivo = form.querySelector('[name="motivo"]').value.trim();
     if (motivo.length < 5) {
       fb.textContent = 'Descreva o motivo (mínimo 5 caracteres).';
-      fb.style.color = '#b91c1c';
+      fb.style.color = 'var(--danger)';
       return;
     }
 
     form.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
     fb.textContent = 'Processando...';
-    fb.style.color = '#64748b';
+    fb.style.color = 'var(--text-2)';
 
     fetch('<?= ADMIN_URL ?>' + url, {
       method: 'POST', body: new FormData(form), credentials: 'same-origin',
@@ -200,7 +200,7 @@ $tier      = (string) ($pedido['tier'] ?? 'bronze');
     }).then(function (r) { return r.json(); }).then(function (res) {
       form.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
       fb.textContent = res.msg || '';
-      fb.style.color = res.ok ? '#15803d' : '#b91c1c';
+      fb.style.color = res.ok ? 'var(--success)' : 'var(--danger)';
       if (window.Toast) { res.ok ? Toast.success(res.msg) : Toast.error(res.msg); }
       if (res.ok) {
         setTimeout(function () { location.href = '<?= ADMIN_URL ?>/pagamentos/analise'; }, 1400);
@@ -208,7 +208,7 @@ $tier      = (string) ($pedido['tier'] ?? 'bronze');
     }).catch(function () {
       form.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
       fb.textContent = 'Erro de conexão.';
-      fb.style.color = '#b91c1c';
+      fb.style.color = 'var(--danger)';
     });
   }
 

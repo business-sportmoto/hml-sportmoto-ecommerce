@@ -563,3 +563,4 @@ require __DIR__ . '/routes.ia.php';
 require __DIR__ . '/routes.logistic.php';
 
 
+require __DIR__ . '/routes.chat.php';

@@ -17,14 +17,14 @@ $pedidosGer  = array_sum(array_column($ranking, 'pedidos'));
 </div>
 
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:16px 0;">
-  <div class="admin-card" style="padding:16px 18px;border-left:4px solid #16a34a;">
+  <div class="admin-card" style="padding:16px 18px;border-left:4px solid var(--success);">
     <div style="font-size:12px;color:var(--c-text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Total vendido (período)</div>
-    <div style="font-size:22px;font-weight:800;color:#16a34a;margin-top:4px;">
+    <div style="font-size:22px;font-weight:800;color:var(--success);margin-top:4px;">
       R$ <?= number_format($totalGeral, 2, ',', '.') ?></div>
   </div>
-  <div class="admin-card" style="padding:16px 18px;border-left:4px solid #1d4ed8;">
+  <div class="admin-card" style="padding:16px 18px;border-left:4px solid var(--blue);">
     <div style="font-size:12px;color:var(--c-text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Pedidos atribuídos</div>
-    <div style="font-size:22px;font-weight:800;color:#1d4ed8;margin-top:4px;"><?= (int)$pedidosGer ?></div>
+    <div style="font-size:22px;font-weight:800;color:var(--blue);margin-top:4px;"><?= (int)$pedidosGer ?></div>
   </div>
 </div>
 
@@ -49,7 +49,7 @@ $pedidosGer  = array_sum(array_column($ranking, 'pedidos'));
     <tbody>
       <?php foreach ($ranking as $i => $v): ?>
       <tr style="border-top:1px solid var(--c-border);<?= !(int)$v['ativo'] ? 'opacity:.5;' : '' ?>">
-        <td style="padding:12px 18px;font-weight:800;color:<?= $i < 3 ? '#d97706' : 'inherit' ?>;">
+        <td style="padding:12px 18px;font-weight:800;color:<?= $i < 3 ? 'var(--warning)' : 'inherit' ?>;">
           <?= $i + 1 ?>º</td>
         <td style="padding:12px 10px;font-weight:700;">
           <?= View::e($v['vendedor_nome']) ?>
@@ -62,7 +62,7 @@ $pedidosGer  = array_sum(array_column($ranking, 'pedidos'));
         <td style="padding:12px 10px;text-align:center;"><?= (int)$v['pedidos'] ?></td>
         <td style="padding:12px 10px;text-align:right;">
           R$ <?= number_format((float)$v['ticket'], 2, ',', '.') ?></td>
-        <td style="padding:12px 18px;text-align:right;font-weight:800;color:#16a34a;">
+        <td style="padding:12px 18px;text-align:right;font-weight:800;color:var(--success);">
           R$ <?= number_format((float)$v['total'], 2, ',', '.') ?></td>
       </tr>
       <?php endforeach; ?>

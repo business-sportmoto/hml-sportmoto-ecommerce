@@ -15,8 +15,8 @@ $varsMail = CarrinhoAbandonado::VARIAVEIS_EMAIL;
 </div>
 
 <?php if (!empty($erro)): ?>
-<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;
-     padding:12px 16px;margin:14px 0;font-size:13.5px;color:#dc2626;">
+<div style="background:var(--danger-lt);border:1px solid var(--danger-bd);border-radius:10px;
+     padding:12px 16px;margin:14px 0;font-size:13.5px;color:var(--danger);">
   ⚠ <?= View::e($erro) ?>
 </div>
 <?php endif; ?>
@@ -45,8 +45,8 @@ $varsMail = CarrinhoAbandonado::VARIAVEIS_EMAIL;
           <label class="form-label">Canal *</label>
           <?php if ($editando): ?>
             <input type="hidden" name="canal" value="<?= View::e($canal) ?>">
-            <span class="badge" style="background:<?= $canal === 'whatsapp' ? '#f0fdf4' : '#eff6ff' ?>;
-                  color:<?= $canal === 'whatsapp' ? '#16a34a' : '#1d4ed8' ?>;
+            <span class="badge" style="background:<?= $canal === 'whatsapp' ? 'var(--success-lt)' : 'var(--blue-lt)' ?>;
+                  color:<?= $canal === 'whatsapp' ? 'var(--success)' : 'var(--blue)' ?>;
                   font-size:12px;font-weight:800;padding:6px 14px;">
               <?= $canal === 'whatsapp' ? '💬 WhatsApp' : '✉ E-mail' ?> · travado
             </span>
@@ -55,7 +55,7 @@ $varsMail = CarrinhoAbandonado::VARIAVEIS_EMAIL;
           <?php else: ?>
             <div style="display:flex;gap:10px;">
               <label class="canal-card" data-canal="whatsapp"
-                     style="flex:1;border:2px solid <?= $canal === 'whatsapp' ? '#16a34a' : 'var(--c-border)' ?>;
+                     style="flex:1;border:2px solid <?= $canal === 'whatsapp' ? 'var(--success)' : 'var(--c-border)' ?>;
                             border-radius:10px;padding:14px;cursor:pointer;text-align:center;">
                 <input type="radio" name="canal" value="whatsapp" style="display:none;"
                        <?= $canal === 'whatsapp' ? 'checked' : '' ?>>
@@ -64,7 +64,7 @@ $varsMail = CarrinhoAbandonado::VARIAVEIS_EMAIL;
                 <div style="font-size:11px;color:var(--c-text-muted);">Texto puro · wa.me</div>
               </label>
               <label class="canal-card" data-canal="email"
-                     style="flex:1;border:2px solid <?= $canal === 'email' ? '#1d4ed8' : 'var(--c-border)' ?>;
+                     style="flex:1;border:2px solid <?= $canal === 'email' ? 'var(--blue)' : 'var(--c-border)' ?>;
                             border-radius:10px;padding:14px;cursor:pointer;text-align:center;">
                 <input type="radio" name="canal" value="email" style="display:none;"
                        <?= $canal === 'email' ? 'checked' : '' ?>>
@@ -109,7 +109,7 @@ $varsMail = CarrinhoAbandonado::VARIAVEIS_EMAIL;
             <?php foreach ($vars as $v => $desc): ?>
             <button type="button" class="var-chip" data-var="<?= View::e($v) ?>"
                     title="<?= View::e($desc) ?>"
-                    style="border:1px solid var(--c-border);background:#f8fafc;border-radius:99px;
+                    style="border:1px solid var(--c-border);background:var(--bg);border-radius:99px;
                            padding:4px 12px;font-size:12px;font-weight:600;cursor:pointer;
                            font-family:ui-monospace,monospace;"><?= View::e($v) ?></button>
             <?php endforeach; ?>
@@ -155,7 +155,7 @@ $varsMail = CarrinhoAbandonado::VARIAVEIS_EMAIL;
 
         <!-- Preview WhatsApp: bolha, texto ESCAPADO via .text() -->
         <div id="preview-wpp" style="<?= $canal !== 'whatsapp' ? 'display:none;' : '' ?>">
-          <div style="background:#e7fed8;border-radius:12px 12px 12px 2px;padding:12px 14px;
+          <div style="background:var(--success-lt);border-radius:12px 12px 12px 2px;padding:12px 14px;
                       font-size:13.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;
                       box-shadow:0 1px 2px rgba(0,0,0,.08);" id="preview-wpp-texto"></div>
           <div style="font-size:10.5px;color:var(--c-text-muted);text-align:right;margin-top:4px;">
@@ -165,12 +165,12 @@ $varsMail = CarrinhoAbandonado::VARIAVEIS_EMAIL;
         <!-- Preview e-mail: iframe SANDBOX (sem scripts/forms/navegação) -->
         <div id="preview-mail" style="<?= $canal !== 'email' ? 'display:none;' : '' ?>">
           <div style="border:1px solid var(--c-border);border-radius:8px 8px 0 0;
-                      padding:8px 12px;background:#f8fafc;font-size:12px;">
+                      padding:8px 12px;background:var(--bg);font-size:12px;">
             <strong>Assunto:</strong> <span id="preview-mail-assunto"></span>
           </div>
           <iframe id="preview-mail-frame" sandbox
                   style="width:100%;height:420px;border:1px solid var(--c-border);
-                         border-top:none;border-radius:0 0 8px 8px;background:#fff;"></iframe>
+                         border-top:none;border-radius:0 0 8px 8px;background:var(--surface);"></iframe>
         </div>
       </div>
     </div>
@@ -190,10 +190,10 @@ jQuery(function ($) {
     '{vendedor}': 'Equipe Sportmoto',
     '{telefone_loja}': '(41) 3333-0000',
     '{produtos_html}': '<table style="width:100%;border-collapse:collapse;margin:16px 0;">' +
-      '<tr><td style="padding:10px 0;border-bottom:1px solid #e2e8f0;">Capacete Axxis Draken ' +
-      '<span style="color:#64748b;">×1</span></td>' +
-      '<td style="padding:10px 0;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:700;">R$ 389,90</td></tr>' +
-      '<tr><td style="padding:10px 0;">Luva X11 Fit <span style="color:#64748b;">×1</span></td>' +
+      '<tr><td style="padding:10px 0;border-bottom:1px solid var(--border);">Capacete Axxis Draken ' +
+      '<span style="color:var(--text-2);">×1</span></td>' +
+      '<td style="padding:10px 0;border-bottom:1px solid var(--border);text-align:right;font-weight:700;">R$ 389,90</td></tr>' +
+      '<tr><td style="padding:10px 0;">Luva X11 Fit <span style="color:var(--text-2);">×1</span></td>' +
       '<td style="padding:10px 0;text-align:right;font-weight:700;">R$ 100,00</td></tr></table>'
   };
 
@@ -222,8 +222,8 @@ jQuery(function ($) {
       // são constantes — sandbox bloqueia scripts como 2ª camada
       var frame = document.getElementById('preview-mail-frame');
       frame.srcdoc = '<!DOCTYPE html><html><body style="margin:0;padding:0;' +
-        'background:#f1f5f9;font-family:Arial,sans-serif;color:#1e293b;">' +
-        '<div style="max-width:520px;margin:16px auto;background:#fff;' +
+        'background:var(--surface2);font-family:Arial,sans-serif;color:var(--text);">' +
+        '<div style="max-width:520px;margin:16px auto;background:var(--surface);' +
         'border-radius:12px;padding:28px;">' + corpo + '</div></body></html>';
     }
     $('#cont-chars').text($('#inp-conteudo').val().length.toLocaleString('pt-BR') + ' / 10.000');
@@ -234,7 +234,7 @@ jQuery(function ($) {
     var canal = $(this).data('canal');
     $(this).find('input').prop('checked', true);
     $('.canal-card').css('border-color', 'var(--c-border)');
-    $(this).css('border-color', canal === 'whatsapp' ? '#16a34a' : '#1d4ed8');
+    $(this).css('border-color', canal === 'whatsapp' ? 'var(--success)' : 'var(--blue)');
 
     $('#grupo-assunto').toggle(canal === 'email');
     $('#preview-wpp').toggle(canal === 'whatsapp');

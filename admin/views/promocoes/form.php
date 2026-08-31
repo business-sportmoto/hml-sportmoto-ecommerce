@@ -134,7 +134,7 @@ $action   = $editando
           <div style="border:1px solid var(--c-border);border-radius:10px;overflow:hidden;">
             <table style="width:100%;border-collapse:collapse;" id="faixas-table">
               <thead>
-                <tr style="background:#f8fafc;font-size:12.5px;font-weight:700;color:var(--c-text-muted);">
+                <tr style="background:var(--bg);font-size:12.5px;font-weight:700;color:var(--c-text-muted);">
                   <th style="padding:10px 14px;text-align:left;">A partir de (qtd)</th>
                   <th style="padding:10px 14px;text-align:left;">Desconto (%)</th>
                   <th style="padding:10px 14px;width:40px;"></th>
@@ -303,8 +303,8 @@ $action   = $editando
 
         <!-- Preview dinâmico da regra -->
         <div class="form-group">
-          <div id="cg-preview" style="background:#eff6ff;border:1px solid #bfdbfe;
-               border-radius:8px;padding:10px 14px;font-size:13px;color:#1e40af;">
+          <div id="cg-preview" style="background:var(--blue-lt);border:1px solid var(--blue-bd);
+               border-radius:8px;padding:10px 14px;font-size:13px;color:var(--blue);">
           </div>
         </div>
 
@@ -318,8 +318,8 @@ $action   = $editando
       <h3 class="ap-card-title">Configuração — Cashback em crédito</h3>
       <div style="padding:18px;display:grid;gap:16px;">
 
-        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;
-                    padding:10px 14px;font-size:13px;color:#15803d;">
+        <div style="background:var(--success-lt);border:1px solid var(--success-bd);border-radius:8px;
+                    padding:10px 14px;font-size:13px;color:var(--success);">
           💡 O cashback <strong>não desconta no checkout</strong> — o cliente recebe
           créditos na conta <strong>7 dias após o pedido ser marcado como entregue</strong>
           (respeitando o prazo do CDC para devolução).
@@ -344,8 +344,8 @@ $action   = $editando
         </div>
 
         <!-- Preview dinâmico -->
-        <div id="cb-preview" style="background:#eff6ff;border:1px solid #bfdbfe;
-             border-radius:8px;padding:10px 14px;font-size:13px;color:#1e40af;"></div>
+        <div id="cb-preview" style="background:var(--blue-lt);border:1px solid var(--blue-bd);
+             border-radius:8px;padding:10px 14px;font-size:13px;color:var(--blue);"></div>
 
       </div>
     </div>
@@ -538,7 +538,7 @@ $action   = $editando
             <div style="color:var(--c-text-muted);"><?= View::e($ap['cliente_nome'] ?? '—') ?></div>
           </div>
           <div style="text-align:right;">
-            <div style="color:#16a34a;font-weight:700;">−<?= PriceHelper::format((float)$ap['valor_desconto']) ?></div>
+            <div style="color:var(--success);font-weight:700;">−<?= PriceHelper::format((float)$ap['valor_desconto']) ?></div>
             <div style="color:var(--c-text-muted);"><?= date('d/m H:i', strtotime($ap['criado_em'])) ?></div>
           </div>
         </div>
@@ -551,89 +551,6 @@ $action   = $editando
 </div>
 
 </form>
-
-<style>
-.promo-grid {
-  display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: 0 20px;
-  align-items: start;
-}
-@media (max-width: 900px) {
-  .promo-grid { grid-template-columns: 1fr; }
-  .promo-aside { order: -1; }
-}
-.form-row { display:flex; gap:14px; }
-.form-row .form-group { flex:1; }
-.form-group { display:flex; flex-direction:column; gap:4px; }
-.form-label { font-size:13px; font-weight:700; color:var(--c-dark); }
-.form-hint  { font-size:11.5px; color:var(--c-text-muted); }
-.form-control--sm { padding:6px 10px; font-size:13px; }
-.radio-group { display:flex; flex-direction:column; gap:6px; margin-top:2px; }
-.radio-label { display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; }
-.checkbox-label { display:flex; align-items:flex-start; gap:8px; font-size:13px; cursor:pointer; }
-
-/* Toggle */
-.toggle-switch { position:relative; display:inline-block; width:42px; height:24px; cursor:pointer; }
-.toggle-switch input { opacity:0; width:0; height:0; }
-.toggle-slider { position:absolute; inset:0; background:#d1d5db; border-radius:99px; transition:.2s; }
-.toggle-slider:before {
-  content:''; position:absolute; width:18px; height:18px;
-  left:3px; top:3px; background:#fff; border-radius:50%; transition:.2s;
-}
-.toggle-switch input:checked + .toggle-slider { background:#16a34a; }
-.toggle-switch input:checked + .toggle-slider:before { transform:translateX(18px); }
-
-/* Faixas */
-.btn-icon { width:26px; height:26px; border:none; border-radius:6px;
-            cursor:pointer; font-size:16px; line-height:1;
-            display:flex; align-items:center; justify-content:center; }
-.btn-icon--danger { background:#fef2f2; color:#dc2626; }
-.btn-icon--danger:hover { background:#fee2e2; }
-
-/* Tag input (escopos) */
-.tag-input-container {
-  position: relative;  /* âncora o dropdown absolute */
-}
-.tag-input-wrap {
-  border:1px solid var(--c-border); border-radius:8px;
-  padding:6px 10px; display:flex; flex-wrap:wrap; gap:6px; cursor:text;
-  min-height:40px; align-items:center;
-}
-.tag-input-wrap:focus-within { border-color:#3b82f6; box-shadow:0 0 0 3px #dbeafe; }
-.tag-input-tags { display:flex; flex-wrap:wrap; gap:5px; }
-.tag-chip {
-  display:flex; align-items:center; gap:5px;
-  background:#eff6ff; color:#1e40af; border-radius:99px;
-  padding:2px 10px; font-size:12px; font-weight:600;
-}
-.tag-chip button { border:none; background:none; cursor:pointer;
-                   color:#93c5fd; font-size:15px; line-height:1; padding:0; }
-.tag-input-search { border:none; outline:none; font-size:13px;
-                    background:transparent; min-width:120px; flex:1; }
-.tag-suggestions {
-  position: absolute;       /* flutua sobre o conteúdo abaixo */
-  top: calc(100% + 4px);   /* logo abaixo do input */
-  left: 0;
-  right: 0;
-  z-index: 200;
-  border:1px solid var(--c-border); border-radius:8px; background:#fff;
-  box-shadow:0 8px 24px rgba(0,0,0,.12);
-  display:none;
-  max-height:200px; overflow-y:auto;
-}
-.tag-suggestion-item {
-  padding:9px 14px; font-size:13px; cursor:pointer;
-  border-bottom: 1px solid var(--c-border, #f1f5f9);
-}
-.tag-suggestion-item:last-child { border-bottom: none; }
-.tag-suggestion-item:hover { background:#f1f5f9; }
-
-.btn-full { width:100%; justify-content:center; }
-.flash { padding:10px 16px; border-radius:8px; font-size:13.5px; font-weight:600; }
-.flash-success { background:#f0fdf4; border:1px solid #bbf7d0; color:#15803d; }
-.flash-danger  { background:#fef2f2; border:1px solid #fecaca; color:#dc2626; }
-</style>
 
 <script>
 (function () {

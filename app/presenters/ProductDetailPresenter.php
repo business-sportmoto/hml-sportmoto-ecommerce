@@ -88,6 +88,13 @@ final class ProductDetailPresenter
 
             'favoritado' => !empty($produto['favoritado']),
 
+            // O anel de story ao lado do favorito. Vem no payload da PDP, e não
+            // numa requisição à parte, porque a tela precisa saber SE desenha o
+            // anel antes do primeiro quadro — um anel que aparece meio segundo
+            // depois empurra o layout na cara de quem já está lendo.
+            // O feed completo do produto continua em /produtos/{id}/clips.
+            'clip' => self::clip($id, $ctx),
+
             'compatibilidade' => [
                 'aplicavel'  => $temBuscaMoto,
                 'compativel' => $temBuscaMoto && $ctx->temVeiculo()
@@ -102,6 +109,35 @@ final class ProductDetailPresenter
                 'url'   => $ctx->baseUrl . '/produto/' . $produto['slug'],
                 'texto' => $produto['nome'],
             ],
+        ];
+    }
+
+    /**
+     * A capa do clip do produto, para o anel de story.
+     *
+     * `total` existe porque o anel indica quantos vídeos há: com mais de um, a
+     * tela abre o feed do produto em vez de um clip só.
+     *
+     * @return array{id:int,titulo:?string,poster:?string,total:int}|null
+     */
+    private static function clip(int $produtoId, PresenterContext $ctx): ?array
+    {
+        try {
+            $c = (new Clip())->capaDoProduto($produtoId);
+        } catch (\Throwable $e) {
+            // O anel é enfeite; se a consulta falhar, a PDP inteira não pode cair.
+            return null;
+        }
+
+        if (!$c) {
+            return null;
+        }
+
+        return [
+            'id'     => (int)$c['id'],
+            'titulo' => $c['titulo'] ?? null,
+            'poster' => (new ClipService())->posterFor($c),
+            'total'  => (int)($c['total'] ?? 1),
         ];
     }
 

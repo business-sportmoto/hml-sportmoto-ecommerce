@@ -250,11 +250,19 @@ class MercadoPagoAdapter implements AdquirenteInterface
         $validacao = $this->opcao('tres_ds') ?: 'never';
 
         $seguranca = ['validation' => $validacao];
+        $online    = [];
+
         if ($validacao !== 'never') {
             $seguranca['liability_shift'] = 'required';
+
+            // Para onde o iframe do desafio volta quando o comprador termina.
+            // Sem isto o desafio acaba numa tela do proprio Mercado Pago e o
+            // checkout nunca fica sabendo que pode retomar.
+            $online['callback_url'] = BASE_URL . '/checkout/3ds/retorno';
         }
 
-        $corpo['config'] = ['online' => ['transaction_security' => $seguranca]];
+        $online['transaction_security'] = $seguranca;
+        $corpo['config'] = ['online' => $online];
 
         return $this->criar($corpo, $d, 'cartao');
     }

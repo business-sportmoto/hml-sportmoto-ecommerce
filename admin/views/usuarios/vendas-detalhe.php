@@ -21,18 +21,18 @@ $dados  = array_map(fn($r) => (float)$r['total'], $serie);
 </div>
 
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin:16px 0;">
-  <div class="admin-card" style="padding:16px 18px;border-left:4px solid #16a34a;">
+  <div class="admin-card" style="padding:16px 18px;border-left:4px solid var(--success);">
     <div style="font-size:12px;color:var(--c-text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Total vendido</div>
-    <div style="font-size:24px;font-weight:800;color:#16a34a;margin-top:4px;">
+    <div style="font-size:24px;font-weight:800;color:var(--success);margin-top:4px;">
       R$ <?= number_format((float)$resumo['total'], 2, ',', '.') ?></div>
   </div>
-  <div class="admin-card" style="padding:16px 18px;border-left:4px solid #1d4ed8;">
+  <div class="admin-card" style="padding:16px 18px;border-left:4px solid var(--blue);">
     <div style="font-size:12px;color:var(--c-text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Pedidos</div>
-    <div style="font-size:24px;font-weight:800;color:#1d4ed8;margin-top:4px;"><?= (int)$resumo['pedidos'] ?></div>
+    <div style="font-size:24px;font-weight:800;color:var(--blue);margin-top:4px;"><?= (int)$resumo['pedidos'] ?></div>
   </div>
-  <div class="admin-card" style="padding:16px 18px;border-left:4px solid #7c3aed;">
+  <div class="admin-card" style="padding:16px 18px;border-left:4px solid var(--purple);">
     <div style="font-size:12px;color:var(--c-text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Ticket médio</div>
-    <div style="font-size:24px;font-weight:800;color:#7c3aed;margin-top:4px;">
+    <div style="font-size:24px;font-weight:800;color:var(--purple);margin-top:4px;">
       R$ <?= number_format((float)$resumo['ticket'], 2, ',', '.') ?></div>
   </div>
 </div>

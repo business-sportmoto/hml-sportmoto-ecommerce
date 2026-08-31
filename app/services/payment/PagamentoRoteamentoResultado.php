@@ -95,6 +95,18 @@ final class PagamentoRoteamentoResultado
         return [];
     }
 
+    /**
+     * URL do desafio 3DS, quando o emissor exigiu autenticação do comprador.
+     *
+     * Enquanto isto existir o pagamento está SUSPENSO — nem recusado nem
+     * aprovado. O checkout precisa levar o comprador até lá; o motor não
+     * pode seguir sozinho nem tentar outra adquirente.
+     */
+    public function desafio3ds(): ?string
+    {
+        return $this->classificacao?->tresDsDesafioUrl;
+    }
+
     /** Resumo para log e dashboard. */
     public function resumo(): array
     {

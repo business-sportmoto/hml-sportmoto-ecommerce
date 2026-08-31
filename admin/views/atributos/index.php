@@ -186,7 +186,7 @@ $displayLabels = [
 
                     <?php if ($at['tipo_display'] === 'color_swatch'): ?>
                     <span class="attr-valor-swatch"
-                            style="background:<?= View::e($v['valor_hex'] ?? '#ccc') ?>">
+                            style="background:<?= View::e($v['valor_hex'] ?? 'var(--text-3)') ?>">
                     </span>
                     <?php else: ?>
                     <span class="attr-valor-preview-btn">

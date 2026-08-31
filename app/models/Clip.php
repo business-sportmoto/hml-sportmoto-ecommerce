@@ -9,10 +9,32 @@ class Clip extends Model {
     protected string $table = 'clips';
 
     // ── Feed paginado ────────────────────────────────────
-    public function getFeed(int $page = 1, int $perPage = 10, bool $apenasDestaque = false): array {
+    /**
+     * @param int $inicial Clip que deve abrir o feed. Só vale na página 1.
+     *                     É o que faz "tocar neste vídeo" abrir NESTE vídeo em
+     *                     vez de jogar a pessoa no começo da lista.
+     */
+    public function getFeed(int $page = 1, int $perPage = 10, bool $apenasDestaque = false, int $inicial = 0): array {
         $offset = ($page - 1) * $perPage;
         $where  = "c.ativo = 1 AND c.status = 'ativo'";
         if ($apenasDestaque) $where .= " AND c.destaque = 1";
+
+        $primeiro = null;
+
+        if ($inicial > 0 && $page === 1) {
+            $st = $this->db->prepare(
+                "SELECT c.* FROM clips c WHERE c.id = ? AND {$where} LIMIT 1"
+            );
+            $st->execute([$inicial]);
+            $primeiro = $st->fetch() ?: null;
+
+            if ($primeiro) {
+                // Uma vaga a menos na consulta geral, e o próprio clip fora
+                // dela — senão ele apareceria duas vezes no feed.
+                $where   .= " AND c.id <> " . (int)$inicial;
+                $perPage  = max(1, $perPage - 1);
+            }
+        }
 
         $stmt = $this->db->prepare(
             "SELECT c.*
@@ -25,6 +47,10 @@ class Clip extends Model {
         $stmt->bindValue(2, $offset,  PDO::PARAM_INT);
         $stmt->execute();
         $clips = $stmt->fetchAll();
+
+        if ($primeiro) {
+            array_unshift($clips, $primeiro);
+        }
 
         return empty($clips) ? [] : $this->hidratarProdutos($clips);
     }
@@ -287,17 +313,36 @@ class Clip extends Model {
                  ->execute([$ip, $acao]);
         return true;
     }
+
+    /**
+     * Capa do clip de um produto — só o necessário para desenhar o anel de
+     * story na página do produto.
+     *
+     * getPorProduto() serve o feed e hidrata os produtos de cada clip; usá-la
+     * só para saber "existe clip?" custaria queries que a PDP não precisa.
+     *
+     * @return array{id:int,titulo:?string,arquivo_poster:?string,arquivo_video:?string,total:int}|null
+     */
+    public function capaDoProduto(int $produtoId): ?array {
+        // Dois placeholders para o MESMO valor de propósito: a conexão roda
+        // com PDO::ATTR_EMULATE_PREPARES = false (config/database.php:18), e
+        // nesse modo o mesmo nome não pode aparecer duas vezes na consulta.
+        $stmt = $this->db->prepare(
+            "SELECT c.id, c.titulo, c.arquivo_poster, c.arquivo_video,
+                    (SELECT COUNT(*)
+                       FROM clip_produtos cp2
+                       JOIN clips c2 ON c2.id = cp2.clip_id
+                      WHERE cp2.produto_id = :pc
+                        AND c2.ativo = 1 AND c2.status = 'ativo') AS total
+             FROM clips c
+             JOIN clip_produtos cp ON cp.clip_id = c.id
+             WHERE cp.produto_id = :p AND c.ativo = 1 AND c.status = 'ativo'
+             ORDER BY c.ordem ASC, c.total_views DESC
+             LIMIT 1"
+        );
+        $stmt->execute([':p' => $produtoId, ':pc' => $produtoId]);
+        $row = $stmt->fetch();
+
+        return $row ?: null;
+    }
 }
-
-
-
-
-
-// ════════════════════════════════════════════════════════
-// admin/controllers/ClipsController.php — atualização salvar()
-// ════════════════════════════════════════════════════════
-// Substitui apenas o método salvar() no controller existente:
-
-/*
-
-*/

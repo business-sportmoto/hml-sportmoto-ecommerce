@@ -127,7 +127,7 @@ $podeReembolsar  = $status === 'inspecionado_aprovado';
               <?php if (!empty($h['observacao'])): ?>
                 <p style="font-size:13px;color:var(--c-text-muted);margin:2px 0 0;"><?= View::e($h['observacao']) ?></p>
               <?php endif; ?>
-              <time style="font-size:11.5px;color:#94a3b8;"><?= date('d/m/Y H:i', strtotime($h['criado_em'])) ?></time>
+              <time style="font-size:11.5px;color:var(--text-3);"><?= date('d/m/Y H:i', strtotime($h['criado_em'])) ?></time>
             </div>
           </div>
           <?php endforeach; ?>
@@ -159,7 +159,7 @@ $podeReembolsar  = $status === 'inspecionado_aprovado';
         <?php if ($podeGerarPostagem): ?>
         <!-- ── Sem código: oferece geração manual ────────── -->
         <div style="padding:16px 18px;">
-          <div style="display:flex;align-items:flex-start;gap:10px;background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+          <div style="display:flex;align-items:flex-start;gap:10px;background:var(--warning-lt);border:1px solid var(--warning-bd);border-radius:10px;padding:12px 14px;margin-bottom:14px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706"
                  stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;">
               <circle cx="12" cy="12" r="10"/>
@@ -167,10 +167,10 @@ $podeReembolsar  = $status === 'inspecionado_aprovado';
               <line x1="12" y1="16" x2="12.01" y2="16"/>
             </svg>
             <div>
-              <strong style="font-size:13px;color:#92400e;display:block;margin-bottom:2px;">
+              <strong style="font-size:13px;color:var(--warning);display:block;margin-bottom:2px;">
                 Código de postagem não gerado
               </strong>
-              <span style="font-size:12.5px;color:#78350f;line-height:1.5;">
+              <span style="font-size:12.5px;color:var(--warning);line-height:1.5;">
                 A geração automática falhou ao aprovar a solicitação.
                 <?php if ($status === 'aguardando_postagem'): ?>
                   O status já foi avançado, mas o código ainda não foi gerado.
@@ -242,7 +242,7 @@ $podeReembolsar  = $status === 'inspecionado_aprovado';
             <label class="form-label-xs">Motivo da negação (obrigatório)</label>
             <textarea id="obs-negar" class="form-control" rows="2" style="resize:vertical;"></textarea>
           </div>
-          <button type="button" class="btn btn-outline" id="btn-negar" style="color:#dc2626;border-color:#fca5a5;">
+          <button type="button" class="btn btn-outline" id="btn-negar" style="color:var(--danger);border-color:var(--danger-bd);">
             ✗ Negar solicitação
           </button>
           <?php endif; ?>
@@ -297,12 +297,12 @@ $podeReembolsar  = $status === 'inspecionado_aprovado';
           <?php endif; ?>
  
           <?php if ($podeReembolsar): ?>
-          <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px;padding:16px;">
+          <div style="background:var(--success-lt);border:1.5px solid var(--success-bd);border-radius:12px;padding:16px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-              <span style="font-size:12px;font-weight:800;text-transform:uppercase;color:#15803d;">
+              <span style="font-size:12px;font-weight:800;text-transform:uppercase;color:var(--success);">
                 Processar reembolso
               </span>
-              <strong style="font-size:16px;color:#0f172a;">
+              <strong style="font-size:16px;color:var(--text);">
                 <?= PriceHelper::format((float)$sol['valor_aprovado']) ?>
               </strong>
             </div>

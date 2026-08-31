@@ -13,8 +13,8 @@
 </div>
 
 <?php if (!empty($salvo)): ?>
-<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;
-     padding:12px 16px;margin:14px 0;font-size:13.5px;color:#15803d;">
+<div style="background:var(--success-lt);border:1px solid var(--success-bd);border-radius:10px;
+     padding:12px 16px;margin:14px 0;font-size:13.5px;color:var(--success);">
   ✓ Usuário salvo com sucesso.
 </div>
 <?php endif; ?>
@@ -54,7 +54,7 @@
     </thead>
     <tbody>
       <?php foreach ($usuarios as $u):
-        $c      = Cargos::get($u['nivel']) ?? ['label' => $u['nivel'], 'cor' => '#64748b', 'bg' => '#f8fafc'];
+        $c      = Cargos::get($u['nivel']) ?? ['label' => $u['nivel'], 'cor' => 'var(--text-2)', 'bg' => 'var(--bg)'];
         $ehSelf = (int)$u['usuario_id'] === (int)$meuUsuarioId;
         $inativo = !(int)$u['ativo'];
       ?>
@@ -76,8 +76,8 @@
           </button>
         </td>
         <td style="padding:12px 10px;text-align:center;">
-          <span class="badge" style="background:<?= $inativo ? '#fef2f2' : '#f0fdf4' ?>;
-                color:<?= $inativo ? '#dc2626' : '#16a34a' ?>;font-size:11px;font-weight:700;">
+          <span class="badge" style="background:<?= $inativo ? 'var(--danger-lt)' : 'var(--success-lt)' ?>;
+                color:<?= $inativo ? 'var(--danger)' : 'var(--success)' ?>;font-size:11px;font-weight:700;">
             <?= $inativo ? 'Inativo' : 'Ativo' ?></span>
         </td>
         <td style="padding:12px 10px;font-size:12px;color:var(--c-text-muted);">
@@ -88,7 +88,7 @@
              style="font-size:12px;">Editar</a>
           <?php if (!$ehSelf): ?>
           <button class="btn usr-toggle" data-id="<?= (int)$u['admin_id'] ?>"
-                  style="font-size:12px;color:<?= $inativo ? '#16a34a' : '#dc2626' ?>;">
+                  style="font-size:12px;color:<?= $inativo ? 'var(--success)' : 'var(--danger)' ?>;">
             <?= $inativo ? 'Ativar' : 'Desativar' ?></button>
           <?php endif; ?>
         </td>
@@ -102,7 +102,7 @@
 <!-- Modal de capacidades do cargo (dados do Cargos.php — fonte única) -->
 <div id="modal-cargo" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);
      z-index:200;align-items:center;justify-content:center;padding:20px;">
-  <div style="background:#fff;border-radius:14px;max-width:480px;width:100%;
+  <div style="background:var(--surface);border-radius:14px;max-width:480px;width:100%;
               max-height:85vh;overflow-y:auto;padding:24px;">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
       <span id="mc-badge" class="badge" style="font-size:12px;font-weight:800;
@@ -132,7 +132,7 @@ jQuery(function ($) {
     Object.keys(c.capacidades).forEach(function (modulo) {
       var $bloco = $('<div style="margin-bottom:14px;">');
       $('<div style="font-size:11.5px;font-weight:800;text-transform:uppercase;' +
-        'letter-spacing:.4px;color:#64748b;margin-bottom:6px;">').text(modulo).appendTo($bloco);
+        'letter-spacing:.4px;color:var(--text-2);margin-bottom:6px;">').text(modulo).appendTo($bloco);
       var $ul = $('<ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.7;">');
       c.capacidades[modulo].forEach(function (item) {
         $('<li>').text(item).appendTo($ul);

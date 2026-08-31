@@ -12,9 +12,9 @@ $dinheiro = static fn(?int $c): string => $c === null ? '' : number_format($c / 
 
 /** Rótulo visual por método. O ícone vem do IconLibrary quando existe. */
 $rotulos = [
-    'pix'            => ['nome' => 'Pix',    'cor' => '#0f766e', 'bg' => '#f0fdfa'],
-    'cartao_credito' => ['nome' => 'Cartão', 'cor' => '#1d4ed8', 'bg' => '#eff6ff'],
-    'boleto'         => ['nome' => 'Boleto', 'cor' => '#92400e', 'bg' => '#fffbeb'],
+    'pix'            => ['nome' => 'Pix',    'cor' => 'var(--success)', 'bg' => 'var(--success-lt)'],
+    'cartao_credito' => ['nome' => 'Cartão', 'cor' => 'var(--blue)', 'bg' => 'var(--blue-lt)'],
+    'boleto'         => ['nome' => 'Boleto', 'cor' => 'var(--warning)', 'bg' => 'var(--warning-lt)'],
 ];
 ?>
 
@@ -41,7 +41,7 @@ $rotulos = [
 
   <div class="fp-grid">
     <?php foreach ($metodos as $m):
-        $r        = $rotulos[$m['codigo']] ?? ['nome' => $m['nome'], 'cor' => '#475569', 'bg' => '#f8fafc'];
+        $r        = $rotulos[$m['codigo']] ?? ['nome' => $m['nome'], 'cor' => 'var(--text-2)', 'bg' => 'var(--bg)'];
         $ehCartao = str_starts_with($m['codigo'], 'cartao');
         $desconto = (float) $m['desconto_percentual'];
     ?>
@@ -207,105 +207,6 @@ $rotulos = [
 
 </div>
 
-<style>
-/* ── Tema ──────────────────────────────────────────────────────
-   Estes tokens APONTAM para o sistema pgto_ (admin/assets/css/pages.css),
-   que ja define claro e escuro. Valores proprios aqui virariam uma segunda
-   paleta para manter em sincronia — e paleta duplicada e paleta que
-   diverge. O escuro chega de graca, junto com o resto do painel. */
-.fp-page{
-  --fp-sup:var(--pgto-surface);
-  --fp-sup2:var(--pgto-surface-2);
-  --fp-bd:var(--pgto-border);
-  --fp-bd2:var(--pgto-border-soft);
-  --fp-tx:var(--pgto-text);
-  --fp-tx2:var(--pgto-text-muted);
-  --fp-sombra:var(--pgto-shadow);
-  --fp-juros-bg:var(--pgto-amber-soft);
-  --fp-juros-bd:#f59e0b4d;
-  --fp-juros-tx:#b45309;
-}
-
-.fp-legenda{display:flex;flex-wrap:wrap;gap:8px 22px;font-size:12px;color:var(--fp-tx2);
-  background:var(--fp-sup2);border:1px solid var(--fp-bd);border-radius:10px;padding:12px 16px;margin-bottom:18px}
-.fp-legenda strong{color:var(--fp-tx);font-weight:650}
-
-.fp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px}
-
-.fp-card{background:var(--fp-sup);border:1px solid var(--fp-bd);border-radius:14px;padding:18px;
-  display:flex;flex-direction:column;gap:12px;transition:border-color .15s,box-shadow .15s}
-.fp-card:hover{border-color:var(--fp-bd2);box-shadow:var(--fp-sombra)}
-.fp-card.is-ativa{border-left:3px solid #16a34a}
-
-.fp-card-head{display:flex;align-items:center;gap:12px}
-.fp-selo{font-size:12px;font-weight:700;padding:6px 11px;border-radius:8px;flex:0 0 auto}
-.fp-ident{flex:1;min-width:0}
-.fp-ident h3{margin:0;font-size:15px;font-weight:650;color:var(--fp-tx);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.fp-ident code{font-size:11px;color:var(--fp-tx2)}
-
-.fp-switch{flex:0 0 auto;cursor:pointer;display:inline-flex}
-.fp-switch input{position:absolute;opacity:0;width:0;height:0}
-.fp-switch-trilho{width:40px;height:23px;border-radius:99px;background:#cbd5e1;
-  display:inline-block;position:relative;transition:background .18s}
-.fp-switch-bola{position:absolute;top:3px;left:3px;width:17px;height:17px;border-radius:50%;
-  background:#fff;transition:transform .18s;box-shadow:0 1px 3px rgba(0,0,0,.25)}
-.fp-switch input:checked + .fp-switch-trilho{background:#16a34a}
-.fp-switch input:checked + .fp-switch-trilho .fp-switch-bola{transform:translateX(17px)}
-.fp-switch input:disabled + .fp-switch-trilho{opacity:.5;cursor:wait}
-.fp-switch input:focus-visible + .fp-switch-trilho{outline:2px solid #2563eb;outline-offset:2px}
-
-.fp-tags{display:flex;flex-wrap:wrap;gap:6px}
-.fp-tag{font-size:10.5px;font-weight:700;letter-spacing:.02em;padding:3px 9px;border-radius:20px;
-  text-transform:uppercase}
-.fp-tag--ok{background:var(--pgto-green-soft);color:var(--pgto-green)}
-.fp-tag--neutra{background:var(--pgto-border-soft);color:var(--pgto-text-muted)}
-.fp-tag--info{background:var(--pgto-blue-soft);color:var(--pgto-blue)}
-.fp-tag--desconto{background:var(--pgto-purple-soft);color:var(--pgto-purple)}
-
-.fp-resumo{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;margin:0;
-  padding:12px 0;border-top:1px solid var(--fp-bd);border-bottom:1px solid var(--fp-bd)}
-.fp-resumo div{min-width:0}
-.fp-resumo dt{font-size:11px;color:var(--fp-tx2);margin:0}
-.fp-resumo dd{margin:1px 0 0;font-size:13px;font-weight:600;color:var(--fp-tx);
-  font-variant-numeric:tabular-nums}
-
-.fp-parcelas{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
-.fp-parcelas-rot{font-size:11px;color:var(--fp-tx2)}
-.fp-parcela{font-size:11.5px;padding:4px 9px;border-radius:6px;background:var(--fp-sup2);
-  border:1px solid var(--fp-bd);color:var(--fp-tx);white-space:nowrap;
-  font-variant-numeric:tabular-nums}
-.fp-parcela.com-juros{background:var(--fp-juros-bg);border-color:var(--fp-juros-bd);color:var(--fp-juros-tx)}
-
-.fp-card-pe{margin-top:auto;padding-top:4px}
-.fp-card-pe .btn{width:100%}
-.btn-sm{padding:7px 12px;font-size:12.5px}
-
-.fp-vazio{padding:40px;text-align:center;color:var(--fp-tx2)}
-
-/* ── dentro do drawer ── */
-.fp-secao{margin:22px 0 10px;font-size:11px;font-weight:700;text-transform:uppercase;
-  letter-spacing:.06em;color:var(--fp-tx2);
-  padding-bottom:7px;border-bottom:1px solid var(--fp-bd)}
-.fp-secao:first-of-type{margin-top:14px}
-.fp-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-@media(max-width:520px){.fp-grid-2,.fp-resumo{grid-template-columns:1fr}}
-.fp-simulacao{margin-top:16px;padding:14px;background:var(--fp-sup2);border-radius:10px;
-  border:1px solid var(--fp-bd)}
-.fp-simulacao-cab{font-size:12px;font-weight:700;color:var(--fp-tx);margin-bottom:10px}
-.fp-simulacao-cab small{font-weight:400;color:var(--fp-tx2)}
-.simulacao-linhas{display:flex;flex-wrap:wrap;gap:6px}
-
-
-@media (prefers-color-scheme: dark){
-  html:not([data-theme="light"]) .fp-page{--fp-juros-tx:#fcd34d}
-  /* O selo do metodo vem com cor inline do PHP; no escuro precisa de fundo proprio. */
-  html:not([data-theme="light"]) .fp-selo{background:var(--pgto-surface-2) !important;color:var(--pgto-text) !important}
-}
-html[data-theme="dark"] .fp-page{--fp-juros-tx:#fcd34d}
-html[data-theme="dark"] .fp-selo{background:var(--pgto-surface-2) !important;color:var(--pgto-text) !important}
-</style>
-
 <script>
 (function () {
   'use strict';
@@ -326,8 +227,6 @@ html[data-theme="dark"] .fp-selo{background:var(--pgto-surface-2) !important;col
   function card(codigo) {
     return document.querySelector('.fp-card[data-codigo="' + codigo + '"]');
   }
-
-
 
   /** Renderiza as parcelas simuladas no destino informado. */
   function pintarParcelas(alvo, parcelas) {

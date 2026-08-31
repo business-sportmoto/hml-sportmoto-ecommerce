@@ -179,7 +179,7 @@ $statusLabels = [
     </div>
 
     <!-- Alerta informativo -->
-    <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;padding:14px 18px;margin-top:14px;font-size:13.5px;color:#78350f;">
+    <div style="background:var(--warning-lt);border:1px solid var(--warning-bd);border-radius:12px;padding:14px 18px;margin-top:14px;font-size:13.5px;color:var(--warning);">
       <strong>⚠ Sobre as senhas:</strong> Os clientes serão importados sem senha definida.
       Eles precisarão usar <strong>"Esqueci minha senha"</strong> para criar uma senha no primeiro acesso.
     </div>
@@ -304,7 +304,7 @@ $statusLabels = [
       </div>
       <p style="font-size:12.5px;color:var(--c-text-muted);margin-top:14px;">
         💡 Você também pode configurar um cron para automatizar o download:<br>
-        <code style="background:#f8fafc;padding:4px 8px;border-radius:5px;font-size:12px;">
+        <code style="background:var(--bg);padding:4px 8px;border-radius:5px;font-size:12px;">
           * * * * * curl -s https://ecommerce.test/admin/importar/processar-imagens
         </code>
       </p>
@@ -333,14 +333,14 @@ $statusLabels = [
           <td><span class="badge badge-info"><?= View::e($tipoLabels[$j['tipo']] ?? ucfirst($j['tipo'])) ?></span></td>
           <td><span class="badge badge-<?= $st['cor'] ?>"><?= $st['label'] ?></span></td>
           <td><?= (int)$j['total_linhas'] ?></td>
-          <td style="color:#16a34a;font-weight:700;"><?= (int)$j['criados'] ?></td>
-          <td style="color:#2563eb;font-weight:700;"><?= (int)$j['atualizados'] ?></td>
+          <td style="color:var(--success);font-weight:700;"><?= (int)$j['criados'] ?></td>
+          <td style="color:var(--blue);font-weight:700;"><?= (int)$j['atualizados'] ?></td>
           <td><?= (int)$j['ignorados'] ?></td>
           <td>
             <?php if (count($erros)): ?>
             <button type="button" class="btn-icon btn-show-erros"
                     data-erros="<?= View::e(json_encode($erros)) ?>"
-                    style="color:#dc2626;">
+                    style="color:var(--danger);">
               <?= count($erros) ?> erros
             </button>
             <?php else: ?>—
@@ -388,46 +388,6 @@ $statusLabels = [
   <div id='prog-{$tipo}-msg' style='margin-top:12px;font-size:13px;color:var(--c-text-muted);text-align:center;'></div>
 </div>
 "; } ?>
-
-<style>
-.import-instruction-card {
-  display:flex;align-items:center;gap:12px;background:#fff;
-  border:1px solid var(--c-border);border-radius:14px;padding:18px 22px;
-  margin-bottom:20px;flex-wrap:wrap;
-}
-.import-step { display:flex;align-items:flex-start;gap:10px;flex:1;min-width:160px; }
-.import-step-num {
-  width:28px;height:28px;border-radius:50%;background:var(--c-accent);color:#fff;
-  display:flex;align-items:center;justify-content:center;font-weight:900;
-  font-size:13px;flex-shrink:0;
-}
-.import-step p { margin:2px 0 0;font-size:12px;color:var(--c-text-muted); }
-.import-step-sep { color:#cbd5e1;font-size:20px;flex-shrink:0; }
-
-.admin-tabs { display:flex;gap:2px;background:#f8fafc;border:1px solid var(--c-border);
-  border-bottom:none;border-radius:12px 12px 0 0;padding:6px 6px 0; }
-.admin-tab {
-  padding:8px 18px;font-size:13.5px;font-weight:600;border-radius:8px 8px 0 0;
-  background:transparent;border:none;color:var(--c-muted);cursor:pointer;transition:all .12s;
-}
-.admin-tab:hover { background:#fff;color:var(--c-dark); }
-.admin-tab.is-active { background:#fff;color:var(--c-accent);box-shadow:0 -1px 0 0 var(--c-accent); }
-
-.admin-tab-content { display:none; }
-.admin-tab-content.is-active { display:block; }
-
-.import-upload-card { padding:0 !important; }
-.import-upload-area {
-  border:2px dashed var(--c-border);border-radius:14px;
-  padding:40px 20px;text-align:center;transition:border-color .15s;
-  cursor:pointer;
-}
-.import-upload-area:hover, .import-upload-area.drag-over {
-  border-color:var(--c-accent);background:var(--c-accent-l);
-}
-.import-upload-area p { font-size:15px;color:var(--c-dark);margin:10px 0 4px; }
-.import-upload-area small { color:var(--c-text-muted);font-size:12.5px; }
-</style>
 
 <script>
 

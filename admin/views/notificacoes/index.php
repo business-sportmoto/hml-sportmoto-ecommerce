@@ -86,7 +86,7 @@ $base = defined('BASE_URL') ? BASE_URL : '';
         <?php if (empty($historico)): ?>
           <p style="padding:24px;text-align:center;color:var(--em-text-muted);font-size:13px;">Nenhum envio ainda.</p>
         <?php else: foreach ($historico as $h):
-          $est = $estilos[$h['categoria']] ?? ['icone' => 'bi-bell', 'cor' => '#71717a'];
+          $est = $estilos[$h['categoria']] ?? ['icone' => 'bi-bell', 'cor' => 'var(--text-3)'];
           $alvoLabel = [
             'individual'     => 'Individual',
             'selecionados'   => 'Selecionados',
@@ -95,9 +95,9 @@ $base = defined('BASE_URL') ? BASE_URL : '';
             'todos'          => 'Todos',
           ][$h['alvo_tipo']] ?? $h['alvo_tipo'];
           $fanoutBadge = [
-            'pendente'    => ['Aguardando envio', '#f59e0b'],
-            'processando' => ['Enviando…', '#0a66c2'],
-            'erro'        => ['Erro no envio', '#dc2626'],
+            'pendente'    => ['Aguardando envio', 'var(--warning)'],
+            'processando' => ['Enviando…', 'var(--blue)'],
+            'erro'        => ['Erro no envio', 'var(--danger)'],
           ][$h['fanout_status']] ?? null;
         ?>
         <div style="display:flex;gap:11px;padding:13px 16px;border-bottom:0.5px solid var(--em-border);">
@@ -122,22 +122,6 @@ $base = defined('BASE_URL') ? BASE_URL : '';
     </div>
   </div>
 </div>
-
-<style>
-.ntfa-label{display:block;font-size:12px;font-weight:600;color:var(--em-text,#111827);margin:0 0 5px;}
-.ntfa-input{width:100%;padding:9px 12px;font-size:13px;border:0.5px solid var(--em-border,#e5e7eb);border-radius:9px;margin-bottom:13px;background:var(--em-bg-input,#fff);color:inherit;outline:none;box-sizing:border-box;}
-.ntfa-input:focus{border-color:#0a66c2;box-shadow:0 0 0 3px rgba(10,102,194,.1);}
-.ntfa-radio{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;}
-.ntfa-btn-pri{width:100%;background:#0a66c2;color:#fff;border:none;border-radius:10px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;}
-.ntfa-btn-pri:hover{background:#0857a6;}
-.ntfa-btn-pri:disabled{opacity:.6;cursor:default;}
-.ntfa-btn-sec{background:var(--em-bg,#f4f4f5);border:0.5px solid var(--em-border);border-radius:9px;padding:8px 14px;font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;color:inherit;}
-.ntfa-sugestoes{border:0.5px solid var(--em-border);border-radius:9px;background:var(--em-bg-input,#fff);max-height:180px;overflow-y:auto;margin-top:-8px;box-shadow:0 6px 20px rgba(0,0,0,.08);}
-.ntfa-sug-item{padding:9px 12px;font-size:12.5px;cursor:pointer;}
-.ntfa-sug-item:hover{background:var(--em-bg,#f4f4f5);}
-.ntfa-tag{display:inline-flex;align-items:center;gap:6px;background:var(--em-bg,#f4f4f5);border:0.5px solid var(--em-border);border-radius:14px;font-size:12px;padding:4px 10px;}
-.ntfa-tag button{background:none;border:none;cursor:pointer;color:var(--em-text-muted);font-size:13px;padding:0;line-height:1;}
-</style>
 
 <script>
 (function ($) {
@@ -278,7 +262,7 @@ $base = defined('BASE_URL') ? BASE_URL : '';
 
   function feedback(msg, ok) {
     $('#ntfa-feedback')
-      .css('color', ok ? '#16a34a' : '#dc2626')
+      .css('color', ok ? 'var(--success)' : 'var(--danger)')
       .text(msg).show();
     setTimeout(function () { $('#ntfa-feedback').fadeOut(); }, 4000);
   }

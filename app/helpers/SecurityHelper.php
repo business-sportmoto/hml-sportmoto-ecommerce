@@ -276,6 +276,37 @@ class SecurityHelper {
             $pgtoConnect = 'https://*.mercadopago.com https://*.mercadolibre.com';
             $pgtoFrame   = 'https://*.mercadopago.com https://*.mercadolibre.com';
 
+            // ── 3-D Secure ──────────────────────────────────────────────
+            //
+            // O desafio nao roda num dominio nosso nem da adquirente: roda no
+            // ACS do BANCO EMISSOR, e cada emissor tem o seu. Nao ha lista
+            // para montar — o cliente do Itau cai num host, o do Nubank em
+            // outro, e a URL so aparece na resposta da autorizacao.
+            //
+            // Por isso `frame-src https:` SO no checkout. E amplo, e a
+            // alternativa era pior: com a lista fechada, o desafio nao
+            // renderiza e o pagamento morre sem mensagem. Fora do checkout o
+            // frame-src continua restrito.
+            //
+            // O risco real de um frame-src amplo e clickjacking reverso —
+            // conteudo de terceiro desenhando por cima do nosso. Como o
+            // iframe do desafio e criado pelo nosso proprio JS, com URL vinda
+            // da adquirente por TLS, o vetor exigiria antes um XSS. E aí o
+            // frame-src ja nao seria a nossa primeira preocupacao.
+            $ehCheckout = str_starts_with((string) parse_url(
+                (string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH
+            ), '/checkout');
+
+            $frameExtra = $ehCheckout ? ' https:' : '';
+
+            // A pagina de retorno do desafio E EMBUTIDA pelo nosso checkout.
+            // Com o `frame-ancestors 'none'` global ela seria bloqueada pelo
+            // navegador e o desafio terminaria numa moldura em branco — sem
+            // erro visivel, so um pagamento que nunca conclui.
+            $ancestrais = str_starts_with((string) parse_url(
+                (string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH
+            ), '/checkout/3ds/retorno') ? "'self'" : "'none'";
+
             header("Cross-Origin-Opener-Policy: same-origin-allow-popups");
 
             header(
@@ -293,13 +324,13 @@ class SecurityHelper {
                 
                 "img-src 'self' data: https:" . $baseImgSrc . " https://media.sportmoto.com.br https://www.facebook.com {$stream}; " .
                 "connect-src 'self' https://accounts.google.com/gsi/ https://sandbox-api.malga.io https://api.malga.io https://www.facebook.com https://connect.facebook.net {$pgtoConnect} {$stream}; " .
-                "frame-src 'self' https://accounts.google.com/gsi/ https://hosted-fields-sandbox.malga.io https://hosted-fields.malga.io {$pgtoFrame} https://iframe.cloudflarestream.com;" .
+                "frame-src 'self' https://accounts.google.com/gsi/ https://hosted-fields-sandbox.malga.io https://hosted-fields.malga.io {$pgtoFrame} https://iframe.cloudflarestream.com{$frameExtra};" .
 
                 // --- HARDENING (faltavam) ------------------------------------------
                 "object-src 'none';".        // sem plugins/Flash como vetor
                 "base-uri 'self';".          // impede <base> injetado sequestrar URLs
                 "form-action 'self' https://www.facebook.com;".       // impede form injetado POSTar p/ atacante
-                "frame-ancestors 'none';".   // anti-clickjacking (já tinha, mantido)
+                "frame-ancestors {$ancestrais};".   // anti-clickjacking; 'self' so no retorno do 3DS
                 "upgrade-insecure-requests;"
             );
         }

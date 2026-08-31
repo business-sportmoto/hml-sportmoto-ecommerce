@@ -11,13 +11,33 @@
 
 final class BannerPresenter
 {
-    /** @return array<int,array> */
+    /**
+     * @return array<int,array>
+     *
+     * Banner SEM peça mobile não entra. A arte de desktop é larga (perto de
+     * 3:1) e, espremida na tela de um celular, o texto fica ilegível e o
+     * produto sai do quadro — pior do que não mostrar banner nenhum. Se a
+     * equipe de conteúdo não subiu a versão mobile, a campanha não roda no app,
+     * e a ausência é o próprio aviso de que falta a peça.
+     */
     public static function colecao(array $rows, PresenterContext $ctx): array
     {
         return array_values(array_map(
             static fn(array $b) => self::um($b, $ctx),
-            $rows
+            array_filter($rows, [self::class, 'temMidiaMobile'])
         ));
+    }
+
+    /** Existe arte mobile — imagem ou vídeo — para este banner? */
+    public static function temMidiaMobile(array $b): bool
+    {
+        if (trim((string)($b['arquivo_imagem_mobile'] ?? '')) !== '') {
+            return true;
+        }
+
+        $ehVideo = in_array($b['tipo_midia'] ?? 'imagem', ['video', 'video_com_imagem'], true);
+
+        return $ehVideo && trim((string)($b['arquivo_video_mobile'] ?? '')) !== '';
     }
 
     public static function um(array $b, PresenterContext $ctx): array
@@ -32,9 +52,10 @@ final class BannerPresenter
 
             'midia' => [
                 'tipo'  => $ehVideo ? 'video' : 'imagem',
-                // Mobile primeiro, desktop como fallback: um banner sem variante
-                // mobile ainda aparece, só que na proporção larga.
-                'imagem' => $ctx->url($b['arquivo_imagem_mobile'] ?: ($b['arquivo_imagem'] ?? null)),
+                // SÓ a peça mobile. Sem fallback para a arte de desktop —
+                // colecao() já barrou quem não tem, e cair no desktop aqui
+                // reintroduziria pela porta dos fundos o banner cortado.
+                'imagem' => $ctx->url($b['arquivo_imagem_mobile'] ?: null),
                 'video'  => $ehVideo ? self::videoUrl($b) : null,
                 'autoplay' => (bool)($b['video_autoplay'] ?? false),
                 'loop'     => (bool)($b['video_loop'] ?? false),
@@ -87,7 +108,9 @@ final class BannerPresenter
      */
     private static function videoUrl(array $b): ?string
     {
-        $uid = $b['arquivo_video_mobile'] ?: ($b['arquivo_video'] ?? null);
+        // Mesma regra da imagem: só a peça mobile. Vídeo de desktop é
+        // horizontal e ficaria com tarjas pretas em cima e embaixo.
+        $uid = $b['arquivo_video_mobile'] ?: null;
 
         if ($uid && preg_match('/^[0-9a-f]{32}$/i', (string)$uid)) {
             try {

@@ -12,9 +12,8 @@ MailHelper::sendSimples(
     ]
 );
 
-
 // views/admin/clientes/show.php
-$tierCores=['bronze'=>['bg'=>'#fef3c7','text'=>'#92400e','dot'=>'#d97706'],'silver'=>['bg'=>'#f1f5f9','text'=>'#475569','dot'=>'#94a3b8'],'gold'=>['bg'=>'#fef9c3','text'=>'#713f12','dot'=>'#ca8a04'],'platinum'=>['bg'=>'#eff6ff','text'=>'#1e3a8a','dot'=>'#2563eb']];
+$tierCores=['bronze'=>['bg'=>'var(--warning-lt)','text'=>'var(--warning)','dot'=>'var(--warning)'],'silver'=>['bg'=>'var(--surface2)','text'=>'var(--text-2)','dot'=>'var(--text-3)'],'gold'=>['bg'=>'var(--warning-lt)','text'=>'var(--warning)','dot'=>'var(--warning)'],'platinum'=>['bg'=>'var(--blue-lt)','text'=>'var(--blue)','dot'=>'var(--blue)']];
 $tier = $scoreRow['tier'] ?? 'bronze';
 $tc   = $tierCores[$tier];
 $ultimoAcesso = count($sessoes) > 0 ? $sessoes[0]['criado_em'] : null;
@@ -156,7 +155,7 @@ $statusPedMap=['aguardando_pagamento'=>['cor'=>'warning','label'=>'Aguardando pg
   <strong>⚠ Indicadores de atenção:</strong>
   <ul style="margin:6px 0 0;padding-left:18px;">
     <?php foreach ($riscos as $r): ?>
-      <li style="color:<?= $r['tipo']==='danger'?'#dc2626':'#d97706' ?>;"><?= View::e($r['msg']) ?></li>
+      <li style="color:<?= $r['tipo']==='danger'?'var(--danger)':'var(--warning)' ?>;"><?= View::e($r['msg']) ?></li>
     <?php endforeach; ?>
   </ul>
 </div>
@@ -241,7 +240,7 @@ $statusPedMap=['aguardando_pagamento'=>['cor'=>'warning','label'=>'Aguardando pg
         <div>
           <div style="font-size:11px;color:var(--c-text-muted);text-transform:uppercase;
                       letter-spacing:.4px;margin-bottom:4px;">E-mail</div>
-          <span style="font-weight:700;color:<?= $badges['verificado']['tipo']==='success'?'#16a34a':'#d97706' ?>">
+          <span style="font-weight:700;color:<?= $badges['verificado']['tipo']==='success'?'var(--success)':'var(--warning)' ?>">
             <?= $badges['verificado']['icone'] ?> <?= View::e($badges['verificado']['label']) ?>
           </span>
         </div>
@@ -274,15 +273,15 @@ $statusPedMap=['aguardando_pagamento'=>['cor'=>'warning','label'=>'Aguardando pg
         </div>
 
         <?php if (!empty($cliente['bling_sync_erro'])): ?>
-          <div style="margin-top:8px;padding:10px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;">
-            <div style="font-size:11px;font-weight:800;color:#dc2626;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">
+          <div style="margin-top:8px;padding:10px 12px;background:var(--danger-lt);border:1px solid var(--danger-bd);border-radius:8px;">
+            <div style="font-size:11px;font-weight:800;color:var(--danger);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">
               Falha na sincronização Bling
             </div>
-            <div style="font-size:13px;color:#7f1d1d;">
+            <div style="font-size:13px;color:var(--danger);">
               <?= View::e($cliente['bling_sync_erro']) ?>
             </div>
             <?php if (!empty($cliente['bling_sync_tentativas'])): ?>
-            <div style="font-size:11px;color:#991b1b;margin-top:4px;">
+            <div style="font-size:11px;color:var(--danger);margin-top:4px;">
               <?= (int)$cliente['bling_sync_tentativas'] ?> tentativa(s)
             </div>
             <?php endif; ?>
@@ -317,7 +316,7 @@ $statusPedMap=['aguardando_pagamento'=>['cor'=>'warning','label'=>'Aguardando pg
       </div>
       <div style="margin-top:12px!important;display:flex;gap:16px;font-size:13px;color:var(--c-text-muted);">
         <span>Último login:
-          <strong style="color:<?= ($diasSemAcesso&&$diasSemAcesso>30)?'#dc2626':'var(--c-dark)' ?>;">
+          <strong style="color:<?= ($diasSemAcesso&&$diasSemAcesso>30)?'var(--danger)':'var(--c-dark)' ?>;">
             <?= $ultimoAcesso ? date('d/m/Y H:i', strtotime($ultimoAcesso)) : '—' ?> <?= ($diasSemAcesso&&$diasSemAcesso>30) ? " ({$diasSemAcesso}d atrás ⚠)" : '' ?>
           </strong>
         </span>
@@ -466,7 +465,7 @@ $statusPedMap=['aguardando_pagamento'=>['cor'=>'warning','label'=>'Aguardando pg
               <span style="background:<?= $tc['bg'] ?>;color:<?= $tc['text'] ?>;padding:4px 12px;border-radius:99px;font-size:13px;font-weight:800;">
                 <?= ucfirst($tier) ?>
               </span>
-              <div style="margin-top:10px;height:8px;background:#f1f5f9;border-radius:99px;overflow:hidden;">
+              <div style="margin-top:10px;height:8px;background:var(--surface2);border-radius:99px;overflow:hidden;">
                 <div style="height:100%;width:<?= min(100,round(($scoreRow['score_total']??0)/600*100)) ?>%;background:linear-gradient(90deg,#16a34a,#22c55e);border-radius:99px;"></div>
               </div>
             </div>
@@ -477,14 +476,14 @@ $statusPedMap=['aguardando_pagamento'=>['cor'=>'warning','label'=>'Aguardando pg
         <!-- Crédito -->
         <div class="cfg-card" style="padding:20px;">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--c-text-muted);margin-bottom:6px;">Saldo disponível</div>
-          <div style="font-size:36px;font-weight:900;color:#16a34a;margin-bottom:12px;"><?= PriceHelper::format($saldo) ?></div>
+          <div style="font-size:36px;font-weight:900;color:var(--success);margin-bottom:12px;"><?= PriceHelper::format($saldo) ?></div>
           <div style="font-size:12.5px;color:var(--c-text-muted);">Últimas transações:</div>
           <?php foreach (array_slice($creditoHist,0,4) as $tx):
             $isC=str_starts_with($tx['tipo'],'credito');
           ?>
-          <div style="display:flex;justify-content:space-between;font-size:12.5px;padding:4px 0;border-bottom:1px solid #f8fafc;">
+          <div style="display:flex;justify-content:space-between;font-size:12.5px;padding:4px 0;border-bottom:1px solid var(--bg);">
             <span><?= View::e($tx['descricao']) ?></span>
-            <strong style="color:<?= $isC?'#16a34a':'#dc2626' ?>;"><?= $isC?'+':'-' ?><?= PriceHelper::format((float)$tx['valor']) ?></strong>
+            <strong style="color:<?= $isC?'var(--success)':'var(--danger)' ?>;"><?= $isC?'+':'-' ?><?= PriceHelper::format((float)$tx['valor']) ?></strong>
           </div>
           <?php endforeach; ?>
         </div>
@@ -535,7 +534,7 @@ $statusPedMap=['aguardando_pagamento'=>['cor'=>'warning','label'=>'Aguardando pg
           <?php foreach ($cupons as $cp): ?>
           <tr>
             <td><code><?= View::e($cp['codigo']) ?></code></td>
-            <td><strong style="color:#16a34a;">−<?= PriceHelper::format((float)$cp['desconto_valor']) ?></strong></td>
+            <td><strong style="color:var(--success);">−<?= PriceHelper::format((float)$cp['desconto_valor']) ?></strong></td>
             <td><a href="<?= ADMIN_URL ?>/pedidos/<?= (int)($cp['pedido_id']??0) ?>" class="link-subtle"><code style="font-size:11px;">#<?= View::e($cp['pedido_codigo']) ?></code></a></td>
             <td><small><?= date('d/m/Y', strtotime($cp['criado_em'])) ?></small></td>
           </tr>
@@ -562,7 +561,7 @@ $statusPedMap=['aguardando_pagamento'=>['cor'=>'warning','label'=>'Aguardando pg
           <img src="<?= View::e($img) ?>" class="ap-item-img">
           <div class="ap-item-info">
             <div class="ap-item-name"><?= View::e($av['produto_nome']) ?></div>
-            <div style="color:#f59e0b;font-size:14px;"><?= str_repeat('★',$nota).str_repeat('☆',5-$nota) ?></div>
+            <div style="color:var(--warning);font-size:14px;"><?= str_repeat('★',$nota).str_repeat('☆',5-$nota) ?></div>
             <?php if (!empty($av['comentario'])): ?>
               <small style="color:var(--c-text-muted);"><?= View::e(mb_substr($av['comentario'],0,100)) ?></small>
             <?php endif; ?>
@@ -668,8 +667,8 @@ $statusPedMap=['aguardando_pagamento'=>['cor'=>'warning','label'=>'Aguardando pg
         <div style="padding:20px;text-align:center;color:var(--c-text-muted);">Nenhum cartão salvo.</div>
         <?php else: ?>
         <?php foreach ($cartoes as $cart): ?>
-        <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid #f8fafc;">
-          <div style="width:44px;height:28px;background:#f1f5f9;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#64748b;">
+        <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid var(--bg);">
+          <div style="width:44px;height:28px;background:var(--surface2);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--text-2);">
             <?= strtoupper(View::e($cart['bandeira'] ?? '?')) ?>
           </div>
           <div>
@@ -694,7 +693,7 @@ $statusPedMap=['aguardando_pagamento'=>['cor'=>'warning','label'=>'Aguardando pg
         <?php foreach ($garagem as $v):
           $foto=!empty($v['foto_capa'])?BASE_URL.'/uploads/garagem/'.$v['foto_capa']:BASE_URL.'/assets/img/placeholder.png';
         ?>
-        <div style="background:#fff;border:1px solid var(--c-border);border-radius:12px;overflow:hidden;">
+        <div style="background:var(--surface);border:1px solid var(--c-border);border-radius:12px;overflow:hidden;">
           <img src="<?= View::e($foto) ?>" style="width:100%;height:100px;object-fit:cover;">
           <div style="padding:10px 12px;">
             <div style="font-size:13px;font-weight:700;color:var(--c-dark);"><?= View::e($v['montadora_nome']) ?></div>
@@ -717,14 +716,14 @@ $statusPedMap=['aguardando_pagamento'=>['cor'=>'warning','label'=>'Aguardando pg
         <div style="padding:20px;text-align:center;color:var(--c-text-muted);">Nenhuma sessão ativa.</div>
         <?php else: ?>
         <?php foreach ($sessoes as $s): ?>
-        <div style="display:flex;align-items:center;gap:14px;padding:12px 18px;border-bottom:1px solid #f8fafc;">
+        <div style="display:flex;align-items:center;gap:14px;padding:12px 18px;border-bottom:1px solid var(--bg);">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
           <div style="flex:1;">
             <div style="font-size:13px;font-weight:600;"><?= View::e($s['dispositivo'] ?? $s['user_agent'] ?? 'Desconhecido') ?></div>
             <div style="font-size:12px;color:var(--c-text-muted);">IP: <?= View::e($s['ip'] ?? '—') ?> · <?= date('d/m/Y H:i', strtotime($s['criado_em'])) ?></div>
           </div>
           <button type="button" class="btn btn-outline btn-xs ac-btn-revogar"
-                  data-sessao="<?= View::e($s['id'] ?? '') ?>" style="color:#dc2626;border-color:#fca5a5;">
+                  data-sessao="<?= View::e($s['id'] ?? '') ?>" style="color:var(--danger);border-color:var(--danger-bd);">
             Revogar
           </button>
         </div>
@@ -766,12 +765,12 @@ $statusPedMap=['aguardando_pagamento'=>['cor'=>'warning','label'=>'Aguardando pg
         <?php endif; ?>
         <?php
         $tipoIcon=['pedido'=>'📦','devolucao'=>'↩','nota'=>'📝','email'=>'✉'];
-        $tipoCor= ['pedido'=>'#2563eb','devolucao'=>'#d97706','nota'=>'#7c3aed','email'=>'#16a34a'];
+        $tipoCor= ['pedido'=>'var(--blue)','devolucao'=>'var(--warning)','nota'=>'var(--purple)','email'=>'var(--success)'];
         foreach ($timeline as $tl):
           $tipo=$tl['tipo'];
         ?>
         <div class="ap-hist-item" style="padding-left:20px;">
-          <div class="ap-hist-dot" style="background:<?= $tipoCor[$tipo]??'#94a3b8' ?>;left:-9px;top:12px;"></div>
+          <div class="ap-hist-dot" style="background:<?= $tipoCor[$tipo]??'var(--text-3)' ?>;left:-9px;top:12px;"></div>
           <div class="ap-hist-body">
             <div style="display:flex;align-items:center;gap:6px;">
               <span style="font-size:13px;"><?= $tipoIcon[$tipo]??'•' ?></span>
@@ -780,7 +779,7 @@ $statusPedMap=['aguardando_pagamento'=>['cor'=>'warning','label'=>'Aguardando pg
                 <small class="txt-muted">· <?= View::e($tl['detalhe']) ?></small>
               <?php endif; ?>
             </div>
-            <time style="font-size:11.5px;color:#94a3b8;"><?= date('d/m/Y H:i', strtotime($tl['criado_em'])) ?></time>
+            <time style="font-size:11.5px;color:var(--text-3);"><?= date('d/m/Y H:i', strtotime($tl['criado_em'])) ?></time>
           </div>
         </div>
         <?php endforeach; ?>
@@ -790,11 +789,6 @@ $statusPedMap=['aguardando_pagamento'=>['cor'=>'warning','label'=>'Aguardando pg
   </div><!-- /cfg-content -->
 </div><!-- /cfg-layout -->
 </div><!-- /admin-page -->
-
-<!-- ══ ESTILOS ════════════════════════════════════════ -->
-<style>
-
-</style>
 
 <!-- ══ JS ═════════════════════════════════════════════ -->
 <script>
@@ -853,7 +847,7 @@ document.getElementById('btn-editar-tags').addEventListener('click',function(){
   var html='<div style="display:flex;flex-direction:column;gap:8px;">';
   todas.forEach(function(t){
     var sel=tagIds.includes(t.id)?'checked':'';
-    html+='<label class="toggle-field"><input type="checkbox" class="ac-tag-chk" value="'+t.id+'" '+sel+'><span class="toggle-slider" style="background:'+(sel?t.cor:'#d1d5db')+';"></span><span style="color:'+t.cor+';font-weight:700;">'+t.nome+'</span></label>';
+    html+='<label class="toggle-field"><input type="checkbox" class="ac-tag-chk" value="'+t.id+'" '+sel+'><span class="toggle-slider" style="background:'+(sel?t.cor:'var(--border2)')+';"></span><span style="color:'+t.cor+';font-weight:700;">'+t.nome+'</span></label>';
   });
   html+='</div><button type="button" class="btn btn-primary" id="btn-tags-salvar" style="margin-top:14px;">Salvar tags</button>';
   var dr=window.adminDrawer({titulo:'Editar tags',tamanho:'sm',conteudo:html});
@@ -933,7 +927,7 @@ $(document).on('click', '.wl-card', function () {
  
   $.get(url).done(function (res) {
     if (!res.ok || !res.itens.length) {
-      drawer.setConteudo('<div style="padding:40px;text-align:center;color:#94a3b8;">Lista vazia.</div>');
+      drawer.setConteudo('<div style="padding:40px;text-align:center;color:var(--text-3);">Lista vazia.</div>');
       return;
     }
     var html = '<div class="wl-drawer-grid">';
@@ -956,7 +950,7 @@ $(document).on('click', '.wl-card', function () {
     html += '</div>';
     drawer.setConteudo(html);
   }).fail(function () {
-    drawer.setConteudo('<div style="padding:40px;text-align:center;color:#ef4444;">Erro ao carregar.</div>');
+    drawer.setConteudo('<div style="padding:40px;text-align:center;color:var(--danger);">Erro ao carregar.</div>');
   });
 });
 

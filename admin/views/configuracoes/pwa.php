@@ -162,7 +162,7 @@
               </svg>
               Gerar ícones
             </button>
-            <span id="pwa-gerar-status" style="font-size:13px;color:#64748b;"></span>
+            <span id="pwa-gerar-status" style="font-size:13px;color:var(--text-2);"></span>
           </div>
         </div>
       </div>
@@ -259,62 +259,11 @@
   </div><!-- /.pwa-layout -->
 </div>
 
-<style>
-.pwa-layout{display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start}
-.pwa-card{margin-bottom:14px}
-.pwa-card-header{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800;color:var(--c-heading);padding:14px 20px;border-bottom:1px solid var(--c-border);text-transform:uppercase;letter-spacing:.4px}
-.pwa-card-body{padding:18px 20px}
-.pwa-form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.pwa-hint{font-size:11px;font-weight:400;color:var(--c-text-muted);text-transform:none;letter-spacing:0;display:block;margin-top:2px}
-.pwa-char-left{font-size:11px;color:var(--c-text-muted);display:block;text-align:right;margin-top:4px}
-.pwa-color-wrap{display:flex;align-items:center;gap:8px}
-.pwa-color-input{width:44px;height:44px;border:1.5px solid var(--c-border);border-radius:8px;padding:2px;cursor:pointer;background:none;flex-shrink:0}
-.pwa-hex-input{flex:1;font-family:'SF Mono',Monaco,monospace;font-size:13px;text-transform:uppercase;letter-spacing:1px}
-.pwa-upload-tip{font-size:13px;color:var(--c-text-muted);margin:0 0 12px;line-height:1.6}
-.pwa-drop-zone{border:2px dashed var(--c-border);border-radius:10px;padding:24px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
-.pwa-drop-zone:hover,.pwa-drop-zone.drag-over{border-color:var(--c-primary);background:#2563eb0a}
-.pwa-drop-zone.has-file{border-style:solid;border-color:#86efac;background:#f0fdf4}
-#pwa-drop-idle svg{stroke:var(--c-text-muted);margin-bottom:8px}
-#pwa-drop-idle p{font-size:14px;color:var(--c-text-muted);margin:0}
-.pwa-link-btn{background:none;border:none;color:var(--c-primary);font-weight:700;cursor:pointer;font-size:inherit;padding:0;text-decoration:underline}
-#pwa-drop-preview{display:flex;align-items:center;gap:14px}
-#pwa-drop-preview img{width:56px;height:56px;object-fit:cover;border-radius:10px;border:1px solid var(--c-border)}
-#pwa-preview-info{font-size:13px;color:var(--c-text-muted);text-align:left}
-.pwa-version-badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--c-text-muted);background:var(--c-bg-alt);border:1px solid var(--c-border);border-radius:6px;padding:5px 10px;font-family:'SF Mono',monospace}
-.pwa-preview-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--c-text-muted);text-align:center;margin-bottom:8px}
-.pwa-phone-mock{width:120px;height:200px;border-radius:22px;border:6px solid #1e293b;overflow:hidden;margin:0 auto;box-shadow:0 8px 24px #00000040}
-.pwa-splash{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;transition:background .3s}
-.pwa-splash-icon{width:44px;height:44px;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center}
-.pwa-splash-icon img{width:100%;height:100%;object-fit:cover}
-.pwa-splash-placeholder{font-size:20px;font-weight:900;color:#ffffff4d}
-.pwa-splash-name{font-size:10px;font-weight:700;color:#ffffffb3;text-align:center;padding:0 6px;transition:color .3s}
-.pwa-homescreen-mock{display:flex;flex-direction:column;align-items:center;gap:6px}
-.pwa-hs-icon{width:60px;height:60px;border-radius:14px;overflow:hidden;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px #0003;transition:background .3s}
-.pwa-hs-icon img{width:100%;height:100%;object-fit:cover}
-.pwa-hs-label{font-size:12px;font-weight:600;color:var(--c-text);text-align:center;max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pwa-statusbar-preview{text-align:center;width:100%}
-.pwa-statusbar{height:14px;border-radius:4px;width:120px;margin:0 auto 6px;transition:background .3s}
-.pwa-icons-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:16px 20px}
-.pwa-icon-item{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px;border-radius:8px;background:var(--c-bg-alt);border:1px solid var(--c-border)}
-.pwa-icon-item--ok{border-color:#86efac;background:#f0fdf4}
-.pwa-icon-item--missing{opacity:.5}
-.pwa-icon-item img{width:40px;height:40px;object-fit:cover;border-radius:6px}
-.pwa-icon-label{font-size:10px;font-weight:600;color:var(--c-text-muted);text-align:center}
-.pwa-icon-size{font-size:10px;color:var(--c-text-muted)}
-.pwa-icon-empty{width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:var(--c-bg);border-radius:6px;border:1px dashed var(--c-border)}
-@media (max-width: 900px) {
-.pwa-layout{grid-template-columns:1fr}
-.pwa-preview-col{order:-1}
-.pwa-icons-grid{grid-template-columns:repeat(4,1fr)}
-}
-</style>
-
 <script>
 (function ($) {
 'use strict';
 
 var ADMIN_URL = '<?= ADMIN_URL ?>';
-
 
 // ── Sync color input ↔ hex text ──────────────────────
 function syncColor($picker, $hex) {
@@ -443,17 +392,17 @@ $('#btn-gerar-icones').on('click', function () {
   .done(function (r) {
     CK.btnLoading($btn, false);
     if (r.ok) {
-      $status.html('<span style="color:#16a34a;">✓ ' + r.msg + '</span>');
+      $status.html('<span style="color:var(--success);">✓ ' + r.msg + '</span>');
       $('#btn-publicar').prop('disabled', false);
       renderIconsGrid(r.icones);
       adminToast(r.msg, 'success');
     } else {
-      $status.html('<span style="color:#dc2626;">✗ ' + r.msg + '</span>');
+      $status.html('<span style="color:var(--danger);">✗ ' + r.msg + '</span>');
     }
   })
   .fail(function () {
     CK.btnLoading($btn, false);
-    $status.html('<span style="color:#dc2626;">✗ Erro de conexão.</span>');
+    $status.html('<span style="color:var(--danger);">✗ Erro de conexão.</span>');
   });
 });
 

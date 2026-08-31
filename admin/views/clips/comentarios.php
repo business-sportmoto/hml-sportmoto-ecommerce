@@ -86,9 +86,9 @@
               <div style="display:flex;align-items:center;gap:8px;">
                 <div style="
                   width:32px;height:32px;border-radius:50%;
-                  background:linear-gradient(135deg,#3b82f6,#1e40af);
+                  background:linear-gradient(135deg,var(--blue),var(--blue));
                   display:flex;align-items:center;justify-content:center;
-                  font-size:13px;font-weight:800;color:#fff;flex-shrink:0;">
+                  font-size:13px;font-weight:800;color:var(--surface);flex-shrink:0;">
                   <?= mb_strtoupper(mb_substr($c['nome'], 0, 1)) ?>
                 </div>
                 <div>
@@ -154,7 +154,7 @@
                 <?php if ($c['status'] !== 'rejeitado'): ?>
                 <button type="button" class="btn btn-xs btn-ghost btn-rejeitar-com"
                         data-id="<?= $c['id'] ?>" title="Rejeitar"
-                        style="color:var(--danger,#dc2626);">
+                        style="color:var(--danger,var(--danger));">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
                        stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                     <line x1="18" y1="6" x2="6" y2="18"/>
@@ -185,10 +185,6 @@
   <?php endif; ?>
 
 </div>
-
-<style>
-
-</style>
 
 <!-- <script>
 $(function () {

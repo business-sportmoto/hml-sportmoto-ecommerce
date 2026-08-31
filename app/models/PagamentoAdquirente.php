@@ -54,6 +54,19 @@ class PagamentoAdquirente extends Model
              'ajuda' => 'Cadastre esta URL no painel, marcando o tópico Orders.'],
         ],
 
+        'cielo' => [
+            ['coluna' => 'merchant_id', 'rotulo' => 'MerchantId', 'tipo' => 'texto',
+             'obrigatorio' => true,
+             'ajuda' => 'Identificador da loja na Cielo, no formato UUID.'],
+            ['coluna' => 'api_key', 'rotulo' => 'MerchantKey', 'tipo' => 'segredo',
+             'obrigatorio' => true,
+             'ajuda' => 'Chave de 40 caracteres. Vai no header de toda chamada e nunca sai daqui.'],
+            // Sem chave pública: a API 3.0 não tokeniza no navegador. É por
+            // isso que rotear cartão para a Cielo passa o PAN pelo servidor.
+            ['coluna' => 'webhook_endpoint', 'rotulo' => 'URL de notificação', 'tipo' => 'url',
+             'ajuda' => 'Cadastre no painel da Cielo para receber a baixa de Pix e boleto.'],
+        ],
+
         'safrapay' => [
             ['coluna' => 'merchant_id', 'rotulo' => 'Merchant ID', 'tipo' => 'texto',
              'obrigatorio' => true],
@@ -86,6 +99,17 @@ class PagamentoAdquirente extends Model
 
     /** Opções livres, gravadas em config_extra. */
     public const EXTRAS_POR_ADQUIRENTE = [
+        'cielo' => [
+            ['chave' => 'boleto_provider', 'rotulo' => 'Boleto — banco (Provider)', 'tipo' => 'texto',
+             'padrao' => '',
+             'ajuda'  => 'Depende do banco contratado com a Cielo (ex.: Bradesco2, Itau2). '
+                       . 'Sem isto o boleto é recusado e a mensagem não diz o porquê.'],
+            ['chave' => 'boleto_cedente', 'rotulo' => 'Boleto — cedente', 'tipo' => 'texto', 'padrao' => ''],
+            ['chave' => 'boleto_cnpj', 'rotulo' => 'Boleto — CNPJ do cedente', 'tipo' => 'texto', 'padrao' => ''],
+            ['chave' => 'boleto_dias', 'rotulo' => 'Boleto vence em (dias)', 'tipo' => 'numero', 'padrao' => 3],
+            ['chave' => 'boleto_instrucoes', 'rotulo' => 'Boleto — instruções', 'tipo' => 'texto',
+             'padrao' => 'Não receber após o vencimento.'],
+        ],
         'mercadopago' => [
             ['chave' => 'pix_expira_min', 'rotulo' => 'Pix expira em (min)', 'tipo' => 'numero', 'padrao' => 30],
             ['chave' => 'boleto_dias', 'rotulo' => 'Boleto vence em (dias)', 'tipo' => 'numero', 'padrao' => 3],
@@ -130,6 +154,7 @@ class PagamentoAdquirente extends Model
     public const SUPORTADAS = [
         'safrapay'    => 'Safra Pay',
         'mercadopago' => 'Mercado Pago',
+        'cielo'       => 'Cielo',
         'fake'        => 'Fake (testes)',
     ];
 

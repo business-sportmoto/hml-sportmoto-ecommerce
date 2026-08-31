@@ -12,8 +12,6 @@
 $f = $filtros;
 ?>
 
-
-
 <div class="lg">
 
   <!-- ── Cabeçalho ───────────────────────────────────────────────────── -->
@@ -249,34 +247,3 @@ $f = $filtros;
 
 <input type="hidden" id="lg-csrf" value="<?= View::e(SecurityHelper::generateCsrf()) ?>">
 
-
-<style>
-  /* Barra do usuário filtrado */
-.lg-userbar {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; flex-wrap: wrap;
-  padding: 12px 16px; margin-bottom: 10px;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  border-radius: var(--r);
-}
-.lg-userbar-info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
-.lg-userbar-label { font-size: 12px; color: var(--text-2); }
-.lg-userbar-info strong { font-size: 13.5px; color: var(--text-0); }
-.lg-userbar-info code {
-  font-family: var(--mono); font-size: 11.5px; color: var(--text-1);
-  padding: 2px 6px; border-radius: 4px;
-  background: #fff; border: 1px solid #bfdbfe;
-}
-.lg-userbar-actions { display: flex; gap: 6px; }
-
-.lg-warn {
-  margin: 0 0 12px; padding: 9px 12px;
-  font-size: 11.5px; line-height: 1.5; color: #92400e;
-  background: #fffbeb; border: 1px solid #fde68a;
-  border-radius: var(--r-sm);
-}
-.lg-warn code { font-family: var(--mono); font-size: 11px; }
-
-.lg-uid { font-family: var(--mono); }
-</style>

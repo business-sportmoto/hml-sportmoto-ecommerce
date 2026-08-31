@@ -173,7 +173,14 @@ class PagamentoErroClassifier
         '61' => ['valor_excedido',     true,  'Valor excede o limite do cartão.'],
         '62' => ['nao_permitida',      false, 'Cartão não permite este tipo de transação.'],
         '65' => ['valor_excedido',     true,  'Limite de transações excedido. Contate o banco emissor.'],
+        '70' => ['generico',           true,  'Pagamento não autorizado. Contate o banco emissor do cartão.'],
         '74' => ['senha_invalida',     false, 'Senha inválida.'],
+        // 77 e 78 vistos em resposta REAL do sandbox da Cielo ("Card
+        // Canceled" e "Blocked Card"). Antes caíam no genérico, que manda o
+        // cliente falar com o banco — conselho inútil para cartão cancelado:
+        // o que resolve é usar outro cartão, e é isso que a mensagem diz.
+        '77' => ['cartao_bloqueado',   false, 'Cartão cancelado. Use outro cartão.'],
+        '78' => ['cartao_bloqueado',   false, 'Cartão bloqueado ou ainda não desbloqueado. Contate o banco emissor.'],
         '75' => ['senha_invalida',     true,  'Excedidas as tentativas de senha. Contate o banco emissor.'],
         '81' => ['senha_invalida',     false, 'Senha inválida.'],
         '86' => ['senha_invalida',     true,  'Senha inválida.'],
@@ -194,6 +201,52 @@ class PagamentoErroClassifier
         'cartao_bloqueado'   => PagamentoClassificacao::NEGADO_DADOS,
         'senha_invalida'     => PagamentoClassificacao::NEGADO_DADOS,
     ];
+
+    /**
+     * Recusa de emissor a partir do código ABECS, para qualquer adquirente.
+     *
+     * A Cielo não publica tabela própria de negação: a documentação dela
+     * remete à tabela ABECS, que é a mesma que a Safra usa e que já está
+     * montada acima. Este método existe para o adapter da Cielo consumir
+     * aquele mapa em vez de copiá-lo.
+     *
+     * DOIS MAPAS DO MESMO PADRÃO DIVERGEM. E divergir aqui não é detalhe:
+     * uma negativa classificada como falha técnica libera retentativa em
+     * outra adquirente, que é exatamente a reapresentação que gera multa de
+     * bandeira (Visa Excessive Reattempts / Mastercard TPE).
+     *
+     * @param string $codigo código ABECS devolvido pela adquirente
+     * @param string $texto  mensagem crua, para o log e o painel
+     */
+    public static function porCodigoAbecs(string $codigo, string $texto = ''): PagamentoClassificacao
+    {
+        $codigo = strtoupper(trim($codigo));
+
+        $c = new PagamentoClassificacao();
+        $c->codigoAdquirente = $codigo !== '' ? $codigo : null;
+
+        if ($codigo === '00') {
+            $c->porta           = PagamentoClassificacao::APROVADO;
+            $c->classeErro      = 'aprovado';
+            $c->mensagemCliente = 'Pagamento aprovado.';
+            return $c;
+        }
+
+        // Código que ninguém viu antes fecha como recusa do emissor. Nunca
+        // inventa permissão de retentativa a partir do desconhecido.
+        [$classe, $reversivel, $msg] = self::ABECS[$codigo]
+            ?? ['generico', null, 'Pagamento não autorizado. Contate o banco emissor do cartão.'];
+
+        $c->classeErro         = $classe;
+        $c->reversivel         = $reversivel;
+        $c->mensagemCliente    = $msg;
+        $c->mensagemAdquirente = $texto !== '' ? mb_substr($texto, 0, 200) : null;
+        $c->porta              = self::PORTA_POR_CLASSE[$classe]
+                                 ?? PagamentoClassificacao::NEGADO_GENERICO;
+        $c->podeCairParaOutra  = false;
+
+        return $c;
+    }
 
     /**
      * Classifica o resultado de uma autorização já recebida da Safra.

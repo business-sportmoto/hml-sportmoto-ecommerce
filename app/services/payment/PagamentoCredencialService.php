@@ -83,16 +83,33 @@ class PagamentoCredencialService
         // continua no .env sem atrapalhar.
         $sufixo = $sandbox ? $env . 'TEST_' : $env;
 
+        // DUAS CONVENÇÕES DE NOME, porque as duas aparecem no .env real:
+        // `CIELO_TEST_MERCHANT_KEY` e `SANDBOX_CIELO_MERCHANT_KEY`. Aceitar
+        // só uma faz a chave existir no arquivo e o sistema jurar que não
+        // está configurado — erro que custa tempo e não deixa rastro.
+        $sufixoAlt = $sandbox ? 'SANDBOX_' . $env : $env;
+
+        /** Nomes a procurar, na ordem: teste primeiro quando em sandbox. */
+        $nomes = static function (string $campo) use ($sufixo, $sufixoAlt, $env): array {
+            return array_values(array_unique([
+                $sufixo . $campo, $sufixoAlt . $campo, $env . $campo,
+            ]));
+        };
+
         $origem = [];
 
+        // A Cielo não chama de token: o segredo dela é o MerchantKey, e é
+        // esse o nome que está no .env. Sem o alias, a coluna `api_key`
+        // ficaria vazia e o adapter se declararia "não configurado" com a
+        // credencial ali do lado.
         $token = self::resolver(
             $linha['api_key'] ?? null,
-            [$sufixo . 'ACCESS_TOKEN', $env . 'ACCESS_TOKEN'],
+            [...$nomes('ACCESS_TOKEN'), ...$nomes('MERCHANT_KEY')],
             $origem, 'access_token'
         );
         $pk = self::resolver(
             $linha['front_api_key'] ?? null,
-            [$sufixo . 'PUBLIC_KEY', $env . 'PUBLIC_KEY'],
+            $nomes('PUBLIC_KEY'),
             $origem, 'public_key'
         );
         $segredo = self::resolver(
@@ -113,7 +130,7 @@ class PagamentoCredencialService
             'access_token'     => $token,
             'public_key'       => $pk,
             'client_id'        => self::resolver($linha['client_id'] ?? null, [$env . 'CLIENTE_ID'], $origem, 'client_id'),
-            'merchant_id'      => self::resolver($linha['merchant_id'] ?? null, [$env . 'MERCHANT_ID'], $origem, 'merchant_id'),
+            'merchant_id'      => self::resolver($linha['merchant_id'] ?? null, $nomes('MERCHANT_ID'), $origem, 'merchant_id'),
             'webhook_secret'   => $segredo,
             'webhook_endpoint' => (string) ($linha['webhook_endpoint'] ?? ''),
             'config'           => $config,

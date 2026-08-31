@@ -3166,3 +3166,188 @@ to{opacity:1;transform:translateY(0)}
 .scw-remove{background:none;border:none;font-size:12px;font-weight:600;color:#6b7280;cursor:pointer;padding:0;text-decoration:underline;flex-shrink:0;transition:color .15s}
 .scw-remove:hover{color:#dc2626}
 .scw-error{font-size:12px;color:#dc2626;margin-top:6px;padding:4px 8px;background:#fef2f2;border-radius:6px;border:1px solid #fca5a5}
+/* ════════════════════════════════════════════════════════
+   DESAFIO 3-D SECURE
+   ════════════════════════════════════════════════════════
+   O emissor autentica dentro de um iframe. É um momento de
+   pagamento suspenso: nada aqui pode parecer fechável por
+   engano, porque sair no meio deixa a cobrança em aberto.
+   ════════════════════════════════════════════════════════ */
+.tds-fundo {
+  position: fixed; inset: 0; z-index: 10000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, .72);
+  backdrop-filter: blur(3px);
+  animation: tds-entra .18s ease;
+}
+@keyframes tds-entra { from { opacity: 0 } to { opacity: 1 } }
+
+.tds-caixa {
+  width: 100%; max-width: 430px;
+  display: flex; flex-direction: column;
+  background: #fff; border-radius: 16px; overflow: hidden;
+  box-shadow: 0 24px 60px -20px rgba(15, 23, 42, .5);
+}
+.tds-topo { padding: 16px 20px 13px; border-bottom: 1px solid #e2e8f0; }
+.tds-topo strong { display: block; font-size: 15px; font-weight: 700; color: #0f172a; }
+.tds-topo small  { display: block; font-size: 12.5px; color: #64748b; margin-top: 2px; }
+
+/* Altura fixa: o conteúdo é de terceiros e não dá para medir. */
+.tds-frame { width: 100%; height: 420px; border: 0; display: block; background: #f8fafc; }
+
+.tds-rodape {
+  padding: 11px 20px; border-top: 1px solid #e2e8f0; background: #f8fafc;
+  font-size: 12.5px; color: #64748b;
+}
+.tds-espera { display: inline-flex; align-items: center; gap: 8px; }
+.tds-espera::before {
+  content: ""; width: 12px; height: 12px; flex-shrink: 0;
+  border: 2px solid #cbd5e1; border-top-color: #2563eb; border-radius: 50%;
+  animation: tds-gira .7s linear infinite;
+}
+@keyframes tds-gira { to { transform: rotate(360deg) } }
+
+/* Sem fechar no ESC nem no clique fora, de propósito: só o banco encerra. */
+body.tds-aberto { overflow: hidden; }
+
+@media (max-width: 480px) {
+  .tds-fundo  { padding: 0; }
+  .tds-caixa  { max-width: none; height: 100%; border-radius: 0; }
+  .tds-frame  { height: 100%; flex: 1; }
+}
+
+/* ════════════════════════════════════════════════════════
+   PEDIDO REALIZADO — rastreio, benefícios e ações
+   ════════════════════════════════════════════════════════ */
+
+/* ── Códigos no hero: pedido + rastreio lado a lado ───── */
+.sh-codes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; }
+.sh-code--rastreio {
+  border: 0; cursor: pointer; font: inherit;
+  display: inline-flex; align-items: center; gap: 7px;
+  position: relative;
+}
+.sh-code--rastreio svg { width: 13px; height: 13px; opacity: .55; }
+.sh-code--rastreio:hover svg { opacity: .9; }
+.sh-code--rastreio.is-copiado::after {
+  content: "Copiado"; position: absolute; left: 50%; bottom: calc(100% + 6px);
+  transform: translateX(-50%); white-space: nowrap;
+  background: #0f172a; color: #fff; font-size: 11px; font-weight: 600;
+  padding: 3px 8px; border-radius: 6px;
+}
+
+/* ── Card de rastreio ─────────────────────────────────── */
+.success-track-card {
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 16px;
+  padding: 18px 20px; margin-bottom: 18px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .05);
+}
+.stc--entregue { border-color: #bbf7d0; background: linear-gradient(180deg, #f0fdf4 0%, #fff 60%); }
+
+.stc-head { display: flex; align-items: flex-start; gap: 13px; }
+.stc-ico {
+  width: 38px; height: 38px; flex-shrink: 0; border-radius: 11px;
+  background: #eff6ff; display: flex; align-items: center; justify-content: center;
+}
+.stc-ico svg { width: 19px; height: 19px; stroke: #2563eb; }
+.stc--entregue .stc-ico { background: #dcfce7; }
+.stc--entregue .stc-ico svg { stroke: #16a34a; }
+
+.stc-resumo { flex: 1; min-width: 0; }
+.stc-resumo strong { display: block; font-size: 14.5px; font-weight: 700; color: #0f172a; }
+.stc-resumo small  { display: block; font-size: 12.5px; color: #64748b; margin-top: 2px; line-height: 1.5; }
+
+.stc-flag {
+  flex-shrink: 0; font-size: 11px; font-weight: 700;
+  padding: 3px 9px; border-radius: 99px;
+}
+.stc-flag--atraso     { background: #fef3e2; color: #b45309; }
+.stc-flag--ocorrencia { background: #fdeaee; color: #be123c; }
+
+.stc-meta {
+  display: flex; flex-wrap: wrap; gap: 6px 20px;
+  margin: 13px 0 0; padding-top: 13px; border-top: 1px solid #eef2f7;
+  font-size: 12.5px; color: #334155;
+}
+.stc-meta b { display: block; font-size: 11px; font-weight: 600; color: #94a3b8; }
+
+.stc-toggle {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 13px; padding: 0; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 12.5px; font-weight: 600; color: #2563eb;
+}
+.stc-toggle svg { width: 14px; height: 14px; transition: transform .18s ease; }
+.stc-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+.stc-toggle .stc-toggle-fechar,
+.stc-toggle[aria-expanded="true"] .stc-toggle-abrir { display: none; }
+.stc-toggle[aria-expanded="true"] .stc-toggle-fechar { display: inline; }
+
+.stc-linha { list-style: none; margin: 14px 0 0; padding: 0 0 0 4px; }
+.stc-ev { position: relative; display: flex; gap: 13px; padding: 0 0 16px 0; }
+.stc-ev:last-child { padding-bottom: 0; }
+.stc-ev-dot {
+  position: relative; z-index: 1; flex-shrink: 0;
+  width: 9px; height: 9px; margin-top: 5px; border-radius: 50%;
+  background: #cbd5e1; box-shadow: 0 0 0 3px #fff;
+}
+.stc-ev--atual .stc-ev-dot { background: #2563eb; }
+/* A linha nasce do ponto e morre no próximo; o último evento não tem. */
+.stc-ev:not(:last-child)::before {
+  content: ""; position: absolute; left: 4px; top: 12px; bottom: 0;
+  width: 1px; background: #e2e8f0;
+}
+.stc-ev-txt strong { display: block; font-size: 13px; font-weight: 700; color: #0f172a; }
+.stc-ev-txt span   { display: block; font-size: 12.5px; color: #475569; margin-top: 1px; }
+.stc-ev-txt small  { display: block; font-size: 11.5px; color: #94a3b8; margin-top: 2px; }
+
+.stc-publico {
+  display: inline-block; margin-top: 13px;
+  font-size: 12.5px; font-weight: 600; color: #2563eb; text-decoration: none;
+}
+.stc-publico:hover { text-decoration: underline; }
+
+/* ── Benefícios detalhados nos totais ─────────────────── */
+.success-tr-ben { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.success-tr-ben small { font-size: 11px; color: #94a3b8; }
+.ben-tag {
+  display: inline-block; align-self: flex-start;
+  font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px;
+}
+.ben-tag--cupom    { background: #e0f2fe; color: #0369a1; }
+.ben-tag--promocao { background: #fae8ff; color: #a21caf; }
+.ben-tag--credito  { background: #dcfce7; color: #15803d; }
+.ben-tag--outro    { background: #f1f5f9; color: #64748b; }
+
+.success-tr-fonte { display: block; font-size: 11px; color: #94a3b8; font-weight: 400; }
+
+.success-tr--brinde   { font-size: 12.5px; color: #7c2d12; }
+.success-tr--cashback { font-size: 12.5px; color: #15803d; }
+.success-tr--cashback strong { color: #15803d; }
+
+/* ── Itens: SKU e brinde ──────────────────────────────── */
+.success-item-sku {
+  font-size: 11px; color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+.success-item-brinde {
+  display: inline-block; margin-left: 6px;
+  font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 99px;
+  background: #fef3e2; color: #b45309;
+}
+
+/* ── Trocar forma de pagamento ────────────────────────── */
+.success-trocar-pgto {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  margin-top: 14px; padding: 10px 14px;
+  border: 1px solid #e2e8f0; border-radius: 10px;
+  font-size: 13px; font-weight: 600; color: #334155; text-decoration: none;
+  transition: border-color .15s ease, background .15s ease;
+}
+.success-trocar-pgto:hover { border-color: #cbd5e1; background: #f8fafc; }
+.success-trocar-pgto svg { width: 14px; height: 14px; stroke: #64748b; }
+
+@media (max-width: 640px) {
+  .success-track-card { padding: 15px 16px; border-radius: 14px; }
+  .stc-meta { gap: 6px 14px; }
+}

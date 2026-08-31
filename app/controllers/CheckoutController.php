@@ -2093,9 +2093,20 @@ class CheckoutController extends Controller {
         
         
         // 10. Responde
+        //
+        // DESAFIO 3DS INTERROMPE AQUI. O emissor pediu autenticacao: o
+        // pagamento nao esta aprovado nem recusado, e mandar o cliente para a
+        // tela de sucesso seria mentir sobre um pedido que ainda pode cair.
+        // O navegador abre o desafio e so entao segue.
+        $desafio3ds = $rot->desafio3ds();
+
         $this->json([
-            'ok'       => true,
-            'redirect' => BASE_URL . '/checkout/success/' . $codigo,
+            'ok'         => true,
+            'redirect'   => BASE_URL . '/checkout/success/' . $codigo,
+            'desafio_3ds' => $desafio3ds ? [
+                'url'    => $desafio3ds,
+                'status' => BASE_URL . '/checkout/3ds/status/' . $codigo,
+            ] : null,
             'pedido'   => [
                 'id'         => $pedidoId,
                 'codigo'     => $codigo,
@@ -2212,7 +2223,7 @@ class CheckoutController extends Controller {
             ];
         }
     
-        // Cupom utilizado (se houver)
+        // Cupom utilizado (se houver) — mantido para compatibilidade da view.
         $cupom = null;
         if ($pedido['desconto'] > 0) {
             $stmt3 = $db->prepare(
@@ -2223,6 +2234,36 @@ class CheckoutController extends Controller {
             $stmt3->execute([$pedido['id']]);
             $cupom = $stmt3->fetchColumn() ?: null;
         }
+
+        // TUDO que abateu: cupom, promocao automatica, credito e frete.
+        // Uma linha unica de "Desconto" escondia a origem — quem ganhou de
+        // duas fontes nao tinha como conferir nenhuma.
+        $beneficios = (new PedidoBeneficiosService($db))
+            ->doPedido((int) $pedido['id'], $pedido);
+
+        // Rastreio do pedido, quando ja existe etiqueta.
+        $rastreio = (new RastreioService($db))->porPedido((int) $pedido['id']);
+
+        // DATA DE CADA ETAPA. A timeline mostrava so o rotulo; sem data o
+        // cliente nao sabe se "Em separacao" e de hoje ou de seis dias atras.
+        $stmtH = $db->prepare(
+            'SELECT status_novo, MIN(criado_em) AS em
+               FROM pedido_historico WHERE pedido_id = ?
+              GROUP BY status_novo'
+        );
+        $stmtH->execute([$pedido['id']]);
+        $historico = [];
+        foreach ($stmtH->fetchAll(\PDO::FETCH_ASSOC) as $h) {
+            $historico[(string) $h['status_novo']] = $h['em'];
+        }
+
+        // Trocar a forma de pagamento so faz sentido enquanto NAO houve
+        // cobranca aceita. Depois de aprovado, o caminho e cancelamento.
+        $podeTrocarPagamento = in_array(
+            (string) ($pedido['status_pagamento'] ?? ''),
+            ['pendente', 'aguardando', 'recusado', 'erro', 'falhou'],
+            true
+        ) && ($pedido['status_pedido'] ?? '') !== 'cancelado';
     
         // Pix: dados para exibir QR
         $pixDados = null;
@@ -2245,9 +2286,13 @@ class CheckoutController extends Controller {
         }
     
         $this->renderCheckout('checkout/success', [
-            'pedido'    => $pedido,
-            'itens'     => $itens,
-            'cupom'     => $cupom,
+            'pedido'     => $pedido,
+            'itens'      => $itens,
+            'cupom'      => $cupom,
+            'beneficios' => $beneficios,
+            'rastreio'   => $rastreio,
+            'historico'  => $historico,
+            'podeTrocarPagamento' => $podeTrocarPagamento,
             'pixDados'  => $pixDados,
             'etapaAtual'=> 'success',
             'purchasePixel' => $purchasePixel,
@@ -2515,6 +2560,230 @@ class CheckoutController extends Controller {
      *
      * @return array{token:string, adquirente:string, bandeira:string}|null
      */
+    /**
+     * GET /checkout/pagamento/trocar/{codigo}
+     *
+     * Refazer o pagamento de um pedido que ainda nao foi pago.
+     *
+     * CANCELA O PEDIDO ANTIGO DE PROPOSITO. A alternativa — deixar os dois
+     * abertos e cobrar de novo — cria dois pedidos para uma compra, e se o
+     * cliente pagar o Pix antigo depois de fechar no cartao, sao duas
+     * cobrancas para o mesmo carrinho. Um pedido nao pago nao vale nada; um
+     * pago duas vezes custa estorno e confianca.
+     *
+     * O carrinho e remontado a partir dos itens, e o que nao tiver estoque
+     * fica de fora com aviso — melhor perder um item do que travar o cliente
+     * numa tela de erro sem saida.
+     */
+    public function trocarPagamento(string $codigo): void
+    {
+        $this->requireLogin();
+
+        $clienteId = (int) Session::getClienteId();
+        $db        = Database::getInstance()->getConnection();
+
+        $st = $db->prepare(
+            'SELECT * FROM pedidos WHERE codigo = ? AND cliente_id = ? LIMIT 1'
+        );
+        $st->execute([$codigo, $clienteId]);
+        $pedido = $st->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$pedido) {
+            $this->redirect(BASE_URL . '/minha-conta/pedidos');
+        }
+
+        // Pago e pago. Trocar a forma aqui seria uma segunda cobranca — o
+        // caminho, nesse caso, e cancelamento e novo pedido.
+        $pagavel = in_array((string) $pedido['status_pagamento'],
+                            ['pendente', 'aguardando', 'recusado', 'erro', 'falhou'], true);
+
+        if (!$pagavel || (string) $pedido['status_pedido'] === 'cancelado') {
+            Session::flash('erro', 'Este pedido não pode ter a forma de pagamento alterada.');
+            $this->redirect(BASE_URL . '/checkout/success/' . $codigo);
+        }
+
+        // 1. Derruba a cobranca em aberto na adquirente. Sem isto o Pix
+        //    antigo continua pagavel no app do banco.
+        $this->cancelarCobrancaPendente($db, (string) $pedido['codigo']);
+
+        // 2. Fecha o pedido antigo.
+        $db->prepare(
+            "UPDATE pedidos
+                SET status_pedido = 'cancelado', status_pagamento = 'pendente'
+              WHERE id = ?"
+        )->execute([$pedido['id']]);
+
+        $db->prepare(
+            'INSERT INTO pedido_historico (pedido_id, status_novo, observacao, criado_em)
+             VALUES (?, ?, ?, NOW())'
+        )->execute([
+            $pedido['id'], 'cancelado',
+            'Cliente optou por refazer o pagamento com outra forma.',
+        ]);
+
+        // 3. Remonta o carrinho.
+        $cart       = new Cart();
+        $carrinhoId = $cart->getCarrinhoId(true);   // cria se nao houver
+
+        if (!$carrinhoId) {
+            Session::flash('erro', 'Não foi possível preparar o carrinho. Tente novamente.');
+            $this->redirect(BASE_URL . '/checkout/success/' . $codigo);
+        }
+
+        $cart->clear($carrinhoId);
+
+        $itens = (new Order())->getItemsWithVariacoes((int) $pedido['id']);
+        $fora  = [];
+
+        foreach ($itens as $it) {
+            if (!empty($it['is_brinde'])) continue;   // brinde volta pela promoção
+            try {
+                $cart->addItem(
+                    $carrinhoId,
+                    (int) $it['produto_id'],
+                    (int) $it['quantidade'],
+                    !empty($it['estoque_id']) ? (int) $it['estoque_id'] : null
+                );
+            } catch (\Throwable $e) {
+                $fora[] = (string) ($it['produto_nome'] ?? $it['nome_produto'] ?? 'item');
+            }
+        }
+
+        if ($fora) {
+            Session::flash('aviso', 'Sem estoque agora: ' . implode(', ', $fora)
+                . '. O restante foi mantido no carrinho.');
+        }
+
+        // 4. Restaura endereço e frete para cair direto no pagamento.
+        if (!empty($pedido['endereco_entrega_id'])) {
+            $this->state->setEnderecoId((int) $pedido['endereco_entrega_id']);
+        }
+        if ($pedido['frete_descricao'] !== null) {
+            $this->state->setFrete([
+                'valor'       => (float) $pedido['frete'],
+                'descricao'   => (string) $pedido['frete_descricao'],
+                'prazo'       => (int) ($pedido['frete_prazo'] ?? 0),
+                'servico'     => (string) ($pedido['frete_servico'] ?? ''),
+                'codigo'      => (string) ($pedido['frete_codigo'] ?? ''),
+            ]);
+        }
+        $this->state->setUltimaEtapa('payment');
+
+        LogService::audit('Cliente refez o pagamento', [
+            'pedido_id'     => $pedido['id'],
+            'order_id_loja' => $pedido['codigo'],
+            'itens_fora'    => $fora,
+        ]);
+
+        $this->redirect(BASE_URL . '/checkout/payment');
+    }
+
+    /**
+     * Cancela na adquirente a cobranca ainda em aberto do pedido.
+     *
+     * Falhar aqui nao impede a troca: o pedido antigo fica cancelado do nosso
+     * lado de qualquer jeito, e uma cobranca orfa e menos grave do que travar
+     * o cliente. Mas fica no log, porque Pix pagavel depois do cancelamento
+     * vira dinheiro que entra sem pedido.
+     */
+    private function cancelarCobrancaPendente(\PDO $db, string $orderIdLoja): void
+    {
+        $st = $db->prepare(
+            'SELECT charge_id, adquirente_codigo FROM pgto_transacoes
+              WHERE order_id_loja = ? AND status IN ("pendente","aguardando") LIMIT 1'
+        );
+        $st->execute([$orderIdLoja]);
+        $tx = $st->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$tx || empty($tx['charge_id'])) return;
+
+        try {
+            $adapter = AdquirenteFactory::porCodigo((string) $tx['adquirente_codigo']);
+            $adapter?->cancelar((string) $tx['charge_id']);
+        } catch (\Throwable $e) {
+            LogService::exception($e, 'error', 'pagamento', [
+                'acao' => 'cancelar_para_trocar_pagamento', 'order_id_loja' => $orderIdLoja,
+            ]);
+        }
+    }
+
+    /**
+     * GET /checkout/3ds/retorno
+     *
+     * Onde o iframe do desafio cai quando o comprador termina. Nao decide
+     * nada: o veredito vem da adquirente, nunca de um retorno de navegador
+     * que qualquer um pode forjar. A pagina so avisa a janela de cima que
+     * pode perguntar.
+     */
+    public function tresDsRetorno(): void
+    {
+        header('Content-Type: text/html; charset=utf-8');
+        header('X-Frame-Options: SAMEORIGIN');
+
+        echo '<!doctype html><meta charset="utf-8">'
+           . '<title>Autenticação concluída</title>'
+           . '<style>body{font:14px/1.5 system-ui,sans-serif;color:#334155;'
+           . 'display:flex;align-items:center;justify-content:center;height:100vh;margin:0}</style>'
+           . '<p>Autenticação concluída. Um instante…</p>'
+           . '<script>try{parent.postMessage({tipo:"3ds-concluido"},"*")}catch(e){}</script>';
+        exit;
+    }
+
+    /**
+     * GET /checkout/3ds/status/{codigo}
+     *
+     * Pergunta o desfecho a adquirente e aplica. Reaproveita o mesmo caminho
+     * do webhook de proposito: dois lugares aplicando o mesmo retorno de
+     * formas diferentes divergem, e divergir aqui e liberar mercadoria de
+     * pagamento que nao passou.
+     */
+    public function tresDsStatus(string $codigo): void
+    {
+        $this->requireLoginAjax();
+
+        $clienteId = (int) Session::getClienteId();
+        $db        = Database::getInstance()->getConnection();
+
+        // O pedido tem de ser DESTE cliente. Sem isto, trocar o codigo na URL
+        // revelaria o estado de pagamento dos pedidos alheios.
+        $st = $db->prepare(
+            'SELECT p.id, p.codigo, p.status_pagamento, t.charge_id
+               FROM pedidos p
+               LEFT JOIN pgto_transacoes t ON t.order_id_loja = p.codigo
+              WHERE p.codigo = ? AND p.cliente_id = ? LIMIT 1'
+        );
+        $st->execute([$codigo, $clienteId]);
+        $pedido = $st->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$pedido) {
+            $this->json(['ok' => false, 'msg' => 'Pedido não encontrado.'], 404);
+        }
+
+        if (!empty($pedido['charge_id'])) {
+            try {
+                (new MercadoPagoRetornoService())->aplicar((string) $pedido['charge_id']);
+            } catch (\Throwable $e) {
+                // Consulta falhou nao e pagamento recusado. O status local
+                // continua valendo e o webhook ainda vai chegar.
+                LogService::exception($e, 'error', 'pagamento', [
+                    'acao' => '3ds_status', 'order_id_loja' => $codigo,
+                ]);
+            }
+
+            $st->execute([$codigo, $clienteId]);
+            $pedido = $st->fetch(\PDO::FETCH_ASSOC) ?: $pedido;
+        }
+
+        $status = (string) ($pedido['status_pagamento'] ?? 'pendente');
+
+        $this->json([
+            'ok'       => true,
+            'status'   => $status,
+            'aprovado' => $status === 'aprovado',
+            'redirect' => BASE_URL . '/checkout/success/' . $codigo,
+        ]);
+    }
+
     private function cartaoSalvoParaCobranca(int $cartaoId, int $clienteId): ?array
     {
         $st = Database::getInstance()->getConnection()->prepare(

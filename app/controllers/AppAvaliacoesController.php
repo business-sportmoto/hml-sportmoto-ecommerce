@@ -77,6 +77,43 @@ class AppAvaliacoesController extends AppApiController
     }
 
     /**
+     * GET /api/app/v1/produtos/{id}/avaliacoes/resumo-ia
+     *
+     * O resumo das opiniões gerado por IA. Endpoint SEPARADO de propósito,
+     * pela mesma razão que a loja o chama por AJAX depois do render
+     * (ReviewController::resumoIA): quando o cache está frio, obter() chama a
+     * Gemini e demora segundos. Embutir isso na listagem faria a tela inteira
+     * esperar por um texto que é enfeite.
+     *
+     * `insuficiente` = o produto ainda não tem avaliações bastantes para valer
+     * um resumo. Não é erro; a tela simplesmente não desenha o bloco.
+     */
+    public function resumoIA(string $id = '0'): void
+    {
+        $this->bootOpcional();
+        $this->liberarSessao();
+
+        $produtoId = (int)$id;
+        if ($produtoId <= 0) {
+            $this->falha(422, 'produto_invalido', 'Produto inválido.');
+        }
+
+        try {
+            $r = (new ReviewSummaryService())->obter($produtoId);
+        } catch (\Throwable $e) {
+            AppLog::exception($e, ['acao' => 'resumo_ia', 'produto' => $produtoId]);
+            // Falha da IA não vira erro na tela: o bloco só não aparece.
+            $this->ok(['resumo' => null, 'insuficiente' => false, 'total' => 0]);
+        }
+
+        $this->ok([
+            'resumo'       => $r['resumo'] ?? null,
+            'insuficiente' => !empty($r['insuf']),
+            'total'        => (int)($r['total'] ?? 0),
+        ]);
+    }
+
+    /**
      * POST /api/app/v1/produtos/{id}/avaliacoes
      * Corpo: { nota, comentario, titulo?, midia_token? }
      *

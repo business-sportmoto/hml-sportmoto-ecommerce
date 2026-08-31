@@ -5,9 +5,9 @@
  */
 $base = defined('BASE_URL') ? BASE_URL : '';
 $badge = [
-    'rascunho'  => ['Rascunho', '#71717a'],
-    'publicado' => ['Publicado', '#16a34a'],
-    'pausado'   => ['Pausado', '#f59e0b'],
+    'rascunho'  => ['Rascunho', 'var(--text-3)'],
+    'publicado' => ['Publicado', 'var(--success)'],
+    'pausado'   => ['Pausado', 'var(--warning)'],
 ];
 ?>
 <div class="em_wrapper">
@@ -28,7 +28,7 @@ $badge = [
         Nenhum fluxo ainda. Crie o primeiro.
       </p>
     <?php else: foreach ($fluxos as $f):
-      [$lbl, $cor] = $badge[$f['status']] ?? [$f['status'], '#71717a']; ?>
+      [$lbl, $cor] = $badge[$f['status']] ?? [$f['status'], 'var(--text-3)']; ?>
     <div style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-bottom:0.5px solid var(--em-border);">
       <div style="flex:1;min-width:0;">
         <a href="<?= $base ?>/admin/fluxos/<?= (int)$f['id'] ?>"

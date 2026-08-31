@@ -3,8 +3,8 @@
 // Variáveis: $linhas (relatorioConversaoTemplates), $de, $ate
 
 $canalCfg = [
-  'whatsapp' => ['💬 WhatsApp', '#16a34a', '#f0fdf4'],
-  'email'    => ['✉ E-mail',   '#1d4ed8', '#eff6ff'],
+  'whatsapp' => ['💬 WhatsApp', 'var(--success)', 'var(--success-lt)'],
+  'email'    => ['✉ E-mail',   'var(--blue)', 'var(--blue-lt)'],
 ];
 ?>
 <div class="ap-page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
@@ -24,8 +24,8 @@ $canalCfg = [
   </form>
 </div>
 
-<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;
-     padding:11px 16px;margin:14px 0;font-size:12.5px;color:#1e40af;">
+<div style="background:var(--blue-lt);border:1px solid var(--blue-bd);border-radius:10px;
+     padding:11px 16px;margin:14px 0;font-size:12.5px;color:var(--blue);">
   📐 <strong>Metodologia:</strong> conversões usam atribuição <em>last-touch</em> —
   cada recuperação pertence ao <em>último</em> template enviado antes da compra.
   "Envios" e "Carrinhos" são contagem bruta. Período aplicado sobre a data do envio.
@@ -55,11 +55,11 @@ $canalCfg = [
     </thead>
     <tbody>
       <?php foreach ($linhas as $l):
-        [$cLabel, $cCor, $cBg] = $canalCfg[$l['canal']] ?? ['?', '#64748b', '#f8fafc'];
+        [$cLabel, $cCor, $cBg] = $canalCfg[$l['canal']] ?? ['?', 'var(--text-2)', 'var(--bg)'];
         $taxa = (int)$l['carrinhos'] > 0
             ? round((int)$l['conversoes'] / (int)$l['carrinhos'] * 100, 1)
             : 0.0;
-        $corTaxa = $taxa >= 20 ? '#16a34a' : ($taxa >= 8 ? '#d97706' : '#94a3b8');
+        $corTaxa = $taxa >= 20 ? 'var(--success)' : ($taxa >= 8 ? 'var(--warning)' : 'var(--text-3)');
       ?>
       <tr style="border-top:1px solid var(--c-border);">
         <td style="padding:12px 18px;">
@@ -70,7 +70,7 @@ $canalCfg = [
         <td style="padding:12px;text-align:center;"><?= (int)$l['envios'] ?></td>
         <td style="padding:12px;text-align:center;"><?= (int)$l['carrinhos'] ?></td>
         <td style="padding:12px;text-align:center;font-weight:800;
-                   color:<?= (int)$l['conversoes'] > 0 ? '#16a34a' : 'var(--c-text-muted)' ?>;">
+                   color:<?= (int)$l['conversoes'] > 0 ? 'var(--success)' : 'var(--c-text-muted)' ?>;">
           <?= (int)$l['conversoes'] ?></td>
         <td style="padding:12px;">
           <div style="display:flex;align-items:center;gap:8px;">
@@ -85,7 +85,7 @@ $canalCfg = [
           </div>
         </td>
         <td style="padding:12px 18px;text-align:right;font-weight:800;
-                   color:<?= (float)$l['valor_recuperado'] > 0 ? '#16a34a' : 'var(--c-text-muted)' ?>;">
+                   color:<?= (float)$l['valor_recuperado'] > 0 ? 'var(--success)' : 'var(--c-text-muted)' ?>;">
           R$ <?= number_format((float)$l['valor_recuperado'], 2, ',', '.') ?></td>
       </tr>
       <?php endforeach; ?>

@@ -6,7 +6,6 @@ $imgUrl = fn($f) => View::e($f);
 
 $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inativo'];
 
-
 ?>
 <!-- navegação de seções fixa à esquerda -->
 <div class="pe-layout">
@@ -1719,8 +1718,6 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
   </div>
 </div>
 
-
-
 <!-- Modal: buscar família existente -->
 <div class="pe-modal-backdrop" id="modal-buscar-familia" style="display:none;">
   <div class="pe-modal">
@@ -1790,25 +1787,6 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
     </div>
   </div>
 </div>
-
-<style>
-.pe-rte{border:1px solid var(--c-border,#e2e8f0);border-radius:8px;overflow:hidden;background:#fff}
-.pe-rte-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:2px;padding:6px 8px;border-bottom:1px solid var(--c-border,#e2e8f0);background:#f8fafc}
-.pe-rte-btn{min-width:30px;height:30px;padding:0 8px;border:1px solid transparent;border-radius:6px;background:transparent;cursor:pointer;font-size:13px;color:#334155;display:inline-flex;align-items:center;justify-content:center;transition:background .15s,border-color .15s}
-.pe-rte-btn:hover{background:#fff;border-color:var(--c-border,#e2e8f0)}
-.pe-rte-btn.is-active{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}
-.pe-rte-sep{width:1px;height:18px;background:var(--c-border,#e2e8f0);margin:0 4px}
-.pe-rte-area{min-height:180px;max-height:460px;overflow-y:auto;padding:14px 16px;font-size:14px;line-height:1.7;color:#1e293b;outline:none}
-.pe-rte-area:empty::before{content:attr(data-placeholder);color:#94a3b8}
-.pe-rte-area:focus{box-shadow:inset 0 0 0 2px #dbeafe}
-.pe-rte-area h2{font-size:20px;font-weight:800;margin:.6em 0 .3em}
-.pe-rte-area h3{font-size:16px;font-weight:700;margin:.6em 0 .3em}
-.pe-rte-area p{margin:0 0 .7em}
-.pe-rte-area ul,.pe-rte-area ol{margin:0 0 .7em 1.4em}
-.pe-rte-area a{color:#2563eb;text-decoration:underline}
-/* oculta o textarea original sem removê-lo do form */
-#pe-descricao, #pe-descricao-curta{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);border:0;}
-</style>
 
 <?php
 // Separa os dois papéis

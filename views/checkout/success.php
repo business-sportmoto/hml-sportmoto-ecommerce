@@ -30,12 +30,39 @@ if (!$aprovado && $nivelAtual > 1) {
     $nivelAtual = 0; // pagamento não confirmado, volta ao início
 }
 
+// ── Dados que o controller injeta ─────────────────────
+$beneficios = $beneficios ?? ['linhas' => [], 'brindes' => [], 'cashback' => 0.0,
+                              'total' => 0.0, 'divergencia' => null];
+$rastreioDados = $rastreio ?? null;   // vem do RastreioService
+$historico     = $historico ?? [];    // status_novo => data
+$podeTrocarPagamento = $podeTrocarPagamento ?? false;
+
 // ── Labels e sublabels contextuais ────────────────────
 $prazoLabel = $pedido['frete_prazo']        ? (int)$pedido['frete_prazo'] . 'd úteis' : 'Previsão';
-$rastreio   = $pedido['codigo_rastreio']    ?? null;
+$rastreio   = $pedido['codigo_rastreio']
+           ?? ($rastreioDados['codigo_rastreio'] ?? null);
 $pagoEm     = !empty($pedido['pago_em'])
     ? date('d/m/Y H:i', strtotime($pedido['pago_em']))
     : null;
+
+/** Data em que o pedido ENTROU num status, se registrada. */
+$dataDe = function (string ...$status) use ($historico): ?string {
+    foreach ($status as $st) {
+        if (!empty($historico[$st])) return date('d/m · H:i', strtotime($historico[$st]));
+    }
+    return null;
+};
+
+// Previsão de entrega: a da transportadora manda, porque é a que foi
+// medida de verdade. O prazo do frete é estimativa da hora da compra.
+$previsaoEntrega = null;
+if (!empty($rastreioDados['previsao_entrega'])) {
+    $previsaoEntrega = date('d/m/Y', strtotime((string) $rastreioDados['previsao_entrega']));
+} elseif (!empty($pedido['frete_prazo']) && !empty($historico['enviado'])) {
+    $previsaoEntrega = date('d/m/Y', strtotime(
+        (string) $historico['enviado'] . ' +' . (int) $pedido['frete_prazo'] . ' weekdays'
+    ));
+}
 
 // ── Define os steps da timeline ───────────────────────
 // Cada step: [nivel, label_done, label_active, label_future, sub_done, sub_active, sub_future]
@@ -45,7 +72,7 @@ $stepDefs = [
         'label_done'  => 'Pago',
         'label_act'   => 'Aguardando',
         'label_fut'   => 'Pagamento',
-        'sub_done'    => $pagoEm ? 'Em ' . $pagoEm : 'Aprovado',
+        'sub_done'    => $pagoEm ? 'Em ' . $pagoEm : ($dataDe('pagamento_aprovado') ?? 'Aprovado'),
         'sub_act'     => match($metodo) {
             'pix'    => 'Aguardando Pix',
             'boleto' => 'Aguardando boleto',
@@ -58,8 +85,8 @@ $stepDefs = [
         'label_done'  => 'Separado',
         'label_act'   => 'Em separação',
         'label_fut'   => 'Separação',
-        'sub_done'    => 'Pronto para envio',
-        'sub_act'     => 'Preparando o pedido',
+        'sub_done'    => $dataDe('em_separacao') ?? 'Pronto para envio',
+        'sub_act'     => ($dataDe('em_separacao') ?? '') ?: 'Preparando o pedido',
         'sub_fut'     => $aprovado ? 'Em breve' : 'Aguardando pgto.',
     ],
     [
@@ -67,8 +94,8 @@ $stepDefs = [
         'label_done'  => 'Enviado',
         'label_act'   => 'Enviando',
         'label_fut'   => 'Envio',
-        'sub_done'    => $rastreio ? 'Rastreio: ' . $rastreio : 'Em transporte',
-        'sub_act'     => 'Preparando envio',
+        'sub_done'    => $dataDe('enviado') ?? ($rastreio ? 'Rastreio: ' . $rastreio : 'Em transporte'),
+        'sub_act'     => $dataDe('enviado') ?? 'Preparando envio',
         'sub_fut'     => 'Aguardando separação',
     ],
     [
@@ -76,9 +103,11 @@ $stepDefs = [
         'label_done'  => 'Entregue',
         'label_act'   => 'A caminho',
         'label_fut'   => 'Entrega',
-        'sub_done'    => 'Pedido recebido!',
-        'sub_act'     => $prazoLabel,
-        'sub_fut'     => $prazoLabel,
+        'sub_done'    => $dataDe('entregue') ?? 'Pedido recebido!',
+        // Em rota: a previsão vale mais que o prazo genérico — é a data que
+        // a pessoa vai esperar em casa.
+        'sub_act'     => $previsaoEntrega ? 'Até ' . $previsaoEntrega : $prazoLabel,
+        'sub_fut'     => $previsaoEntrega ? 'Até ' . $previsaoEntrega : $prazoLabel,
     ],
 ];
 
@@ -185,11 +214,26 @@ $steps = array_map(function ($def) use ($nivelAtual, $isCancelado) {
         <?php endif; ?>
       </p>
 
-      <!-- Código do pedido -->
-      <a href="<?= View::url('minha-conta/pedido/'.$pedido['id']); ?>" class="sh-code">
-        <span class="sh-code-label">Pedido</span>
-        <span class="sh-code-value"><?= View::e($pedido['codigo']) ?></span>
+      <!-- Código do pedido + rastreio -->
+      <div class="sh-codes">
+        <a href="<?= View::url('minha-conta/pedido/'.$pedido['id']); ?>" class="sh-code">
+          <span class="sh-code-label">Pedido</span>
+          <span class="sh-code-value"><?= View::e($pedido['codigo']) ?></span>
         </a>
+
+        <?php if ($rastreio): ?>
+        <!-- Ao lado do pedido de propósito: depois do envio é este o número
+             que a pessoa procura, e ficava enterrado na timeline. -->
+        <button type="button" class="sh-code sh-code--rastreio" data-copiar="<?= View::e($rastreio) ?>">
+          <span class="sh-code-label">Rastreio</span>
+          <span class="sh-code-value"><?= View::e($rastreio) ?></span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2"/>
+            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+          </svg>
+        </button>
+        <?php endif; ?>
+      </div>
 
     </div><!-- /.sh-top -->
 
@@ -334,6 +378,92 @@ $steps = array_map(function ($def) use ($nivelAtual, $isCancelado) {
   </div>
   <?php endif; ?>
 
+  <!-- ═══════════════ RASTREIO ═══════════════════════ -->
+  <?php if ($rastreioDados && !empty($rastreioDados['codigo_rastreio'])):
+    $evs      = $rastreioDados['eventos'] ?? [];
+    $ultimo   = $evs[0] ?? null;              // o service já ordena do mais novo
+    $entregue = ($rastreioDados['status_interno'] ?? '') === 'entregue';
+  ?>
+  <div class="success-track-card <?= $entregue ? 'stc--entregue' : '' ?>">
+
+    <div class="stc-head">
+      <div class="stc-ico">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 3v5h-7V8z"/>
+          <circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+        </svg>
+      </div>
+      <div class="stc-resumo">
+        <strong><?= View::e($rastreioDados['status_label'] ?? 'Em transporte') ?></strong>
+        <small>
+          <?php if ($ultimo): ?>
+            <?= View::e($ultimo['descricao'] ?? '') ?>
+            <?php if (!empty($ultimo['local'])): ?> · <?= View::e($ultimo['local']) ?><?php endif; ?>
+            <?php if (!empty($ultimo['data_evento'])): ?>
+              · <?= date('d/m · H:i', strtotime($ultimo['data_evento'])) ?>
+            <?php endif; ?>
+          <?php else: ?>
+            Objeto postado. Os eventos aparecem conforme a transportadora atualiza.
+          <?php endif; ?>
+        </small>
+      </div>
+      <?php if (!empty($rastreioDados['atraso'])): ?>
+        <span class="stc-flag stc-flag--atraso">Atrasado</span>
+      <?php elseif (!empty($rastreioDados['ocorrencia'])): ?>
+        <span class="stc-flag stc-flag--ocorrencia">Ocorrência</span>
+      <?php endif; ?>
+    </div>
+
+    <div class="stc-meta">
+      <?php if (!empty($rastreioDados['transportadora_nome'])): ?>
+        <span><b>Transportadora</b> <?= View::e($rastreioDados['transportadora_nome']) ?></span>
+      <?php endif; ?>
+      <span><b>Código</b> <?= View::e($rastreioDados['codigo_rastreio']) ?></span>
+      <?php if (!$entregue && $previsaoEntrega): ?>
+        <span><b>Previsão</b> <?= $previsaoEntrega ?></span>
+      <?php elseif ($entregue && !empty($rastreioDados['entregue_em'])): ?>
+        <span><b>Entregue em</b> <?= date('d/m/Y · H:i', strtotime($rastreioDados['entregue_em'])) ?></span>
+      <?php endif; ?>
+    </div>
+
+    <?php if ($evs): ?>
+    <!-- Todos os eventos, na própria página: mandar para outra aba só para
+         ler o histórico é perder o contexto do pedido. -->
+    <button type="button" class="stc-toggle" aria-expanded="false" aria-controls="stc-linha">
+      <span class="stc-toggle-abrir">Ver rastreamento completo (<?= count($evs) ?>)</span>
+      <span class="stc-toggle-fechar">Recolher rastreamento</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+
+    <ol class="stc-linha" id="stc-linha" hidden>
+      <?php foreach ($evs as $i => $ev): ?>
+      <li class="stc-ev <?= $i === 0 ? 'stc-ev--atual' : '' ?>">
+        <span class="stc-ev-dot"></span>
+        <div class="stc-ev-txt">
+          <strong><?= View::e($ev['status_label'] ?? $ev['status_interno'] ?? '') ?></strong>
+          <?php if (!empty($ev['descricao'])): ?>
+            <span><?= View::e($ev['descricao']) ?></span>
+          <?php endif; ?>
+          <small>
+            <?php if (!empty($ev['data_evento'])): ?>
+              <?= date('d/m/Y · H:i', strtotime($ev['data_evento'])) ?>
+            <?php endif; ?>
+            <?php if (!empty($ev['local'])): ?> · <?= View::e($ev['local']) ?><?php endif; ?>
+          </small>
+        </div>
+      </li>
+      <?php endforeach; ?>
+    </ol>
+    <?php endif; ?>
+
+    <?php if (!empty($rastreioDados['token_publico'])): ?>
+    <a class="stc-publico" target="_blank" rel="noopener"
+       href="<?= BASE_URL ?>/rastreio/<?= View::e($rastreioDados['token_publico']) ?>">
+      Abrir página de rastreio
+    </a>
+    <?php endif; ?>
+  </div>
+  <?php endif; ?>
   <!-- ═══════════════ GRID 2 COLUNAS ════════════════ -->
   <div class="success-grid">
 
@@ -368,6 +498,21 @@ $steps = array_map(function ($def) use ($nivelAtual, $isCancelado) {
               <?= View::e($item['produto_nome']) ?>
             </a>
             <span class="success-item-qty">Qtd: <?= (int)$item['quantidade'] ?></span>
+            <?php
+            // A VARIAÇÃO VEM DO SNAPSHOT, NÃO DO CATÁLOGO.
+            //
+            // `atributos` é resolvido a partir do produto de hoje e volta
+            // vazio para a maioria dos itens — era por isso que "Tamanho:
+            // 64/XXL" sumia da tela. `opcoes_selecionadas` foi gravado no
+            // momento da compra: é o que o cliente realmente escolheu, e
+            // sobrevive a mudanças posteriores no cadastro do produto.
+            $variacoes = [];
+            foreach (['opcoes_selecionadas', 'opcoes_snapshot'] as $campo) {
+                $bruto = $item[$campo] ?? null;
+                $vals  = is_array($bruto) ? $bruto : json_decode((string) $bruto, true);
+                if (is_array($vals) && $vals) { $variacoes = $vals; break; }
+            }
+            ?>
             <div class="var-iten">
               <?php if (!empty($item['atributos'])): ?>
               <div class="cart-item-attrs">
@@ -383,6 +528,24 @@ $steps = array_map(function ($def) use ($nivelAtual, $isCancelado) {
                 </span>
                 <?php endforeach; ?>
               </div>
+              <?php elseif ($variacoes): ?>
+              <div class="cart-item-attrs">
+                <?php foreach ($variacoes as $nome => $valor): ?>
+                  <?php if (is_array($valor)) $valor = implode(', ', $valor); ?>
+                <span class="cart-attr-tag">
+                  <?php if (!is_int($nome)): ?>
+                    <span class="cart-attr-label"><?= View::e((string) $nome) ?>:</span>
+                  <?php endif; ?>
+                  <span class="cart-attr-valor"><?= View::e((string) $valor) ?></span>
+                </span>
+                <?php endforeach; ?>
+              </div>
+              <?php endif; ?>
+              <?php if (!empty($item['sku'])): ?>
+                <span class="success-item-sku">SKU <?= View::e($item['sku']) ?></span>
+              <?php endif; ?>
+              <?php if (!empty($item['is_brinde'])): ?>
+                <span class="success-item-brinde">Brinde</span>
               <?php endif; ?>
             </div>
           </div>
@@ -395,19 +558,67 @@ $steps = array_map(function ($def) use ($nivelAtual, $isCancelado) {
 
         <div class="success-totals">
           <div class="success-tr"><span>Subtotal</span><span><?= PriceHelper::format((float)$pedido['subtotal']) ?></span></div>
-          <?php if ((float)$pedido['desconto'] > 0): ?>
+          <?php
+          // Uma linha por origem. "Desconto R$ 55" não dizia se veio de
+          // cupom, de promoção ou de crédito, e o cliente não tinha como
+          // conferir nenhum dos dois.
+          foreach ($beneficios['linhas'] as $ben):
+            if ($ben['tipo'] === 'frete') continue;   // aparece na linha do frete
+          ?>
           <div class="success-tr success-tr--green">
-            <span>Desconto <?= $cupom ? '('.View::e($cupom).')' : '' ?></span>
-            <span>−<?= PriceHelper::format((float)$pedido['desconto']) ?></span>
+            <span class="success-tr-ben">
+              <span class="ben-tag ben-tag--<?= View::e($ben['tipo']) ?>"><?= View::e($ben['rotulo']) ?></span>
+              <?php if (!empty($ben['detalhe'])): ?>
+                <small><?= View::e($ben['detalhe']) ?></small>
+              <?php endif; ?>
+            </span>
+            <span>−<?= PriceHelper::format($ben['valor']) ?></span>
+          </div>
+          <?php endforeach; ?>
+
+          <?php if ($beneficios['divergencia'] !== null && $beneficios['divergencia'] > 0): ?>
+          <!-- O detalhado não fechou com o total gravado. Nomear a diferença
+               é melhor do que deixar a soma errada na tela do cliente. -->
+          <div class="success-tr success-tr--green">
+            <span class="success-tr-ben"><span class="ben-tag ben-tag--outro">Outros descontos</span></span>
+            <span>−<?= PriceHelper::format($beneficios['divergencia']) ?></span>
           </div>
           <?php endif; ?>
+          <?php
+          $linhaFrete = null;
+          foreach ($beneficios['linhas'] as $b) if ($b['tipo'] === 'frete') $linhaFrete = $b;
+          ?>
           <div class="success-tr">
-            <span>Frete</span>
+            <span>
+              Frete
+              <?php if ($linhaFrete && !empty($linhaFrete['detalhe'])): ?>
+                <small class="success-tr-fonte"><?= View::e($linhaFrete['detalhe']) ?></small>
+              <?php endif; ?>
+            </span>
             <span><?= (float)$pedido['frete']==0 ? '<strong class="c-green">GRÁTIS</strong>' : PriceHelper::format((float)$pedido['frete']) ?></span>
           </div>
           <div class="success-tr success-tr--total">
             <span>Total</span><strong><?= PriceHelper::format((float)$pedido['total']) ?></strong>
           </div>
+
+          <?php if (!empty($beneficios['brindes'])): ?>
+          <div class="success-tr success-tr--brinde">
+            <span>Brindes inclusos</span>
+            <span><?php foreach ($beneficios['brindes'] as $i => $br):
+              echo ($i ? ', ' : '') . View::e($br['nome'])
+                 . ($br['quantidade'] > 1 ? ' x' . (int) $br['quantidade'] : '');
+            endforeach; ?></span>
+          </div>
+          <?php endif; ?>
+
+          <?php if (($beneficios['cashback'] ?? 0) > 0): ?>
+          <!-- Cashback não abate agora: vira crédito depois. Somar junto ao
+               desconto prometeria um abatimento que não aconteceu. -->
+          <div class="success-tr success-tr--cashback">
+            <span>Cashback a receber</span>
+            <strong><?= PriceHelper::format((float) $beneficios['cashback']) ?></strong>
+          </div>
+          <?php endif; ?>
           <?php if ($isCartao && (int)($pedido['parcelas']??1) > 1): ?>
           <div class="success-tr success-tr--parcelas">
             <span></span>
@@ -445,11 +656,23 @@ $steps = array_map(function ($def) use ($nivelAtual, $isCancelado) {
       </div>
 
       <!-- Pagamento -->
-      <?php if ($aprovado || $isPix || $isBoleto): ?>
+      <?php
+      // O CARTÃO PENDENTE OU RECUSADO TAMBÉM PRECISA APARECER.
+      //
+      // A condição antiga era `$aprovado || $isPix || $isBoleto`: um pedido
+      // no cartão que ainda não passou não mostrava card de pagamento nenhum
+      // — nem a bandeira, nem o final, nem o motivo. Justo o caso em que o
+      // cliente mais precisa ver com o que tentou pagar.
+      ?>
+      <?php if ($aprovado || $isPix || $isBoleto || $isCartao): ?>
       <div class="success-card">
         <h3 class="success-card-title">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-          <?= $aprovado ? 'Pagamento aprovado' : 'Pagamento pendente' ?>
+          <?php
+          $recusado = in_array($statusPagamento, ['recusado', 'erro', 'falhou'], true);
+          echo $aprovado ? 'Pagamento aprovado'
+             : ($recusado ? 'Pagamento não autorizado' : 'Pagamento pendente');
+          ?>
         </h3>
 
         <?php if ($isCartao): ?>
@@ -482,9 +705,17 @@ $steps = array_map(function ($def) use ($nivelAtual, $isCancelado) {
               <strong>Cartão de crédito</strong>
             <?php endif; ?>
             <small>
-              <?= $parcelas > 1 ? "{$parcelas}× sem juros" : "À vista" ?>
+              <?php if ($parcelas > 1): ?>
+                <?= $parcelas ?>× de <?= PriceHelper::format((float) $pedido['total'] / $parcelas) ?>
+              <?php else: ?>
+                À vista
+              <?php endif; ?>
               <?php if ($aprovado && $pedido['pago_em']): ?>
                 · Aprovado em <?= date('d/m/Y H:i', strtotime($pedido['pago_em'])) ?>
+              <?php elseif ($recusado): ?>
+                · Não autorizado pelo emissor
+              <?php else: ?>
+                · Aguardando confirmação
               <?php endif; ?>
             </small>
           </div>
@@ -534,6 +765,23 @@ $steps = array_map(function ($def) use ($nivelAtual, $isCancelado) {
             </small>
           </div>
         </div>
+        <?php endif; ?>
+
+        <?php if ($podeTrocarPagamento): ?>
+        <!-- SÓ ENQUANTO NÃO HÁ COBRANÇA ACEITA.
+             Depois de aprovado, "trocar" seria uma segunda cobrança — o
+             caminho ali é cancelamento, não troca. Quem decide é o
+             controller, que olha o status_pagamento. -->
+        <a href="<?= BASE_URL ?>/checkout/pagamento/trocar/<?= View::e($pedido['codigo']) ?>"
+           class="success-trocar-pgto"
+           data-confirmar="Isto cancela este pedido e devolve os itens ao carrinho para você escolher outra forma de pagamento. Continuar?">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/>
+            <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/>
+          </svg>
+          Mudar a forma de pagamento
+        </a>
         <?php endif; ?>
 
       </div>
@@ -626,6 +874,31 @@ $(function () {
     // errada. O cliente ainda consegue pagar pelo copia e cola.
     $('#pix-timer').remove();
   }
+
+  // ── Confirma antes de refazer o pagamento ─────────────────────
+  // A ação cancela o pedido atual; um clique sem querer não pode fazer isso.
+  $(document).on('click', '[data-confirmar]', function (e) {
+    if (!window.confirm($(this).data('confirmar'))) e.preventDefault();
+  });
+
+  // ── Copiar o código de rastreio ───────────────────────────────
+  $(document).on('click', '[data-copiar]', function () {
+    var $b = $(this), txt = $b.data('copiar');
+    if (!navigator.clipboard) return;
+    navigator.clipboard.writeText(String(txt)).then(function () {
+      $b.addClass('is-copiado');
+      setTimeout(function () { $b.removeClass('is-copiado'); }, 1800);
+    });
+  });
+
+  // ── Abrir/fechar o rastreamento completo ──────────────────────
+  // `hidden` em vez de display: o conteúdo continua no DOM e o leitor de
+  // tela acompanha o aria-expanded do botão.
+  $(document).on('click', '.stc-toggle', function () {
+    var $b = $(this), aberto = $b.attr('aria-expanded') === 'true';
+    $b.attr('aria-expanded', aberto ? 'false' : 'true');
+    $('#' + $b.attr('aria-controls')).prop('hidden', aberto);
+  });
 
   // ── Confete (cartão aprovado) ─────────────────────────────────
   <?php if ($aprovado && $isCartao): ?>

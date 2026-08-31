@@ -24,6 +24,9 @@ Router::post('/webhooks/clearsale',         'WebhookController@clearsale');
 // terminam o fluxo em  e so esta chamada avisa quando o dinheiro
 // entra. Cadastre a URL em Suas integracoes > Webhooks.
 Router::post('/webhooks/mercadopago', 'WebhookController@mercadopago');
+// Cielo: "Post de Notificacao". Sempre 200 — eles reenviam a cada 30 min,
+// mais tres tentativas, e 4xx aqui viraria reenvio eterno.
+Router::post('/webhooks/cielo', 'WebhookController@cielo');
 // Webhook público (sem auth) — ANTES das rotas admin
 Router::post('/webhook/bling', 'BlingWebhookController@receive');
 
@@ -154,6 +157,14 @@ Router::post('/checkout/payment/coupon',          'CheckoutController@applyCoupo
 Router::get ('/checkout/summary',                 'CheckoutController@summary');
 // ── Finalizar + Sucesso ─────────────────────────────────
 Router::post('/checkout/finalize',                'CheckoutController@finalize');
+// ── 3-D Secure ──────────────────────────────────────────
+// O retorno e publico de proposito: quem cai nele e o iframe do emissor,
+// que nao carrega a sessao da loja. Ele nao decide nada — so avisa a
+// janela de cima. Quem consulta o desfecho e a rota de status, essa sim
+// atras de login e amarrada ao cliente dono do pedido.
+Router::get ('/checkout/pagamento/trocar/{codigo}', 'CheckoutController@trocarPagamento');
+Router::get ('/checkout/3ds/retorno',            'CheckoutController@tresDsRetorno');
+Router::get ('/checkout/3ds/status/{codigo}',    'CheckoutController@tresDsStatus');
 Router::get ('/checkout/success/{codigo}',        'CheckoutController@success');
 // ── Utilitários AJAX ────────────────────────────────────
 Router::get ('/checkout/cep',                     'CheckoutController@fetchCep');
@@ -458,6 +469,14 @@ Router::post('/perguntas/util',   'PerguntaController@util');
 require __DIR__ . '/routes.email-marketing.php';
 
 
+
+// ── Módulo Chat: webhook da WhatsApp Cloud API ───────────────
+// Cadastre https://SEU-DOMINIO/webhooks/whatsapp no painel da Meta
+// (WhatsApp > Configuração > Webhook), assinando o campo "messages".
+// GET  = handshake de verificação (a Meta chama uma vez, no cadastro)
+// POST = mensagens e status de entrega
+Router::get ('/webhooks/whatsapp', 'ChatWebhookController@verificar');
+Router::post('/webhooks/whatsapp', 'ChatWebhookController@receber');
 
 // Deve ser a ÚLTIMA rota do arquivo (curinga)
 Router::get('/{slug}', 'PageController@show');

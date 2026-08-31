@@ -17,7 +17,7 @@ $kpi = $dados['kpi'];
       <button class="btn btn-primary" style="white-space:nowrap;">Aplicar</button>
     </form>
     <a href="<?= ADMIN_URL ?>/carrinhos-abandonados" class="btn"
-       style="background:var(--c-dark);color:#fff;white-space:nowrap;">Ver carrinhos →</a>
+       style="background:var(--c-dark);color:var(--surface);white-space:nowrap;">Ver carrinhos →</a>
   </div>
 </div>
 
@@ -25,14 +25,14 @@ $kpi = $dados['kpi'];
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin:18px 0;">
   <?php
   $cards = [
-    ['Valor em aberto',   'R$ ' . number_format((float)$kpi['valor_aberto'], 2, ',', '.'),     '#dc2626', '#fef2f2'],
-    ['Valor recuperado',  'R$ ' . number_format((float)$kpi['valor_recuperado'], 2, ',', '.'), '#16a34a', '#f0fdf4'],
-    ['Taxa de recuperação', number_format((float)$kpi['taxa_recuperacao'], 1, ',', '') . '%',  '#1d4ed8', '#eff6ff'],
-    ['Ticket médio',      'R$ ' . number_format((float)$kpi['ticket_medio'], 2, ',', '.'),     '#7c3aed', '#f5f3ff'],
-    ['Em aberto',         (int)$kpi['em_aberto'],   '#d97706', '#fffbeb'],
-    ['Recuperados',       (int)$kpi['recuperados'], '#16a34a', '#f0fdf4'],
-    ['Perdidos',          (int)$kpi['perdidos'],    '#64748b', '#f8fafc'],
-    ['Sem contato',       (int)$kpi['sem_contato'], '#dc2626', '#fef2f2'],
+    ['Valor em aberto',   'R$ ' . number_format((float)$kpi['valor_aberto'], 2, ',', '.'),     'var(--danger)', 'var(--danger-lt)'],
+    ['Valor recuperado',  'R$ ' . number_format((float)$kpi['valor_recuperado'], 2, ',', '.'), 'var(--success)', 'var(--success-lt)'],
+    ['Taxa de recuperação', number_format((float)$kpi['taxa_recuperacao'], 1, ',', '') . '%',  'var(--blue)', 'var(--blue-lt)'],
+    ['Ticket médio',      'R$ ' . number_format((float)$kpi['ticket_medio'], 2, ',', '.'),     'var(--purple)', 'var(--purple-lt)'],
+    ['Em aberto',         (int)$kpi['em_aberto'],   'var(--warning)', 'var(--warning-lt)'],
+    ['Recuperados',       (int)$kpi['recuperados'], 'var(--success)', 'var(--success-lt)'],
+    ['Perdidos',          (int)$kpi['perdidos'],    'var(--text-2)', 'var(--bg)'],
+    ['Sem contato',       (int)$kpi['sem_contato'], 'var(--danger)', 'var(--danger-lt)'],
   ];
   foreach ($cards as [$label, $valor, $cor, $bg]): ?>
   <div class="admin-card" style="padding:16px 18px;border-left:4px solid <?= $cor ?>;">
@@ -69,10 +69,10 @@ $kpi = $dados['kpi'];
         <tr style="border-top:1px solid var(--c-border);">
           <td style="padding:10px 18px;font-weight:600;"><?= View::e($p['produto_nome']) ?></td>
           <td style="padding:10px;text-align:center;">
-            <span class="badge" style="background:#fef2f2;color:#dc2626;">
+            <span class="badge" style="background:var(--danger-lt);color:var(--danger);">
               <?= (int)$p['carrinhos'] ?></span>
           </td>
-          <td style="padding:10px 18px;text-align:right;font-weight:700;color:#dc2626;">
+          <td style="padding:10px 18px;text-align:right;font-weight:700;color:var(--danger);">
             R$ <?= number_format((float)$p['valor'], 2, ',', '.') ?>
           </td>
         </tr>
@@ -107,13 +107,13 @@ $kpi = $dados['kpi'];
             <?= (int)$u['recuperados'] ?>/<?= (int)$u['atribuidos'] ?></td>
           <td style="padding:10px;text-align:center;">
             <?php if ((int)$u['pendentes'] > 8): ?>
-              <span class="badge" style="background:#fef2f2;color:#dc2626;"
+              <span class="badge" style="background:var(--danger-lt);color:var(--danger);"
                     title="Sobrecarga — redistribuir"><?= (int)$u['pendentes'] ?> ⚠</span>
             <?php else: ?>
               <?= (int)$u['pendentes'] ?>
             <?php endif; ?>
           </td>
-          <td style="padding:10px 18px;text-align:right;font-weight:700;color:#16a34a;">
+          <td style="padding:10px 18px;text-align:right;font-weight:700;color:var(--success);">
             R$ <?= number_format((float)$u['valor_recuperado'], 2, ',', '.') ?>
           </td>
         </tr>

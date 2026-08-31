@@ -298,9 +298,9 @@ $tipoMidia = $b['tipo_midia'] ?? 'imagem';
                 <label class="pe-label">Cor do texto</label>
                 <div class="banner-color-input">
                   <input type="color" name="cor_texto"
-                         value="<?= View::e($b['cor_texto'] ?? '#ffffff') ?>">
+                         value="<?= View::e($b['cor_texto'] ?? 'var(--surface)') ?>">
                   <input type="text" class="form-control form-control--sm"
-                         value="<?= View::e($b['cor_texto'] ?? '#ffffff') ?>"
+                         value="<?= View::e($b['cor_texto'] ?? 'var(--surface)') ?>"
                          readonly>
                 </div>
               </div>
@@ -406,7 +406,7 @@ $tipoMidia = $b['tipo_midia'] ?? 'imagem';
             <h2>Preview</h2>
             <p>Visualização em tempo real</p>
           </div>
-          <div class="pe-card" style="background:#f1f5f9;padding:0;overflow:hidden;">
+          <div class="pe-card" style="background:var(--surface2);padding:0;overflow:hidden;">
             <div class="banner-preview-toolbar">
               <button type="button" class="banner-preview-btn is-active" data-device="desktop">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none"

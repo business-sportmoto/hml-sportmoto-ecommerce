@@ -11,11 +11,11 @@
  */
 $base = defined('BASE_URL') ? BASE_URL : '';
 $badge = [
-    'rascunho'  => ['Rascunho', '#71717a'],
-    'publicado' => ['Publicado', '#16a34a'],
-    'pausado'   => ['Pausado', '#f59e0b'],
+    'rascunho'  => ['Rascunho', 'var(--text-3)'],
+    'publicado' => ['Publicado', 'var(--success)'],
+    'pausado'   => ['Pausado', 'var(--warning)'],
 ];
-[$stLbl, $stCor] = $badge[$fluxo['status']] ?? [$fluxo['status'], '#71717a'];
+[$stLbl, $stCor] = $badge[$fluxo['status']] ?? [$fluxo['status'], 'var(--text-3)'];
 $configJson = $fluxo['config_json'] ?: "{\n  \"reentrada\": \"nunca\",\n  \"sair_se_eventos\": []\n}";
 ?>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.css">

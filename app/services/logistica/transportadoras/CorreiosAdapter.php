@@ -106,7 +106,14 @@ class CorreiosAdapter extends TransportadoraBase
         $contrato    = (string)($this->config['contrato'] ?? '');
         $dr          = (int)($this->config['dr'] ?? 0);
         $tpObjeto    = (int)($this->config['tp_objeto'] ?? 2);
-        $vlDeclarado = (float)($params['valor_declarado'] ?? $params['valor'] ?? 0);
+        // Valor declarado (serviço adicional 019) só quando a transportadora está
+        // configurada para usá-lo. Antes o adapter ignorava a flag e anexava o 019
+        // sempre que havia valor de carrinho — e todo serviço que não aceita o
+        // adicional era recusado inteiro pela API (ERP-054), derrubando a cotação.
+        $usaValorDeclarado = !empty($this->transportadora['usa_valor_declarado']);
+        $vlDeclarado = $usaValorDeclarado
+            ? (float)($params['valor_declarado'] ?? $params['valor'] ?? 0)
+            : 0.0;
 
         // 1) Prazo por serviço (/prazo/v1/nacional/{cod})
         $prazos = [];
@@ -116,41 +123,36 @@ class CorreiosAdapter extends TransportadoraBase
         }
 
         // 2) Preço em lote (/preco/v1/nacional) — psObjeto em GRAMAS, dimensões em cm.
-        $payload = ['idLote' => '1', 'parametrosProduto' => []];
-        foreach ($servicos as $i => $s) {
-            // Manual oficial v2.4: valores como STRING; psObjeto em GRAMAS (ex.: "300").
-            $item = [
-                'coProduto'    => substr((string)$s['codigo'], 0, 10),
-                'nuRequisicao' => (string)($i + 1),
-                'nuContrato'   => (string)$contrato,
-                'nuDR'         => (int)$dr,
-                'cepOrigem'    => $cepOrigem,
-                'cepDestino'   => $cepDestino,
-                'psObjeto'     => (string)max(1, (int)round($dim['peso_g'])),  // GRAMAS
-                'tpObjeto'     => (string)$tpObjeto,
-                'comprimento'  => (string)(int)round($dim['comprimento_cm']),
-                'largura'      => (string)(int)round($dim['largura_cm']),
-                'altura'       => (string)(int)round($dim['altura_cm']),
-                'dtEvento'     => date('d/m/Y'),
-            ];
-            // Valor declarado só quando informado (serviço adicional 019 = valor declarado).
-            if ($vlDeclarado > 0) {
-                $item['vlDeclarado'] = number_format($vlDeclarado, 2, '.', '');
-                $item['servicosAdicionais'] = [['coServAdicional' => '019']];
-            }
-            foreach ($item as $k => $v) { if ($v === '' || $v === null) unset($item[$k]); }
-            $payload['parametrosProduto'][] = $item;
-        }
+        $itemBase = [
+            'nuContrato'  => (string)$contrato,
+            'nuDR'        => (int)$dr,
+            'cepOrigem'   => $cepOrigem,
+            'cepDestino'  => $cepDestino,
+            'psObjeto'    => (string)max(1, (int)round($dim['peso_g'])),  // GRAMAS
+            'tpObjeto'    => (string)$tpObjeto,
+            'comprimento' => (string)(int)round($dim['comprimento_cm']),
+            'largura'     => (string)(int)round($dim['largura_cm']),
+            'altura'      => (string)(int)round($dim['altura_cm']),
+            'dtEvento'    => date('d/m/Y'),
+        ];
 
-        $r = $this->reqCorreios('POST', '/preco/v1/nacional', $payload, $token, 'preco');
-        if (!$this->okHttp($r)) return ['ok' => false, 'erro' => $this->erroCorreios($r, 'Falha na cotação Correios')];
-        $lista = is_array($r['json'] ?? null) ? $r['json'] : [];
+        $codigos = array_map(static fn($s) => substr((string)$s['codigo'], 0, 10), $servicos);
+        $lista   = $this->precoLote($token, $codigos, $itemBase, $vlDeclarado);
+        if ($lista === null) return ['ok' => false, 'erro' => $this->ultimoErroPreco ?: 'Falha na cotação Correios'];
 
+        // Um serviço que o contrato não atende (ERP-006) ou que recusa um adicional
+        // não pode sumir calado: sem isso, a tela mostra "sem opções" e não há como
+        // saber que a origem/destino é que não é atendida.
+        $recusados = [];
         $opcoes = [];
         foreach ($lista as $res) {
             if (!is_array($res)) continue;
             $cod = (string)($res['coProduto'] ?? '');
-            if ($cod === '' || !empty($res['txErro'])) continue;
+            if ($cod === '') continue;
+            if (!empty($res['txErro'])) {
+                $recusados[] = ['servico' => $cod, 'nome' => $this->nomeServico($servicos, $cod), 'erro' => (string)$res['txErro']];
+                continue;
+            }
             $valor = self::precoFinal($res);
             if ($valor <= 0) continue;
             $opcoes[] = [
@@ -163,7 +165,99 @@ class CorreiosAdapter extends TransportadoraBase
                 'avisos'         => [],
             ];
         }
-        return ['ok' => true, 'opcoes' => $opcoes];
+
+        if ($recusados && class_exists('LogService')) {
+            LogService::warning('Correios recusou serviço(s) na cotação', [
+                'cep_origem' => $cepOrigem, 'cep_destino' => $cepDestino, 'recusados' => $recusados,
+            ]);
+        }
+
+        return ['ok' => true, 'opcoes' => $opcoes, 'recusados' => $recusados];
+    }
+
+    /** Guarda o erro da última tentativa de preço, para a mensagem ao chamador. */
+    private ?string $ultimoErroPreco = null;
+
+    /**
+     * Lista de produtos da resposta de /preco, venha ela em 200, 206 ou erro.
+     *
+     * O lote responde um array de {coProduto, pcFinal|txErro}. Só se considera
+     * falha de verdade quando nem isso vem — aí não há o que reaproveitar.
+     *
+     * @return array<int,array>|null
+     */
+    private static function listaProdutos(array $r): ?array
+    {
+        $j = $r['json'] ?? null;
+        if (!is_array($j) || !$j) return null;
+        foreach ($j as $item) {
+            if (is_array($item) && isset($item['coProduto'])) return $j;
+        }
+        return null;
+    }
+
+    /**
+     * Preço em lote, com uma segunda tentativa sem o serviço adicional 019.
+     *
+     * Os Correios recusam o produto INTEIRO (ERP-054) quando o adicional não vale
+     * para aquele serviço — e o lote volta 206 com o resto ok. Antes isso derrubava
+     * a opção silenciosamente; agora quem foi recusado só por causa do adicional é
+     * recotado sem ele, de modo que uma cotação nunca se perde por esse motivo.
+     *
+     * @param string[] $codigos
+     * @return array<int,array>|null  null = falha de transporte/HTTP
+     */
+    private function precoLote(string $token, array $codigos, array $itemBase, float $vlDeclarado): ?array
+    {
+        $this->ultimoErroPreco = null;
+
+        $monta = function (array $codigos, bool $comAdicional) use ($itemBase, $vlDeclarado): array {
+            $payload = ['idLote' => '1', 'parametrosProduto' => []];
+            foreach (array_values($codigos) as $i => $cod) {
+                $item = ['coProduto' => $cod, 'nuRequisicao' => (string)($i + 1)] + $itemBase;
+                if ($comAdicional && $vlDeclarado > 0) {
+                    $item['vlDeclarado'] = number_format($vlDeclarado, 2, '.', '');
+                    $item['servicosAdicionais'] = [['coServAdicional' => '019']];
+                }
+                foreach ($item as $k => $v) { if ($v === '' || $v === null) unset($item[$k]); }
+                $payload['parametrosProduto'][] = $item;
+            }
+            return $payload;
+        };
+
+        $r = $this->reqCorreios('POST', '/preco/v1/nacional', $monta($codigos, true), $token, 'preco');
+        $lista = self::listaProdutos($r);
+
+        // Quando TODOS os produtos falham, a API responde fora da faixa 2xx (e não
+        // 206 parcial). Abortar aqui impediria a segunda tentativa justamente no
+        // caso em que ela mais importa, então o corpo é aproveitado mesmo assim —
+        // desde que traga a lista de produtos com o erro de cada um.
+        if ($lista === null) {
+            $this->ultimoErroPreco = $this->erroCorreios($r, 'Falha na cotação Correios');
+            return null;
+        }
+        if ($vlDeclarado <= 0) return $lista;
+
+        // Quem caiu especificamente por causa do adicional ganha uma segunda chance.
+        $refazer = [];
+        foreach ($lista as $res) {
+            if (is_array($res) && !empty($res['txErro']) && stripos((string)$res['txErro'], 'ERP-054') !== false) {
+                $refazer[] = (string)$res['coProduto'];
+            }
+        }
+        if (!$refazer) return $lista;
+
+        $r2 = $this->reqCorreios('POST', '/preco/v1/nacional', $monta($refazer, false), $token, 'preco');
+        $novos = self::listaProdutos($r2);
+        if ($novos === null) return $lista;   // mantém o resultado parcial
+
+        $porCodigo = [];
+        foreach ($novos as $n) if (is_array($n) && !empty($n['coProduto'])) $porCodigo[(string)$n['coProduto']] = $n;
+        foreach ($lista as $i => $res) {
+            $cod = is_array($res) ? (string)($res['coProduto'] ?? '') : '';
+            if ($cod !== '' && isset($porCodigo[$cod])) $lista[$i] = $porCodigo[$cod];
+        }
+        return $lista;
     }
 
     /* -------- token (cacheado em memória + na config da transportadora) -------- */
@@ -232,13 +326,28 @@ class CorreiosAdapter extends TransportadoraBase
         return (float)str_replace(',', '.', $s);
     }
 
+    /**
+     * Serviços habilitados para frete de IDA.
+     *
+     * Os códigos de logística reversa (03247 Pac Reverso, 03301 Sedex Reverso)
+     * ficam na mesma tabela e cotam normalmente na API — sem este filtro eles
+     * apareciam como opção de envio na vitrine, com prazo e preço de reversa.
+     * A reversa tem caminho próprio (ReversaService/SOAP) e não passa por aqui.
+     */
     private function servicosContrato(): array
     {
         $id = $this->transportadoraId();
         if (!$id) return [];
         try {
             $pdo = Database::getInstance()->getConnection();
-            $st = $pdo->prepare("SELECT codigo, nome FROM log_transportadora_servicos WHERE transportadora_id = :id AND habilitado = 1 ORDER BY nome");
+            $st = $pdo->prepare(
+                "SELECT codigo, nome, modalidade
+                   FROM log_transportadora_servicos
+                  WHERE transportadora_id = :id
+                    AND habilitado = 1
+                    AND (modalidade IS NULL OR modalidade <> 'reverso')
+                  ORDER BY nome"
+            );
             $st->execute([':id' => $id]);
             return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
         } catch (\Throwable $e) { return []; }

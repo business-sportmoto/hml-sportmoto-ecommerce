@@ -209,7 +209,13 @@ class EtiquetaController extends Controller
             $ts = $pdo->query("SELECT id, nome, slug FROM log_transportadoras WHERE status = 'ativo' ORDER BY prioridade ASC, id ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
             if (!$ts) return [];
             $in = implode(',', array_map(static fn($t) => (int)$t['id'], $ts));
-            $sv = $pdo->query("SELECT transportadora_id, codigo, nome FROM log_transportadora_servicos WHERE transportadora_id IN ($in) AND habilitado = 1 ORDER BY nome ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            // Etiqueta de ida: os codigos de reversa (03247/03301) vivem na mesma tabela
+            // e apareciam no seletor, permitindo emitir uma etiqueta de envio com
+            // servico de devolucao. A reversa tem tela propria.
+            $sv = $pdo->query("SELECT transportadora_id, codigo, nome FROM log_transportadora_servicos
+                                WHERE transportadora_id IN ($in) AND habilitado = 1
+                                  AND (modalidade IS NULL OR modalidade <> 'reverso')
+                                ORDER BY nome ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
             $porT = [];
             foreach ($sv as $s) $porT[$s['transportadora_id']][] = ['codigo' => $s['codigo'], 'nome' => $s['nome']];
             foreach ($ts as &$t) $t['servicos'] = $porT[$t['id']] ?? [];

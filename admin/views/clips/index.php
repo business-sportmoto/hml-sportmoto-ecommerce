@@ -76,12 +76,12 @@ $busca       = $busca ?? '';
               data-status="">Todos</button>
       <button type="button" class="clips-filter-btn <?= ($_GET['status']??'') === 'ativo' ? 'is-active' : '' ?>"
               data-status="ativo">
-        <span class="clips-status-dot" style="background:#16a34a;"></span>
+        <span class="clips-status-dot" style="background:var(--success);"></span>
         Ativos
       </button>
       <button type="button" class="clips-filter-btn <?= ($_GET['status']??'') === 'inativo' ? 'is-active' : '' ?>"
               data-status="inativo">
-        <span class="clips-status-dot" style="background:#94a3b8;"></span>
+        <span class="clips-status-dot" style="background:var(--text-3);"></span>
         Inativos
       </button>
       <button type="button" class="clips-filter-btn <?= ($_GET['status']??'') === 'destaque' ? 'is-active' : '' ?>"

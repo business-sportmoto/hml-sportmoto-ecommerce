@@ -424,3 +424,112 @@ Estrutura do arquivo:
   `list` (`admin/views/help_faq/`), `grid` (`help_faq/perguntas.php`), `upload`
   (`admin/views/produtos/index.php`). Rendem vazio hoje; com o `avisarAusente()`
   passam a aparecer no log.
+
+---
+
+## 14. Diagnostico da cotacao Correios — 29/08/2026
+
+Sessao de depuracao do "Correios nao funciona no simulador" e do "fallback/cache
+nao funcionam". Eram **cinco** defeitos distintos, tres de codigo e dois de dado.
+
+### 14.1 O que estava errado
+
+**(1) `dr` nunca foi preenchido na config da transportadora** — o adapter mandava
+`nuDR: 0` e os Correios respondiam:
+
+```
+PRC-124: O numero do contrato e/ou numero da DR informado nao e o mesmo
+apresentado no token de acesso.
+```
+
+O valor correto vem da **propria resposta de autenticacao**, que o adapter
+descartava:
+
+```json
+"cartaoPostagem": { "contrato": "9912635232", "numero": "0078202736", "dr": 64 }
+```
+
+Corrigido no banco: `dr = 64`, `tp_objeto = 2`.
+
+**(2) O ENUM de `log_comunicacoes.tipo` rejeitava metade dos tipos.** A coluna
+aceitava 9 valores; o codigo grava 15. Faltavam `correios_preco`,
+`correios_prazo`, `correios_sro`, `correios_postada`,
+`correios_cancelar_prepostagem` e `ar_eletronico`. O MySQL recusava com
+`1265 Data truncated for column 'tipo'` e, como `logComunicacao()` engole a
+excecao por design, **a cotacao dos Correios nunca apareceu na auditoria** — em
+253 linhas de log, zero registros de preco/prazo. Era justamente a tela que a
+secao 12 manda consultar quando algo falha.
+
+Migration: `sql/log_comunicacoes_tipo_migration.sql` (ENUM -> VARCHAR(40)). Um
+ENUM que exige migration a cada endpoint novo reintroduz o bug na proxima
+integracao.
+
+**(3) O adapter ignorava a flag `usa_valor_declarado`.** Com ela em `0`, ele
+anexava o servico adicional **019** a todos os produtos sempre que havia valor de
+carrinho. Os Correios recusam o produto INTEIRO nesse caso:
+
+```
+ERP-054: Servico adicional 019 nao pode ser prestado com o servico informado (03298).
+```
+
+Resultado: com carrinho valorizado — ou seja, **sempre** — o unico servico que
+sobrava era o reverso. Esse era o motivo real do "nao funciona no simulador".
+
+Agora o 019 so vai quando a transportadora esta configurada para isso **e**, se
+ainda assim algum servico recusar o adicional, `precoLote()` recota so aqueles
+sem o 019 e mescla o resultado. Uma cotacao nao se perde mais por esse motivo.
+
+**(4) Servicos de reversa entravam na cotacao de ida.** `03247 Pac Reverso` e
+`03301 Sedex Reverso` moram na mesma tabela e cotam normalmente na API —
+apareciam como opcao de envio, com preco e prazo de devolucao. Pior: o
+`codigoServico` da etiqueta vem da opcao escolhida, entao a etiqueta de ida sairia
+com codigo de reversa. Filtrado por `modalidade` em tres lugares:
+`CorreiosAdapter::servicosContrato()`, `EtiquetaController` (seletor da etiqueta)
+e `ReversaController` (que, espelhadamente, listava os servicos de ida).
+
+**(5) `log_frete_fallback` estava vazia.** O servico funciona, mas sem linha
+nenhuma `estimar()` devolve vazio e a vitrine cai em "Sem cotacao e sem fallback
+de frete" — com a API fora do ar, a loja parava de vender. Seed em
+`sql/frete_fallback_seed.sql`, montado a partir de **precos reais coletados da
+API** (35 pontos: 5 regioes x 7 pesos), reproduzidos com desvio maximo de 0,1%.
+
+### 14.2 O cache nunca esteve quebrado
+
+`FreteCacheService` grava normalmente. O que confunde e que **cache e fallback so
+existem no `FreteVitrineService`** (vitrine/checkout). O simulador do admin chama
+`CalculadoraService::cotar()` direto, que nao passa por nenhum dos dois — de
+proposito, ja que um simulador deve mostrar o preco vivo, nao o cacheado.
+
+Verificado ponta a ponta apos as correcoes:
+
+```
+1a chamada  origem=transportadora  -> Melhor envio R$19,22 | Correios Pac AG R$24,07/5d
+            cache de cotacao: 1 -> 2 registros
+2a chamada  origem=cache
+```
+
+### 14.3 Pendente com os Correios (nao e codigo)
+
+`03140 Sedex AG` responde **ERP-006 "CEP de origem nao pode postar para CEP de
+destino"** para todo destino fora de Porto Alegre:
+
+| Destino | 03140 Sedex AG |
+|---|---|
+| Porto Alegre/RS | R$ 32,85 |
+| Sao Paulo/SP | ERP-006 |
+| Curitiba/PR | ERP-006 |
+| Brasilia/DF | ERP-006 |
+| Manaus/AM | ERP-006 |
+
+Na pratica a loja so tem **PAC** pelos Correios hoje. Confirmar com os Correios
+qual codigo de SEDEX o contrato 9912635232 cobre (o de contrato costuma ser
+`03220`, nao o `03140` de agencia) e cadastrar o codigo certo em Servicos.
+
+### 14.4 Como reproduzir o diagnostico
+
+O erro dos Correios so aparece se voce olhar a resposta crua. Com a migration do
+item (2) aplicada, `log_comunicacoes` passa a guardar request+resposta de
+`correios_preco` e `correios_prazo`, e o `txErro` por produto fica visivel ali.
+`cotar()` tambem devolve agora uma chave `recusados[]` com servico + motivo, em
+vez de descartar em silencio.
+

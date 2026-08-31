@@ -1,10 +1,10 @@
 <?php
 // views/admin/clientes/index.php
 $tierCores = [
-    'bronze'   => ['bg'=>'#fef3c7','text'=>'#92400e','dot'=>'#d97706'],
-    'silver'   => ['bg'=>'#f1f5f9','text'=>'#475569','dot'=>'#94a3b8'],
-    'gold'     => ['bg'=>'#fef9c3','text'=>'#713f12','dot'=>'#ca8a04'],
-    'platinum' => ['bg'=>'#eff6ff','text'=>'#1e3a8a','dot'=>'#2563eb'],
+    'bronze'   => ['bg'=>'var(--warning-lt)','text'=>'var(--warning)','dot'=>'var(--warning)'],
+    'silver'   => ['bg'=>'var(--surface2)','text'=>'var(--text-2)','dot'=>'var(--text-3)'],
+    'gold'     => ['bg'=>'var(--warning-lt)','text'=>'var(--warning)','dot'=>'var(--warning)'],
+    'platinum' => ['bg'=>'var(--blue-lt)','text'=>'var(--blue)','dot'=>'var(--blue)'],
 ];
 $mesAtual = (int)date('n');
 $nomeMes  = ['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -179,7 +179,7 @@ $pct = fn($n, $t) => $t > 0 ? round($n / $t * 100) : 0;
                   <img src="<?= BASE_URL ?>/uploads/avatars/<?= View::e($c['avatar']) ?>"
                        style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;">
                 <?php else: ?>
-                  <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff;flex-shrink:0;">
+                  <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:var(--surface);flex-shrink:0;">
                     <?= mb_strtoupper(mb_substr($c['nome'],0,1)) ?>
                   </div>
                 <?php endif; ?>
@@ -203,7 +203,7 @@ $pct = fn($n, $t) => $t > 0 ? round($n / $t * 100) : 0;
             <td>
               <div style="display:flex;gap:4px;flex-wrap:wrap;">
                 <?php foreach ($tagNomes as $i => $tn): ?>
-                  <span style="background:<?= View::e($tagCores[$i] ?? '#64748b') ?>22;color:<?= View::e($tagCores[$i] ?? '#64748b') ?>;border:1px solid <?= View::e($tagCores[$i] ?? '#64748b') ?>44;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;">
+                  <span style="background:<?= View::e($tagCores[$i] ?? 'var(--text-2)') ?>22;color:<?= View::e($tagCores[$i] ?? 'var(--text-2)') ?>;border:1px solid <?= View::e($tagCores[$i] ?? 'var(--text-2)') ?>44;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;">
                     <?= View::e($tn) ?>
                   </span>
                 <?php endforeach; ?>
@@ -211,7 +211,7 @@ $pct = fn($n, $t) => $t > 0 ? round($n / $t * 100) : 0;
             </td>
             <td>
               <?php if ($ultimoAcesso): ?>
-                <span <?= $semAcesso30?'style="color:#dc2626;font-weight:700;"':'' ?>>
+                <span <?= $semAcesso30?'style="color:var(--danger);font-weight:700;"':'' ?>>
                   <?= date('d/m/Y', strtotime($ultimoAcesso)) ?>
                   <?= $semAcesso30 ? ' ⚠' : '' ?>
                 </span>
@@ -262,28 +262,6 @@ $pct = fn($n, $t) => $t > 0 ? round($n / $t * 100) : 0;
     <?php endif; ?>
   </div>
 </div>
-
-<style>
-.cli-dash{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}
-.cli-dash-card{background:#fff;border:1px solid var(--c-border,#e6e9ef);border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:4px;transition:box-shadow .18s,transform .18s}
-.cli-dash-card:hover{box-shadow:0 8px 24px rgba(15,23,42,.06);transform:translateY(-1px)}
-.cli-dash-card--primary{background:linear-gradient(135deg,#1e293b,#0f172a);border-color:#0f172a}
-.cli-dash-card--primary .cli-dash-label{color:#94a3b8}
-.cli-dash-card--primary .cli-dash-value{color:#fff}
-.cli-dash-card--primary .cli-dash-foot{color:#64748b}
-.cli-dash-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--c-text-muted,#64748b)}
-.cli-dash-value{font-size:28px;font-weight:800;line-height:1.1;color:var(--c-dark,#0f172a);font-variant-numeric:tabular-nums}
-.cli-dash-value--ok{color:#16a34a}
-.cli-dash-value--danger{color:#dc2626}
-.cli-dash-foot{font-size:11px;color:var(--c-text-muted,#94a3b8)}
-.cli-dash-card--novos{grid-column:span 1}
-.cli-dash-novos{display:flex;gap:14px;margin-top:2px}
-.cli-dash-novos>div{display:flex;flex-direction:column}
-.cli-dash-novos-num{font-size:20px;font-weight:800;color:var(--c-dark,#0f172a);line-height:1.1;font-variant-numeric:tabular-nums}
-.cli-dash-novos-cap{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;color:var(--c-text-muted,#94a3b8);margin-top:2px}
-@media (max-width:1100px){.cli-dash{grid-template-columns:repeat(3,1fr)}.cli-dash-card--novos{grid-column:span 3}}
-@media (max-width:640px){.cli-dash{grid-template-columns:repeat(2,1fr)}.cli-dash-card--novos{grid-column:span 2}}
-</style>
 
 <script>
   $(document).on('click', '.btn-sync-bling', function () {

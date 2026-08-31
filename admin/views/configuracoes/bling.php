@@ -46,8 +46,8 @@
         <div style="padding:16px 20px;">
           <?php if ($conectado): ?>
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
-            <div style="width:10px;height:10px;border-radius:50%;background:#16a34a;box-shadow:0 0 0 3px rgba(22,163,74,.2);"></div>
-            <strong style="color:#16a34a;">Conectado ao Bling</strong>
+            <div style="width:10px;height:10px;border-radius:50%;background:var(--success);box-shadow:0 0 0 3px rgba(22,163,74,.2);"></div>
+            <strong style="color:var(--success);">Conectado ao Bling</strong>
             <?php if ($tokenInfo): ?>
             <span style="font-size:12px;color:var(--c-text-muted);">
               Token expira em <?= date('d/m H:i', strtotime($tokenInfo['expires_at'])) ?>
@@ -60,7 +60,7 @@
           </div>
           <?php else: ?>
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
-            <div style="width:10px;height:10px;border-radius:50%;background:#94a3b8;"></div>
+            <div style="width:10px;height:10px;border-radius:50%;background:var(--text-3);"></div>
             <strong style="color:var(--c-text-muted);">Não conectado</strong>
           </div>
           <?php endif; ?>
@@ -198,11 +198,11 @@
             foreach ($itens as [$label, $ativo, $detalhe]):
             ?>
             <li style="display:flex;gap:10px;">
-              <span style="color:<?= $ativo ? '#16a34a' : '#94a3b8' ?>;">
+              <span style="color:<?= $ativo ? 'var(--success)' : 'var(--text-3)' ?>;">
                 <?= $ativo ? '✓' : '○' ?>
               </span>
               <div>
-                <strong style="color:<?= $ativo ? 'var(--c-heading)' : '#94a3b8' ?>"><?= $label ?></strong>
+                <strong style="color:<?= $ativo ? 'var(--c-heading)' : 'var(--text-3)' ?>"><?= $label ?></strong>
                 <div style="font-size:12px;color:var(--c-text-muted);"><?= $detalhe ?></div>
               </div>
             </li>
@@ -250,18 +250,18 @@
           <div id="depositos-lista">
             <?php if (empty($depositos)): ?>
             <div style="display:flex;align-items:center;gap:10px;padding:14px;border:1px dashed var(--c-border);border-radius:8px;font-size:13px;color:var(--c-text-muted);">
-              <div style="width:9px;height:9px;border-radius:50%;background:#94a3b8;flex-shrink:0;"></div>
+              <div style="width:9px;height:9px;border-radius:50%;background:var(--text-3);flex-shrink:0;"></div>
               Nenhum depósito sincronizado. Clique em <strong style="margin:0 3px;">Sincronizar</strong> para buscar da sua conta Bling.
             </div>
             <?php else: ?>
               <?php foreach ($depositos as $dep): ?>
               <div style="display:flex;align-items:center;gap:12px;padding:11px 14px;border:1px solid var(--c-border);border-radius:8px;margin-bottom:8px;<?= $dep['padrao'] ? 'background:#f0fdf4;border-color:#bbf7d0;' : '' ?>">
-                <div style="width:9px;height:9px;border-radius:50%;flex-shrink:0;background:<?= $dep['ativo'] ? '#16a34a' : '#cbd5e1' ?>;<?= $dep['padrao'] ? 'box-shadow:0 0 0 3px rgba(22,163,74,.2);' : '' ?>"></div>
+                <div style="width:9px;height:9px;border-radius:50%;flex-shrink:0;background:<?= $dep['ativo'] ? 'var(--success)' : 'var(--border2)' ?>;<?= $dep['padrao'] ? 'box-shadow:0 0 0 3px rgba(22,163,74,.2);' : '' ?>"></div>
                 <div style="flex:1;min-width:0;">
                   <div style="font-weight:700;font-size:13.5px;color:var(--c-dark);">
                     <?= View::e($dep['descricao'] ?: 'Depósito sem nome') ?>
                     <?php if ($dep['padrao']): ?>
-                    <span style="font-size:10.5px;font-weight:800;color:#16a34a;background:#dcfce7;padding:1px 7px;border-radius:99px;margin-left:6px;vertical-align:middle;">PADRÃO</span>
+                    <span style="font-size:10.5px;font-weight:800;color:var(--success);background:var(--success-lt);padding:1px 7px;border-radius:99px;margin-left:6px;vertical-align:middle;">PADRÃO</span>
                     <?php endif; ?>
                   </div>
                   <code style="font-size:11.5px;color:var(--c-text-muted);">ID: <?= View::e($dep['bling_deposito_id']) ?></code>
@@ -307,7 +307,7 @@ $('#btn-abrir-status-map').on('click', function () {
         '</button>' +
       '</div>' +
       '<div id="sm-table-wrap"></div>' +
-      '<div id="sm-error" style="display:none;color:#dc2626;font-size:13px;margin-top:10px;"></div>' +
+      '<div id="sm-error" style="display:none;color:var(--danger);font-size:13px;margin-top:10px;"></div>' +
       '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">' +
         '<button type="button" class="btn btn-ghost btn-sm" id="btn-add-linha">+ Adicionar linha</button>' +
         '<button type="button" class="btn btn-primary btn-sm" id="btn-salvar-sm">Salvar mapeamento</button>' +
@@ -429,7 +429,7 @@ $('#btn-abrir-status-map').on('click', function () {
           '</select>' +
         '</td>' +
         '<td style="text-align:center;">' +
-          '<button type="button" class="sm-rm" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:16px;" title="Remover">×</button>' +
+          '<button type="button" class="sm-rm" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px;" title="Remover">×</button>' +
         '</td>' +
       '</tr>';
 

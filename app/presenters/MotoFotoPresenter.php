@@ -17,13 +17,33 @@ final class MotoFotoPresenter
         ));
     }
 
+    /** As três versões moram em uploads/garagem/; a coluna guarda só o nome. */
+    public const PASTA = 'garagem/';
+
+    /** Nome do arquivo → URL absoluta, com a pasta certa. */
+    public static function arquivo(?string $nome, PresenterContext $ctx): ?string
+    {
+        $nome = trim((string)$nome);
+        if ($nome === '') {
+            return null;
+        }
+        if (preg_match('#^https?://#i', $nome)) {
+            return $nome;
+        }
+        return $ctx->url(self::PASTA . ltrim($nome, '/'));
+    }
+
     public static function uma(array $f, PresenterContext $ctx): array
     {
         return [
             'id'       => (int)$f['id'],
-            'thumb'    => $ctx->url($f['arquivo_thumb'] ?? null),
-            'medium'   => $ctx->url($f['arquivo_medium'] ?? null),
-            'full'     => $ctx->url($f['arquivo_full'] ?? null),
+            // PresenterContext::url() recebe o caminho a partir da RAIZ dos
+            // uploads. Passar só o nome do arquivo — como estava aqui — gerava
+            // /uploads/abc_medium.webp e dava 404 em TODA foto da garagem.
+            // É o mesmo tropeço já corrigido no avatar, em PerfilPresenter.
+            'thumb'    => self::arquivo($f['arquivo_thumb']  ?? null, $ctx),
+            'medium'   => self::arquivo($f['arquivo_medium'] ?? null, $ctx),
+            'full'     => self::arquivo($f['arquivo_full']   ?? null, $ctx),
             'largura'  => isset($f['largura']) ? (int)$f['largura'] : null,
             'altura'   => isset($f['altura']) ? (int)$f['altura'] : null,
             'legenda'  => $f['legenda'] ?? null,

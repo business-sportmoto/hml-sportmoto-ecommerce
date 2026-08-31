@@ -103,6 +103,11 @@ final class AvaliacaoPresenter
                 // Vídeo sem thumb (ffmpeg ausente) cai para null e o app mostra
                 // o placeholder de play em vez de uma imagem quebrada.
                 'thumb' => $thumb ? $ctx->url(self::PASTA . $thumb) : null,
+                // A nota de quem postou. Só a galeria do produto traz (o SELECT
+                // de getMidiasGlobal faz o JOIN com avaliacoes); dentro de uma
+                // avaliação seria redundante, e vem null. É o que coloca a
+                // estrelinha no canto da miniatura em "opiniões com fotos".
+                'nota'  => isset($m['nota']) ? (int)$m['nota'] : null,
             ];
         }, $midias));
     }

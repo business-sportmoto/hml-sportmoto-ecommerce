@@ -47,6 +47,7 @@ class AdquirenteFactory
         $adapter = match ($codigo) {
             'safrapay'    => new SafraPayAdapter(),
             'mercadopago' => new MercadoPagoAdapter(),
+            'cielo'       => new CieloAdapter(),
             'fake'     => new FakeAdquirenteAdapter('fake'),
             default    => null,
         };

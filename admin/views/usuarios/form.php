@@ -14,15 +14,15 @@ $nivelSel = $usuario['nivel'] ?? 'vendedor';
 </div>
 
 <?php if (!empty($erro)): ?>
-<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;
-     padding:12px 16px;margin:14px 0;font-size:13.5px;color:#dc2626;">⚠ <?= View::e($erro) ?></div>
+<div style="background:var(--danger-lt);border:1px solid var(--danger-bd);border-radius:10px;
+     padding:12px 16px;margin:14px 0;font-size:13.5px;color:var(--danger);">⚠ <?= View::e($erro) ?></div>
 <?php endif; ?>
 
 <?php if (!$editando): // ── FLUXO: BUSCAR + PROMOVER ── ?>
 
 <div class="admin-card" style="padding:18px;max-width:640px;">
-  <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;
-       padding:12px 16px;margin-bottom:18px;font-size:13px;color:#1e40af;">
+  <div style="background:var(--blue-lt);border:1px solid var(--blue-bd);border-radius:10px;
+       padding:12px 16px;margin-bottom:18px;font-size:13px;color:var(--blue);">
     ℹ️ O acesso é concedido a um usuário <strong>já cadastrado</strong> na loja.
     Ele usa a <strong>senha de login que já possui</strong> — nenhuma senha é criada aqui.
   </div>
@@ -44,11 +44,11 @@ $nivelSel = $usuario['nivel'] ?? 'vendedor';
     <?= SecurityHelper::csrfField() ?>
     <input type="hidden" name="usuario_id" id="pr-usuario-id">
 
-    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;
+    <div style="background:var(--success-lt);border:1px solid var(--success-bd);border-radius:10px;
          padding:14px 16px;margin-bottom:16px;">
       <div style="font-weight:800;font-size:15px;" id="pr-nome"></div>
       <div style="font-size:13px;color:var(--c-text-muted);" id="pr-email"></div>
-      <div id="pr-aviso-vend" style="display:none;font-size:12px;color:#d97706;margin-top:6px;"></div>
+      <div id="pr-aviso-vend" style="display:none;font-size:12px;color:var(--warning);margin-top:6px;"></div>
     </div>
 
     <div class="form-group">
@@ -84,8 +84,8 @@ $nivelSel = $usuario['nivel'] ?? 'vendedor';
         É o código usado no checkout e nos relatórios de comissão.</span>
     </div>
 
-    <div id="aviso-super" style="display:none;background:#f5f3ff;border:1px solid #ddd6fe;
-         border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;color:#5b21b6;">
+    <div id="aviso-super" style="display:none;background:var(--purple-lt);border:1px solid var(--purple-bd);
+         border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;color:var(--purple);">
       ⚠️ <strong>Super Admin tem acesso TOTAL</strong>, incluindo gestão de usuários e integrações.
     </div>
 
@@ -97,8 +97,8 @@ $nivelSel = $usuario['nivel'] ?? 'vendedor';
 <?php else: // ── FLUXO: EDITAR ACESSO EXISTENTE ── ?>
 
 <?php if ($ehSelf): ?>
-<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;
-     padding:12px 16px;margin:14px 0;font-size:13px;color:#92400e;">
+<div style="background:var(--warning-lt);border:1px solid var(--warning-bd);border-radius:10px;
+     padding:12px 16px;margin:14px 0;font-size:13px;color:var(--warning);">
   🔒 Você está editando a própria conta: cargo e status não podem ser alterados por você mesmo.
 </div>
 <?php endif; ?>
@@ -152,7 +152,7 @@ $nivelSel = $usuario['nivel'] ?? 'vendedor';
         <button type="button" class="btn" id="btn-regen" style="white-space:nowrap;">🎲 Gerar</button>
       </div>
       <?php if (!empty($usuario['codigo_vendedor']) && !(int)($usuario['vendedor_ativo'] ?? 0)): ?>
-        <span class="form-hint" style="color:#d97706;">Este código existe mas está inativo —
+        <span class="form-hint" style="color:var(--warning);">Este código existe mas está inativo —
           selecionar "Vendedor" o reativa.</span>
       <?php endif; ?>
     </div>
@@ -179,7 +179,7 @@ $nivelSel = $usuario['nivel'] ?? 'vendedor';
 <!-- Modal de capacidades (reutilizado) -->
 <div id="modal-cargo" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);
      z-index:200;align-items:center;justify-content:center;padding:20px;">
-  <div style="background:#fff;border-radius:14px;max-width:480px;width:100%;
+  <div style="background:var(--surface);border-radius:14px;max-width:480px;width:100%;
               max-height:85vh;overflow-y:auto;padding:24px;">
     <span id="mc-badge" class="badge" style="font-size:12px;font-weight:800;padding:5px 14px;border-radius:99px;"></span>
     <p id="mc-desc" style="margin:8px 0 16px;font-size:13px;color:var(--c-text-muted);"></p>
@@ -205,7 +205,7 @@ jQuery(function ($) {
     Object.keys(c.capacidades).forEach(function (m) {
       var $b = $('<div style="margin-bottom:14px;">');
       $('<div style="font-size:11.5px;font-weight:800;text-transform:uppercase;' +
-        'letter-spacing:.4px;color:#64748b;margin-bottom:6px;">').text(m).appendTo($b);
+        'letter-spacing:.4px;color:var(--text-2);margin-bottom:6px;">').text(m).appendTo($b);
       var $ul = $('<ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.7;">');
       c.capacidades[m].forEach(function (i) { $('<li>').text(i).appendTo($ul); });
       $b.append($ul).appendTo($caps);
@@ -243,7 +243,7 @@ jQuery(function ($) {
       .done(function (r) {
         if (!r.ok) {
           $('#form-promover').hide();
-          $('#busca-hint').text(r.msg).css('color', '#dc2626');
+          $('#busca-hint').text(r.msg).css('color', 'var(--danger)');
           return;
         }
         var u = r.usuario;
@@ -258,10 +258,10 @@ jQuery(function ($) {
         } else {
           $('#pr-aviso-vend').hide();
         }
-        $('#busca-hint').text('Usuário encontrado.').css('color', '#16a34a');
+        $('#busca-hint').text('Usuário encontrado.').css('color', 'var(--success)');
         $('#form-promover').slideDown(150);
       })
-      .fail(function () { $('#busca-hint').text('Erro de rede.').css('color', '#dc2626'); })
+      .fail(function () { $('#busca-hint').text('Erro de rede.').css('color', 'var(--danger)'); })
       .always(function () { $('#btn-buscar').prop('disabled', false).text('🔍 Buscar'); });
   }
   $('#btn-buscar').on('click', buscar);

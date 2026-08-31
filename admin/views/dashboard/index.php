@@ -296,7 +296,7 @@ $statusLabels = [
   }
 
   const isDark = document.documentElement.classList.contains('dark');
-  const textColor = isDark ? '#a0a0a0' : '#888';
+  const textColor = isDark ? 'var(--text-3)' : 'var(--text-3)';
   const gridColor = isDark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
 
   new Chart(document.getElementById('chartReceita'), {

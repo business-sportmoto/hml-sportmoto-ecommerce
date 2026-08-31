@@ -6,7 +6,6 @@
 if (!function_exists('ia_e')) {
     function ia_e($v): string { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); }
 }
-include __DIR__ . '/../_estilos.php';
 ?>
 <div class="ia_pagina">
 

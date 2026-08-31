@@ -150,7 +150,12 @@ class ReversaController extends Controller
             $ts = $pdo->query("SELECT id, nome FROM log_transportadoras WHERE status = 'ativo' ORDER BY prioridade ASC, id ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
             if (!$ts) return [];
             $in = implode(',', array_map(static fn($t) => (int)$t['id'], $ts));
-            $sv = $pdo->query("SELECT transportadora_id, codigo, nome FROM log_transportadora_servicos WHERE transportadora_id IN ($in) AND habilitado = 1 ORDER BY nome ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            // Logistica reversa aceita apenas servico de devolucao; os codigos de ida
+            // apareciam na lista e geravam pedido recusado pela transportadora.
+            $sv = $pdo->query("SELECT transportadora_id, codigo, nome FROM log_transportadora_servicos
+                                WHERE transportadora_id IN ($in) AND habilitado = 1
+                                  AND modalidade = 'reverso'
+                                ORDER BY nome ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
             $porT = [];
             foreach ($sv as $s) $porT[$s['transportadora_id']][] = ['codigo' => $s['codigo'], 'nome' => $s['nome']];
             foreach ($ts as &$t) $t['servicos'] = $porT[$t['id']] ?? [];

@@ -128,6 +128,70 @@
     $(this).closest('.save-card-toggle').toggleClass('is-checked', $(this).is(':checked'));
   });
 
+  /**
+   * Desafio 3-D Secure.
+   *
+   * O emissor autentica o comprador dentro de um iframe. Quando termina, o
+   * Mercado Pago devolve para o nosso callback, que avisa esta janela por
+   * postMessage. So entao perguntamos o desfecho AO SERVIDOR — o postMessage
+   * diz apenas "terminou", nunca "foi aprovado": qualquer pagina poderia
+   * mandar essa mensagem.
+   */
+  function abrirDesafio3ds(desafio, $btn, $err) {
+    var $fundo = $(
+      '<div class="tds-fundo" role="dialog" aria-modal="true" aria-label="Autenticação do banco">' +
+        '<div class="tds-caixa">' +
+          '<div class="tds-topo">' +
+            '<strong>Confirmação do seu banco</strong>' +
+            '<small>Conclua a verificação para autorizar a compra.</small>' +
+          '</div>' +
+          '<iframe class="tds-frame" title="Autenticação do banco"></iframe>' +
+          '<div class="tds-rodape"><span class="tds-espera">Aguardando o banco…</span></div>' +
+        '</div>' +
+      '</div>'
+    );
+
+    $fundo.find('.tds-frame').attr('src', desafio.url);
+    $('body').append($fundo).addClass('tds-aberto');
+
+    var encerrado = false;
+
+    function conferir() {
+      if (encerrado) return;
+      encerrado = true;
+
+      window.removeEventListener('message', ouvir);
+      clearTimeout(limite);
+      $fundo.find('.tds-espera').text('Confirmando o pagamento…');
+
+      $.getJSON(desafio.status)
+        .done(function (r) {
+          $fundo.remove();
+          $('body').removeClass('tds-aberto');
+          // Aprovado ou nao, o pedido existe e a tela dele conta o que houve.
+          window.location.href = (r && r.redirect) || desafio.status;
+        })
+        .fail(function () {
+          $fundo.remove();
+          $('body').removeClass('tds-aberto');
+          CK.btnLoading($btn, false);
+          CK.formAlertSet($err, 'Não foi possível confirmar a autenticação. ' +
+                                'Acompanhe o pedido em Minha conta.');
+        });
+    }
+
+    function ouvir(ev) {
+      if (ev && ev.data && ev.data.tipo === '3ds-concluido') conferir();
+    }
+
+    window.addEventListener('message', ouvir);
+
+    // O emissor da 40 minutos, mas ninguem fica olhando um iframe tanto
+    // tempo. Depois de 10 a gente pergunta assim mesmo: o desfecho pode ter
+    // saido e a mensagem ter se perdido.
+    var limite = setTimeout(conferir, 600000);
+  }
+
   // Finalizar
   $('#btn-finalize').on('click', function () {
     const $btn   = $(this);
@@ -176,6 +240,12 @@
         gateway_token:   tokenSalvo || ''
       })
       .done(function (res) {
+        // O emissor pediu autenticacao: nao da para mandar o cliente para a
+        // tela de sucesso ainda — o pagamento nao esta aprovado nem recusado.
+        if (res.ok && res.desafio_3ds && res.desafio_3ds.url) {
+          abrirDesafio3ds(res.desafio_3ds, $btn, $err);
+          return;
+        }
         if (res.ok && res.redirect) { window.location.href = res.redirect; return; }
         CK.btnLoading($btn, false);
         CK.formAlertSet($err, res.msg || 'Erro ao processar pagamento.');

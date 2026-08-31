@@ -3,8 +3,8 @@
 // Variáveis: $templates, $canal (filtro ativo|null), $salvo (bool)
 
 $canalCfg = [
-  'whatsapp' => ['💬 WhatsApp', '#16a34a', '#f0fdf4'],
-  'email'    => ['✉ E-mail',   '#1d4ed8', '#eff6ff'],
+  'whatsapp' => ['💬 WhatsApp', 'var(--success)', 'var(--success-lt)'],
+  'email'    => ['✉ E-mail',   'var(--blue)', 'var(--blue-lt)'],
 ];
 ?>
 <div class="ap-page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
@@ -21,8 +21,8 @@ $canalCfg = [
 </div>
 
 <?php if (!empty($salvo)): ?>
-<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;
-     padding:12px 16px;margin:14px 0;font-size:13.5px;color:#15803d;">
+<div style="background:var(--success-lt);border:1px solid var(--success-bd);border-radius:10px;
+     padding:12px 16px;margin:14px 0;font-size:13.5px;color:var(--success);">
   ✓ Template salvo com sucesso.
 </div>
 <?php endif; ?>
@@ -69,7 +69,7 @@ $canalCfg = [
         <?= View::e(mb_substr(strip_tags($t['conteudo']), 0, 120)) ?>…
       </div>
       <?php if ($t['uso_recomendado']): ?>
-      <div style="font-size:11.5px;color:#7c3aed;margin-top:3px;">
+      <div style="font-size:11.5px;color:var(--purple);margin-top:3px;">
         💡 <?= View::e($t['uso_recomendado']) ?></div>
       <?php endif; ?>
     </div>
@@ -86,7 +86,7 @@ $canalCfg = [
       <a href="<?= ADMIN_URL ?>/carrinhos-abandonados/templates/<?= (int)$t['id'] ?>"
          class="btn" style="white-space:nowrap;">Editar</a>
       <button class="btn tpl-excluir" data-id="<?= (int)$t['id'] ?>"
-              style="color:#dc2626;">Excluir</button>
+              style="color:var(--danger);">Excluir</button>
     </div>
   </div>
 <?php endforeach; ?>

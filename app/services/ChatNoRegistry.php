@@ -1,0 +1,1330 @@
+<?php
+/**
+ * app/services/ChatNoRegistry.php
+ *
+ * Catálogo de blocos do construtor de fluxos conversacionais.
+ *
+ * Mesma decisão arquitetural do FluxoNoRegistry: TODAS as classes de nó vivem
+ * neste arquivo. O acesso é sempre pelo registry, então o spl_autoload
+ * (1 classe = 1 arquivo) nunca precisa encontrá-las individualmente.
+ *
+ * CONTRATO DE UM NÓ:
+ *   executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+ *     → devolve o NOME DA PORTA de saída, ou uma constante ChatNo::*
+ *   Pode escrever em $sessao['contexto'], $sessao['dormir_ate'],
+ *   $sessao['aguardando_ate'] e $sessao['erro_detalhe'].
+ *
+ * DIFERENÇA CENTRAL PARA O MOTOR v2: aqui o fluxo é uma CONVERSA. Nós de
+ * pergunta (botões, lista, esperar_resposta) param a execução e só continuam
+ * quando o contato responde — por isso existe a constante AGUARDAR e o
+ * conceito de "porta de retomada" gravada no contexto.
+ *
+ * Adicionar um bloco novo = 1 classe aqui + 1 linha no MAPA + metadados no JS.
+ */
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONTEXTO DE EXECUÇÃO — evita reinstanciar services em cada nó
+// ─────────────────────────────────────────────────────────────────────────────
+class ChatExecCtx
+{
+    public PDO $db;
+    public ChatContatoService  $contatos;
+    public ChatConversaService $conversas;
+    public ChatMensagemService $mensagens;
+    public ChatEnvioService    $envio;
+
+    /** @var array contato hidratado da sessão corrente */
+    public array $contato = [];
+    /** @var array variáveis de interpolação já montadas */
+    public array $vars = [];
+
+    public function __construct(?PDO $db = null)
+    {
+        $this->db        = $db ?? Database::getInstance()->getConnection();
+        $this->contatos  = new ChatContatoService($this->db);
+        $this->conversas = new ChatConversaService($this->db);
+        $this->mensagens = new ChatMensagemService($this->db);
+        $this->envio     = new ChatEnvioService($this->db);
+    }
+
+    /** Recarrega contato + vars (após uma ação que mudou tag/campo). */
+    public function recarregarContato(int $contatoId): void
+    {
+        $c = $this->contatos->obter($contatoId);
+        if ($c) {
+            $this->contato = $c;
+            $this->vars    = $this->contatos->variaveis($c);
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+abstract class ChatNo
+{
+    /** Retornos especiais (não são portas) */
+    public const DORMIR   = '__dormir';    // setou dormir_ate
+    public const AGUARDAR = '__aguardar';  // espera resposta do contato
+    public const ENCERRAR = '__encerrar';
+    public const ERRO     = '__erro';      // setou erro_detalhe
+    public const PULAR    = '__pular';     // trocou de fluxo (ir_para_fluxo)
+
+    abstract public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string;
+
+    /** Portas declaradas — validação do grafo e desenho do canvas. */
+    abstract public function portas(): array;
+
+    public function ehTrigger(): bool { return false; }
+
+    /** Categoria para agrupar na paleta: trigger|mensagem|logica|condicao|acao */
+    public function categoria(): string { return 'acao'; }
+
+    /** Este nó pausa a execução esperando o contato? (o motor usa para validar) */
+    public function ehPergunta(): bool { return false; }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    protected function ctx(array $sessao): array
+    {
+        return is_array($sessao['contexto'] ?? null) ? $sessao['contexto'] : [];
+    }
+
+    protected function chave(array $sessao): string
+    {
+        return (string)($sessao['no_atual'] ?? '');
+    }
+
+    protected function texto(array $config, string $campo, ChatExecCtx $ctx, string $default = ''): string
+    {
+        $t = (string)($config[$campo] ?? $default);
+        return ChatContatoService::interpolar($t, $ctx->vars);
+    }
+
+    /** Marca no contexto que este nó já enviou (evita reenvio ao retomar). */
+    protected function jaEnviou(array $sessao, string $sufixo = 'env'): bool
+    {
+        $c = $this->ctx($sessao);
+        return !empty($c['_' . $sufixo . '_' . $this->chave($sessao)]);
+    }
+
+    protected function marcarEnviado(array &$sessao, string $sufixo = 'env'): void
+    {
+        $c = $this->ctx($sessao);
+        $c['_' . $sufixo . '_' . $this->chave($sessao)] = 1;
+        $sessao['contexto'] = $c;
+    }
+
+    protected function limparMarca(array &$sessao, string $sufixo): void
+    {
+        $c = $this->ctx($sessao);
+        unset($c['_' . $sufixo . '_' . $this->chave($sessao)]);
+        $sessao['contexto'] = $c;
+    }
+
+    /**
+     * A resposta que o contato deu a ESTE nó, se já chegou.
+     * O motor grava em _resposta_<chave> quando reativa a sessão.
+     */
+    protected function respostaRecebida(array $sessao): ?array
+    {
+        $c = $this->ctx($sessao);
+        $r = $c['_resposta_' . $this->chave($sessao)] ?? null;
+        return is_array($r) ? $r : null;
+    }
+
+    protected function segundosDe(array $config, int $default = 0): int
+    {
+        $s = (int)($config['dias'] ?? 0) * 86400
+           + (int)($config['horas'] ?? 0) * 3600
+           + (int)($config['minutos'] ?? 0) * 60
+           + (int)($config['segundos'] ?? 0);
+        return $s > 0 ? $s : $default;
+    }
+
+    protected function opts(array $sessao, array $extra = []): array
+    {
+        return array_merge([
+            'origem'    => 'fluxo',
+            'origem_id' => (int)($sessao['fluxo_id'] ?? 0),
+        ], $extra);
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TRIGGERS — pontos de entrada. Execução é passthrough.
+// ═════════════════════════════════════════════════════════════════════════════
+
+abstract class ChatNoTrigger extends ChatNo
+{
+    public function portas(): array   { return ['saida']; }
+    public function ehTrigger(): bool { return true; }
+    public function categoria(): string { return 'trigger'; }
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string { return 'saida'; }
+}
+
+/** config: {"palavras":"oi,ola,menu","modo":"contem|exato|comeca|regex"} */
+class ChatNoGatilhoPalavra extends ChatNoTrigger {}
+
+/** Primeira mensagem que o contato manda na vida. */
+class ChatNoGatilhoBoasVindas extends ChatNoTrigger {}
+
+/** Nada casou — a rede de segurança da conversa. */
+class ChatNoGatilhoPadrao extends ChatNoTrigger {}
+
+/** config: {"codigo":"promo-instagram"} — via wa.me/...?text=... ou anúncio CTWA */
+class ChatNoGatilhoReferencia extends ChatNoTrigger {}
+
+/** Disparado pelo admin, por campanha ou por API. */
+class ChatNoGatilhoManual extends ChatNoTrigger {}
+
+/** config: {"evento":"pedido_criado"} — ponte com a tabela `eventos` da loja. */
+class ChatNoGatilhoEventoLoja extends ChatNoTrigger {}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// MENSAGENS
+// ═════════════════════════════════════════════════════════════════════════════
+
+/** config: {"texto":"...","preview_url":true} */
+class ChatNoMsgTexto extends ChatNo
+{
+    public function portas(): array { return ['saida']; }
+    public function categoria(): string { return 'mensagem'; }
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        $texto = $this->texto($config, 'texto', $ctx);
+        if (trim($texto) === '') return 'saida';   // nó vazio não é erro, só não faz nada
+
+        $r = $ctx->envio->texto((int)$sessao['contato_id'], $texto, $this->opts($sessao, [
+            'preview_url' => !isset($config['preview_url']) || (bool)$config['preview_url'],
+        ]));
+
+        return $this->tratarEnvio($r, $sessao);
+    }
+
+    /**
+     * Falha de envio não é sempre erro fatal: fora da janela o fluxo deve
+     * simplesmente parar (a pessoa não pode ser alcançada agora), não explodir.
+     */
+    protected function tratarEnvio(array $r, array &$sessao): string
+    {
+        if ($r['ok']) return 'saida';
+
+        if (in_array($r['motivo'] ?? '', [
+            ChatEnvioService::MOTIVO_FORA_JANELA,
+            ChatEnvioService::MOTIVO_OPTOUT,
+            ChatEnvioService::MOTIVO_BLOQUEADO,
+        ], true)) {
+            $sessao['erro_detalhe'] = $r['motivo'];
+            return self::ENCERRAR;
+        }
+
+        $sessao['erro_detalhe'] = mb_substr((string)($r['erro'] ?? 'falha no envio'), 0, 200);
+        return self::ERRO;
+    }
+}
+
+/** config: {"tipo_midia":"image","url":"...","legenda":"...","nome_arquivo":"..."} */
+class ChatNoMsgMidia extends ChatNoMsgTexto
+{
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        $url = $this->texto($config, 'url', $ctx);
+        if (trim($url) === '') return 'saida';
+
+        $r = $ctx->envio->midia(
+            (int)$sessao['contato_id'],
+            (string)($config['tipo_midia'] ?? 'image'),
+            $url,
+            $this->opts($sessao, [
+                'legenda'      => $this->texto($config, 'legenda', $ctx) ?: null,
+                'nome_arquivo' => $config['nome_arquivo'] ?? null,
+            ])
+        );
+        return $this->tratarEnvio($r, $sessao);
+    }
+}
+
+/**
+ * Botões de resposta rápida. PARA a execução e ramifica pelo botão clicado.
+ *
+ * config: {"corpo":"...","rodape":"...","cabecalho":{...},
+ *          "botoes":[{"titulo":"Sim"},{"titulo":"Não"}],
+ *          "timeout":{"horas":24}, "salvar_em":"escolha"}
+ * portas: btn_1, btn_2, btn_3, timeout
+ *
+ * Os ids enviados à Meta são btn_1..btn_3 — assim a resposta volta com a
+ * própria porta no id e o roteamento fica direto, sem tabela de tradução.
+ */
+class ChatNoMsgBotoes extends ChatNoMsgTexto
+{
+    public function portas(): array { return ['btn_1', 'btn_2', 'btn_3', 'timeout']; }
+    public function ehPergunta(): bool { return true; }
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        // ── 2ª passada: a resposta chegou ──
+        if ($resposta = $this->respostaRecebida($sessao)) {
+            $this->limparMarca($sessao, 'env');
+            $c = $this->ctx($sessao);
+            unset($c['_resposta_' . $this->chave($sessao)]);
+
+            if (($resposta['tipo'] ?? '') === 'timeout') {
+                $sessao['contexto'] = $c;
+                return 'timeout';
+            }
+
+            $porta = (string)($resposta['id'] ?? '');
+            if (!empty($config['salvar_em'])) {
+                $campo = preg_replace('/[^a-z0-9_]/i', '_', (string)$config['salvar_em']);
+                $valor = (string)($resposta['titulo'] ?? $resposta['texto'] ?? '');
+                $c[$campo] = $valor;
+                $ctx->contatos->setCampo((int)$sessao['contato_id'], $campo, $valor);
+            }
+            $sessao['contexto'] = $c;
+
+            return in_array($porta, ['btn_1', 'btn_2', 'btn_3'], true) ? $porta : 'timeout';
+        }
+
+        // ── 1ª passada: envia e aguarda ──
+        if (!$this->jaEnviou($sessao)) {
+            $botoes = [];
+            foreach (array_slice((array)($config['botoes'] ?? []), 0, 3) as $i => $b) {
+                $titulo = trim(ChatContatoService::interpolar((string)($b['titulo'] ?? ''), $ctx->vars));
+                if ($titulo === '') continue;
+                $botoes[] = ['id' => 'btn_' . ($i + 1), 'titulo' => $titulo];
+            }
+            if (!$botoes) {
+                $sessao['erro_detalhe'] = 'nó de botões sem botões configurados';
+                return self::ERRO;
+            }
+
+            $r = $ctx->envio->botoes(
+                (int)$sessao['contato_id'],
+                $this->texto($config, 'corpo', $ctx, 'Escolha uma opção:'),
+                $botoes,
+                $this->opts($sessao, [
+                    'rodape'    => $this->texto($config, 'rodape', $ctx) ?: null,
+                    'cabecalho' => $config['cabecalho'] ?? null,
+                ])
+            );
+            if (!$r['ok']) return $this->tratarEnvio($r, $sessao);
+            $this->marcarEnviado($sessao);
+        }
+
+        $sessao['aguardando_ate'] = date('Y-m-d H:i:s', time() + $this->segundosDe((array)($config['timeout'] ?? []), 86400));
+        return self::AGUARDAR;
+    }
+}
+
+/**
+ * Lista de opções (até 10). Mesma mecânica dos botões, portas op_1..op_10.
+ * config: {"corpo":"...","texto_botao":"Ver","secoes":[{"titulo":"..","linhas":[{"titulo":"..","descricao":".."}]}]}
+ */
+class ChatNoMsgLista extends ChatNoMsgTexto
+{
+    public function portas(): array
+    {
+        $p = [];
+        for ($i = 1; $i <= 10; $i++) $p[] = 'op_' . $i;
+        $p[] = 'timeout';
+        return $p;
+    }
+    public function ehPergunta(): bool { return true; }
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        if ($resposta = $this->respostaRecebida($sessao)) {
+            $this->limparMarca($sessao, 'env');
+            $c = $this->ctx($sessao);
+            unset($c['_resposta_' . $this->chave($sessao)]);
+
+            if (($resposta['tipo'] ?? '') === 'timeout') {
+                $sessao['contexto'] = $c;
+                return 'timeout';
+            }
+
+            $porta = (string)($resposta['id'] ?? '');
+            if (!empty($config['salvar_em'])) {
+                $campo = preg_replace('/[^a-z0-9_]/i', '_', (string)$config['salvar_em']);
+                $valor = (string)($resposta['titulo'] ?? '');
+                $c[$campo] = $valor;
+                $ctx->contatos->setCampo((int)$sessao['contato_id'], $campo, $valor);
+            }
+            $sessao['contexto'] = $c;
+
+            return preg_match('/^op_([1-9]|10)$/', $porta) ? $porta : 'timeout';
+        }
+
+        if (!$this->jaEnviou($sessao)) {
+            $secoes = []; $n = 0;
+            foreach ((array)($config['secoes'] ?? []) as $s) {
+                $linhas = [];
+                foreach ((array)($s['linhas'] ?? []) as $l) {
+                    if ($n >= 10) break;
+                    $titulo = trim(ChatContatoService::interpolar((string)($l['titulo'] ?? ''), $ctx->vars));
+                    if ($titulo === '') continue;
+                    $n++;
+                    $linhas[] = [
+                        'id'        => 'op_' . $n,
+                        'titulo'    => $titulo,
+                        'descricao' => ChatContatoService::interpolar((string)($l['descricao'] ?? ''), $ctx->vars),
+                    ];
+                }
+                if ($linhas) $secoes[] = ['titulo' => (string)($s['titulo'] ?? 'Opções'), 'linhas' => $linhas];
+            }
+            if (!$secoes) {
+                $sessao['erro_detalhe'] = 'nó de lista sem opções configuradas';
+                return self::ERRO;
+            }
+
+            $r = $ctx->envio->lista(
+                (int)$sessao['contato_id'],
+                $this->texto($config, 'corpo', $ctx, 'Escolha uma opção:'),
+                $this->texto($config, 'texto_botao', $ctx, 'Ver opções'),
+                $secoes,
+                $this->opts($sessao, [
+                    'rodape'    => $this->texto($config, 'rodape', $ctx) ?: null,
+                    'cabecalho' => $config['cabecalho'] ?? null,
+                ])
+            );
+            if (!$r['ok']) return $this->tratarEnvio($r, $sessao);
+            $this->marcarEnviado($sessao);
+        }
+
+        $sessao['aguardando_ate'] = date('Y-m-d H:i:s', time() + $this->segundosDe((array)($config['timeout'] ?? []), 86400));
+        return self::AGUARDAR;
+    }
+}
+
+/** config: {"nome":"pedido_criado","idioma":"pt_BR","params_body":["{{nome}}"],"param_header":"","param_botao":""} */
+class ChatNoMsgTemplate extends ChatNoMsgTexto
+{
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        $nome = trim((string)($config['nome'] ?? ''));
+        if ($nome === '') {
+            $sessao['erro_detalhe'] = 'nó de template sem nome';
+            return self::ERRO;
+        }
+
+        $componentes = [];
+
+        $header = trim($this->texto($config, 'param_header', $ctx));
+        if ($header !== '') {
+            $componentes[] = ['type' => 'header', 'parameters' => [['type' => 'text', 'text' => $header]]];
+        }
+
+        $params = (array)($config['params_body'] ?? []);
+        if ($params) {
+            $componentes[] = [
+                'type' => 'body',
+                'parameters' => array_map(
+                    fn($v) => ['type' => 'text', 'text' => ChatContatoService::interpolar((string)$v, $ctx->vars)],
+                    array_values($params)
+                ),
+            ];
+        }
+
+        $btn = trim($this->texto($config, 'param_botao', $ctx));
+        if ($btn !== '') {
+            $componentes[] = [
+                'type' => 'button', 'sub_type' => 'url', 'index' => '0',
+                'parameters' => [['type' => 'text', 'text' => $btn]],
+            ];
+        }
+
+        $r = $ctx->envio->template(
+            (int)$sessao['contato_id'], $nome,
+            (string)($config['idioma'] ?? 'pt_BR'), $componentes,
+            $this->opts($sessao)
+        );
+        return $this->tratarEnvio($r, $sessao);
+    }
+}
+
+/** config: {"corpo":"...","texto_botao":"Abrir","url":"https://..."} */
+class ChatNoMsgBotaoUrl extends ChatNoMsgTexto
+{
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        $url = trim($this->texto($config, 'url', $ctx));
+        if ($url === '') {
+            $sessao['erro_detalhe'] = 'nó de botão URL sem URL';
+            return self::ERRO;
+        }
+        $r = $ctx->envio->botaoUrl(
+            (int)$sessao['contato_id'],
+            $this->texto($config, 'corpo', $ctx, ' '),
+            $this->texto($config, 'texto_botao', $ctx, 'Abrir'),
+            $url,
+            $this->opts($sessao, ['rodape' => $this->texto($config, 'rodape', $ctx) ?: null])
+        );
+        return $this->tratarEnvio($r, $sessao);
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// LÓGICA / FLUXO
+// ═════════════════════════════════════════════════════════════════════════════
+
+/** config: {"minutos":0,"horas":1,"dias":0} */
+class ChatNoEsperar extends ChatNo
+{
+    public function portas(): array { return ['saida']; }
+    public function categoria(): string { return 'logica'; }
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        $c     = $this->ctx($sessao);
+        $marca = '_dormiu_' . $this->chave($sessao);
+
+        if (!empty($c[$marca])) {           // já acordou
+            unset($c[$marca]);
+            $sessao['contexto'] = $c;
+            return 'saida';
+        }
+
+        $seg = $this->segundosDe($config, 3600);
+        $c[$marca] = 1;
+        $sessao['contexto']   = $c;
+        $sessao['dormir_ate'] = date('Y-m-d H:i:s', time() + $seg);
+        return self::DORMIR;
+    }
+}
+
+/**
+ * Pergunta aberta: espera o contato digitar, valida e guarda a resposta.
+ *
+ * config: {"pergunta":"Qual seu CEP?","salvar_em":"cep",
+ *          "validacao":"texto|numero|email|telefone|cep|cpf",
+ *          "mensagem_invalida":"Não entendi...","max_tentativas":3,
+ *          "timeout":{"horas":24}}
+ * portas: resposta | invalido | timeout
+ */
+class ChatNoEsperarResposta extends ChatNo
+{
+    public function portas(): array { return ['resposta', 'invalido', 'timeout']; }
+    public function categoria(): string { return 'logica'; }
+    public function ehPergunta(): bool { return true; }
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        $chave = $this->chave($sessao);
+        $c     = $this->ctx($sessao);
+
+        // ── 2ª passada ──
+        if ($resposta = $this->respostaRecebida($sessao)) {
+            unset($c['_resposta_' . $chave]);
+
+            if (($resposta['tipo'] ?? '') === 'timeout') {
+                unset($c['_env_' . $chave], $c['_tent_' . $chave]);
+                $sessao['contexto'] = $c;
+                return 'timeout';
+            }
+
+            $texto     = trim((string)($resposta['texto'] ?? ''));
+            $validacao = (string)($config['validacao'] ?? 'texto');
+            $valido    = $this->validar($texto, $validacao);
+
+            if (!$valido) {
+                $tent = (int)($c['_tent_' . $chave] ?? 0) + 1;
+                $max  = max(1, (int)($config['max_tentativas'] ?? 3));
+
+                if ($tent >= $max) {
+                    unset($c['_env_' . $chave], $c['_tent_' . $chave]);
+                    $sessao['contexto'] = $c;
+                    return 'invalido';
+                }
+
+                $c['_tent_' . $chave] = $tent;
+                $sessao['contexto'] = $c;
+
+                $msg = $this->texto($config, 'mensagem_invalida', $ctx, 'Não entendi. Pode tentar de novo?');
+                $ctx->envio->texto((int)$sessao['contato_id'], $msg, $this->opts($sessao));
+
+                // Reabre a espera sem reenviar a pergunta original
+                $sessao['aguardando_ate'] = date('Y-m-d H:i:s', time() + $this->segundosDe((array)($config['timeout'] ?? []), 86400));
+                return self::AGUARDAR;
+            }
+
+            // Válido: normaliza, guarda no contexto E no contato
+            $valor = $this->normalizar($texto, $validacao);
+            $campo = preg_replace('/[^a-z0-9_]/i', '_', (string)($config['salvar_em'] ?? 'resposta'));
+
+            $c[$campo] = $valor;
+            unset($c['_env_' . $chave], $c['_tent_' . $chave]);
+            $sessao['contexto'] = $c;
+
+            $ctx->contatos->setCampo((int)$sessao['contato_id'], $campo, $valor);
+            $ctx->recarregarContato((int)$sessao['contato_id']);
+
+            return 'resposta';
+        }
+
+        // ── 1ª passada ──
+        if (!$this->jaEnviou($sessao)) {
+            $pergunta = $this->texto($config, 'pergunta', $ctx);
+            if (trim($pergunta) !== '') {
+                $r = $ctx->envio->texto((int)$sessao['contato_id'], $pergunta, $this->opts($sessao));
+                if (!$r['ok'] && in_array($r['motivo'] ?? '', [
+                    ChatEnvioService::MOTIVO_FORA_JANELA,
+                    ChatEnvioService::MOTIVO_OPTOUT,
+                    ChatEnvioService::MOTIVO_BLOQUEADO,
+                ], true)) {
+                    $sessao['erro_detalhe'] = $r['motivo'];
+                    return self::ENCERRAR;
+                }
+            }
+            $this->marcarEnviado($sessao);
+        }
+
+        $sessao['aguardando_ate'] = date('Y-m-d H:i:s', time() + $this->segundosDe((array)($config['timeout'] ?? []), 86400));
+        return self::AGUARDAR;
+    }
+
+    private function validar(string $t, string $tipo): bool
+    {
+        if ($t === '') return false;
+        return match ($tipo) {
+            'numero'   => is_numeric(str_replace([',', '.'], ['.', ''], $t)),
+            'email'    => (bool)filter_var($t, FILTER_VALIDATE_EMAIL),
+            'telefone' => strlen(preg_replace('/\D/', '', $t) ?? '') >= 10,
+            'cep'      => strlen(preg_replace('/\D/', '', $t) ?? '') === 8,
+            'cpf'      => class_exists('SecurityHelper') && SecurityHelper::validateCpf($t),
+            default    => mb_strlen($t) >= 1,
+        };
+    }
+
+    private function normalizar(string $t, string $tipo): string
+    {
+        return match ($tipo) {
+            'telefone', 'cep' => preg_replace('/\D/', '', $t) ?? $t,
+            'cpf'             => preg_replace('/\D/', '', $t) ?? $t,
+            'email'           => mb_strtolower($t),
+            default           => $t,
+        };
+    }
+}
+
+/** config: {"peso_a":50} */
+class ChatNoSplitAb extends ChatNo
+{
+    public function portas(): array { return ['a', 'b']; }
+    public function categoria(): string { return 'logica'; }
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        $c     = $this->ctx($sessao);
+        $marca = '_split_' . $this->chave($sessao);
+
+        // Decisão gravada: reprocessar o nó não pode trocar o braço
+        if (!empty($c[$marca])) return (string)$c[$marca];
+
+        $pesoA = max(0, min(100, (int)($config['peso_a'] ?? 50)));
+        $porta = (random_int(1, 100) <= $pesoA) ? 'a' : 'b';
+
+        $c[$marca] = $porta;
+        $sessao['contexto'] = $c;
+        return $porta;
+    }
+}
+
+class ChatNoEncerrar extends ChatNo
+{
+    public function portas(): array { return []; }
+    public function categoria(): string { return 'logica'; }
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        return self::ENCERRAR;
+    }
+}
+
+/** config: {"fluxo_id":12} — encerra esta sessão e inicia a do outro fluxo. */
+class ChatNoIrParaFluxo extends ChatNo
+{
+    public function portas(): array { return []; }
+    public function categoria(): string { return 'logica'; }
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        $destino = (int)($config['fluxo_id'] ?? 0);
+        if ($destino < 1 || $destino === (int)$sessao['fluxo_id']) {
+            $sessao['erro_detalhe'] = 'ir_para_fluxo: destino inválido';
+            return self::ERRO;
+        }
+        // O motor lê isto e faz a troca — o nó não inicia nada sozinho para
+        // não abrir recursão descontrolada dentro de um passo.
+        $c = $this->ctx($sessao);
+        $c['_pular_para'] = $destino;
+        $sessao['contexto'] = $c;
+        return self::PULAR;
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CONDIÇÕES — portas true/false
+// ═════════════════════════════════════════════════════════════════════════════
+
+abstract class ChatNoCondicao extends ChatNo
+{
+    public function portas(): array { return ['true', 'false']; }
+    public function categoria(): string { return 'condicao'; }
+
+    abstract protected function avaliar(array $sessao, array $config, ChatExecCtx $ctx): bool;
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        try {
+            return $this->avaliar($sessao, $config, $ctx) ? 'true' : 'false';
+        } catch (Throwable $e) {
+            // Condição que quebra não pode travar a jornada: segue pelo 'false'
+            $sessao['erro_detalhe'] = 'condição falhou: ' . mb_substr($e->getMessage(), 0, 150);
+            return 'false';
+        }
+    }
+}
+
+/** config: {"tag_id":3} */
+class ChatNoCondTemTag extends ChatNoCondicao
+{
+    protected function avaliar(array $sessao, array $config, ChatExecCtx $ctx): bool
+    {
+        $tagId = (int)($config['tag_id'] ?? 0);
+        if ($tagId < 1) return false;
+        $st = $ctx->db->prepare(
+            "SELECT 1 FROM chat_contato_tags WHERE contato_id = :c AND tag_id = :t LIMIT 1"
+        );
+        $st->execute([':c' => (int)$sessao['contato_id'], ':t' => $tagId]);
+        return (bool)$st->fetchColumn();
+    }
+}
+
+/** config: {"campo":"cidade","operador":"=","valor":"Porto Alegre"} */
+class ChatNoCondCampo extends ChatNoCondicao
+{
+    protected function avaliar(array $sessao, array $config, ChatExecCtx $ctx): bool
+    {
+        $campo = trim((string)($config['campo'] ?? ''));
+        if ($campo === '') return false;
+
+        // Contexto da sessão vence o campo persistido — é o valor "mais fresco"
+        $c   = $this->ctx($sessao);
+        $val = $c[$campo] ?? $ctx->contatos->getCampo((int)$sessao['contato_id'], $campo);
+
+        $op       = (string)($config['operador'] ?? '=');
+        $esperado = ChatContatoService::interpolar((string)($config['valor'] ?? ''), $ctx->vars);
+
+        if ($op === 'existe')      return $val !== null && $val !== '';
+        if ($op === 'nao_existe')  return $val === null || $val === '';
+        if ($val === null)         return false;
+
+        $a = mb_strtolower(trim((string)$val));
+        $b = mb_strtolower(trim($esperado));
+
+        return match ($op) {
+            '='        => $a === $b,
+            '!='       => $a !== $b,
+            'contem'   => $b !== '' && str_contains($a, $b),
+            'comeca'   => $b !== '' && str_starts_with($a, $b),
+            '>'        => (float)$val >  (float)$esperado,
+            '>='       => (float)$val >= (float)$esperado,
+            '<'        => (float)$val <  (float)$esperado,
+            '<='       => (float)$val <= (float)$esperado,
+            default    => false,
+        };
+    }
+}
+
+/** A janela de 24h está aberta? Decide entre texto livre e template. */
+class ChatNoCondNaJanela extends ChatNoCondicao
+{
+    protected function avaliar(array $sessao, array $config, ChatExecCtx $ctx): bool
+    {
+        $c = $ctx->contatos->obter((int)$sessao['contato_id']);
+        return $c ? $ctx->contatos->naJanela($c) : false;
+    }
+}
+
+/** O contato está vinculado a um cliente da loja? */
+class ChatNoCondEhCliente extends ChatNoCondicao
+{
+    protected function avaliar(array $sessao, array $config, ChatExecCtx $ctx): bool
+    {
+        $st = $ctx->db->prepare("SELECT cliente_id FROM chat_contatos WHERE id = :id LIMIT 1");
+        $st->execute([':id' => (int)$sessao['contato_id']]);
+        return (int)$st->fetchColumn() > 0;
+    }
+}
+
+/** config: {"operador":">=","valor":500,"janela_dias":null} */
+class ChatNoCondComprou extends ChatNoCondicao
+{
+    protected function avaliar(array $sessao, array $config, ChatExecCtx $ctx): bool
+    {
+        $st = $ctx->db->prepare("SELECT cliente_id FROM chat_contatos WHERE id = :id LIMIT 1");
+        $st->execute([':id' => (int)$sessao['contato_id']]);
+        $clienteId = (int)$st->fetchColumn();
+        if ($clienteId < 1) return false;
+
+        $sql    = "SELECT COALESCE(SUM(total), 0) FROM pedidos WHERE cliente_id = :c";
+        $params = [':c' => $clienteId];
+
+        $dias = (int)($config['janela_dias'] ?? 0);
+        if ($dias > 0) {
+            $sql .= " AND criado_em >= DATE_SUB(NOW(), INTERVAL :d DAY)";
+            $params[':d'] = $dias;
+        }
+
+        $stG = $ctx->db->prepare($sql);
+        foreach ($params as $k => $v) $stG->bindValue($k, $v, PDO::PARAM_INT);
+        $stG->execute();
+        $gasto = (float)$stG->fetchColumn();
+
+        $valor = (float)($config['valor'] ?? 0);
+        return match ((string)($config['operador'] ?? '>=')) {
+            '>'  => $gasto >  $valor,
+            '>=' => $gasto >= $valor,
+            '<'  => $gasto <  $valor,
+            '<=' => $gasto <= $valor,
+            '='  => abs($gasto - $valor) < 0.01,
+            default => false,
+        };
+    }
+}
+
+/** config: {"de":8,"ate":18,"dias":[1,2,3,4,5]} — 1=segunda ... 7=domingo */
+class ChatNoCondHorario extends ChatNoCondicao
+{
+    protected function avaliar(array $sessao, array $config, ChatExecCtx $ctx): bool
+    {
+        $h = (int)date('G');
+        $de  = (int)($config['de']  ?? 0);
+        $ate = (int)($config['ate'] ?? 24);
+        if ($h < $de || $h >= $ate) return false;
+
+        $dias = array_map('intval', (array)($config['dias'] ?? []));
+        if ($dias) {
+            $hoje = (int)date('N');   // 1=segunda ... 7=domingo
+            if (!in_array($hoje, $dias, true)) return false;
+        }
+        return true;
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// AÇÕES
+// ═════════════════════════════════════════════════════════════════════════════
+
+/** config: {"acao":"adicionar|remover","tag_id":3} */
+class ChatNoAcaoTag extends ChatNo
+{
+    public function portas(): array { return ['saida']; }
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        $tagId = (int)($config['tag_id'] ?? 0);
+        if ($tagId > 0) {
+            if ((string)($config['acao'] ?? 'adicionar') === 'remover') {
+                $ctx->contatos->removerTag((int)$sessao['contato_id'], $tagId);
+            } else {
+                $ctx->contatos->aplicarTag((int)$sessao['contato_id'], $tagId);
+            }
+        }
+        return 'saida';
+    }
+}
+
+/** config: {"campo":"origem","operacao":"set|incrementar|limpar","valor":"..."} */
+class ChatNoAcaoCampo extends ChatNo
+{
+    public function portas(): array { return ['saida']; }
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        $campo = preg_replace('/[^a-z0-9_]/i', '_', trim((string)($config['campo'] ?? '')));
+        if ($campo === '') return 'saida';
+
+        $contatoId = (int)$sessao['contato_id'];
+        $operacao  = (string)($config['operacao'] ?? 'set');
+        $c         = $this->ctx($sessao);
+
+        if ($operacao === 'limpar') {
+            $ctx->contatos->setCampo($contatoId, $campo, null);
+            unset($c[$campo]);
+        } elseif ($operacao === 'incrementar') {
+            $atual = (float)($ctx->contatos->getCampo($contatoId, $campo, 0));
+            $novo  = $atual + (float)($config['valor'] ?? 1);
+            $ctx->contatos->setCampo($contatoId, $campo, $novo);
+            $c[$campo] = $novo;
+        } else {
+            $valor = ChatContatoService::interpolar((string)($config['valor'] ?? ''), $ctx->vars);
+            $ctx->contatos->setCampo($contatoId, $campo, $valor);
+            $c[$campo] = $valor;
+        }
+
+        $sessao['contexto'] = $c;
+        $ctx->recarregarContato($contatoId);
+        return 'saida';
+    }
+}
+
+/**
+ * Passa para atendimento humano: pausa o bot, marca a conversa e (opcional)
+ * atribui a um agente. É o "escape hatch" que todo bot precisa ter.
+ *
+ * config: {"atribuir_a":0,"mensagem":"Já te chamo...","pausar_minutos":60,"status":"pendente"}
+ */
+class ChatNoAcaoHumano extends ChatNo
+{
+    public function portas(): array { return ['saida']; }
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        $conversaId = (int)($sessao['conversa_id'] ?? 0);
+        if ($conversaId < 1) {
+            $cv = $ctx->conversas->obterPorContato((int)$sessao['contato_id']);
+            $conversaId = (int)($cv['id'] ?? 0);
+        }
+        if ($conversaId < 1) return 'saida';
+
+        $msg = $this->texto($config, 'mensagem', $ctx);
+        if (trim($msg) !== '') {
+            $ctx->envio->texto((int)$sessao['contato_id'], $msg, $this->opts($sessao));
+        }
+
+        $ctx->conversas->pausarBot($conversaId, (int)($config['pausar_minutos'] ?? 60));
+        $ctx->conversas->mudarStatus($conversaId, (string)($config['status'] ?? 'pendente'));
+
+        $agente = (int)($config['atribuir_a'] ?? 0);
+        if ($agente > 0) $ctx->conversas->atribuir($conversaId, $agente);
+
+        // Avisa os admins — sem isso o cliente fica esperando no vazio
+        if (class_exists('NotificacaoService')) {
+            try {
+                $nome = $ctx->contato['nome_exibicao'] ?? 'Contato';
+                NotificacaoService::criarBroadcast([
+                    'categoria' => 'sistema',
+                    'tipo'      => 'chat_atendimento',
+                    'titulo'    => "Atendimento solicitado — {$nome}",
+                    'mensagem'  => 'Um contato pediu para falar com uma pessoa.',
+                    'url'       => '/admin/chat/inbox?conversa=' . $conversaId,
+                ], 'todos_admins');
+            } catch (Throwable $e) {}
+        }
+
+        return 'saida';
+    }
+}
+
+/** config: {"url":"https://...","metodo":"POST","headers":{},"enviar_contexto":true} */
+class ChatNoAcaoWebhook extends ChatNo
+{
+    public function portas(): array { return ['sucesso', 'erro']; }
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        $url = trim(ChatContatoService::interpolar((string)($config['url'] ?? ''), $ctx->vars));
+
+        // Só http(s) e nada de endereço interno: um webhook configurável é um
+        // SSRF esperando acontecer se aceitar qualquer coisa.
+        if (!preg_match('#^https?://#i', $url) || !$this->destinoPermitido($url)) {
+            $sessao['erro_detalhe'] = 'webhook: URL inválida ou não permitida';
+            return 'erro';
+        }
+
+        $payload = [
+            'contato_id' => (int)$sessao['contato_id'],
+            'fluxo_id'   => (int)$sessao['fluxo_id'],
+            'sessao_id'  => (int)($sessao['id'] ?? 0),
+            'wa_id'      => $ctx->contato['wa_id'] ?? null,
+            'nome'       => $ctx->contato['nome_exibicao'] ?? null,
+            'cliente_id' => $ctx->contato['cliente_id'] ?? null,
+        ];
+        if (!isset($config['enviar_contexto']) || $config['enviar_contexto']) {
+            $payload['contexto'] = array_filter(
+                $this->ctx($sessao),
+                fn($k) => $k[0] !== '_',      // marcadores internos não vazam
+                ARRAY_FILTER_USE_KEY
+            );
+        }
+
+        $headers = ['Content-Type: application/json'];
+        foreach ((array)($config['headers'] ?? []) as $k => $v) {
+            if (is_string($k) && is_scalar($v)) $headers[] = $k . ': ' . $v;
+        }
+
+        try {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 10,
+                CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_CUSTOMREQUEST  => strtoupper((string)($config['metodo'] ?? 'POST')),
+                CURLOPT_POSTFIELDS     => json_encode($payload, JSON_UNESCAPED_UNICODE),
+                CURLOPT_HTTPHEADER     => $headers,
+                CURLOPT_FOLLOWLOCATION => false,   // redirect é rota de fuga do SSRF
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_SSL_VERIFYHOST => 2,
+            ]);
+            $resp = curl_exec($ch);
+            $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($code >= 200 && $code < 300) {
+                // Resposta JSON plana vira variável do fluxo
+                $dados = json_decode((string)$resp, true);
+                if (is_array($dados)) {
+                    $c = $this->ctx($sessao);
+                    foreach ($dados as $k => $v) {
+                        if (is_scalar($v) && preg_match('/^[a-z0-9_]{1,40}$/i', (string)$k)) {
+                            $c[$k] = $v;
+                        }
+                    }
+                    $sessao['contexto'] = $c;
+                }
+                return 'sucesso';
+            }
+
+            $sessao['erro_detalhe'] = "webhook HTTP $code";
+            return 'erro';
+        } catch (Throwable $e) {
+            $sessao['erro_detalhe'] = 'webhook: ' . mb_substr($e->getMessage(), 0, 150);
+            return 'erro';
+        }
+    }
+
+    /** Bloqueia loopback, rede privada e link-local. */
+    private function destinoPermitido(string $url): bool
+    {
+        $host = parse_url($url, PHP_URL_HOST);
+        if (!$host) return false;
+
+        $ips = @gethostbynamel($host);
+        if ($ips === false) {
+            // IPv6 ou host que não resolve por A: valida o literal quando for IP
+            $ips = filter_var($host, FILTER_VALIDATE_IP) ? [$host] : [];
+            if (!$ips) return false;
+        }
+        foreach ($ips as $ip) {
+            if (!filter_var($ip, FILTER_VALIDATE_IP,
+                FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+/** config: {"titulo":"...","mensagem":"...","url":"..."} */
+class ChatNoAcaoNotificarAdmin extends ChatNo
+{
+    public function portas(): array { return ['saida']; }
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        if (!class_exists('NotificacaoService')) return 'saida';
+        try {
+            NotificacaoService::criarBroadcast([
+                'categoria' => (string)($config['categoria'] ?? 'sistema'),
+                'tipo'      => 'chat_fluxo',
+                'titulo'    => $this->texto($config, 'titulo', $ctx, 'Aviso do fluxo de chat'),
+                'mensagem'  => $this->texto($config, 'mensagem', $ctx) ?: null,
+                'url'       => $this->texto($config, 'url', $ctx) ?: null,
+            ], 'todos_admins');
+        } catch (Throwable $e) {}
+        return 'saida';
+    }
+}
+
+/** config: {"pct":10,"dias_validade":15,"prefixo":"CHAT","valor_minimo":0} */
+class ChatNoAcaoCupom extends ChatNo
+{
+    public function portas(): array { return ['saida', 'sem_cliente']; }
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        $st = $ctx->db->prepare("SELECT cliente_id FROM chat_contatos WHERE id = :id LIMIT 1");
+        $st->execute([':id' => (int)$sessao['contato_id']]);
+        $clienteId = (int)$st->fetchColumn();
+
+        // Cupom é nominal ao cliente; sem cadastro não há a quem amarrar
+        if ($clienteId < 1) return 'sem_cliente';
+
+        $c     = $this->ctx($sessao);
+        $marca = '_cupom_' . $this->chave($sessao);
+
+        if (!empty($c[$marca])) {           // idempotência ao reprocessar o nó
+            $c['cupom_codigo'] = $c[$marca];
+            $sessao['contexto'] = $c;
+            return 'saida';
+        }
+
+        if (!class_exists('AutomacaoCupomService')) {
+            $sessao['erro_detalhe'] = 'AutomacaoCupomService indisponível';
+            return self::ERRO;
+        }
+
+        $pct  = (float)($config['pct'] ?? 10) ?: 10.0;
+        $dias = (int)($config['dias_validade'] ?? 15) ?: 15;
+
+        try {
+            $r = (new AutomacaoCupomService())->gerarParaFluxo($clienteId, [
+                'pct'           => $pct,
+                'dias_validade' => $dias,
+                'prefixo'       => (string)($config['prefixo'] ?? 'CHAT'),
+                'nome'          => (string)($config['nome'] ?? 'Cupom exclusivo WhatsApp'),
+                'valor_minimo'  => (float)($config['valor_minimo'] ?? 0),
+            ]);
+            $codigo = (string)($r['codigo'] ?? '');
+            if ($codigo === '') { $sessao['erro_detalhe'] = 'cupom sem código'; return self::ERRO; }
+
+            $pctFmt = rtrim(rtrim(number_format($pct, 1, ',', ''), '0'), ',');
+            $c[$marca]             = $codigo;
+            $c['cupom_codigo']     = $codigo;
+            $c['cupom_valor']      = $pctFmt . '%';
+            $c['cupom_validade']   = date('d/m/Y', strtotime("+{$dias} days"));
+            $sessao['contexto']    = $c;
+            $ctx->vars             = array_merge($ctx->vars, [
+                'cupom_codigo'   => $codigo,
+                'cupom_valor'    => $pctFmt . '%',
+                'cupom_validade' => $c['cupom_validade'],
+            ]);
+            return 'saida';
+        } catch (Throwable $e) {
+            $sessao['erro_detalhe'] = 'cupom: ' . mb_substr($e->getMessage(), 0, 150);
+            return self::ERRO;
+        }
+    }
+}
+
+/** Registra opt-out a pedido do contato e encerra a jornada. */
+class ChatNoAcaoOptout extends ChatNo
+{
+    public function portas(): array { return ['saida']; }
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        $msg = $this->texto($config, 'mensagem', $ctx);
+        if (trim($msg) !== '') {
+            $ctx->envio->texto((int)$sessao['contato_id'], $msg, $this->opts($sessao));
+        }
+        $ctx->contatos->optOut((int)$sessao['contato_id'], 'fluxo de chat');
+        return self::ENCERRAR;
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// INSTAGRAM
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Ramifica pelo canal. Existe porque o MESMO fluxo atende WhatsApp e Instagram,
+ * e há coisas que só valem em um deles — template HSM só no WhatsApp, resposta
+ * pública a comentário só no Instagram.
+ *
+ * portas: whatsapp | instagram
+ */
+class ChatNoCondCanal extends ChatNo
+{
+    public function portas(): array { return ['whatsapp', 'instagram']; }
+    public function categoria(): string { return 'condicao'; }
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        return ($ctx->contato['canal'] ?? 'whatsapp') === 'instagram' ? 'instagram' : 'whatsapp';
+    }
+}
+
+/**
+ * O contato segue a conta no Instagram?
+ * Só se sabe disso depois que a pessoa manda DM (é o que a Meta libera), e
+ * mesmo assim nem sempre vem. NULL é tratado como "não sei" → porta false.
+ */
+class ChatNoCondIgSegue extends ChatNoCondicao
+{
+    protected function avaliar(array $sessao, array $config, ChatExecCtx $ctx): bool
+    {
+        $st = $ctx->db->prepare(
+            "SELECT ig_seguidor FROM chat_contatos WHERE id = :id AND canal = 'instagram' LIMIT 1"
+        );
+        $st->execute([':id' => (int)$sessao['contato_id']]);
+        $v = $st->fetchColumn();
+        return $v !== false && $v !== null && (int)$v === 1;
+    }
+}
+
+/**
+ * Card com botões (generic template do Instagram).
+ * No WhatsApp cai para uma mensagem com botão de URL, para o mesmo fluxo
+ * continuar funcionando nos dois canais em vez de morrer aqui.
+ *
+ * config: {"titulo","subtitulo","imagem","botao_titulo","botao_url"}
+ */
+class ChatNoMsgIgCard extends ChatNoMsgTexto
+{
+    public function portas(): array { return ['saida']; }
+    public function categoria(): string { return 'mensagem'; }
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        $titulo = $this->texto($config, 'titulo', $ctx);
+        if (trim($titulo) === '') return 'saida';
+
+        $url = trim($this->texto($config, 'botao_url', $ctx));
+        $r = $ctx->envio->enviar((int)$sessao['contato_id'], [
+            'tipo'        => 'cta_url',
+            'corpo'       => $titulo,
+            'texto_botao' => $this->texto($config, 'botao_titulo', $ctx, 'Ver'),
+            'url'         => $url ?: (defined('BASE_URL') ? BASE_URL : ''),
+            'imagem'      => $this->texto($config, 'imagem', $ctx) ?: null,
+        ], $this->opts($sessao));
+
+        return $this->tratarEnvio($r, $sessao);
+    }
+}
+
+/**
+ * Responde publicamente ao comentário que originou esta jornada.
+ *
+ * Só faz sentido em fluxo iniciado por regra de comentário — é de lá que vem
+ * o comment_id no contexto. Fora disso, segue sem fazer nada em vez de dar
+ * erro: o mesmo fluxo pode ser disparado por outros caminhos.
+ *
+ * config: {"texto":"..."}  (aceita variações separadas por |)
+ */
+class ChatNoAcaoIgResponderComentario extends ChatNo
+{
+    public function portas(): array { return ['saida']; }
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        $c         = $this->ctx($sessao);
+        $commentId = (string)($c['_comment_id'] ?? '');
+        if ($commentId === '') return 'saida';   // não veio de comentário
+
+        $texto = $this->texto($config, 'texto', $ctx);
+        if (trim($texto) === '') return 'saida';
+
+        // Variações separadas por | para o perfil não ficar com 40 respostas iguais
+        $opcoes = array_values(array_filter(array_map('trim', explode('|', $texto))));
+        $escolhido = $opcoes[random_int(0, max(0, count($opcoes) - 1))] ?? $texto;
+
+        try {
+            $svc   = new ChatInstagramService($ctx->db);
+            $conta = !empty($ctx->contato['ig_conta_id'])
+                ? $svc->conta((int)$ctx->contato['ig_conta_id'])
+                : $svc->contaPadrao();
+
+            if ($conta) {
+                ChatInstagramClient::daConta($conta)->responderComentario($commentId, $escolhido);
+            }
+        } catch (Throwable $e) {
+            // Comentário pode ter sido apagado entre o gatilho e este passo.
+            // Não é motivo para derrubar a jornada inteira.
+            if (class_exists('LogService')) {
+                try { LogService::warning('ig: resposta pública falhou no fluxo', ['erro' => $e->getMessage()], 'chat'); }
+                catch (Throwable $x) {}
+            }
+        }
+        return 'saida';
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// REGISTRY
+// ═════════════════════════════════════════════════════════════════════════════
+
+class ChatNoRegistry
+{
+    /** tipo_no → classe */
+    private const MAPA = [
+        // triggers
+        'gatilho_palavra'      => ChatNoGatilhoPalavra::class,
+        'gatilho_boas_vindas'  => ChatNoGatilhoBoasVindas::class,
+        'gatilho_padrao'       => ChatNoGatilhoPadrao::class,
+        'gatilho_referencia'   => ChatNoGatilhoReferencia::class,
+        'gatilho_manual'       => ChatNoGatilhoManual::class,
+        'gatilho_evento_loja'  => ChatNoGatilhoEventoLoja::class,
+        // mensagens
+        'msg_texto'            => ChatNoMsgTexto::class,
+        'msg_midia'            => ChatNoMsgMidia::class,
+        'msg_botoes'           => ChatNoMsgBotoes::class,
+        'msg_lista'            => ChatNoMsgLista::class,
+        'msg_template'         => ChatNoMsgTemplate::class,
+        'msg_botao_url'        => ChatNoMsgBotaoUrl::class,
+        // lógica
+        'esperar'              => ChatNoEsperar::class,
+        'esperar_resposta'     => ChatNoEsperarResposta::class,
+        'split_ab'             => ChatNoSplitAb::class,
+        'encerrar'             => ChatNoEncerrar::class,
+        'ir_para_fluxo'        => ChatNoIrParaFluxo::class,
+        // condições
+        'cond_tem_tag'         => ChatNoCondTemTag::class,
+        'cond_campo'           => ChatNoCondCampo::class,
+        'cond_na_janela'       => ChatNoCondNaJanela::class,
+        'cond_eh_cliente'      => ChatNoCondEhCliente::class,
+        'cond_comprou'         => ChatNoCondComprou::class,
+        'cond_horario'         => ChatNoCondHorario::class,
+        // ações
+        'acao_tag'             => ChatNoAcaoTag::class,
+        'acao_campo'           => ChatNoAcaoCampo::class,
+        'acao_humano'          => ChatNoAcaoHumano::class,
+        'acao_webhook'         => ChatNoAcaoWebhook::class,
+        'acao_notificar_admin' => ChatNoAcaoNotificarAdmin::class,
+        'acao_cupom'           => ChatNoAcaoCupom::class,
+        'acao_optout'          => ChatNoAcaoOptout::class,
+        // instagram
+        'cond_canal'                  => ChatNoCondCanal::class,
+        'cond_ig_segue'               => ChatNoCondIgSegue::class,
+        'msg_ig_card'                 => ChatNoMsgIgCard::class,
+        'acao_ig_responder_comentario'=> ChatNoAcaoIgResponderComentario::class,
+    ];
+
+    /** @var array<string,ChatNo> instâncias stateless reutilizáveis */
+    private static array $inst = [];
+
+    public static function existe(string $tipo): bool
+    {
+        return isset(self::MAPA[$tipo]);
+    }
+
+    public static function obter(string $tipo): ?ChatNo
+    {
+        if (!isset(self::MAPA[$tipo])) return null;
+        return self::$inst[$tipo] ??= new (self::MAPA[$tipo])();
+    }
+
+    public static function ehTrigger(string $tipo): bool
+    {
+        $n = self::obter($tipo);
+        return $n ? $n->ehTrigger() : false;
+    }
+
+    public static function ehPergunta(string $tipo): bool
+    {
+        $n = self::obter($tipo);
+        return $n ? $n->ehPergunta() : false;
+    }
+
+    /** Catálogo consumido pelo canvas: tipo → {portas, trigger, categoria, pergunta}. */
+    public static function catalogo(): array
+    {
+        $out = [];
+        foreach (array_keys(self::MAPA) as $tipo) {
+            $n = self::obter($tipo);
+            $out[$tipo] = [
+                'portas'    => $n->portas(),
+                'trigger'   => $n->ehTrigger(),
+                'categoria' => $n->categoria(),
+                'pergunta'  => $n->ehPergunta(),
+            ];
+        }
+        return $out;
+    }
+
+    public static function tipos(): array
+    {
+        return array_keys(self::MAPA);
+    }
+}

@@ -61,7 +61,7 @@
           </div>
 
           <!-- Busca de produto -->
-          <div style="padding:14px 20px;border-bottom:1px solid #f8fafc;">
+          <div style="padding:14px 20px;border-bottom:1px solid var(--bg);">
             <div style="position:relative;">
               <input type="text" id="np-busca-produto" class="form-control"
                      placeholder="Buscar produto por nome ou SKU…" autocomplete="off">
@@ -82,7 +82,7 @@
             <div style="display:flex;justify-content:space-between;font-size:13.5px;margin-bottom:6px;">
               <span>Subtotal</span><strong id="np-subtotal">R$ 0,00</strong>
             </div>
-            <div style="display:flex;justify-content:space-between;font-size:13.5px;color:#16a34a;margin-bottom:6px;" id="np-desconto-row" style="display:none;">
+            <div style="display:flex;justify-content:space-between;font-size:13.5px;color:var(--success);margin-bottom:6px;" id="np-desconto-row" style="display:none;">
               <span>Desconto</span><strong id="np-desconto-val">R$ 0,00</strong>
             </div>
             <div style="display:flex;justify-content:space-between;font-size:13.5px;margin-bottom:10px;">

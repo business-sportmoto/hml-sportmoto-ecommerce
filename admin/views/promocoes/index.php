@@ -66,17 +66,17 @@
     <tbody>
       <?php
       $tipoLabels = [
-        'desconto_progressivo' => ['label' => 'Progressivo',  'cor' => '#3b82f6'],
-        'brinde'               => ['label' => 'Brinde',       'cor' => '#8b5cf6'],
-        'compre_ganhe'         => ['label' => 'Compre+Leve',  'cor' => '#06b6d4'],
-        'frete_gratis'         => ['label' => 'Frete grátis', 'cor' => '#10b981'],
-        'bundle'               => ['label' => 'Bundle',       'cor' => '#f59e0b'],
+        'desconto_progressivo' => ['label' => 'Progressivo',  'cor' => 'var(--blue)'],
+        'brinde'               => ['label' => 'Brinde',       'cor' => 'var(--purple)'],
+        'compre_ganhe'         => ['label' => 'Compre+Leve',  'cor' => 'var(--info)'],
+        'frete_gratis'         => ['label' => 'Frete grátis', 'cor' => 'var(--success)'],
+        'bundle'               => ['label' => 'Bundle',       'cor' => 'var(--warning)'],
         'cashback'             => ['label' => 'Cashback',     'cor' => '#ec4899'],
-        'relampago'            => ['label' => 'Relâmpago',    'cor' => '#ef4444'],
+        'relampago'            => ['label' => 'Relâmpago',    'cor' => 'var(--danger)'],
         'fidelidade'           => ['label' => 'Fidelidade',   'cor' => '#f97316'],
       ];
       foreach ($promocoes as $p):
-        $tipo     = $tipoLabels[$p['tipo']] ?? ['label' => $p['tipo'], 'cor' => '#64748b'];
+        $tipo     = $tipoLabels[$p['tipo']] ?? ['label' => $p['tipo'], 'cor' => 'var(--text-2)'];
         $vencida  = $p['data_fim'] && strtotime($p['data_fim']) < time();
         $semInicio= $p['data_inicio'] && strtotime($p['data_inicio']) > time();
       ?>
@@ -89,7 +89,7 @@
             </div>
           <?php endif; ?>
           <?php if ($p['acumulavel']): ?>
-            <span class="badge" style="background:#eff6ff;color:#1d4ed8;font-size:10px;">acumula</span>
+            <span class="badge" style="background:var(--blue-lt);color:var(--blue);font-size:10px;">acumula</span>
           <?php endif; ?>
         </td>
         <td>
@@ -143,26 +143,6 @@
 <?php include __DIR__ . '/../../partials/pagination.php'; ?>
 <?php endif; ?>
 <?php endif; ?>
-
-<style>
-.ap-filters { display:flex; gap:10px; padding:14px 18px; flex-wrap:wrap; }
-.ap-filters .form-control { flex:1; min-width:160px; }
-.admin-table tr.row-inativo td:not(:last-child):not(:nth-last-child(2)) { opacity:.5; }
-.toggle-switch { position:relative; display:inline-block; width:38px; height:22px; cursor:pointer; }
-.toggle-switch input { opacity:0; width:0; height:0; }
-.toggle-slider {
-  position:absolute; inset:0; background:#d1d5db; border-radius:99px;
-  transition:background .2s;
-}
-.toggle-slider:before {
-  content:''; position:absolute; width:16px; height:16px;
-  left:3px; top:3px; background:#fff; border-radius:50%; transition:.2s;
-}
-.toggle-switch input:checked + .toggle-slider { background:#16a34a; }
-.toggle-switch input:checked + .toggle-slider:before { transform:translateX(16px); }
-.btn-danger-ghost { color:#dc2626; border-color:#fecaca; }
-.btn-danger-ghost:hover { background:#fef2f2; }
-</style>
 
 <script>
 const CSRF_PROMO = '<?= SecurityHelper::generateCsrf() ?>';

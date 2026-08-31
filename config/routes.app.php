@@ -60,6 +60,9 @@ AppRouter::get ($v . '/marcas/{slug}',         'AppCatalogoController@marca');
 // ── Produto ─────────────────────────────────────────────────────────────────
 // As rotas com sufixo usam {id:\d+}, e a de detalhe usa {slug}: como \d+ não
 // casa com um slug textual, a ordem entre elas é segura em qualquer sentido.
+// O resumo por IA é rota própria porque, com o cache frio, ele chama a Gemini
+// e demora segundos — a listagem não pode esperar por um texto de enfeite.
+AppRouter::get ($v . '/produtos/{id:\d+}/avaliacoes/resumo', 'AppAvaliacoesController@resumoIA');
 AppRouter::get ($v . '/produtos/{id:\d+}/avaliacoes',     'AppAvaliacoesController@index');
 AppRouter::post($v . '/produtos/{id:\d+}/avaliacoes',     'AppAvaliacoesController@criar');
 AppRouter::get ($v . '/produtos/{id:\d+}/perguntas',      'AppPerguntasController@index');

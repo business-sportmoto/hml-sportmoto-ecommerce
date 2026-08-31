@@ -3,10 +3,10 @@
 // $pedidos, $total e os campos de paginação — do AdminAnaliseController
 
 $tierCor = [
-    'bronze'   => ['#92400e', '#fffbeb'],
-    'silver'   => ['#475569', '#f8fafc'],
-    'gold'     => ['#b45309', '#fffbeb'],
-    'platinum' => ['#1d4ed8', '#eff6ff'],
+    'bronze'   => ['var(--warning)', 'var(--warning-lt)'],
+    'silver'   => ['var(--text-2)', 'var(--bg)'],
+    'gold'     => ['var(--warning)', 'var(--warning-lt)'],
+    'platinum' => ['var(--blue)', 'var(--blue-lt)'],
 ];
 ?>
 
@@ -18,7 +18,7 @@ $tierCor = [
       <h1 class="admin-page-title">
         Análise de pedidos
         <?php if ($total > 0): ?>
-          <span style="background:#fffbeb;color:#b45309;padding:3px 12px;border-radius:20px;
+          <span style="background:var(--warning-lt);color:var(--warning);padding:3px 12px;border-radius:20px;
                        font-size:13px;font-weight:700;margin-left:8px;"><?= (int) $total ?></span>
         <?php endif; ?>
       </h1>
@@ -66,28 +66,28 @@ $tierCor = [
                            font-size:10px;font-weight:700;"><?= strtoupper($tier) ?></span>
               <?= (int) ($p['score_total'] ?? 0) ?> pts
               <?php if ((int) ($p['penalidade_pontos'] ?? 0) > 0): ?>
-                <span style="color:#b91c1c;">−<?= (int) $p['penalidade_pontos'] ?></span>
+                <span style="color:var(--danger);">−<?= (int) $p['penalidade_pontos'] ?></span>
               <?php endif; ?>
               · <?= (int) ($p['total_pedidos'] ?? 0) ?> pedidos
               <?php if ((int) ($p['total_chargebacks'] ?? 0) > 0): ?>
-                · <span style="color:#b91c1c;font-weight:700;"><?= (int) $p['total_chargebacks'] ?> CB</span>
+                · <span style="color:var(--danger);font-weight:700;"><?= (int) $p['total_chargebacks'] ?> CB</span>
               <?php endif; ?>
               <?php if (!empty($p['fraude_confirmada'])): ?>
-                · <span style="color:#b91c1c;font-weight:700;">FRAUDE</span>
+                · <span style="color:var(--danger);font-weight:700;">FRAUDE</span>
               <?php endif; ?>
             </div>
           </td>
 
           <td style="max-width:320px;">
             <?php if ($af): ?>
-              <span style="font-size:11px;font-weight:700;color:#b45309;">
+              <span style="font-size:11px;font-weight:700;color:var(--warning);">
                 <?= View::e($af['regra_aplicada'] ?? '—') ?>
               </span>
               <div style="font-size:12px;color:var(--c-text-muted);margin-top:2px;">
                 <?= View::e(mb_substr((string) ($af['motivo_pre'] ?? ''), 0, 90)) ?>
               </div>
               <?php if (!empty($af['enviado_em'])): ?>
-                <div style="font-size:11px;color:#1d4ed8;margin-top:3px;">
+                <div style="font-size:11px;color:var(--blue);margin-top:3px;">
                   ClearSale: <?= View::e($af['recomendacao'] ?? '—') ?>
                   <?php if ($af['score'] !== null): ?>
                     · score <?= number_format((float) $af['score'], 0) ?>

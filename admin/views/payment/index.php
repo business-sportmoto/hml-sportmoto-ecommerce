@@ -44,7 +44,7 @@ $janela = (int) ($dash['janela_dias'] ?? 30);
         } catch (Throwable) {}
       ?>
       <a href="<?= $base ?>/admin/pagamentos/analise" class="pgto_btn"
-         <?= $emAnalise > 0 ? 'style="background:#fffbeb;color:#b45309;font-weight:700;"' : '' ?>>
+         <?= $emAnalise > 0 ? 'style="background:var(--warning-lt);color:var(--warning);font-weight:700;"' : '' ?>>
         Análise<?= $emAnalise > 0 ? ' (' . $emAnalise . ')' : '' ?>
       </a>
       <a href="<?= $base ?>/admin/pagamentos/fluxos"      class="pgto_btn">Fluxos</a>
@@ -173,7 +173,7 @@ $janela = (int) ($dash['janela_dias'] ?? 30);
             <td class="num"><?= pgto_int($p['total']) ?></td>
             <td class="num">
               <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;">
-                <div style="flex:0 0 90px;height:6px;background:#f1f5f9;border-radius:3px;overflow:hidden;">
+                <div style="flex:0 0 90px;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;">
                   <div style="width:<?= (float) $p['percentual'] ?>%;height:100%;background:#2563eb;"></div>
                 </div>
                 <span><?= number_format((float) $p['percentual'], 1, ',', '.') ?>%</span>
@@ -227,25 +227,25 @@ $janela = (int) ($dash['janela_dias'] ?? 30);
             <td><strong><?= htmlspecialchars($e['adquirente_codigo']) ?></strong></td>
             <td>
               <span style="padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;
-                    background:<?= $e['e_tecnico'] ? '#fef2f2' : '#f8fafc' ?>;
-                    color:<?= $e['e_tecnico'] ? '#b91c1c' : '#475569' ?>;">
+                    background:<?= $e['e_tecnico'] ? 'var(--danger-lt)' : 'var(--bg)' ?>;
+                    color:<?= $e['e_tecnico'] ? 'var(--danger)' : 'var(--text-2)' ?>;">
                 <?= $e['e_tecnico'] ? 'TÉCNICO' : 'EMISSOR' ?>
               </span>
               <?= htmlspecialchars($e['classe_erro'] ?? '—') ?>
             </td>
             <td><?= htmlspecialchars($e['codigo_adquirente'] ?? '—') ?></td>
             <td class="num"><?= pgto_int($e['total']) ?></td>
-            <td style="font-size:12px;color:#64748b;">
+            <td style="font-size:12px;color:var(--text-2);">
               <?= $e['ultimo'] ? date('d/m H:i', strtotime($e['ultimo'])) : '—' ?>
             </td>
-            <td style="font-size:12px;color:#64748b;max-width:280px;">
+            <td style="font-size:12px;color:var(--text-2);max-width:280px;">
               <?= htmlspecialchars(mb_substr((string) $e['ultima_mensagem'], 0, 90)) ?>
             </td>
           </tr>
         <?php endforeach; endif; ?>
       </tbody>
     </table>
-    <p style="font-size:11.5px;color:#64748b;padding:10px 14px;margin:0;">
+    <p style="font-size:11.5px;color:var(--text-2);padding:10px 14px;margin:0;">
       <strong>TÉCNICO</strong> é falha nossa ou da adquirente — cai para outra e vale investigar.
       <strong>EMISSOR</strong> é decisão do banco do cliente — não é retentado, por regra das bandeiras.
     </p>

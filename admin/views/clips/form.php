@@ -105,7 +105,7 @@ $svc = new ClipService();
               <!-- NOVO: barra de progresso do upload ao Stream -->
               <div class="clip-upload-progress" id="clip-video-progress" style="display:none;margin-top:10px;">
                 <div style="height:6px;background:rgba(255,255,255,.1);border-radius:99px;overflow:hidden;">
-                  <span id="clip-video-bar" style="display:block;height:100%;width:0;background:#f14d5d;transition:width .2s;"></span>
+                  <span id="clip-video-bar" style="display:block;height:100%;width:0;background:var(--danger);transition:width .2s;"></span>
                 </div>
                 <small id="clip-video-status" style="display:block;margin-top:6px;color:var(--text-3);"></small>
               </div>

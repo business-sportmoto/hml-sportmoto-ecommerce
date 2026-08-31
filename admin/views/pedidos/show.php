@@ -69,7 +69,7 @@ $ordemAtual = (int)($statusDef['ordenacao'] ?? 0);
     <div class="odtl-header">
       <h3>Linha do tempo</h3>
       <?php if ($isCancelado): ?>
-        <span style="font-size:12px;color:#ef4444;font-weight:700;">Pedido cancelado</span>
+        <span style="font-size:12px;color:var(--danger);font-weight:700;">Pedido cancelado</span>
       <?php else: ?>
         <span style="font-size:12px;color:var(--c-text-muted);"><?= count($timelineSteps) ?> etapas</span>
       <?php endif; ?>
@@ -191,12 +191,12 @@ $ordemAtual = (int)($statusDef['ordenacao'] ?? 0);
           ?>
 
           <?php if ($temDescontoProduto): ?>
-          <div style="display:flex;justify-content:space-between;font-size:13.5px;color:#16a34a;margin-bottom:6px;align-items:center;">
+          <div style="display:flex;justify-content:space-between;font-size:13.5px;color:var(--success);margin-bottom:6px;align-items:center;">
             <span style="display:flex;align-items:center;gap:6px;">
               Desconto
               <?php if (!empty($cupomUso)): ?>
                 <span style="font-family:'SF Mono',monospace;font-size:11.5px;font-weight:700;
-                             background:#dcfce7;color:#15803d;padding:1px 7px;border-radius:99px;
+                             background:var(--success-lt);color:var(--success);padding:1px 7px;border-radius:99px;
                              letter-spacing:.5px;">
                   <?= View::e($cupomUso['codigo']) ?>
                 </span>
@@ -211,7 +211,7 @@ $ordemAtual = (int)($statusDef['ordenacao'] ?? 0);
               Frete
             <?php if ($temDescontoFrete && !$temDescontoProduto): ?>
                 <span style="font-family:'SF Mono',monospace;font-size:11.5px;font-weight:700;
-                             background:#dcfce7;color:#15803d;padding:1px 7px;border-radius:99px;
+                             background:var(--success-lt);color:var(--success);padding:1px 7px;border-radius:99px;
                              letter-spacing:.5px;">
                   <?= View::e($cupomUso['codigo']) ?>
                 </span>
@@ -221,7 +221,7 @@ $ordemAtual = (int)($statusDef['ordenacao'] ?? 0);
           </div>
 
           <?php if ($temDescontoFrete): ?>
-          <div style="display:flex;justify-content:space-between;font-size:12px;color:#16a34a;margin-bottom:10px;padding-left:12px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--success);margin-bottom:10px;padding-left:12px;">
             <span>↳ Frete grátis via cupom</span>
             <span>−<?= PriceHelper::format((float)$cupomUso['valor_frete_desc']) ?></span>
           </div>
@@ -232,10 +232,10 @@ $ordemAtual = (int)($statusDef['ordenacao'] ?? 0);
             $totalDescontoPromo = array_sum(array_column($promocoesAplicadas ?? [], 'valor_desconto'));
           ?>
           <?php if ($totalDescontoPromo > 0): ?>
-          <div style="display:flex;justify-content:space-between;font-size:13.5px;color:#16a34a;margin-bottom:6px;align-items:center;">
+          <div style="display:flex;justify-content:space-between;font-size:13.5px;color:var(--success);margin-bottom:6px;align-items:center;">
             <span style="display:flex;align-items:center;gap:6px;">
               Promoção
-              <span style="font-size:11px;font-weight:700;background:#eff6ff;color:#1d4ed8;
+              <span style="font-size:11px;font-weight:700;background:var(--blue-lt);color:var(--blue);
                            padding:1px 7px;border-radius:99px;">
                 AUTO
               </span>
@@ -271,7 +271,7 @@ $ordemAtual = (int)($statusDef['ordenacao'] ?? 0);
               <?php if (!empty($h['observacao'])): ?>
                 <p style="font-size:13px;color:var(--c-text-muted);margin:2px 0 0;"><?= View::e($h['observacao']) ?></p>
               <?php endif; ?>
-              <time style="font-size:11.5px;color:#94a3b8;"><?= date('d/m/Y H:i', strtotime($h['criado_em'])) ?></time>
+              <time style="font-size:11.5px;color:var(--text-3);"><?= date('d/m/Y H:i', strtotime($h['criado_em'])) ?></time>
             </div>
           </div>
           <?php endforeach; ?>
@@ -279,9 +279,9 @@ $ordemAtual = (int)($statusDef['ordenacao'] ?? 0);
 
         <!-- Obs. interna -->
         <?php if (!empty($pedido['observacao_interna'])): ?>
-        <div style="padding:12px 20px;background:#fafbfc;border-top:1px solid var(--c-border);">
+        <div style="padding:12px 20px;background:var(--surface);border-top:1px solid var(--c-border);">
           <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--c-text-muted);margin-bottom:6px;">Observações internas</div>
-          <pre style="font-family:inherit;font-size:12.5px;color:#475569;white-space:pre-wrap;margin:0;"><?= View::e($pedido['observacao_interna']) ?></pre>
+          <pre style="font-family:inherit;font-size:12.5px;color:var(--text-2);white-space:pre-wrap;margin:0;"><?= View::e($pedido['observacao_interna']) ?></pre>
         </div>
         <?php endif; ?>
 
@@ -315,9 +315,9 @@ $ordemAtual = (int)($statusDef['ordenacao'] ?? 0);
                     padding:14px 20px;border-bottom:1px solid var(--c-border);">
           <div style="display:flex;align-items:center;gap:10px;">
             <!-- Logo Bling estilizado -->
-            <div style="width:28px;height:28px;background:#0057b8;border-radius:6px;
+            <div style="width:28px;height:28px;background:var(--blue);border-radius:6px;
                         display:flex;align-items:center;justify-content:center;
-                        font-size:11px;font-weight:900;color:#fff;letter-spacing:-.3px;">B</div>
+                        font-size:11px;font-weight:900;color:var(--surface);letter-spacing:-.3px;">B</div>
             <strong style="font-size:13px;">Bling ERP</strong>
           </div>
 
@@ -591,7 +591,7 @@ $ordemAtual = (int)($statusDef['ordenacao'] ?? 0);
                 <?= View::e($cupomUso['nome']) ?>
               </div>
             <?php endif; ?>
-            <span style="background:#f1f5f9;padding:2px 8px;border-radius:99px;font-size:11.5px;">
+            <span style="background:var(--surface2);padding:2px 8px;border-radius:99px;font-size:11.5px;">
               <?= View::e($tipoLabels[$cupomUso['tipo']] ?? $cupomUso['tipo']) ?>
             </span>
           </div>
@@ -601,7 +601,7 @@ $ordemAtual = (int)($statusDef['ordenacao'] ?? 0);
             <?php if ((float)$cupomUso['valor_desconto'] > 0): ?>
             <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
               <span style="color:var(--c-text-muted);">Desconto no produto</span>
-              <span style="color:#16a34a;font-weight:700;">
+              <span style="color:var(--success);font-weight:700;">
                 −<?= PriceHelper::format((float)$cupomUso['valor_desconto']) ?>
               </span>
             </div>
@@ -609,7 +609,7 @@ $ordemAtual = (int)($statusDef['ordenacao'] ?? 0);
             <?php if ((float)$cupomUso['valor_frete_desc'] > 0): ?>
             <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
               <span style="color:var(--c-text-muted);">Desconto no frete</span>
-              <span style="color:#16a34a;font-weight:700;">
+              <span style="color:var(--success);font-weight:700;">
                 −<?= PriceHelper::format((float)$cupomUso['valor_frete_desc']) ?>
               </span>
             </div>
@@ -617,7 +617,7 @@ $ordemAtual = (int)($statusDef['ordenacao'] ?? 0);
             <div style="display:flex;justify-content:space-between;border-top:1px solid var(--c-border);
                         padding-top:8px;margin-top:4px;font-weight:700;">
               <span>Total de desconto</span>
-              <span style="color:#16a34a;">
+              <span style="color:var(--success);">
                 −<?= PriceHelper::format((float)$cupomUso['valor_desconto'] + (float)$cupomUso['valor_frete_desc']) ?>
               </span>
             </div>
@@ -641,13 +641,13 @@ $ordemAtual = (int)($statusDef['ordenacao'] ?? 0);
 <?php
 // Labels e cores para tipos de promoção
 $tipoPromoLabels = [
-    'desconto_progressivo' => ['label' => 'Progressivo',  'cor' => '#3b82f6'],
-    'brinde'               => ['label' => 'Brinde',       'cor' => '#8b5cf6'],
-    'compre_ganhe'         => ['label' => 'Compre+Leve',  'cor' => '#06b6d4'],
-    'frete_gratis'         => ['label' => 'Frete grátis', 'cor' => '#10b981'],
-    'bundle'               => ['label' => 'Bundle',       'cor' => '#f59e0b'],
+    'desconto_progressivo' => ['label' => 'Progressivo',  'cor' => 'var(--blue)'],
+    'brinde'               => ['label' => 'Brinde',       'cor' => 'var(--purple)'],
+    'compre_ganhe'         => ['label' => 'Compre+Leve',  'cor' => 'var(--info)'],
+    'frete_gratis'         => ['label' => 'Frete grátis', 'cor' => 'var(--success)'],
+    'bundle'               => ['label' => 'Bundle',       'cor' => 'var(--warning)'],
     'cashback'             => ['label' => 'Cashback',     'cor' => '#ec4899'],
-    'relampago'            => ['label' => 'Relâmpago',    'cor' => '#ef4444'],
+    'relampago'            => ['label' => 'Relâmpago',    'cor' => 'var(--danger)'],
     'fidelidade'           => ['label' => 'Fidelidade',   'cor' => '#f97316'],
 ];
 ?>
@@ -655,13 +655,13 @@ $tipoPromoLabels = [
       <div class="admin-card ap-action-card" style="margin-top:14px;">
         <h3 class="ap-card-title">
           Promoções aplicadas
-          <span class="badge" style="background:#eff6ff;color:#1d4ed8;font-size:10.5px;margin-left:6px;">
+          <span class="badge" style="background:var(--blue-lt);color:var(--blue);font-size:10.5px;margin-left:6px;">
             AUTO
           </span>
         </h3>
         <div style="padding:4px 0;">
           <?php foreach ($promocoesAplicadas as $promo):
-            $tipoCfg = $tipoPromoLabels[$promo['promocao_tipo']] ?? ['label' => $promo['promocao_tipo'], 'cor' => '#64748b'];
+            $tipoCfg = $tipoPromoLabels[$promo['promocao_tipo']] ?? ['label' => $promo['promocao_tipo'], 'cor' => 'var(--text-2)'];
             $det     = $promo['detalhes'] ?? [];
             $descProduto = (float)($det['desconto_produto'] ?? 0);
             $descFrete   = (float)($det['desconto_frete']   ?? 0);
@@ -695,19 +695,19 @@ $tipoPromoLabels = [
               <?php if ($descProduto > 0): ?>
               <div style="display:flex;justify-content:space-between;">
                 <span style="color:var(--c-text-muted);">Desconto produto</span>
-                <span style="color:#16a34a;font-weight:700;">−<?= PriceHelper::format($descProduto) ?></span>
+                <span style="color:var(--success);font-weight:700;">−<?= PriceHelper::format($descProduto) ?></span>
               </div>
               <?php endif; ?>
               <?php if ($descFrete > 0): ?>
               <div style="display:flex;justify-content:space-between;">
                 <span style="color:var(--c-text-muted);">Desconto frete</span>
-                <span style="color:#16a34a;font-weight:700;">−<?= PriceHelper::format($descFrete) ?></span>
+                <span style="color:var(--success);font-weight:700;">−<?= PriceHelper::format($descFrete) ?></span>
               </div>
               <?php endif; ?>
               <?php if (!empty($promo['produto_brinde_id'])): ?>
               <div style="display:flex;justify-content:space-between;">
                 <span style="color:var(--c-text-muted);">Brinde</span>
-                <span style="color:#8b5cf6;font-weight:700;">
+                <span style="color:var(--purple);font-weight:700;">
                   <?= (int)$promo['qtd_brinde'] ?>x produto #<?= (int)$promo['produto_brinde_id'] ?>
                 </span>
               </div>
@@ -716,7 +716,7 @@ $tipoPromoLabels = [
               <div style="display:flex;justify-content:space-between;
                           border-top:1px solid var(--c-border);padding-top:6px;margin-top:2px;">
                 <span style="font-weight:700;">Total desconto</span>
-                <span style="color:#16a34a;font-weight:700;">
+                <span style="color:var(--success);font-weight:700;">
                   −<?= PriceHelper::format((float)$promo['valor_desconto']) ?>
                 </span>
               </div>
@@ -867,8 +867,8 @@ var statusAtualEhCancelado = '<?= $isCancelado ? 'true' : 'false' ?>' === 'true'
           '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="margin-right:4px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg> Reenviar ao Bling'
         );
         $res.html(
-          '<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;">' +
-            '<strong style="color:#15803d;font-size:13px;">✓ ' + r.msg + '</strong>' +
+          '<div style="background:var(--success-lt);border:1px solid var(--success-bd);border-radius:8px;padding:10px 14px;">' +
+            '<strong style="color:var(--success);font-size:13px;">✓ ' + r.msg + '</strong>' +
           '</div>'
         ).show();
         adminToast(r.msg, 'success');
@@ -879,16 +879,16 @@ var statusAtualEhCancelado = '<?= $isCancelado ? 'true' : 'false' ?>' === 'true'
         if (r.detalhe) {
           try {
             var d = typeof r.detalhe === 'string' ? JSON.parse(r.detalhe) : r.detalhe;
-            detalhe = '<pre style="margin:8px 0 0;font-size:11px;color:#991b1b;' +
-                      'background:#fff;padding:8px;border-radius:6px;overflow-x:auto;' +
+            detalhe = '<pre style="margin:8px 0 0;font-size:11px;color:var(--danger);' +
+                      'background:var(--surface);padding:8px;border-radius:6px;overflow-x:auto;' +
                       'white-space:pre-wrap;">' + JSON.stringify(d, null, 2) + '</pre>';
           } catch (e) {
-            detalhe = '<code style="font-size:11px;color:#991b1b;">' + r.detalhe + '</code>';
+            detalhe = '<code style="font-size:11px;color:var(--danger);">' + r.detalhe + '</code>';
           }
         }
         $res.html(
-          '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:12px 14px;">' +
-            '<strong style="color:#dc2626;font-size:13px;display:block;margin-bottom:4px;">✗ ' + r.msg + '</strong>' +
+          '<div style="background:var(--danger-lt);border:1px solid var(--danger-bd);border-radius:8px;padding:12px 14px;">' +
+            '<strong style="color:var(--danger);font-size:13px;display:block;margin-bottom:4px;">✗ ' + r.msg + '</strong>' +
             detalhe +
           '</div>'
         ).show();
@@ -898,7 +898,7 @@ var statusAtualEhCancelado = '<?= $isCancelado ? 'true' : 'false' ?>' === 'true'
     .fail(function () {
       CK.btnLoading($btn, false);
       $res.html(
-        '<div style="color:#dc2626;font-size:13px;">Erro de conexão. Tente novamente.</div>'
+        '<div style="color:var(--danger);font-size:13px;">Erro de conexão. Tente novamente.</div>'
       ).show();
     });
   });
