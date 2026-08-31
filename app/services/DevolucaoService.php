@@ -10,7 +10,7 @@ class DevolucaoService {
     private PDO              $db;
     private CreditoService   $credito;
     private ScoreService     $score;
-    private LogisticaReversa $logistica;
+    private ReversaService   $reversa;
     private EmailService     $email;
     private AdminPedidoService $service;
 
@@ -23,7 +23,7 @@ class DevolucaoService {
         $this->db        = Database::getInstance()->getConnection();
         $this->credito   = new CreditoService();
         $this->score     = new ScoreService();
-        $this->logistica = new LogisticaReversa();
+        $this->reversa   = new ReversaService();
         $this->email     = new EmailService();
         $this->service   = new AdminPedidoService();
     }
@@ -123,7 +123,7 @@ class DevolucaoService {
 
             // Se pré-aprovado, gera código de logística já
             if ($autoAprovar) {
-                $logResult = $this->gerarLogisticaReversa($solId, $clienteId, $pedido);
+                $logResult = $this->abrirReversa($solId, $clienteId, $pedido);
                 if (!$logResult['ok']) {
                     // Falha na logística: coloca em aguardando_aprovacao para admin resolver
                     $this->db->prepare(
@@ -167,9 +167,13 @@ class DevolucaoService {
         $pedido = $this->getPedidoById((int)$sol['pedido_id']);
 
         // Gera código de postagem reversa
-        $logResult = $this->gerarLogisticaReversa($solId, (int)$sol['cliente_id'], $pedido);
+        // Abre a reversa no modulo de logistica, mas NAO emite etiqueta: a
+        // postagem reversa e cobrada e so sai no botao do admin.
+        $logResult = $this->abrirReversa($solId, (int)$sol['cliente_id'], $pedido);
 
-        $novoStatus = $logResult['ok'] ? 'aguardando_postagem' : 'aprovado';
+        // Sem codigo ainda, o correto e 'aprovado'; vai para aguardando_postagem
+        // quando a etiqueta for realmente emitida.
+        $novoStatus = 'aprovado';
 
         $this->db->prepare(
             "UPDATE solicitacoes_devolucao
@@ -203,7 +207,7 @@ class DevolucaoService {
         }
 
         $pedido    = $this->getPedidoById((int)$sol['pedido_id']);
-        $logResult = $this->gerarLogisticaReversa($solId, (int)$sol['cliente_id'], $pedido);
+        $logResult = $this->emitirEtiquetaReversa($solId, $adminId);
 
         if (!$logResult['ok']) {
             return [
@@ -681,42 +685,232 @@ class DevolucaoService {
     // HELPERS PRIVADOS
     // ════════════════════════════════════════════════════
 
-    private function gerarLogisticaReversa(int $solId, int $clienteId, array $pedido): array {
-        // Busca dados do cliente
-        $stmt = $this->db->prepare(
-            "SELECT u.nome, u.email, c.cpf, c.telefone,
-                    e.cep, e.logradouro, e.numero, e.cidade, e.estado
-             FROM clientes c
-             JOIN usuarios u  ON u.id = c.usuario_id
-             LEFT JOIN enderecos e ON e.id = (
-                 SELECT id FROM enderecos WHERE cliente_id = c.id AND principal = 1 LIMIT 1
-             )
-             WHERE c.id = ? LIMIT 1"
-        );
-        $stmt->execute([$clienteId]);
-        $clienteDados = $stmt->fetch();
+    /**
+     * Abre a reversa no modulo de logistica — SEM emitir etiqueta.
+     *
+     * Chamado na aprovacao (automatica ou do admin). Registra a intencao de
+     * devolucao em log_reversas e ja deixa autorizada, mas nao encosta na
+     * transportadora: emitir postagem reversa nos Correios e cobrado, e quem
+     * decide isso e o admin, no botao "gerar codigo de postagem".
+     *
+     * Antes daqui saia um codigo 'FAKE######' de LogisticaReversa, um stub
+     * apontando para uma URL de exemplo que nunca foi configurada.
+     */
+    private function abrirReversa(int $solId, int $clienteId, array $pedido): array {
+        $sol = $this->findById($solId);
+        if (!$sol) return ['ok' => false, 'msg' => 'Solicitação não encontrada.'];
 
-        // Busca itens da solicitação
-        $itens  = $this->getItens($solId);
-        $itensApi = array_map(fn($i) => [
-            'nome'       => $i['nome_produto'],
-            'sku'        => $i['sku'] ?? '',
-            'quantidade' => (int)$i['quantidade'],
-        ], $itens);
-
-        $result = $this->logistica->gerarCodigoReversa($clienteDados ?: [], $itensApi, $pedido);
-
-        if ($result['ok']) {
-            $this->db->prepare(
-                "UPDATE solicitacoes_devolucao
-                 SET codigo_postagem_reversa = ?,
-                     codigo_validade_dias    = ?,
-                     atualizado_em           = NOW()
-                 WHERE id = ?"
-            )->execute([$result['cod'], $result['validate'], $solId]);
+        // Reaproveita a reversa ja ligada a esta solicitacao.
+        $reversaId = (int)($sol['reversa_id'] ?? 0);
+        if ($reversaId > 0) {
+            return ['ok' => true, 'reversa_id' => $reversaId, 'reutilizada' => true];
         }
 
-        return $result;
+        $cliente = $this->dadosClienteParaReversa($clienteId);
+        $itens   = $this->getItens($solId);
+
+        $res = $this->reversa->solicitar([
+            'pedido_id'       => (int)($pedido['id'] ?? $sol['pedido_id']),
+            'cliente_id'      => $clienteId,
+            'motivo'          => (($sol['tipo'] ?? '') === 'troca') ? 'troca' : 'devolucao',
+            'tipo'            => 'postagem',
+            'processo'        => (($sol['tipo'] ?? '') === 'troca') ? 'troca' : 'reembolso',
+            'itens'           => array_map(static fn($i) => [
+                'nome'       => $i['nome_produto'] ?? '',
+                'sku'        => $i['sku'] ?? '',
+                'quantidade' => (int)($i['quantidade'] ?? 1),
+            ], $itens),
+            'endereco_coleta' => $cliente,
+        ], $this->usuarioAtual());
+
+        if (empty($res['ok'])) {
+            return ['ok' => false, 'msg' => $res['erro'] ?? 'Falha ao abrir a reversa.'];
+        }
+
+        $reversaId = (int)$res['id'];
+
+        // Autoriza para liberar o botao de gerar etiqueta.
+        if (($res['status'] ?? '') === 'solicitada') {
+            $this->reversa->autorizar($reversaId, $this->usuarioAtual());
+        }
+
+        $this->vincularReversa($solId, $reversaId);
+
+        return ['ok' => true, 'reversa_id' => $reversaId];
+    }
+
+    /**
+     * Emite a etiqueta reversa DE VERDADE. Custa dinheiro — so no clique.
+     *
+     * Escreve de volta em solicitacoes_devolucao o codigo que a transportadora
+     * devolveu, para que a tela do cliente e o e-mail passem a mostrar um
+     * codigo que existe.
+     */
+    private function emitirEtiquetaReversa(int $solId, ?int $adminId = null): array {
+        $sol = $this->findById($solId);
+        if (!$sol) return ['ok' => false, 'msg' => 'Solicitação não encontrada.'];
+
+        $reversaId = (int)($sol['reversa_id'] ?? 0);
+        if ($reversaId <= 0) {
+            $pedido = $this->getPedidoById((int)$sol['pedido_id']);
+            $abriu  = $this->abrirReversa($solId, (int)$sol['cliente_id'], $pedido ?: []);
+            if (empty($abriu['ok'])) return $abriu;
+            $reversaId = (int)$abriu['reversa_id'];
+        }
+
+        [$transportadoraId, $servico] = $this->servicoReversaPadrao();
+        if ($transportadoraId <= 0 || $servico === '') {
+            return ['ok' => false, 'msg' => 'Nenhuma transportadora ativa com serviço de reversa configurado.'];
+        }
+
+        $itens = $this->getItens($solId);
+        // A reversa dos Correios nao usa dimensoes: os volumes so alimentam a
+        // descricao do conteudo. Um volume por item declarado.
+        $volumes = [];
+        foreach ($itens as $i) {
+            $volumes[] = ['peso_g' => 300, 'altura_cm' => 10, 'largura_cm' => 15, 'comprimento_cm' => 20];
+        }
+        if (!$volumes) {
+            $volumes[] = ['peso_g' => 300, 'altura_cm' => 10, 'largura_cm' => 15, 'comprimento_cm' => 20];
+        }
+
+        $res = $this->reversa->gerarEtiqueta($reversaId, [
+            'transportadora_id' => $transportadoraId,
+            'servico_codigo'    => $servico,
+            'servico_nome'      => 'Reversa',
+            'volumes'           => $volumes,
+            'remetente'         => $this->dadosClienteParaReversa((int)$sol['cliente_id']),
+            'produtos'          => array_map(static fn($i) => [
+                'descricao'  => $i['nome_produto'] ?? 'Item',
+                'quantidade' => (int)($i['quantidade'] ?? 1),
+            ], $itens),
+            'observacao'        => 'Devolucao #' . $solId,
+        ], $adminId ?? $this->usuarioAtual());
+
+        if (empty($res['ok'])) {
+            return ['ok' => false, 'msg' => $res['erro'] ?? 'Falha ao gerar a etiqueta reversa.'];
+        }
+
+        // O codigo fica na reversa; le de la para gravar na solicitacao.
+        $rev      = $this->reversa->obter($reversaId) ?: [];
+        $codigo   = (string)($rev['codigo_rastreio'] ?? '');
+        $validade = null;
+        if (!empty($rev['validade_em'])) {
+            $dias = (int) floor((strtotime((string)$rev['validade_em']) - time()) / 86400);
+            $validade = $dias > 0 ? $dias : null;
+        }
+
+        if ($codigo !== '') {
+            $this->db->prepare(
+                "UPDATE solicitacoes_devolucao
+                    SET codigo_postagem_reversa = ?,
+                        codigo_validade_dias    = COALESCE(?, codigo_validade_dias),
+                        atualizado_em           = NOW()
+                  WHERE id = ?"
+            )->execute([$codigo, $validade, $solId]);
+        }
+
+        return [
+            'ok'          => true,
+            'cod'         => $codigo,
+            'validate'    => $validade,
+            'reversa_id'  => $reversaId,
+            'etiqueta_id' => $res['etiqueta_id'] ?? null,
+            'url_pdf'     => $res['url_pdf'] ?? null,
+            'rastreio'    => $res['rastreio'] ?? null,
+        ];
+    }
+
+    /** Grava o vinculo devolucao -> reversa (tolera a coluna ainda nao migrada). */
+    private function vincularReversa(int $solId, int $reversaId): void {
+        try {
+            $this->db->prepare("UPDATE solicitacoes_devolucao SET reversa_id = ?, atualizado_em = NOW() WHERE id = ?")
+                     ->execute([$reversaId, $solId]);
+        } catch (\Throwable $e) {
+            // Sem a coluna (migration nao aplicada) o fluxo continua, mas cada
+            // aprovacao abriria uma reversa nova — por isso o aviso e explicito.
+            if (class_exists('LogService')) {
+                LogService::warning('devolucao: coluna reversa_id ausente — rode sql/devolucao_reversa_link_migration.sql', [
+                    'solicitacao_id' => $solId, 'reversa_id' => $reversaId, 'erro' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    /** Transportadora + codigo de servico usados na reversa. */
+    private function servicoReversaPadrao(): array {
+        try {
+            $t = $this->db->query(
+                "SELECT id, config FROM log_transportadoras
+                  WHERE status = 'ativo' AND adapter = 'CorreiosAdapter'
+                  ORDER BY prioridade ASC LIMIT 1"
+            )->fetch(PDO::FETCH_ASSOC);
+
+            if ($t) {
+                $cfg = json_decode((string)$t['config'], true) ?: [];
+                $cod = (string)($cfg['reversa_codigo_servico'] ?? '');
+                if ($cod !== '') return [(int)$t['id'], $cod];
+
+                // Sem codigo na config, cai no primeiro servico de modalidade reversa.
+                $s = $this->db->prepare(
+                    "SELECT codigo FROM log_transportadora_servicos
+                      WHERE transportadora_id = ? AND habilitado = 1 AND modalidade = 'reverso'
+                      ORDER BY prioridade ASC, nome ASC LIMIT 1"
+                );
+                $s->execute([(int)$t['id']]);
+                $cod = (string)($s->fetchColumn() ?: '');
+                if ($cod !== '') return [(int)$t['id'], $cod];
+            }
+        } catch (\Throwable $e) {
+            if (class_exists('LogService')) {
+                LogService::error('Falha ao resolver serviço de reversa', ['erro' => $e->getMessage()]);
+            }
+        }
+        return [0, ''];
+    }
+
+    /** Endereco do cliente, que e o REMETENTE da volta. */
+    private function dadosClienteParaReversa(int $clienteId): array {
+        $stmt = $this->db->prepare(
+            "SELECT u.nome, u.email, c.cpf, c.telefone,
+                    e.cep, e.logradouro, e.numero, e.complemento, e.bairro, e.cidade, e.estado
+               FROM clientes c
+               JOIN usuarios u ON u.id = c.usuario_id
+          LEFT JOIN enderecos e ON e.id = (
+                    SELECT id FROM enderecos WHERE cliente_id = c.id AND principal = 1 LIMIT 1
+               )
+              WHERE c.id = ? LIMIT 1"
+        );
+        $stmt->execute([$clienteId]);
+        $d = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        if (!$d) return [];
+
+        $so = static fn($v) => preg_replace('/\D/', '', (string)$v);
+
+        return [
+            'nome'        => $d['nome'] ?? '',
+            'email'       => $d['email'] ?? '',
+            'documento'   => $so($d['cpf'] ?? ''),
+            'cpf'         => $so($d['cpf'] ?? ''),
+            'telefone'    => $so($d['telefone'] ?? ''),
+            'cep'         => $so($d['cep'] ?? ''),
+            'logradouro'  => $d['logradouro'] ?? '',
+            'numero'      => $d['numero'] ?? '',
+            'complemento' => $d['complemento'] ?? '',
+            'bairro'      => $d['bairro'] ?? '',
+            'cidade'      => $d['cidade'] ?? '',
+            'uf'          => $d['estado'] ?? '',
+            'estado'      => $d['estado'] ?? '',
+        ];
+    }
+
+    /** usuarios.id de quem opera (null quando roda pelo cliente/worker). */
+    private function usuarioAtual(): ?int {
+        if (class_exists('AuthHelper')) {
+            $id = (int) AuthHelper::usuarioId();
+            if ($id > 0) return $id;
+        }
+        return null;
     }
 
     private function calcularValorItens(int $pedidoId, array $itens, array $pedido): array {

@@ -5,7 +5,7 @@
  * @var array $kpis @var array $serie @var array $serieContatos @var array $porHora
  * @var array $topFluxos @var array $topGatilhos @var array $porTag @var array $falhas
  * @var array $saude @var int $dias @var float|null $tempoResposta
- * @var array $porCanal @var array $instagram
+ * @var array $porCanal @var array $instagram @var array $topSeguidores
  */
 $base = defined('BASE_URL') ? BASE_URL : '';
 $h    = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
@@ -321,6 +321,75 @@ $grafico = function (array $dados, array $series, int $altura = 190) use ($h) {
       <?php endif; ?>
     <?php endif; ?>
   </div>
+
+  <?php // ── Top seguidores ─────────────────────────────────────────────── ?>
+  <?php if ($instagram['conectado']): ?>
+    <div class="ch-card" style="margin-bottom:16px;">
+      <div class="ch-card-head">
+        <h2>Quem mais interage</h2>
+        <div class="ch-flex">
+          <span class="ch-sm ch-mut"
+                title="Conta comentários e mensagens no direct que passaram por este sistema. Curtida, salvamento e visualização de story não entram — a API do Instagram não expõe esses dados por seguidor.">
+            últimos <?= min(30, (int)$dias) ?> dias ⓘ
+          </span>
+          <a href="<?= $base ?>/admin/chat/instagram" class="ch-btn ch-btn--sm">Ver top 10</a>
+        </div>
+      </div>
+
+      <?php if (!$topSeguidores): ?>
+        <div class="ch-vazio">
+          <strong>Ainda sem interações no período</strong>
+          <p style="max-width:50ch;margin:0 auto;">
+            Assim que alguém comentar num post ou mandar direct, o ranking aparece aqui.
+            <?php if ((int)$instagram['regras_ativas'] === 0): ?>
+              Uma automação ativa acelera isso — ela abre a conversa sozinha.
+            <?php endif; ?>
+          </p>
+        </div>
+      <?php else: ?>
+        <?php foreach ($topSeguidores as $i => $p):
+          $nome    = $p['nome'] ?: ($p['username'] ?: $p['ig_id']);
+          $medalha = [0 => '🥇', 1 => '🥈', 2 => '🥉'][$i] ?? '';
+          $det     = [];
+          if ($p['comentarios']) $det[] = $p['comentarios'] . ($p['comentarios'] === 1 ? ' comentário' : ' comentários');
+          if ($p['mensagens'])   $det[] = $p['mensagens'] . ($p['mensagens'] === 1 ? ' mensagem' : ' mensagens');
+        ?>
+          <div class="ch-top-item" style="grid-template-columns:42px minmax(0,1fr) auto;">
+            <span class="ch-top-av-wrap">
+              <?php if ($p['avatar']): ?>
+                <img src="<?= $h($p['avatar']) ?>" alt="" class="ch-top-av">
+              <?php else: ?>
+                <span class="ch-top-av ch-top-av--txt"><?= $h(mb_strtoupper(mb_substr($nome, 0, 1))) ?></span>
+              <?php endif; ?>
+              <?php if ($medalha): ?><span class="ch-top-medalha"><?= $medalha ?></span><?php endif; ?>
+            </span>
+
+            <span class="ch-top-id">
+              <span class="ch-top-nome">
+                <?= $h($nome) ?>
+                <?php if ($p['username']): ?>
+                  <a href="https://instagram.com/<?= $h(rawurlencode($p['username'])) ?>" target="_blank"
+                     rel="noopener" class="ch-top-link" title="Abrir no Instagram">↗</a>
+                <?php endif; ?>
+                <?php if ($p['contato_id']): ?>
+                  <a href="<?= $base ?>/admin/chat/contatos/<?= (int)$p['contato_id'] ?>"
+                     class="ch-top-link" title="Ver ficha">👤</a>
+                <?php endif; ?>
+              </span>
+              <span class="ch-top-user">
+                <?= $p['username'] ? '@' . $h($p['username']) : $h($p['ig_id']) ?>
+                <?php if ($det): ?>
+                  <span class="ch-mut">· <?= $h(implode(' · ', $det)) ?></span>
+                <?php endif; ?>
+              </span>
+            </span>
+
+            <span class="ch-top-pontos"><?= $n($p['pontos']) ?></span>
+          </div>
+        <?php endforeach; ?>
+      <?php endif; ?>
+    </div>
+  <?php endif; ?>
 
   <?php // ── Gráficos ───────────────────────────────────────────────────── ?>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px;margin-bottom:16px;">

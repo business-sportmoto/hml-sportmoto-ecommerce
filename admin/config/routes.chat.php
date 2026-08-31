@@ -95,6 +95,7 @@ AdminRouter::post('/chat/campanhas/{id}/excluir',   'ChatCampanhaController@excl
 AdminRouter::get ('/chat/instagram',                    'ChatInstagramController@index');
 AdminRouter::get ('/chat/instagram/regras',             'ChatInstagramController@regras');
 AdminRouter::get ('/chat/instagram/comentarios',        'ChatInstagramController@comentarios');
+AdminRouter::get ('/chat/instagram/top-seguidores',     'ChatInstagramController@topSeguidores');
 AdminRouter::post('/chat/instagram/conectar',           'ChatInstagramController@conectar');
 AdminRouter::post('/chat/instagram/regras/salvar',      'ChatInstagramController@salvarRegra');
 AdminRouter::post('/chat/instagram/regras/simular',     'ChatInstagramController@simular');

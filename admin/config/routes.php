@@ -208,9 +208,11 @@ AdminRouter::post('/pedidos/novo',                     'AdminPedidoController@cr
 AdminRouter::get ('/pedidos/buscar-cliente',           'AdminPedidoController@buscarCliente');
 AdminRouter::get ('/pedidos/buscar-produto',           'AdminPedidoController@buscarProduto');
 AdminRouter::get ('/pedidos/enderecos/{id:\d+}',       'AdminPedidoController@enderecosPorCliente');
+AdminRouter::get ('/pedidos/opcoes-envio',              'AdminPedidoController@opcoesEnvio');
 AdminRouter::get ('/pedidos/{id:\d+}',                 'AdminPedidoController@show');
 AdminRouter::post('/pedidos/{id:\d+}/status',          'AdminPedidoController@updateStatus');
 AdminRouter::post('/pedidos/{id:\d+}/rastreio',        'AdminPedidoController@updateRastreio');
+AdminRouter::post('/pedidos/{id:\d+}/etiqueta',        'AdminPedidoController@gerarEtiqueta');
 AdminRouter::post('/pedidos/{id:\d+}/pagamento',       'AdminPedidoController@updatePagamento');
 AdminRouter::post('/pedidos/{id:\d+}/item/add',        'AdminPedidoController@addItem');
 AdminRouter::post('/pedidos/{id:\d+}/item/{iid:\d+}',  'AdminPedidoController@updateItem');

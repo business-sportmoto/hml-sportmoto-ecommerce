@@ -192,6 +192,26 @@ $pronto = $d['token_valido'] && empty($d['faltando']) && $d['contas'] > 0;
 
   <div id="ch-ig-resultado"></div>
 
+  <?php // ── Top seguidores por interação ───────────────────────────────── ?>
+  <div class="ch-card" style="margin-bottom:16px;">
+    <div class="ch-card-head">
+      <h2>Top seguidores</h2>
+      <div class="ch-flex">
+        <div class="ch-lista-filtros" id="ch-top-abas">
+          <button type="button" class="ch-pill ativa" data-dias="7">7 dias</button>
+          <button type="button" class="ch-pill" data-dias="14">14 dias</button>
+          <button type="button" class="ch-pill" data-dias="30">30 dias</button>
+        </div>
+        <span class="ch-sm ch-mut" title="Conta comentários e mensagens no direct que passaram por este sistema. Curtida, salvamento e visualização de story não entram — a API do Instagram não expõe esses dados por seguidor, então este número não bate com o do Business Suite.">
+          Nível de interação ⓘ
+        </span>
+      </div>
+    </div>
+    <div id="ch-top-lista">
+      <div class="ch-carregando">Carregando...</div>
+    </div>
+  </div>
+
   <?php // ── Passo a passo ──────────────────────────────────────────────── ?>
   <div class="ch-card" style="margin-bottom:16px;">
     <div class="ch-card-head"><h2>Como ligar o canal</h2></div>
@@ -338,6 +358,88 @@ $pronto = $d['token_valido'] && empty($d['faltando']) && $d['contas'] > 0;
     if (!confirm('Desconectar esta conta?\n\nOs contatos e conversas já recebidos são preservados.')) return;
     post('/admin/chat/instagram/' + $(this).data('id') + '/desconectar').done(function () { location.reload(); });
   });
+
+  // ── Top seguidores ──────────────────────────────────────────────────────
+  function medalha(i) {
+    return i === 0 ? '🥇' : (i === 1 ? '🥈' : (i === 2 ? '🥉' : ''));
+  }
+
+  function carregarTop(dias) {
+    $('#ch-top-lista').html('<div class="ch-carregando">Carregando...</div>');
+
+    $.get(BASE + '/admin/chat/instagram/top-seguidores', { dias: dias, limite: 10 }, function (r) {
+      if (!r.ok) return;
+
+      if (!r.itens.length) {
+        $('#ch-top-lista').html(
+          '<div class="ch-vazio"><strong>Ainda sem interações no período</strong>' +
+          'Assim que alguém comentar num post ou mandar direct, aparece aqui.</div>'
+        );
+        return;
+      }
+
+      var html = r.itens.map(function (p, i) {
+        var nome = p.nome || p.username || p.ig_id;
+        var ini  = (nome || '?').trim().charAt(0).toUpperCase();
+
+        var avatar = p.avatar
+          ? '<img src="' + esc(p.avatar) + '" alt="" class="ch-top-av">'
+          : '<span class="ch-top-av ch-top-av--txt">' + esc(ini) + '</span>';
+
+        var detalhes = [];
+        if (p.comentarios) detalhes.push(p.comentarios + (p.comentarios === 1 ? ' comentário' : ' comentários'));
+        if (p.mensagens)   detalhes.push(p.mensagens + (p.mensagens === 1 ? ' mensagem' : ' mensagens'));
+
+        // Link para o perfil e, quando virou contato, para a ficha interna
+        var acoes = '';
+        if (p.username) {
+          acoes += '<a href="https://instagram.com/' + encodeURIComponent(p.username) + '" target="_blank" ' +
+                   'rel="noopener" class="ch-top-link" title="Abrir no Instagram">↗</a>';
+        }
+        if (p.contato_id) {
+          acoes += '<a href="' + BASE + '/admin/chat/contatos/' + p.contato_id + '" ' +
+                   'class="ch-top-link" title="Ver ficha">👤</a>';
+        }
+
+        return '' +
+          '<div class="ch-top-item">' +
+            '<button type="button" class="ch-top-exp" data-i="' + i + '" title="Detalhes">›</button>' +
+            '<span class="ch-top-av-wrap">' + avatar +
+              (medalha(i) ? '<span class="ch-top-medalha">' + medalha(i) + '</span>' : '') +
+            '</span>' +
+            '<span class="ch-top-id">' +
+              '<span class="ch-top-nome">' + esc(nome) + acoes + '</span>' +
+              '<span class="ch-top-user">' + (p.username ? '@' + esc(p.username) : esc(p.ig_id)) + '</span>' +
+            '</span>' +
+            '<span class="ch-top-pontos">' + p.pontos + '</span>' +
+            '<div class="ch-top-det" data-det="' + i + '">' +
+              (detalhes.join(' · ') || 'sem detalhe') +
+              (p.ultima ? ' · última em ' + esc(new Date(p.ultima.replace(' ', 'T')).toLocaleString('pt-BR')) : '') +
+              (p.seguidor === 1 ? ' · <span style="color:var(--success)">segue o perfil</span>' : '') +
+              (p.cliente_id ? ' · <a href="' + BASE + '/admin/clientes/' + p.cliente_id + '">é cliente</a>' : '') +
+            '</div>' +
+          '</div>';
+      }).join('');
+
+      $('#ch-top-lista').html(html);
+    }, 'json').fail(function () {
+      $('#ch-top-lista').html('<div class="ch-vazio">Não foi possível carregar.</div>');
+    });
+  }
+
+  $('#ch-top-abas').on('click', '.ch-pill', function () {
+    $('#ch-top-abas .ch-pill').removeClass('ativa');
+    $(this).addClass('ativa');
+    carregarTop($(this).data('dias'));
+  });
+
+  $(document).on('click', '.ch-top-exp', function () {
+    var i = $(this).data('i');
+    $('[data-det="' + i + '"]').toggleClass('aberto');
+    $(this).toggleClass('aberto');
+  });
+
+  carregarTop(7);
 
   $('#ch-ig-copiar').on('click', function () {
     var el = document.getElementById('ch-ig-url'), btn = $(this), txt = btn.text(), ok = false;

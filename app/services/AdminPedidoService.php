@@ -688,4 +688,187 @@ class AdminPedidoService {
             error_log('[AdminPedidoService] Purchase tracking: ' . $e->getMessage());
         }
     }
+
+    /* ════════════════════════════════════════════════════════
+       ETIQUETA DE IDA (modulo de logistica)
+       ════════════════════════════════════════════════════════ */
+
+    /**
+     * Emite a etiqueta de envio do pedido pelo modulo de logistica.
+     *
+     * Antes daqui nao saia etiqueta nenhuma: o admin gerava o envio por fora e
+     * colava o codigo em salvarRastreio(). Agora a etiqueta e criada em
+     * log_etiquetas, comprada na transportadora e o rastreio volta preenchido —
+     * o mesmo caminho que a tela de Logistica ja usava.
+     *
+     * Emite de verdade (cobrado). So e chamado pelo botao do admin.
+     *
+     * @param array $opcoes transportadora_id, servico_codigo, servico_nome, formato
+     */
+    public function gerarEtiqueta(int $pedidoId, array $opcoes, ?int $usuarioId = null): array {
+        $pedido = $this->model->findById($pedidoId);
+        if (!$pedido) return ['ok' => false, 'msg' => 'Pedido não encontrado.'];
+
+        if (!empty($pedido['codigo_rastreio'])) {
+            return ['ok' => false, 'msg' => 'Este pedido já tem código de rastreio: ' . $pedido['codigo_rastreio']];
+        }
+
+        $transportadoraId = (int)($opcoes['transportadora_id'] ?? 0);
+        $servico          = trim((string)($opcoes['servico_codigo'] ?? ''));
+        if ($transportadoraId <= 0) return ['ok' => false, 'msg' => 'Selecione a transportadora.'];
+        if ($servico === '')        return ['ok' => false, 'msg' => 'Selecione o serviço.'];
+
+        $destinatario = $this->destinatarioDoPedido($pedido);
+        $falta = $this->camposFaltantes($destinatario);
+        if ($falta) {
+            return ['ok' => false, 'msg' => 'Endereço de entrega incompleto: ' . implode(', ', $falta)];
+        }
+
+        $volumes = $this->volumesDoPedido($pedidoId);
+        if (!$volumes) return ['ok' => false, 'msg' => 'Não foi possível calcular peso/dimensões dos itens.'];
+
+        $etiquetas = new EtiquetaService();
+
+        // criar() e idempotente pela chave (pedido + transportadora + servico +
+        // volumes), entao dois cliques seguidos nao geram duas etiquetas.
+        $criada = $etiquetas->criar([
+            'pedido_id'         => $pedidoId,
+            'transportadora_id' => $transportadoraId,
+            'servico_codigo'    => $servico,
+            'servico_nome'      => $opcoes['servico_nome'] ?? ($pedido['frete_servico'] ?? 'Envio'),
+            'canal'             => 'pedido',
+            'destinatario'      => $destinatario,
+            'volumes'           => $volumes,
+            'produtos'          => $this->produtosDoPedido($pedidoId),
+            'valor_declarado'   => (float)($pedido['subtotal'] ?? $pedido['total'] ?? 0),
+            'formato'           => $opcoes['formato'] ?? 'pdf',
+        ], $usuarioId);
+
+        if (empty($criada['ok'])) {
+            return ['ok' => false, 'msg' => $criada['erro'] ?? 'Falha ao registrar a etiqueta.'];
+        }
+
+        $etiquetaId = (int)$criada['id'];
+
+        // Ja emitida numa tentativa anterior: devolve o que existe.
+        if (($criada['status'] ?? '') === 'emitida') {
+            $e = $etiquetas->obter($etiquetaId) ?: [];
+            $this->refletirRastreioNoPedido($pedidoId, (string)($e['codigo_rastreio'] ?? ''));
+            return ['ok' => true, 'etiqueta_id' => $etiquetaId, 'codigo_rastreio' => $e['codigo_rastreio'] ?? null,
+                    'url_pdf' => $e['url_pdf'] ?? null, 'reutilizada' => true];
+        }
+
+        $compra = $etiquetas->comprar($etiquetaId, $usuarioId);
+        if (empty($compra['ok'])) {
+            return ['ok' => false, 'msg' => $compra['erro'] ?? 'Falha ao emitir a etiqueta.',
+                    'etapa' => $compra['etapa'] ?? null, 'etiqueta_id' => $etiquetaId];
+        }
+
+        $codigo = (string)($compra['codigo_rastreio'] ?? '');
+        $this->refletirRastreioNoPedido($pedidoId, $codigo);
+
+        return [
+            'ok'              => true,
+            'etiqueta_id'     => $etiquetaId,
+            'codigo_rastreio' => $codigo ?: null,
+            'url_pdf'         => $compra['url_pdf'] ?? null,
+        ];
+    }
+
+    /**
+     * Grava o rastreio no pedido reaproveitando salvarRastreio(), para nao
+     * duplicar historico, notificacao ao cliente e regras de status.
+     */
+    private function refletirRastreioNoPedido(int $pedidoId, string $codigo): void {
+        if ($codigo === '') return;
+        try {
+            $this->salvarRastreio($pedidoId, strtoupper($codigo), false);
+        } catch (\Throwable $e) {
+            // A etiqueta ja existe; nao perder isso por causa do reflexo.
+            if (class_exists('LogService')) {
+                LogService::warning('Etiqueta emitida mas falhou ao gravar rastreio no pedido', [
+                    'pedido_id' => $pedidoId, 'codigo' => $codigo, 'erro' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    /** Destinatario a partir do endereco de entrega ja carregado em findById(). */
+    private function destinatarioDoPedido(array $p): array {
+        $so = static fn($v) => preg_replace('/\D/', '', (string)$v);
+        return [
+            'nome'        => $p['ent_destinatario'] ?: ($p['cliente_nome'] ?? ''),
+            'email'       => $p['cliente_email'] ?? '',
+            'documento'   => $so($p['cliente_cpf'] ?? ''),
+            'cpf'         => $so($p['cliente_cpf'] ?? ''),
+            'telefone'    => $so($p['cliente_telefone'] ?? ''),
+            'cep'         => $so($p['ent_cep'] ?? ''),
+            'logradouro'  => $p['ent_logradouro'] ?? '',
+            'numero'      => $p['ent_numero'] ?? '',
+            'complemento' => $p['ent_complemento'] ?? '',
+            'bairro'      => $p['ent_bairro'] ?? '',
+            'cidade'      => $p['ent_cidade'] ?? '',
+            'uf'          => $p['ent_estado'] ?? '',
+            'estado'      => $p['ent_estado'] ?? '',
+        ];
+    }
+
+    /** O que falta para a transportadora aceitar o destinatario. */
+    private function camposFaltantes(array $d): array {
+        $rotulos = [
+            'nome' => 'nome', 'cep' => 'CEP', 'logradouro' => 'logradouro',
+            'numero' => 'número', 'bairro' => 'bairro', 'cidade' => 'cidade', 'uf' => 'UF',
+        ];
+        $falta = [];
+        foreach ($rotulos as $k => $rotulo) {
+            if (empty($d[$k])) $falta[] = $rotulo;
+        }
+        if (!empty($d['cep']) && strlen((string)$d['cep']) !== 8) $falta[] = 'CEP inválido';
+        return $falta;
+    }
+
+    /** Um volume por unidade, com peso/dimensoes do cadastro do produto. */
+    private function volumesDoPedido(int $pedidoId): array {
+        $st = $this->db->prepare(
+            "SELECT pi.quantidade,
+                    pr.peso_kg, pr.altura_cm, pr.largura_cm, pr.comprimento_cm
+               FROM pedido_itens pi
+               JOIN produtos pr ON pr.id = pi.produto_id
+              WHERE pi.pedido_id = ?"
+        );
+        $st->execute([$pedidoId]);
+
+        $volumes = [];
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $i) {
+            $qtd = max(1, (int)$i['quantidade']);
+            // Cadastro incompleto nao pode travar o envio: cai num volume
+            // pequeno padrao, que o operador ajusta na tela de Logistica.
+            $peso = (int) round(((float)$i['peso_kg'] ?: 0.3) * 1000);
+            $vol  = [
+                'peso_g'         => max(50, $peso),
+                'altura_cm'      => (float)$i['altura_cm']      ?: 10.0,
+                'largura_cm'     => (float)$i['largura_cm']     ?: 15.0,
+                'comprimento_cm' => (float)$i['comprimento_cm'] ?: 20.0,
+            ];
+            for ($n = 0; $n < $qtd; $n++) $volumes[] = $vol;
+        }
+        return $volumes;
+    }
+
+    /** Descricao do conteudo (declaracao de conteudo dos Correios). */
+    private function produtosDoPedido(int $pedidoId): array {
+        $st = $this->db->prepare(
+            "SELECT COALESCE(pi.nome_produto, pr.nome) AS nome, pi.quantidade, pi.preco_unitario
+               FROM pedido_itens pi
+               JOIN produtos pr ON pr.id = pi.produto_id
+              WHERE pi.pedido_id = ?"
+        );
+        $st->execute([$pedidoId]);
+        return array_map(static fn($i) => [
+            'descricao'  => (string)$i['nome'],
+            'quantidade' => (int)$i['quantidade'],
+            'valor'      => (float)$i['preco_unitario'],
+        ], $st->fetchAll(PDO::FETCH_ASSOC));
+    }
+
 }

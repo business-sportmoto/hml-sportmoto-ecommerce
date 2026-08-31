@@ -247,6 +247,22 @@ class ChatInstagramController extends Controller
     // COMENTÁRIOS
     // =========================================================================
 
+    /**
+     * Top seguidores por nível de interação.
+     * JSON porque as abas (7/14/30 dias) trocam sem recarregar a página.
+     */
+    public function topSeguidores(): void
+    {
+        $dias   = max(1, min(90, (int)($_GET['dias'] ?? 7)));
+        $limite = max(1, min(50, (int)($_GET['limite'] ?? 10)));
+
+        $this->json([
+            'ok'     => true,
+            'dias'   => $dias,
+            'itens'  => $this->svc->topSeguidores($dias, $limite),
+        ]);
+    }
+
     public function comentarios(): void
     {
         $this->render('chat/instagram-comentarios', [

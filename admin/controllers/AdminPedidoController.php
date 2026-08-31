@@ -396,4 +396,50 @@ class AdminPedidoController extends Controller {
         $enderecos = $this->model->getEnderecosPorCliente($clienteId);
         $this->json(['ok' => true, 'enderecos' => $enderecos]);
     }
+
+    // ── GET /admin/pedidos/opcoes-envio ───────────────────
+    // Transportadoras ativas + servicos de IDA, para o seletor da etiqueta.
+    // Exclui modalidade 'reverso': aqueles codigos sao de devolucao e emitiriam
+    // uma etiqueta de volta no lugar da de envio.
+    public function opcoesEnvio(): void {
+        $db = Database::getInstance()->getConnection();
+        $ts = $db->query(
+            "SELECT id, nome FROM log_transportadoras
+              WHERE status = 'ativo' ORDER BY prioridade ASC, id ASC"
+        )->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        if (!$ts) { $this->json(['ok' => true, 'transportadoras' => []]); }
+
+        $in = implode(',', array_map(static fn($t) => (int)$t['id'], $ts));
+        $sv = $db->query(
+            "SELECT transportadora_id, codigo, nome FROM log_transportadora_servicos
+              WHERE transportadora_id IN ($in) AND habilitado = 1
+                AND (modalidade IS NULL OR modalidade <> 'reverso')
+              ORDER BY nome ASC"
+        )->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        $porT = [];
+        foreach ($sv as $s) {
+            $porT[$s['transportadora_id']][] = ['codigo' => $s['codigo'], 'nome' => $s['nome']];
+        }
+        foreach ($ts as &$t) { $t['servicos'] = $porT[$t['id']] ?? []; }
+        unset($t);
+
+        $this->json(['ok' => true, 'transportadoras' => $ts]);
+    }
+
+    // ── POST /admin/pedidos/{id}/etiqueta ─────────────────
+    // Emite a etiqueta de envio pelo modulo de logistica. Cobrado: so no clique.
+    public function gerarEtiqueta(int $id): void {
+        $this->verifyCsrf();
+        AuthHelper::requireAdminLevel('super', 'gerente', 'vendedor');
+
+        $this->json($this->service->gerarEtiqueta($id, [
+            'transportadora_id' => (int)($_POST['transportadora_id'] ?? 0),
+            'servico_codigo'    => SecurityHelper::sanitizeString($_POST['servico_codigo'] ?? ''),
+            'servico_nome'      => SecurityHelper::sanitizeString($_POST['servico_nome'] ?? ''),
+            'formato'           => SecurityHelper::sanitizeString($_POST['formato'] ?? 'pdf'),
+        ], AuthHelper::usuarioId()));
+    }
+
 }

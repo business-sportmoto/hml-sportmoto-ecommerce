@@ -22,7 +22,18 @@ final class OrderPresenter
         'entregue'             => 'Entregue',
     ];
 
-    private const DESFECHOS = ['cancelado', 'devolvido', 'estornado'];
+    /**
+     * `status_pedido` é varchar, não ENUM: o admin pode gravar o que quiser, e
+     * de fato há `aguardando` e `troca_devolucao` no banco além dos cinco da
+     * trilha. Este mapa cobre os que existem hoje; qualquer valor novo cai em
+     * humanizar() e aparece com tom neutro, em vez de quebrar a tela.
+     */
+    private const APELIDOS = [
+        'aguardando'     => 'aguardando_pagamento',
+        'troca_devolucao'=> 'devolvido',
+    ];
+
+    private const DESFECHOS = ['cancelado', 'devolvido', 'estornado', 'troca_devolucao'];
 
     /** Resumo para a lista de pedidos. */
     public static function resumo(array $p, PresenterContext $ctx): array
@@ -44,9 +55,19 @@ final class OrderPresenter
         ];
     }
 
-    /** Pedido completo. */
-    public static function detalhe(array $p, array $itens, PresenterContext $ctx): array
-    {
+    /**
+     * Pedido completo.
+     *
+     * @param array|null $rastreio  Saída de RastreioService::porPedido().
+     * @param array|null $devolucao Elegibilidade, para o app decidir o botão.
+     */
+    public static function detalhe(
+        array $p,
+        array $itens,
+        PresenterContext $ctx,
+        ?array $rastreio = null,
+        ?array $devolucao = null
+    ): array {
         return [
             'id'     => (int)$p['id'],
             'codigo' => $p['codigo'],
@@ -70,6 +91,23 @@ final class OrderPresenter
             'pagamento' => self::pagamento($p),
             'entrega'   => self::entrega($p),
 
+            // O rastreio de verdade, vindo de log_rastreios. `entrega.rastreio`
+            // é só o código solto que a tabela `pedidos` guarda; isto aqui é o
+            // que a transportadora respondeu.
+            'rastreio'  => $rastreio ? self::rastreio($rastreio) : null,
+
+            // Se o botão de devolução aparece — e, quando não aparece, por quê.
+            // Vem junto do pedido porque a tela precisa decidir isso ANTES de
+            // desenhar o rodapé; numa segunda chamada o botão apareceria depois,
+            // empurrando o layout.
+            'devolucao' => $devolucao ? [
+                'pode'        => !empty($devolucao['pode']),
+                'motivo'      => $devolucao['motivo'] ?? null,
+                'prazo_dias'  => (int)($devolucao['prazo_dias'] ?? 0),
+                'dias_desde'  => $devolucao['dias_desde'] ?? null,
+                'entregue_em' => $devolucao['entregue_em'] ?? null,
+            ] : null,
+
             'observacao' => $p['observacao_cliente'] ?? null,
         ];
     }
@@ -79,12 +117,15 @@ final class OrderPresenter
     private static function status(array $p): array
     {
         $codigo = (string)($p['status_pedido'] ?? 'aguardando_pagamento');
+        // Para rótulo e tom, o apelido vale: quem vê "aguardando" deve ler
+        // "Aguardando pagamento", não "Aguardando".
+        $normal = self::APELIDOS[$codigo] ?? $codigo;
 
         return [
             'codigo'   => $codigo,
-            'rotulo'   => self::ETAPAS[$codigo] ?? self::humanizar($codigo),
-            'encerrado'=> in_array($codigo, self::DESFECHOS, true),
-            'tom'      => self::tom($codigo),
+            'rotulo'   => self::ETAPAS[$normal] ?? self::humanizar($codigo),
+            'encerrado'=> in_array($normal, self::DESFECHOS, true),
+            'tom'      => self::tom($normal),
         ];
     }
 
@@ -103,13 +144,19 @@ final class OrderPresenter
 
     private static function linhaDoTempo(array $p): array
     {
-        $atual = (string)($p['status_pedido'] ?? '');
+        $bruto = (string)($p['status_pedido'] ?? '');
+        // `aguardando` é o mesmo que `aguardando_pagamento` para efeito de
+        // trilha; sem o apelido ele caía fora do array_search e a régua inteira
+        // voltava para o primeiro passo.
+        $atual = self::APELIDOS[$bruto] ?? $bruto;
 
         // Desfecho: a trilha normal não se aplica, mostra só onde parou.
         if (in_array($atual, self::DESFECHOS, true)) {
             return [[
-                'codigo'    => $atual,
-                'rotulo'    => self::humanizar($atual),
+                // O código BRUTO: "troca_devolucao" e "devolvido" são desfechos
+                // parecidos mas não iguais, e a tela merece saber qual foi.
+                'codigo'    => $bruto,
+                'rotulo'    => self::humanizar($bruto),
                 'concluida' => true,
                 'atual'     => true,
             ]];
@@ -133,27 +180,91 @@ final class OrderPresenter
 
     private static function itens(array $rows, PresenterContext $ctx): array
     {
-        return array_values(array_map(static fn(array $i) => [
-            'id'         => (int)$i['id'],
-            'produto_id' => isset($i['produto_id']) ? (int)$i['produto_id'] : null,
-            'nome'       => $i['produto_nome'] ?? $i['nome_produto'] ?? '',
-            'slug'       => $i['produto_slug'] ?? null,
-            // O snapshot vem primeiro: é a imagem que o produto tinha NA
-            // COMPRA. Se a foto foi trocada depois, o pedido antigo deve
-            // continuar mostrando o que a pessoa viu quando comprou.
-            'imagem'     => $ctx->url($i['imagem_snapshot'] ?? null)
-                            ?? $ctx->url($i['imagem'] ?? $i['imagem_arquivo'] ?? null)
-                            ?? $ctx->url('images/placeholder.jpg', 'asset'),
-            'quantidade' => (int)($i['quantidade'] ?? 1),
-            'preco'      => PrecoPresenter::dec($i['preco_unitario'] ?? 0),
-            'subtotal'   => PrecoPresenter::dec($i['subtotal'] ?? 0),
-            'variacao'   => $i['variacao_texto'] ?? null,
-        ], $rows));
+        return array_values(array_map(static function (array $i) use ($ctx): array {
+            $original = (float)($i['valor_original'] ?? 0);
+            $pago     = (float)($i['preco_unitario'] ?? 0);
+
+            return [
+                'id'         => (int)$i['id'],
+                'produto_id' => isset($i['produto_id']) ? (int)$i['produto_id'] : null,
+                'nome'       => $i['produto_nome'] ?? $i['nome_produto'] ?? '',
+                'slug'       => $i['produto_slug'] ?? null,
+                // O snapshot vem primeiro: é a imagem que o produto tinha NA
+                // COMPRA. Se a foto foi trocada depois, o pedido antigo deve
+                // continuar mostrando o que a pessoa viu quando comprou.
+                'imagem'     => $ctx->url($i['imagem_snapshot'] ?? null)
+                                ?? $ctx->url($i['imagem'] ?? $i['imagem_arquivo'] ?? null)
+                                ?? $ctx->url('images/placeholder.jpg', 'asset'),
+                'quantidade' => (int)($i['quantidade'] ?? 1),
+                'preco'      => PrecoPresenter::dec($pago),
+                'subtotal'   => PrecoPresenter::dec($i['subtotal'] ?? 0),
+
+                // As variações escolhidas — "Cor: Preto", "Tamanho: 58".
+                // Order::getItemsWithVariacoes() já resolve isso em três
+                // camadas (snapshot da compra, agrupadores do produto,
+                // atributos do SKU) e devolve em `atributos`. O presenter lia
+                // `variacao_texto`, campo que NÃO existe na consulta: a
+                // variação chegava sempre nula no app, mesmo quando o item
+                // tinha uma.
+                'variacoes'  => self::variacoes($i['atributos'] ?? []),
+                'sku'        => self::texto($i['sku'] ?? null),
+
+                // Brinde entra com preço zero e precisa ser dito, senão parece
+                // erro de cobrança.
+                'brinde'     => !empty($i['is_brinde']),
+
+                // Preço cheio quando houve desconto de cupom no item, para o
+                // app poder riscar o valor antigo.
+                'preco_original' => $original > $pago ? PrecoPresenter::dec($original) : null,
+                'desconto'   => PrecoPresenter::dec($i['desconto_cupom'] ?? 0),
+            ];
+        }, $rows));
+    }
+
+    /**
+     * Atributos do item no formato que a tela desenha.
+     *
+     * `valor_hex` só existe em atributo de cor, e é o que permite mostrar a
+     * bolinha da cor em vez de só o nome dela.
+     *
+     * @return array<int,array{nome:string,valor:string,cor:?string}>
+     */
+    private static function variacoes($atributos): array
+    {
+        if (!is_array($atributos)) {
+            return [];
+        }
+
+        $saida = [];
+        foreach ($atributos as $a) {
+            if (!is_array($a)) continue;
+
+            $nome  = self::texto($a['nome'] ?? null);
+            $valor = self::texto($a['valor'] ?? null);
+            if ($nome === null || $valor === null) continue;
+
+            $saida[] = [
+                'nome'  => $nome,
+                'valor' => $valor,
+                'cor'   => self::texto($a['valor_hex'] ?? null),
+            ];
+        }
+        return $saida;
+    }
+
+    private static function texto($v): ?string
+    {
+        $v = trim((string)$v);
+        return $v === '' ? null : $v;
     }
 
     private static function pagamento(array $p): array
     {
         $metodo = (string)($p['forma_pagamento'] ?? '');
+
+        $parcelas = isset($p['parcelas']) ? max(1, (int)$p['parcelas']) : 1;
+        $total    = (float)($p['total'] ?? 0);
+        $estado   = (string)($p['status_pagamento'] ?? '');
 
         $dados = [
             'metodo'   => $metodo,
@@ -163,9 +274,43 @@ final class OrderPresenter
                 'credito', 'cartao' => 'Cartão de crédito',
                 default   => self::humanizar($metodo),
             },
-            'status'   => $p['status_pagamento'] ?? null,
-            'parcelas' => isset($p['parcelas']) ? (int)$p['parcelas'] : null,
+            'status'   => $estado ?: null,
+            // O estado do pagamento em português, e o tom para a tela pintar.
+            // Sem isto o app mostraria "aprovado" cru ao lado de "pendente".
+            // Os oito valores do ENUM de pedidos.status_pagamento, todos.
+            // Deixar algum de fora fazia "erro" e "falhou" — 15 pedidos hoje —
+            // chegarem ao cliente como "Erro" com tom neutro, que é o pior
+            // dos dois mundos: assusta e não explica.
+            'status_rotulo' => match ($estado) {
+                'aprovado'    => 'Pagamento aprovado',
+                'pendente'    => 'Aguardando pagamento',
+                'aguardando'  => 'Aguardando confirmação',
+                'recusado'    => 'Pagamento recusado',
+                'estornado'   => 'Pagamento estornado',
+                'reembolsado' => 'Pagamento reembolsado',
+                'erro', 'falhou' => 'Não foi possível concluir o pagamento',
+                default       => $estado ? self::humanizar($estado) : null,
+            },
+            'status_tom' => match ($estado) {
+                'aprovado'                             => 'sucesso',
+                'recusado', 'erro', 'falhou'           => 'erro',
+                'estornado', 'reembolsado'             => 'erro',
+                'pendente', 'aguardando'               => 'atencao',
+                default                                => 'neutro',
+            },
+            'parcelas' => $parcelas,
+            'pago_em'  => self::data($p['pago_em'] ?? null),
         ];
+
+        // "12x de R$ 41,66" — a forma como a pessoa realmente pensa a compra
+        // parcelada. O valor sai daqui pronto para não haver duas divisões
+        // diferentes (uma no app, outra no site) arredondando de jeitos
+        // diferentes no último centavo.
+        if ($parcelas > 1 && $total > 0) {
+            $dados['parcela_valor'] = PrecoPresenter::dec(round($total / $parcelas, 2));
+            $dados['parcelamento_texto'] = $parcelas . 'x de '
+                . PriceHelper::format(round($total / $parcelas, 2));
+        }
 
         if (!empty($p['cartao_ultimos_4'])) {
             $dados['cartao'] = [
@@ -195,6 +340,88 @@ final class OrderPresenter
         }
 
         return $dados;
+    }
+
+    /**
+     * O rastreio da encomenda.
+     *
+     * Duas leituras da mesma coisa, porque a tela precisa das duas:
+     *
+     *   `etapas`  — a trilha canônica (postado → em trânsito → saiu para
+     *               entrega → entregue), com a atual marcada. É o que desenha a
+     *               régua horizontal, e ela precisa mostrar TAMBÉM o que ainda
+     *               não aconteceu; uma régua só com o passado não diz o que
+     *               falta.
+     *   `eventos` — o que a transportadora de fato registrou, com data e
+     *               cidade. É onde a pessoa vai quando o resumo não basta.
+     *
+     * `ocorrencia` e `devolucao` saem da trilha: não são um passo antes do fim,
+     * são outro desfecho, e forçá-los na régua daria a impressão de que a
+     * entrega segue caminhando.
+     */
+    private static function rastreio(array $r): array
+    {
+        $status = (string)($r['status_interno'] ?? '');
+        $fora   = in_array($status, ['ocorrencia', 'devolucao'], true);
+
+        return [
+            'codigo'         => self::texto($r['codigo_rastreio'] ?? null),
+            'transportadora' => self::texto($r['transportadora_nome'] ?? null),
+            'status'         => $status,
+            'status_rotulo'  => (string)($r['status_label'] ?? ''),
+            'destino'        => self::texto(trim(
+                (string)($r['destino_cidade'] ?? '') .
+                ($r['destino_uf'] ?? '' ? '/' . $r['destino_uf'] : '')
+            )),
+            'previsao'   => self::data($r['previsao_entrega'] ?? null),
+            'postado_em' => self::data($r['postado_em'] ?? null),
+            'entregue_em'=> self::data($r['entregue_em'] ?? null),
+
+            // Sinalizadores que mudam o tom da tela inteira.
+            'atrasado'   => !empty($r['atraso']),
+            'ocorrencia' => !empty($r['ocorrencia']) || $status === 'ocorrencia',
+            'fora_da_trilha' => $fora,
+
+            'etapas'  => $fora ? [] : self::etapasRastreio($status),
+            'eventos' => array_values(array_map(static fn(array $e) => [
+                'em'        => self::data($e['data_evento'] ?? null),
+                'status'    => $e['status_interno'] ?? null,
+                'rotulo'    => (string)($e['status_label'] ?? ''),
+                'descricao' => self::texto($e['descricao'] ?? null),
+                'local'     => self::texto($e['local'] ?? null),
+            ], $r['eventos'] ?? [])),
+        ];
+    }
+
+    /** Trilha canônica da encomenda, com a etapa atual marcada. */
+    private static function etapasRastreio(string $atual): array
+    {
+        $trilha = [
+            'postado'      => 'Postado',
+            'em_transito'  => 'Em trânsito',
+            'saiu_entrega' => 'Saiu para entrega',
+            'entregue'     => 'Entregue',
+        ];
+
+        $chaves = array_keys($trilha);
+        $indice = array_search($atual, $chaves, true);
+
+        // Status anterior à postagem (aguardando ou etiqueta emitida): nada
+        // concluído ainda, e a primeira etapa é a que está por vir.
+        if ($indice === false) {
+            $indice = -1;
+        }
+
+        $saida = [];
+        foreach ($chaves as $i => $codigo) {
+            $saida[] = [
+                'codigo'    => $codigo,
+                'rotulo'    => $trilha[$codigo],
+                'concluida' => $i <= $indice,
+                'atual'     => $i === $indice,
+            ];
+        }
+        return $saida;
     }
 
     private static function entrega(array $p): array

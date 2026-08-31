@@ -950,6 +950,136 @@ class ChatInstagramService
         return $out;
     }
 
+    /**
+     * Top seguidores por nível de interação.
+     *
+     * IMPORTANTE — o que este número É e o que NÃO É:
+     * conta apenas o que passa pelo nosso sistema — comentários recebidos e
+     * mensagens no direct. Curtida, salvamento, compartilhamento e visualização
+     * de story NÃO entram: a API do Instagram não expõe esses dados por
+     * seguidor. Então o ranking daqui não bate com o do Business Suite da Meta,
+     * e não deveria mesmo — são medidas diferentes.
+     *
+     * Peso: um direct vale mais que um comentário porque exige mais intenção
+     * (a pessoa saiu do feed e abriu conversa).
+     *
+     * @return array lista ordenada por pontos, com detalhamento
+     */
+    public function topSeguidores(int $dias = 7, int $limite = 10): array
+    {
+        $dias  = max(1, min(90, $dias));
+        $desde = date('Y-m-d 00:00:00', strtotime('-' . ($dias - 1) . ' days'));
+
+        $PESO_COMENTARIO = 1;
+        $PESO_MENSAGEM   = 2;
+
+        $pessoas = [];
+
+        try {
+            // ── Comentários ──
+            // Agrupa por IGSID; quem comentou sem virar contato entra do mesmo jeito
+            $st = $this->db->prepare(
+                "SELECT k.from_ig_id AS ig_id,
+                        MAX(k.from_username) AS username,
+                        COUNT(*) AS comentarios,
+                        MAX(k.criado_em) AS ultima,
+                        MAX(k.contato_id) AS contato_id
+                 FROM chat_ig_comentarios k
+                 WHERE k.criado_em >= :d AND k.from_ig_id IS NOT NULL AND k.from_ig_id <> ''
+                 GROUP BY k.from_ig_id"
+            );
+            $st->execute([':d' => $desde]);
+
+            foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $pessoas[$r['ig_id']] = [
+                    'ig_id'       => (string)$r['ig_id'],
+                    'username'    => (string)($r['username'] ?? ''),
+                    'contato_id'  => $r['contato_id'] ? (int)$r['contato_id'] : null,
+                    'comentarios' => (int)$r['comentarios'],
+                    'mensagens'   => 0,
+                    'ultima'      => (string)$r['ultima'],
+                ];
+            }
+
+            // ── Mensagens recebidas no direct ──
+            $st = $this->db->prepare(
+                "SELECT c.wa_id AS ig_id, c.id AS contato_id,
+                        MAX(c.ig_username) AS username,
+                        COUNT(*) AS mensagens,
+                        MAX(m.criado_em) AS ultima
+                 FROM chat_mensagens m
+                 JOIN chat_conversas cv ON cv.id = m.conversa_id
+                 JOIN chat_contatos  c  ON c.id  = m.contato_id
+                 WHERE cv.canal = 'instagram' AND m.direcao = 'entrada' AND m.criado_em >= :d
+                 GROUP BY c.wa_id, c.id"
+            );
+            $st->execute([':d' => $desde]);
+
+            foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $id = (string)$r['ig_id'];
+                if (isset($pessoas[$id])) {
+                    $pessoas[$id]['mensagens']  = (int)$r['mensagens'];
+                    $pessoas[$id]['contato_id'] = (int)$r['contato_id'];
+                    if ($r['ultima'] > $pessoas[$id]['ultima']) $pessoas[$id]['ultima'] = (string)$r['ultima'];
+                    if ($pessoas[$id]['username'] === '') $pessoas[$id]['username'] = (string)($r['username'] ?? '');
+                } else {
+                    $pessoas[$id] = [
+                        'ig_id'       => $id,
+                        'username'    => (string)($r['username'] ?? ''),
+                        'contato_id'  => (int)$r['contato_id'],
+                        'comentarios' => 0,
+                        'mensagens'   => (int)$r['mensagens'],
+                        'ultima'      => (string)$r['ultima'],
+                    ];
+                }
+            }
+
+            if (!$pessoas) return [];
+
+            // ── Enriquece com nome e foto de quem virou contato ──
+            $ids = array_keys($pessoas);
+            $ph  = implode(',', array_fill(0, count($ids), '?'));
+            $stC = $this->db->prepare(
+                "SELECT id, wa_id, nome, nome_perfil, ig_username, avatar_url, ig_seguidor, cliente_id
+                 FROM chat_contatos WHERE canal = 'instagram' AND wa_id IN ($ph)"
+            );
+            $stC->execute($ids);
+
+            foreach ($stC->fetchAll(PDO::FETCH_ASSOC) as $c) {
+                $id = (string)$c['wa_id'];
+                if (!isset($pessoas[$id])) continue;
+                $pessoas[$id]['contato_id'] = (int)$c['id'];
+                $pessoas[$id]['nome']       = $c['nome'] ?: ($c['nome_perfil'] ?: '');
+                $pessoas[$id]['avatar']     = $c['avatar_url'] ?: null;
+                $pessoas[$id]['seguidor']   = $c['ig_seguidor'] !== null ? (int)$c['ig_seguidor'] : null;
+                $pessoas[$id]['cliente_id'] = $c['cliente_id'] ? (int)$c['cliente_id'] : null;
+                if ($pessoas[$id]['username'] === '') $pessoas[$id]['username'] = (string)($c['ig_username'] ?? '');
+            }
+        } catch (Throwable $e) {
+            $this->logar('error', 'ig: falha no top de seguidores', ['erro' => $e->getMessage()]);
+            return [];
+        }
+
+        // ── Pontuação e ordenação ──
+        foreach ($pessoas as $id => $p) {
+            $pessoas[$id]['pontos'] = $p['comentarios'] * $PESO_COMENTARIO
+                                    + $p['mensagens']   * $PESO_MENSAGEM;
+            $pessoas[$id]['nome']   = $p['nome']   ?? '';
+            $pessoas[$id]['avatar'] = $p['avatar'] ?? null;
+            $pessoas[$id]['seguidor']   = $p['seguidor']   ?? null;
+            $pessoas[$id]['cliente_id'] = $p['cliente_id'] ?? null;
+        }
+
+        usort($pessoas, function ($a, $b) {
+            // Empate desempata por interação mais recente — quem falou ontem
+            // interessa mais que quem falou há três semanas
+            if ($b['pontos'] !== $a['pontos']) return $b['pontos'] <=> $a['pontos'];
+            return strcmp((string)$b['ultima'], (string)$a['ultima']);
+        });
+
+        return array_slice(array_values($pessoas), 0, max(1, min(100, $limite)));
+    }
+
     /** Simulador: qual regra pegaria este comentário? */
     public function simular(string $texto, string $mediaId = ''): array
     {

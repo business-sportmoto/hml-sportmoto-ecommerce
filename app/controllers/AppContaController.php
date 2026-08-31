@@ -236,7 +236,83 @@ class AppContaController extends AppApiController
 
         $itens = $modelo->getItemsWithVariacoes((int)$pedido['id']);
 
-        $this->ok(['pedido' => OrderPresenter::detalhe($pedido, $itens, $this->contexto())]);
+        // Rastreio e elegibilidade de devolução vêm JUNTO, e não em chamadas
+        // separadas: as duas coisas mudam o desenho da tela inteira (a régua no
+        // topo, o botão no rodapé), e buscá-las depois faria o layout saltar
+        // com o pedido já na tela.
+        $this->ok([
+            'pedido' => OrderPresenter::detalhe(
+                $pedido,
+                $itens,
+                $this->contexto(),
+                $this->rastreioDoPedido((int)$pedido['id']),
+                $this->devolucaoDoPedido($pedido, $itens)
+            ),
+        ]);
+    }
+
+    /**
+     * O rastreio da encomenda, se já existe um.
+     *
+     * `porPedido()` entra por pedido_id porque o cliente já provou ser dono do
+     * pedido para chegar aqui — e sai pelo mesmo sanitizador da página pública:
+     * a tela do comprador não vê mais do que qualquer um veria pelo link.
+     */
+    private function rastreioDoPedido(int $pedidoId): ?array
+    {
+        try {
+            return (new RastreioService($this->db()))->porPedido($pedidoId);
+        } catch (\Throwable $e) {
+            // Logística fora do ar não pode derrubar a tela do pedido: sem
+            // rastreio, o app mostra o resto normalmente.
+            AppLog::exception($e, ['acao' => 'pedido_rastreio', 'pedido_id' => $pedidoId]);
+            return null;
+        }
+    }
+
+    /**
+     * Se dá para pedir devolução deste pedido.
+     *
+     * Mesma regra de AppDevolucoesController::elegibilidade — entregue E
+     * dentro do prazo do CDC, contado da ENTREGA REAL (primeiro evento
+     * 'entregue' no histórico), não do envio.
+     *
+     * @param array<int,array> $itens
+     */
+    private function devolucaoDoPedido(array $pedido, array $itens): ?array
+    {
+        try {
+            $entregue = ($pedido['status_pedido'] ?? '') === 'entregue';
+            $prazo    = DevolucaoService::PRAZO_CDC_DIAS;
+
+            $st = $this->db()->prepare(
+                "SELECT criado_em FROM pedido_historico
+                 WHERE pedido_id = :p AND status_novo = 'entregue'
+                 ORDER BY criado_em ASC LIMIT 1"
+            );
+            $st->execute([':p' => (int)$pedido['id']]);
+            $referencia = $st->fetchColumn() ?: ($pedido['atualizado_em'] ?? null);
+
+            $diasDesde = $referencia
+                ? (int)floor((time() - strtotime((string)$referencia)) / 86400)
+                : null;
+            $dentroDoPrazo = $diasDesde === null || $diasDesde <= $prazo;
+
+            return [
+                'pode'   => $entregue && $dentroDoPrazo && !empty($itens),
+                'motivo' => !$entregue
+                    ? 'Disponível depois que o pedido for entregue.'
+                    : (!$dentroDoPrazo ? "O prazo de {$prazo} dias já passou." : null),
+                'prazo_dias'  => $prazo,
+                'dias_desde'  => $diasDesde,
+                'entregue_em' => $referencia
+                    ? date(DATE_ATOM, strtotime((string)$referencia))
+                    : null,
+            ];
+        } catch (\Throwable $e) {
+            AppLog::exception($e, ['acao' => 'pedido_devolucao']);
+            return null;
+        }
     }
 
     /**

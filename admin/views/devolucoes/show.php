@@ -192,9 +192,24 @@ $podeReembolsar  = $status === 'inspecionado_aprovado';
         <?php else: ?>
         <!-- ── Código gerado: exibe normalmente ─────────── -->
         <div style="padding:14px 18px;display:flex;flex-direction:column;gap:10px;">
+          <?php
+            // Codigos 'FAKE######' vieram do stub LogisticaReversa, que apontava
+            // para uma URL de exemplo nunca configurada e caia em modo falso.
+            // Nao existem nos Correios: o cliente nao consegue postar com eles.
+            $codigoFalso = (bool) preg_match('/^FAKE\d+$/i', (string)($sol['codigo_postagem_reversa'] ?? ''));
+          ?>
+          <?php if ($codigoFalso): ?>
+          <div style="background:var(--danger-lt);border:1px solid var(--danger-bd);border-radius:10px;padding:12px 14px;">
+            <strong style="color:var(--danger)">Código inválido</strong>
+            <div style="font-size:12.5px;color:var(--text-2);margin-top:3px;">
+              Gerado pelo integrador antigo em modo de teste — não existe nos Correios,
+              e o cliente não consegue postar com ele. Gere um código novo e avise o cliente.
+            </div>
+          </div>
+          <?php endif; ?>
           <div class="dev-codigo-box">
             <div class="dev-codigo-label">Código de postagem</div>
-            <code class="dev-codigo-value"><?= View::e($sol['codigo_postagem_reversa']) ?></code>
+            <code class="dev-codigo-value"<?= $codigoFalso ? ' style="text-decoration:line-through;opacity:.55"' : '' ?>><?= View::e($sol['codigo_postagem_reversa']) ?></code>
             <?php if (!empty($sol['codigo_validade_dias'])): ?>
               <div class="dev-codigo-validade">
                 Válido por <?= (int)$sol['codigo_validade_dias'] ?> dias

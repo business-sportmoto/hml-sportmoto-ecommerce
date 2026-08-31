@@ -49,6 +49,8 @@ class ChatAdminController extends Controller
             'saude'       => $this->dash->saude(),
             'porCanal'    => $this->dash->porCanal($dias),
             'instagram'   => $this->dash->instagram($dias),
+            // Top 5 aqui; a lista completa com abas fica em Chat → Instagram
+            'topSeguidores' => (new ChatInstagramService())->topSeguidores(min(30, $dias), 5),
         ], 'admin');
     }
 
