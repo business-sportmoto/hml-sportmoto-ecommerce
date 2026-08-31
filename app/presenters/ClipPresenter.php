@@ -53,6 +53,14 @@ final class ClipPresenter
                 'compartilhados' => (int)($c['total_compartilhamentos'] ?? 0),
             ],
 
+            // Quem publicou. `autor_id` aponta para usuarios; sem ele, o clip é
+            // da própria loja — e é a loja que assina.
+            'autor' => self::autor($c),
+
+            'criado_em' => !empty($c['criado_em'])
+                ? date(DATE_ATOM, strtotime((string)$c['criado_em']))
+                : null,
+
             // Estado do usuário atual. Preenchido pelo controller quando houver
             // cliente — o presenter não consulta nada por item.
             'curtiu' => (bool)($c['_curtiu'] ?? false),
@@ -69,6 +77,50 @@ final class ClipPresenter
                 'texto' => $c['titulo'] ?? 'Veja este clip',
             ],
         ];
+    }
+
+    /**
+     * O autor do clip: nome, arroba e iniciais para o avatar.
+     *
+     * O nome vem do JOIN que o controller faz (`autor_nome`); sem autor, assina
+     * a loja. A arroba é derivada do nome porque a tabela não guarda handle —
+     * inventar um campo no admin só para isso seria pedir trabalho a alguém
+     * para um enfeite.
+     */
+    private static function autor(array $c): array
+    {
+        $nome = trim((string)($c['autor_nome'] ?? ''));
+
+        if ($nome === '') {
+            $nome = defined('SITE_NOME') ? (string)SITE_NOME : 'Loja';
+        }
+
+        return [
+            'nome'     => $nome,
+            'arroba'   => self::arroba($nome),
+            'iniciais' => self::iniciais($nome),
+            'oficial'  => empty($c['autor_id']),
+        ];
+    }
+
+    /** "Moto Vlog" → "motovlog" */
+    private static function arroba(string $nome): string
+    {
+        $limpo = preg_replace('/[^a-z0-9]/', '', mb_strtolower($nome)) ?? '';
+        return $limpo !== '' ? mb_substr($limpo, 0, 24) : 'loja';
+    }
+
+    /** "Moto Vlog" → "MV" */
+    private static function iniciais(string $nome): string
+    {
+        $partes = array_values(array_filter(preg_split('/\s+/', trim($nome)) ?: []));
+        if (!$partes) return '?';
+
+        $ini = mb_substr($partes[0], 0, 1);
+        if (count($partes) > 1) {
+            $ini .= mb_substr($partes[count($partes) - 1], 0, 1);
+        }
+        return mb_strtoupper($ini);
     }
 
     private static function hls(array $c, string $uid, ClipService $servico): ?string

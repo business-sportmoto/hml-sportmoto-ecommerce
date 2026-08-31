@@ -209,6 +209,14 @@ AdminRouter::get ('/pedidos/buscar-cliente',           'AdminPedidoController@bu
 AdminRouter::get ('/pedidos/buscar-produto',           'AdminPedidoController@buscarProduto');
 AdminRouter::get ('/pedidos/enderecos/{id:\d+}',       'AdminPedidoController@enderecosPorCliente');
 AdminRouter::get ('/pedidos/opcoes-envio',              'AdminPedidoController@opcoesEnvio');
+
+// Checkout de expedicao — literais antes de /pedidos/{id}, e 'imprimir' antes
+// de 'checkout/{id}', senao 'imprimir' seria capturado como id.
+AdminRouter::get ('/pedidos/checkout',                  'AdminSeparacaoController@index');
+AdminRouter::get ('/pedidos/checkout/imprimir',         'AdminSeparacaoController@imprimir');
+AdminRouter::post('/pedidos/checkout/bipar',            'AdminSeparacaoController@bipar');
+AdminRouter::get ('/pedidos/checkout/{id:\d+}',         'AdminSeparacaoController@conferir');
+AdminRouter::post('/pedidos/checkout/{id:\d+}/etiqueta','AdminSeparacaoController@gerarEtiqueta');
 AdminRouter::get ('/pedidos/{id:\d+}',                 'AdminPedidoController@show');
 AdminRouter::post('/pedidos/{id:\d+}/status',          'AdminPedidoController@updateStatus');
 AdminRouter::post('/pedidos/{id:\d+}/rastreio',        'AdminPedidoController@updateRastreio');

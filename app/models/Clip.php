@@ -23,7 +23,9 @@ class Clip extends Model {
 
         if ($inicial > 0 && $page === 1) {
             $st = $this->db->prepare(
-                "SELECT c.* FROM clips c WHERE c.id = ? AND {$where} LIMIT 1"
+                "SELECT c.*, u.nome AS autor_nome FROM clips c
+                 LEFT JOIN usuarios u ON u.id = c.autor_id
+                 WHERE c.id = ? AND {$where} LIMIT 1"
             );
             $st->execute([$inicial]);
             $primeiro = $st->fetch() ?: null;
@@ -36,9 +38,13 @@ class Clip extends Model {
             }
         }
 
+        // O LEFT JOIN traz quem publicou. É LEFT porque `autor_id` é opcional:
+        // clip da própria loja não tem autor, e um INNER faria esses clips
+        // sumirem do feed inteiro.
         $stmt = $this->db->prepare(
-            "SELECT c.*
+            "SELECT c.*, u.nome AS autor_nome
              FROM clips c
+             LEFT JOIN usuarios u ON u.id = c.autor_id
              WHERE {$where}
              ORDER BY c.ordem ASC, c.total_views DESC, c.criado_em DESC
              LIMIT ? OFFSET ?"
@@ -106,8 +112,9 @@ class Clip extends Model {
     // ── Clips de um produto ──────────────────────────────
     public function getPorProduto(int $produtoId, int $limit = 10): array {
         $stmt = $this->db->prepare(
-            "SELECT c.*
+            "SELECT c.*, u.nome AS autor_nome
              FROM clips c
+             LEFT JOIN usuarios u ON u.id = c.autor_id
              JOIN clip_produtos cp ON cp.clip_id = c.id
              WHERE cp.produto_id = ? AND c.ativo = 1 AND c.status = 'ativo'
              ORDER BY c.ordem ASC, c.total_views DESC
@@ -124,7 +131,9 @@ class Clip extends Model {
     // ── Clip individual ──────────────────────────────────
     public function getComProdutos(int $id): ?array {
         $stmt = $this->db->prepare(
-            "SELECT c.* FROM clips c WHERE c.id = ? AND c.ativo = 1 LIMIT 1"
+            "SELECT c.*, u.nome AS autor_nome FROM clips c
+             LEFT JOIN usuarios u ON u.id = c.autor_id
+             WHERE c.id = ? AND c.ativo = 1 LIMIT 1"
         );
         $stmt->execute([$id]);
         $clip = $stmt->fetch();

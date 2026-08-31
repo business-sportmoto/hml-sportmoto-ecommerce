@@ -4,6 +4,7 @@
  *
  * @var array $config @var array $saude @var string $webhookUrl
  * @var string $verifyToken @var bool $temSecret @var array $ultimosWebhooks
+ * @var string $meuNome
  */
 $base = defined('BASE_URL') ? BASE_URL : '';
 $h    = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
@@ -260,6 +261,61 @@ $on   = fn(string $k, bool $d = false) => in_array(strtolower((string)($config[$
       </div>
     </div>
 
+    <div class="ch-card" style="margin-bottom:16px;">
+      <div class="ch-card-head"><h2>5. Assinatura do atendente</h2></div>
+      <div class="ch-card-body">
+        <div class="ch-aviso ch-aviso--info">
+          <div>
+            Vale só para o que um atendente escreve no <strong>Atendimento</strong>. Automação,
+            gatilho e campanha continuam saindo sem nome — e template HSM nunca é assinado,
+            porque o corpo dele é fixo na Meta.
+          </div>
+        </div>
+
+        <div class="ch-campo">
+          <label class="ch-check">
+            <input type="checkbox" name="assinatura_agente" value="1" id="ch-ass-on"
+                   <?= $on('assinatura_agente', false) ? 'checked' : '' ?>>
+            <span>
+              <strong>Assinar as respostas com o nome de quem atendeu</strong>
+              <div class="ch-ajuda">
+                O nome é o de <strong>quem escreveu</strong>, não o do responsável pela conversa:
+                se outra pessoa responde no seu lugar, o cliente lê o nome de quem realmente falou.
+              </div>
+            </span>
+          </label>
+        </div>
+
+        <div class="ch-grid-3">
+          <div class="ch-campo">
+            <label class="ch-label">Quanto do nome mostrar</label>
+            <select class="ch-select" name="assinatura_nome" id="ch-ass-nome">
+              <?php $modo = (string)$cfg('assinatura_nome', 'dois'); ?>
+              <option value="primeiro" <?= $modo === 'primeiro' ? 'selected' : '' ?>>Só o primeiro nome</option>
+              <option value="dois"     <?= $modo === 'dois'     ? 'selected' : '' ?>>Primeiro e segundo</option>
+              <option value="completo" <?= $modo === 'completo' ? 'selected' : '' ?>>Nome completo</option>
+            </select>
+          </div>
+          <div class="ch-campo">
+            <label class="ch-label">Formato</label>
+            <input type="text" class="ch-input ch-mono" name="assinatura_formato" id="ch-ass-fmt"
+                   maxlength="60" value="<?= $h($cfg('assinatura_formato', '*{nome}:*')) ?>">
+            <div class="ch-ajuda">
+              Precisa conter <code class="ch-mono">{nome}</code>. Os asteriscos deixam o texto
+              em negrito no WhatsApp; no Instagram eles são removidos automaticamente, porque
+              lá apareceriam na tela.
+            </div>
+          </div>
+        </div>
+
+        <div class="ch-campo" style="margin-bottom:0;">
+          <label class="ch-label">Prévia</label>
+          <div class="ch-mono ch-sm" id="ch-ass-previa"
+               style="white-space:pre-wrap;padding:10px 12px;border-radius:8px;background:var(--bg-2,#f4f4f5);"></div>
+        </div>
+      </div>
+    </div>
+
     <div class="ch-flex" style="justify-content:flex-end;gap:8px;margin-bottom:20px;">
       <span id="ch-cfg-msg" class="ch-sm"></span>
       <button type="submit" class="ch-btn ch-btn--pri">Salvar configuração</button>
@@ -366,6 +422,38 @@ $on   = fn(string $k, bool $d = false) => in_array(strtolower((string)($config[$
       btn.prop('disabled', false).text('Testar conexão');
     });
   });
+
+  // ── Prévia da assinatura ────────────────────────────────────────────────
+  var MEU_NOME = <?= json_encode((string)($meuNome ?? ''), JSON_UNESCAPED_UNICODE) ?> || 'Maria Souza';
+
+  function recortarNome(nome, modo) {
+    var p = nome.trim().split(/\s+/).filter(Boolean);
+    if (!p.length) return '';
+    if (modo === 'primeiro') return p[0];
+    if (modo === 'completo') return p.join(' ');
+    return p.slice(0, 2).join(' ');
+  }
+
+  function previaAssinatura() {
+    var box = $('#ch-ass-previa');
+    if (!$('#ch-ass-on').is(':checked')) {
+      box.text('Desligado — as respostas saem sem nome.');
+      return;
+    }
+    var nome = recortarNome(MEU_NOME, $('#ch-ass-nome').val());
+    var fmt  = ($('#ch-ass-fmt').val() || '').trim();
+    if (fmt.indexOf('{nome}') === -1) {
+      box.text('O formato precisa conter {nome}.');
+      return;
+    }
+    var pre = fmt.replace('{nome}', nome);
+    box.text('WhatsApp:  ' + pre + '\nOlá, tudo bem?\n\n' +
+             'Instagram: ' + pre.replace(/[*_~]/g, '') + '\nOlá, tudo bem?');
+  }
+
+  $('#ch-ass-on, #ch-ass-nome').on('change', previaAssinatura);
+  $('#ch-ass-fmt').on('input', previaAssinatura);
+  previaAssinatura();
 
   $('#ch-form-config').on('submit', function (e) {
     e.preventDefault();

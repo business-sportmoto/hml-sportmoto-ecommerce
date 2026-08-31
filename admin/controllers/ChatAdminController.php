@@ -82,6 +82,8 @@ class ChatAdminController extends Controller
             'verifyToken' => ChatMetaClient::verifyToken(),
             'temSecret'   => ChatMetaClient::temAppSecret(),
             'ultimosWebhooks' => $this->ultimosWebhooks(),
+            // Prévia da assinatura com um nome real, não um exemplo genérico
+            'meuNome'     => (string)(AuthHelper::adminDisplay()['nome'] ?? 'Maria Souza'),
         ], 'admin');
     }
 
@@ -91,7 +93,7 @@ class ChatAdminController extends Controller
 
         // Whitelist: só estas chaves podem ser gravadas pela tela
         $booleanos = ['bot_ativo', 'quiet_hours_ativo', 'auto_marcar_lida',
-                      'assinatura_obrigatoria', 'baixar_midia'];
+                      'assinatura_obrigatoria', 'baixar_midia', 'assinatura_agente'];
         $inteiros  = ['quiet_hours_inicio', 'quiet_hours_fim', 'pausa_bot_minutos', 'janela_horas'];
 
         $pares = [];
@@ -115,6 +117,26 @@ class ChatAdminController extends Controller
         if ($ini >= $fim) {
             $this->json(['ok' => false, 'erro' => 'O horário inicial precisa ser menor que o final.']);
             return;
+        }
+
+        // Assinatura do atendente — whitelist do recorte do nome
+        if (isset($_POST['assinatura_nome'])) {
+            $modo = (string)$_POST['assinatura_nome'];
+            $pares['assinatura_nome'] = in_array($modo, ['primeiro', 'dois', 'completo'], true)
+                ? $modo : 'dois';
+        }
+
+        // Sem {nome} o prefixo sairia idêntico em toda mensagem — recusa aqui,
+        // com o motivo, em vez de deixar o service cair no padrão em silêncio.
+        if (isset($_POST['assinatura_formato'])) {
+            $fmt = trim((string)$_POST['assinatura_formato']);
+            if ($fmt === '') {
+                $fmt = '*{nome}:*';
+            } elseif (!str_contains($fmt, '{nome}')) {
+                $this->json(['ok' => false, 'erro' => 'O formato da assinatura precisa conter {nome}.']);
+                return;
+            }
+            $pares['assinatura_formato'] = mb_substr($fmt, 0, 60);
         }
 
         if (isset($_POST['optout_palavras'])) {

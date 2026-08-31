@@ -294,8 +294,11 @@
       pe = tique;
     }
 
+    // Mensagem assinada já leva o nome no corpo — repetir aqui só polui
+    var assinada = !!(m.payload && m.payload.assinatura);
+
     var autor = '';
-    if (out && m.autor) {
+    if (out && m.autor && !assinada) {
       autor = '<div class="ch-bolha-autor">' + esc(m.autor) + '</div>';
     } else if (out && m.origem && m.origem !== 'inbox') {
       autor = '<div class="ch-bolha-autor">' + esc(rotuloOrigem(m.origem)) + '</div>';
@@ -427,6 +430,11 @@
       : 'A automação está pausada nesta conversa.';
     if (ehIg && c.janela_humana && !c.na_janela) {
       dica += ' Fora das 24h — a resposta vai com a tag de atendimento humano.';
+    }
+    if (CH.assinatura) {
+      // O IG não interpreta markdown; o servidor já tira os asteriscos de lá
+      var pre = ehIg ? CH.assinatura.replace(/[*_~]/g, '') : CH.assinatura;
+      dica += ' Suas mensagens saem assinadas como “' + pre + '”.';
     }
     $('#ch-comp-dica').text(dica);
   }

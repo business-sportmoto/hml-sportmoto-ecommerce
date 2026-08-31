@@ -1,0 +1,193 @@
+/* ===========================================================================
+   Impressão térmica — bobina 80mm.
+
+   Arquivo separado do painel de propósito: nada de token de tema, sombra ou
+   cor. Impressora térmica só tem preto e branco, e qualquer cinza vira
+   chapado ou some. Tudo aqui é pensado para 80mm de largura útil.
+   =========================================================================== */
+
+@page {
+  size: 80mm 300mm;
+  margin: 0;
+}
+
+.imp_body {
+  margin: 0;
+  padding: 0;
+  background: #fff;
+  color: #000;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 12px;
+  line-height: 1.35;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* Uma etiqueta por pedido. A quebra depois de cada uma é o que faz a bobina
+   cortar no lugar certo quando se imprime um lote. */
+.imp_etiqueta {
+  width: 80mm;
+  padding: 4mm 3.5mm 6mm;
+  box-sizing: border-box;
+  page-break-after: always;
+  break-after: page;
+}
+.imp_etiqueta:last-child {
+  page-break-after: auto;
+  break-after: auto;
+}
+
+/* ── topo: QR + identificação ──────────────────────────────────────────── */
+.imp_topo {
+  display: flex;
+  align-items: flex-start;
+  gap: 3mm;
+}
+
+/* O SVG do QR não traz width/height próprios; sem esta trava ele ocuparia a
+   largura toda e empurraria o resto da etiqueta para fora do papel. */
+.imp_qr {
+  flex: 0 0 22mm;
+  width: 22mm;
+  height: 22mm;
+}
+.imp_qr svg {
+  width: 22mm;
+  height: 22mm;
+  display: block;
+  shape-rendering: crispEdges;   /* módulo quadrado, sem antialias na térmica */
+}
+
+.imp_topo_txt { flex: 1 1 auto; min-width: 0; }
+
+.imp_pedido_num {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.5px;
+}
+.imp_pedido_cod {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  margin-top: 1mm;
+}
+.imp_data { font-size: 10px; margin-top: 1mm; }
+
+/* ── divisórias e blocos ───────────────────────────────────────────────── */
+.imp_sep {
+  border-top: 1px dashed #000;
+  margin: 3mm 0;
+}
+
+.imp_bloco { margin-bottom: 2mm; }
+
+.imp_rotulo {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 0.8mm;
+}
+
+.imp_forte { font-size: 13px; font-weight: 700; }
+.imp_end   { font-size: 11px; margin-top: 0.8mm; }
+
+.imp_frete {
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid #000;
+  border-radius: 2mm;
+  padding: 1.2mm 2mm;
+  display: inline-block;
+}
+
+/* ── itens ─────────────────────────────────────────────────────────────── */
+.imp_itens {
+  width: 100%;
+  border-collapse: collapse;
+}
+.imp_itens td {
+  padding: 1.5mm 0;
+  vertical-align: top;
+  border-bottom: 1px dotted #000;
+}
+.imp_itens tr:last-child td { border-bottom: none; }
+
+.imp_qtd {
+  width: 9mm;
+  font-size: 15px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.imp_item_nome { font-size: 12px; font-weight: 700; }
+.imp_item_var  { font-size: 11px; margin-top: 0.5mm; }
+.imp_item_sku  {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 10px;
+  margin-top: 0.5mm;
+}
+.imp_preco {
+  text-align: right;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+  padding-left: 2mm;
+}
+
+/* Cadastro incompleto tem que saltar aos olhos de quem separa: sem EAN, o
+   item não vai poder ser bipado na conferência. */
+.imp_alerta {
+  font-weight: 800;
+  text-decoration: underline;
+}
+
+/* ── totais e rodapé ───────────────────────────────────────────────────── */
+.imp_totais { font-size: 11px; }
+.imp_totais > div {
+  display: flex;
+  justify-content: space-between;
+}
+.imp_total {
+  font-size: 14px;
+  font-weight: 800;
+  margin-top: 1mm;
+  padding-top: 1mm;
+  border-top: 1px solid #000;
+}
+
+.imp_obs {
+  margin-top: 2.5mm;
+  font-size: 11px;
+  border: 1px solid #000;
+  border-radius: 2mm;
+  padding: 1.5mm 2mm;
+}
+
+.imp_rodape {
+  margin-top: 6mm;
+  font-size: 10px;
+  text-align: center;
+}
+
+.imp_aviso {
+  padding: 10mm;
+  font-size: 13px;
+  text-align: center;
+}
+
+/* Na tela (conferindo antes de mandar), mostra a etiqueta como um papel. */
+@media screen {
+  .imp_body {
+    background: #e9eaee;
+    padding: 20px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+  .imp_etiqueta {
+    background: #fff;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .18);
+  }
+}

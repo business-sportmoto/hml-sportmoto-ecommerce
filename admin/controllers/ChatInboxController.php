@@ -57,6 +57,8 @@ class ChatInboxController extends Controller
                 ? (string)$_GET['canal'] : '',
             'envioOk'     => $this->envio->disponivel(),
             'envioErro'   => $this->envio->erroConfig(),
+            // Como as mensagens deste agente vão sair assinadas ('' = sem assinatura)
+            'assinatura'  => $this->envio->assinatura(AuthHelper::usuarioId()),
         ], 'admin');
     }
 
@@ -226,8 +228,15 @@ class ChatInboxController extends Controller
 
         $texto = trim((string)($_POST['texto'] ?? ''));
         if ($texto === '') { $this->json(['ok' => false, 'erro' => 'Escreva uma mensagem.']); return; }
-        if (mb_strlen($texto) > 4096) {
-            $this->json(['ok' => false, 'erro' => 'A mensagem passa de 4096 caracteres.']); return;
+
+        // O prefixo da assinatura entra no mesmo corpo e conta para o limite da
+        // Meta — validar só o que foi digitado deixaria a mensagem estourar lá.
+        $assinatura = $this->envio->assinatura(
+            AuthHelper::usuarioId(), (string)($cv['canal'] ?? 'whatsapp')
+        );
+        $limite = 4096 - ($assinatura !== '' ? mb_strlen($assinatura) + 1 : 0);
+        if (mb_strlen($texto) > $limite) {
+            $this->json(['ok' => false, 'erro' => "A mensagem passa de {$limite} caracteres."]); return;
         }
 
         $r = $this->envio->texto((int)$cv['contato_id'], $texto, [

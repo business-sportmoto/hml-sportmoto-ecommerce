@@ -7,7 +7,7 @@
  *
  * @var array $contadores @var array $agentes @var array $tags @var array $templates
  * @var array $fluxos @var int $meuId @var int $abrirConversa
- * @var bool $envioOk @var string|null $envioErro
+ * @var bool $envioOk @var string|null $envioErro @var string $assinatura
  */
 $base = defined('BASE_URL') ? BASE_URL : '';
 $h    = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
@@ -282,6 +282,7 @@ $h    = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
     abrir:     <?= (int)$abrirConversa ?>,
     canal:     '<?= $h($canalInicial ?? '') ?>',
     envioOk:   <?= $envioOk ? 'true' : 'false' ?>,
+    assinatura: <?= json_encode((string)($assinatura ?? ''), JSON_UNESCAPED_UNICODE) ?>,
     agentes:   <?= json_encode($agentes, JSON_UNESCAPED_UNICODE) ?>,
     tags:      <?= json_encode($tags, JSON_UNESCAPED_UNICODE) ?>
   };

@@ -27,6 +27,8 @@ class ChatEnvioService
     private ?string             $erroConfig = null;
     /** @var array<int,array|null> cache das contas do Instagram por id */
     private array               $contasIg = [];
+    /** @var array<int,string|null> cache do nome do agente por usuarios.id */
+    private array               $nomesAgente = [];
 
     /** Motivos de recusa — o chamador ramifica por eles. */
     public const MOTIVO_OPTOUT      = 'optout';
@@ -226,6 +228,15 @@ class ChatEnvioService
         // ── 4. Interpolação ──
         $vars = $opts['vars'] ?? $this->contatos->variaveis($contato);
         $spec = $this->interpolarSpec($spec, $vars);
+
+        // ── 4b. Assinatura do atendente ──
+        // Depois da interpolação, para que o nome do agente nunca seja lido como
+        // variável. Só quando há autor humano: fluxo, gatilho e campanha não têm
+        // autor_usuario_id e por isso saem sem assinatura, como devem.
+        if (!empty($opts['autor_usuario_id']) && empty($opts['sem_assinatura'])) {
+            $prefixo = $this->assinatura((int)$opts['autor_usuario_id'], $canal, $spec['tipo'] ?? 'texto');
+            if ($prefixo !== '') $spec = self::aplicarAssinatura($spec, $prefixo);
+        }
 
         // ── 5. Disparo ──
         $conversa = $this->conversas->obterPorContato((int)$contato['id'], $canal)
@@ -437,6 +448,100 @@ class ChatEnvioService
     }
 
     // =========================================================================
+    // ASSINATURA DO ATENDENTE
+    // =========================================================================
+
+    /**
+     * Prefixo com o nome de quem está atendendo — '' quando desligado.
+     *
+     * Assina quem ESCREVEU, não quem está atribuído à conversa. Se a Maria
+     * responde uma conversa do Robert, o cliente precisa ler "Maria": assinar
+     * com o nome do responsável mandaria para o cliente um registro falso de
+     * quem falou com ele.
+     *
+     * Template HSM fica de fora — o corpo é fixo na Meta e qualquer texto extra
+     * seria recusado na aprovação.
+     *
+     * @param string $canal whatsapp|instagram — o IG não interpreta markdown,
+     *                      então lá o negrito viraria asterisco literal na tela.
+     */
+    public function assinatura(int $usuarioId, string $canal = 'whatsapp', string $tipoSpec = 'texto'): string
+    {
+        if ($usuarioId < 1 || $tipoSpec === 'template') return '';
+        if (!ChatConfig::bool('assinatura_agente', false)) return '';
+
+        $nome = $this->nomeAgente($usuarioId);
+        if ($nome === null || $nome === '') return '';
+
+        $nome = self::recortarNome($nome, (string)ChatConfig::get('assinatura_nome', 'dois'));
+        if ($nome === '') return '';
+
+        // Sem {nome} o prefixo sairia igual em toda mensagem — volta ao padrão
+        $formato = trim((string)ChatConfig::get('assinatura_formato', '*{nome}:*'));
+        if ($formato === '' || !str_contains($formato, '{nome}')) $formato = '*{nome}:*';
+
+        $prefixo = trim(str_replace('{nome}', $nome, $formato));
+
+        if ($canal === 'instagram') $prefixo = trim(str_replace(['*', '_', '~'], '', $prefixo));
+
+        return mb_substr($prefixo, 0, 120);
+    }
+
+    /** Nome cadastrado em usuarios, memoizado por request. */
+    private function nomeAgente(int $usuarioId): ?string
+    {
+        if (array_key_exists($usuarioId, $this->nomesAgente)) return $this->nomesAgente[$usuarioId];
+
+        try {
+            $st = $this->db->prepare("SELECT nome FROM usuarios WHERE id = :id LIMIT 1");
+            $st->execute([':id' => $usuarioId]);
+            $n    = $st->fetchColumn();
+            $nome = $n === false ? null : trim((string)$n);
+        } catch (Throwable $e) {
+            $nome = null;
+        }
+        return $this->nomesAgente[$usuarioId] = $nome;
+    }
+
+    /** primeiro | dois (padrão) | completo */
+    private static function recortarNome(string $nome, string $modo): string
+    {
+        $partes = preg_split('/\s+/u', trim($nome), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        if (!$partes) return '';
+
+        return match ($modo) {
+            'primeiro' => $partes[0],
+            'completo' => implode(' ', $partes),
+            default    => implode(' ', array_slice($partes, 0, 2)),
+        };
+    }
+
+    /**
+     * Prefixa o texto visível da mensagem.
+     *
+     * Mídia sem legenda fica de fora de propósito: uma foto cuja única legenda
+     * é o nome do atendente informa pouco e, no Instagram, viraria uma segunda
+     * mensagem contendo só o nome.
+     */
+    private static function aplicarAssinatura(array $spec, string $prefixo): array
+    {
+        $campo = match ((string)($spec['tipo'] ?? 'texto')) {
+            'texto'                      => 'texto',
+            'botoes', 'lista', 'cta_url' => 'corpo',
+            'midia'                      => 'legenda',
+            default                      => null,
+        };
+        if ($campo === null) return $spec;
+
+        $atual = trim((string)($spec[$campo] ?? ''));
+        if ($atual === '') return $spec;
+
+        $spec[$campo]        = $prefixo . "\n" . $atual;
+        $spec['_assinatura'] = $prefixo;
+        return $spec;
+    }
+
+    // =========================================================================
     // INTERPOLAÇÃO E PERSISTÊNCIA
     // =========================================================================
 
@@ -499,15 +604,23 @@ class ChatEnvioService
     private function payloadPersistido(array $spec): ?array
     {
         $tipo = (string)($spec['tipo'] ?? '');
+        $p    = null;
+
         if (in_array($tipo, ['botoes', 'lista', 'cta_url'], true)) {
-            return array_intersect_key($spec, array_flip([
+            $p = array_intersect_key($spec, array_flip([
                 'tipo', 'botoes', 'secoes', 'texto_botao', 'url', 'cabecalho', 'rodape',
             ]));
+        } elseif ($tipo === 'template') {
+            $p = array_intersect_key($spec, array_flip(['tipo', 'nome', 'idioma', 'componentes']));
         }
-        if ($tipo === 'template') {
-            return array_intersect_key($spec, array_flip(['tipo', 'nome', 'idioma', 'componentes']));
+
+        // O inbox usa isto para não repetir o nome do atendente acima da bolha:
+        // ele já está dentro do texto, exatamente como o cliente recebeu.
+        if (!empty($spec['_assinatura'])) {
+            $p = ($p ?? []) + ['assinatura' => (string)$spec['_assinatura']];
         }
-        return null;
+
+        return $p;
     }
 
     private function falha(string $motivo, string $erro): array

@@ -2951,3 +2951,163 @@ html[data-theme="dark"] .fp-selo{background:var(--pgto-surface-2) !important;col
 .toggle-switch input:checked + .toggle-slider:before { transform:translateX(16px); }
 .btn-danger-ghost { color:#dc2626; border-color:#fecaca; }
 .btn-danger-ghost:hover { background:#fef2f2; }
+
+/* ###########################################################################
+   SEPARAÇÃO / CHECKOUT DE EXPEDIÇÃO
+   ###########################################################################
+   Telas: fila (#sepPainel) e conferência (#sepConf).
+   Tudo em token de tema — a tela é usada o dia inteiro na expedição, e o
+   operador escolhe claro ou escuro conforme a luz do galpão.
+   ########################################################################### */
+
+.sep_page { padding: 20px; }
+
+.sep_head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.sep_head_acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+.sep_sub { color: var(--text-2); font-size: 13.5px; margin: 4px 0 0; }
+
+.sep_filtros { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.sep_filtros .form-control { max-width: 360px; }
+
+.sep_vazio { text-align: center; padding: 42px 20px; }
+.sep_vazio h3 { margin: 10px 0 4px; }
+.sep_vazio p { color: var(--text-2); margin: 0; }
+
+/* ── fila ─────────────────────────────────────────────────────────────── */
+.sep_card_body { padding: 0; }
+.sep_col_check { width: 42px; }
+.sep_col_acoes { text-align: right; white-space: nowrap; }
+.sep_col_acoes .btn { margin-left: 6px; }
+
+.sep_num    { font-weight: 800; font-size: 15px; }
+.sep_cod    { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; color: var(--text-3); }
+.sep_cliente{ font-weight: 600; }
+.sep_meta   { font-size: 11.5px; color: var(--text-3); }
+.sep_pecas  { font-weight: 800; font-size: 15px; }
+.sep_total  { font-weight: 700; white-space: nowrap; }
+
+.sep_tag {
+  display: inline-block;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-2);
+}
+.sep_tag--ok      { background: var(--success-lt); border-color: var(--success-bd); color: var(--success); }
+.sep_tag--espera  { background: var(--warning-lt); border-color: var(--warning-bd); color: var(--warning); }
+.sep_tag--neutro  { background: var(--surface2); }
+
+/* ── conferência ──────────────────────────────────────────────────────── */
+.sep_grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .sep_grid { grid-template-columns: 1fr; }
+}
+.sep_col_lado { display: flex; flex-direction: column; gap: 14px; }
+
+/* O campo de bipagem é o foco da tela: grande, monoespaçado e sempre com o
+   cursor. O operador não olha para cá enquanto bipa. */
+.sep_bipar { margin-bottom: 16px; }
+.sep_bipar_label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--text-2);
+  margin-bottom: 6px;
+}
+.sep_bipar_input {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 20px !important;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 14px 16px !important;
+}
+.sep_bipar_dica { font-size: 11.5px; color: var(--text-3); margin-top: 6px; }
+
+.sep_progresso { margin-bottom: 16px; }
+.sep_progresso_barra {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface2);
+  overflow: hidden;
+}
+.sep_progresso_fill {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: var(--success);
+  transition: width .25s ease;
+}
+.sep_progresso_txt { font-size: 12.5px; color: var(--text-2); margin-top: 6px; }
+
+.sep_itens td { vertical-align: top; }
+.sep_item_nome { font-weight: 600; }
+.sep_item_conf { text-align: center; }
+.sep_qtd { font-weight: 800; }
+.sep_mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
+
+.sep_contador {
+  display: inline-block;
+  min-width: 44px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  font-weight: 800;
+  font-size: 12.5px;
+}
+
+/* Item completo fica verde; a linha recém-bipada pisca, para o operador
+   confirmar de canto de olho que a bipada pegou. */
+.sep_item.is-ok .sep_contador {
+  background: var(--success-lt);
+  border-color: var(--success-bd);
+  color: var(--success);
+}
+.sep_item.is-bipado > td { background: var(--success-lt); }
+.sep_item > td { transition: background .3s ease; }
+
+.sep_forte { font-weight: 700; }
+.sep_end { font-size: 12.5px; color: var(--text-2); margin-top: 6px; line-height: 1.6; }
+
+.sep_aviso {
+  background: var(--warning-lt);
+  border: 1px solid var(--warning-bd);
+  border-radius: 10px;
+  padding: 11px 13px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.sep_aviso strong { color: var(--warning); display: block; margin-bottom: 3px; }
+
+.sep_campo label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-2);
+  margin-bottom: 5px;
+}
+
+/* Conferência completa: destaca o card inteiro, é o sinal de "pode fechar". */
+#sepConf.is-completo .sep_progresso_fill { background: var(--success); }
+#sepConf.is-completo .sep_progresso_txt strong { color: var(--success); }
+
+/* Cabecalho da lista de pedidos: Checkout e Novo pedido lado a lado. */
+.ped_head_acoes { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ped_head_acoes .btn svg { width: 15px; height: 15px; }

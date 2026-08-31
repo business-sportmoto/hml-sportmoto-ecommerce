@@ -217,6 +217,13 @@ AppRouter::delete($v . '/garagem/{id:\d+}',            'AppGaragemController@rem
 
 // ── Clips ───────────────────────────────────────────────────────────────────
 AppRouter::get ($v . '/clips/feed',            'AppClipsController@feed');       // antes de {id}
+// Escritas do feed. Curtir, comentar e ver funcionam sem conta: o estado
+// anônimo é chaveado pela sessão do dispositivo, como no ClipController da web.
+AppRouter::post($v . '/clips/{id:\d+}/like',          'AppClipsController@curtir');
+AppRouter::post($v . '/clips/{id:\d+}/visualizar',    'AppClipsController@visualizar');
+AppRouter::post($v . '/clips/{id:\d+}/compartilhar',  'AppClipsController@compartilhar');
+AppRouter::get ($v . '/clips/{id:\d+}/comentarios',   'AppClipsController@comentarios');
+AppRouter::post($v . '/clips/{id:\d+}/comentarios',   'AppClipsController@comentar');
 AppRouter::get ($v . '/clips/{id:\d+}',        'AppClipsController@detalhe');
 
 // Diagnóstico da ponte de sessão. Só responde com APP_DEBUG ligado — é o teste

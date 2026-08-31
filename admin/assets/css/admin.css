@@ -5756,3 +5756,34 @@ html[data-theme="dark"], html[data-theme="dark"].theme-dark, html[data-theme="da
   }
 }
 
+/* ===========================================================================
+   Icones do IconLibrary — base do painel inteiro.
+
+   Estas regras viviam so no logistica.css, que carrega apenas em
+   /admin/logistica. Qualquer outra tela que usasse o helper $ico() recebia o
+   SVG sem tamanho e ele ocupava a largura toda do container.
+
+   .log_iw   wrapper das views: o tamanho vem do font-size que o helper injeta.
+   .log_ico  markup gerado em JS: tamanho fixo.
+   =========================================================================== */
+.log_iw {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  vertical-align: -.15em;
+}
+.log_iw svg {
+  width: 1em;
+  height: 1em;
+  display: block;
+}
+
+.log_ico {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  fill: currentColor;
+  display: inline-block;
+  vertical-align: -.18em;
+}

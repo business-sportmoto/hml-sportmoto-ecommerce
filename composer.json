@@ -2,6 +2,7 @@
     "require": {
         "google/apiclient": "^2.14",
         "aws/aws-sdk-php": "^3.388",
-        "ezyang/htmlpurifier": "^4.19"
+        "ezyang/htmlpurifier": "^4.19",
+        "chillerlan/php-qrcode": "^6.0"
     }
 }

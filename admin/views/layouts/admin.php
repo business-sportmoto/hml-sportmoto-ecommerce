@@ -262,6 +262,11 @@ function adminIsActive(string $path): string {
 <script src="<?= PerformanceHelper::assetVersion('js/logistica.js', true) ?>"></script>
 <?php } ?>
 
+<?php if(trim(adminIsActive('/admin/pedidos/checkout')) == 'active'){ ?>
+<?php // Fila e conferencia; cada bloco se ativa pelo seu elemento raiz. ?>
+<script src="<?= PerformanceHelper::assetVersion('js/separacao.js', true) ?>"></script>
+<?php } ?>
+
 <?php if(trim(adminIsActive('/admin/chat')) == 'active'){ ?>
   <?php // O canvas so entra no editor: Drawflow e pesado demais para carregar
         // no inbox, que ja e a tela mais cara do modulo. ?>
