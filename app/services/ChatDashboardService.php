@@ -88,6 +88,118 @@ class ChatDashboardService
         return (new ChatMensagemService($this->db))->serieDiaria($dias);
     }
 
+    /**
+     * Quebra por canal. A caixa é unificada, mas WhatsApp e Instagram têm
+     * dinâmicas diferentes — misturar tudo num número só esconde qual dos
+     * dois está puxando o resultado.
+     */
+    public function porCanal(int $dias = 30): array
+    {
+        $dias  = max(1, min(365, $dias));
+        $desde = date('Y-m-d 00:00:00', strtotime('-' . ($dias - 1) . ' days'));
+
+        $base = [
+            'whatsapp'  => ['rotulo' => 'WhatsApp',  'cor' => '#25d366'],
+            'instagram' => ['rotulo' => 'Instagram', 'cor' => '#e1306c'],
+        ];
+
+        foreach ($base as $canal => $_) {
+            $p = [':c' => $canal, ':d' => $desde];
+
+            $base[$canal]['contatos'] = $this->umNumero(
+                "SELECT COUNT(*) FROM chat_contatos WHERE canal = :c", [':c' => $canal]);
+            $base[$canal]['novos'] = $this->umNumero(
+                "SELECT COUNT(*) FROM chat_contatos WHERE canal = :c AND criado_em >= :d", $p);
+            $base[$canal]['conversas_abertas'] = $this->umNumero(
+                "SELECT COUNT(*) FROM chat_conversas WHERE canal = :c AND status <> 'resolvida'", [':c' => $canal]);
+            $base[$canal]['nao_lidas'] = $this->umNumero(
+                "SELECT COUNT(*) FROM chat_conversas WHERE canal = :c AND nao_lidas > 0", [':c' => $canal]);
+            $base[$canal]['janela_aberta'] = $this->umNumero(
+                "SELECT COUNT(*) FROM chat_contatos
+                 WHERE canal = :c AND janela_expira_em > NOW() AND optin = 1 AND bloqueado = 0",
+                [':c' => $canal]);
+
+            // Mensagens: a direção vive na conversa, não no contato
+            $base[$canal]['recebidas'] = $this->umNumero(
+                "SELECT COUNT(*) FROM chat_mensagens m
+                 JOIN chat_conversas cv ON cv.id = m.conversa_id
+                 WHERE cv.canal = :c AND m.direcao = 'entrada' AND m.criado_em >= :d", $p);
+            $base[$canal]['enviadas'] = $this->umNumero(
+                "SELECT COUNT(*) FROM chat_mensagens m
+                 JOIN chat_conversas cv ON cv.id = m.conversa_id
+                 WHERE cv.canal = :c AND m.direcao = 'saida' AND m.criado_em >= :d", $p);
+        }
+
+        return $base;
+    }
+
+    /**
+     * Bloco do Instagram: conta conectada, comentários e as regras que mais
+     * disparam. Devolve `conectado=false` quando não há conta — a view usa
+     * isso para chamar a ação em vez de mostrar zeros.
+     */
+    public function instagram(int $dias = 30): array
+    {
+        $out = [
+            'conectado'    => false,
+            'conta'        => null,
+            'comentarios'  => 0,
+            'dms'          => 0,
+            'respostas'    => 0,
+            'falhas'       => 0,
+            'regras_ativas' => 0,
+            'midias'       => 0,
+            'top_regras'   => [],
+            'sem_regra'    => 0,
+        ];
+
+        try {
+            $st = $this->db->query(
+                "SELECT id, username, nome, foto_url, seguidores, webhook_assinado, ativo
+                 FROM chat_ig_contas WHERE ativo = 1 ORDER BY id LIMIT 1"
+            );
+            $conta = $st->fetch(PDO::FETCH_ASSOC);
+            if (!$conta) return $out;
+
+            $out['conectado'] = true;
+            $out['conta']     = $conta;
+
+            $dias  = max(1, min(365, $dias));
+            $desde = date('Y-m-d 00:00:00', strtotime('-' . ($dias - 1) . ' days'));
+            $p     = [':d' => $desde];
+
+            $out['comentarios'] = $this->umNumero(
+                "SELECT COUNT(*) FROM chat_ig_comentarios WHERE criado_em >= :d", $p);
+            $out['dms'] = $this->umNumero(
+                "SELECT COUNT(*) FROM chat_ig_comentarios WHERE dm_enviado = 1 AND criado_em >= :d", $p);
+            $out['respostas'] = $this->umNumero(
+                "SELECT COUNT(*) FROM chat_ig_comentarios WHERE respondido_publico = 1 AND criado_em >= :d", $p);
+            $out['falhas'] = $this->umNumero(
+                "SELECT COUNT(*) FROM chat_ig_comentarios WHERE dm_erro IS NOT NULL AND criado_em >= :d", $p);
+            // Comentário que não casou com regra nenhuma: oportunidade perdida
+            $out['sem_regra'] = $this->umNumero(
+                "SELECT COUNT(*) FROM chat_ig_comentarios WHERE regra_id IS NULL AND criado_em >= :d", $p);
+
+            $out['regras_ativas'] = $this->umNumero("SELECT COUNT(*) FROM chat_ig_regras WHERE ativo = 1");
+            $out['midias']        = $this->umNumero("SELECT COUNT(*) FROM chat_ig_midias");
+
+            $stR = $this->db->prepare(
+                "SELECT r.id, r.nome, r.palavras, r.ativo, r.total_disparos,
+                        (SELECT COUNT(*) FROM chat_ig_comentarios k
+                         WHERE k.regra_id = r.id AND k.dm_enviado = 1) AS dms
+                 FROM chat_ig_regras r
+                 ORDER BY r.total_disparos DESC, r.id DESC
+                 LIMIT 5"
+            );
+            $stR->execute();
+            $out['top_regras'] = $stR->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            // Módulo do Instagram ainda não migrado — o dashboard segue vivo
+        }
+
+        return $out;
+    }
+
     /** Crescimento de contatos por dia. */
     public function serieContatos(int $dias = 30): array
     {

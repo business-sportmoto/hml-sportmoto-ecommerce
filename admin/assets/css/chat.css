@@ -246,6 +246,18 @@ html[data-theme="dark"] .ch {
   background: var(--grad-primary, var(--blue)); color: #fff;
   font-size: 14px; font-weight: 700; text-transform: uppercase;
 }
+/* Marca do canal sobre o avatar — a caixa é unificada, a origem não */
+.ch-avatar-wrap { position: relative; flex: none; }
+.ch-conv-canal {
+  position: absolute; right: -2px; bottom: -2px;
+  min-width: 17px; height: 15px; padding: 0 3px; border-radius: 8px;
+  display: grid; place-items: center;
+  font-size: 9px; font-weight: 800; letter-spacing: .3px;
+  color: #fff; text-transform: uppercase;
+  border: 2px solid var(--surface);
+}
+.ch-conv.ativa .ch-conv-canal { border-color: var(--surface); }
+
 .ch-conv-corpo { flex: 1; min-width: 0; }
 .ch-conv-topo { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .ch-conv-nome {

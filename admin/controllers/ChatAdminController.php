@@ -47,6 +47,8 @@ class ChatAdminController extends Controller
             'tempoResposta' => $this->dash->tempoMedioResposta($dias),
             'falhas'      => $this->dash->ultimasFalhas(6),
             'saude'       => $this->dash->saude(),
+            'porCanal'    => $this->dash->porCanal($dias),
+            'instagram'   => $this->dash->instagram($dias),
         ], 'admin');
     }
 

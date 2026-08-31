@@ -32,7 +32,7 @@
     conversaId: 0,
     ultimoMsgId: 0,
     ultimoTs: null,
-    filtros: { status: '', agente: '', nao_lidas: '', q: '' },
+    filtros: { status: '', agente: '', nao_lidas: '', canal: '', q: '' },
     carregandoThread: false,
     contato: null,
     conversa: null,
@@ -68,6 +68,7 @@
       status: estado.filtros.status,
       agente: estado.filtros.agente,
       nao_lidas: estado.filtros.nao_lidas,
+      canal: estado.filtros.canal,
       q: estado.filtros.q
     };
 
@@ -103,9 +104,18 @@
       var seta = c.direcao === 'saida'
         ? '<span class="ch-mut" style="flex:none;">↗</span>' : '';
 
+      // Marca do canal no avatar: a caixa é unificada, mas quem atende
+      // precisa saber onde está falando antes de escrever
+      var ehIg = c.canal === 'instagram';
+      var marca = '<span class="ch-conv-canal" title="' + esc(c.canal_rotulo || '') + '" ' +
+                  'style="background:' + (ehIg ? '#e1306c' : '#25d366') + '">' +
+                  (ehIg ? 'ig' : 'wa') + '</span>';
+
       return '' +
         '<div class="ch-conv' + (c.id === estado.conversaId ? ' ativa' : '') + '" data-id="' + c.id + '">' +
-          '<div class="ch-avatar">' + esc(iniciais(c.nome)) + '</div>' +
+          '<div class="ch-avatar-wrap">' +
+            '<div class="ch-avatar">' + esc(iniciais(c.nome)) + '</div>' + marca +
+          '</div>' +
           '<div class="ch-conv-corpo">' +
             '<div class="ch-conv-topo">' +
               '<span class="ch-conv-nome">' + esc(c.nome) + '</span>' +
@@ -172,10 +182,20 @@
     $('#ch-t-nome').text(c.nome);
 
     var sub = [];
+    sub.push('<span style="color:' + (c.canal === 'instagram' ? '#e1306c' : '#25d366') + ';font-weight:700;">' +
+             esc(c.canal_rotulo || '') + '</span>');
     sub.push(esc(c.telefone));
-    sub.push(c.na_janela
-      ? '<span style="color:var(--success)">● janela aberta' + (c.janela_restante ? ' · ' + esc(c.janela_restante) : '') + '</span>'
-      : '<span style="color:var(--text-3)">● janela fechada</span>');
+
+    if (c.na_janela) {
+      sub.push('<span style="color:var(--success)">● janela aberta' +
+               (c.janela_restante ? ' · ' + esc(c.janela_restante) : '') + '</span>');
+    } else if (c.janela_humana) {
+      // Instagram fora das 24h mas dentro dos 7 dias da tag humana
+      sub.push('<span style="color:var(--warning)">● atendimento humano (7 dias)</span>');
+    } else {
+      sub.push('<span style="color:var(--text-3)">● janela fechada</span>');
+    }
+
     if (c.cliente_id) sub.push('<span style="color:var(--blue)">cliente #' + c.cliente_id + '</span>');
     $('#ch-t-sub').html(sub.join(' · '));
 
@@ -365,21 +385,50 @@
     );
   }
 
-  // ── Compositor: janela aberta vs. fechada ────────────────────────────────
+  // ── Compositor: o que é permitido depende do canal ───────────────────────
   function ajustarCompositor(c) {
-    var podeTexto = c.na_janela && CFG.envioOk;
+    var ehIg = c.canal === 'instagram';
+
+    // `pode_texto` já embute a regra de cada canal: 24h no WhatsApp,
+    // 24h + 7 dias da tag humana no Instagram.
+    var podeTexto = (c.pode_texto !== undefined ? c.pode_texto : c.na_janela) && CFG.envioOk;
+
     $('#ch-comp-livre').toggle(!!podeTexto);
     $('#ch-comp-fechado').toggle(!podeTexto);
 
-    if (!CFG.envioOk) {
-      $('#ch-comp-fechado').html(
-        '<div class="ch-comp-bloqueado"><strong>Envio indisponível</strong>' +
-        'O WhatsApp não está configurado. Veja a tela de configuração.</div>'
-      );
+    if (!podeTexto) {
+      if (!CFG.envioOk) {
+        $('#ch-comp-fechado').html(
+          '<div class="ch-comp-bloqueado"><strong>Envio indisponível</strong>' +
+          'O canal não está configurado. Veja a tela de configuração.</div>'
+        );
+      } else if (ehIg) {
+        // No Instagram não existe template: passados os 7 dias, acabou
+        $('#ch-comp-fechado').html(
+          '<div class="ch-comp-bloqueado"><strong>Janela do Instagram encerrada</strong>' +
+          'Passaram-se mais de 7 dias desde a última mensagem desta pessoa. ' +
+          'O Instagram não tem template para reabrir conversa — é preciso que ela escreva de novo.</div>'
+        );
+      } else {
+        $('#ch-comp-fechado').html(
+          '<div class="ch-comp-bloqueado">' +
+          '<strong>Janela de 24 horas fechada</strong>' +
+          'Esta pessoa não escreve para a loja há mais de 24h. A Meta só permite ' +
+          'retomar o contato com um <strong>template aprovado</strong>.' +
+          '<div style="margin-top:9px;">' +
+          '<button type="button" class="ch-btn ch-btn--pri ch-btn--sm" id="ch-abrir-template">' +
+          'Enviar template</button></div></div>'
+        );
+      }
     }
-    $('#ch-comp-dica').text(
-      c.bot_ativo ? 'Ao responder, a automação é pausada automaticamente.' : 'A automação está pausada nesta conversa.'
-    );
+
+    var dica = c.bot_ativo
+      ? 'Ao responder, a automação é pausada automaticamente.'
+      : 'A automação está pausada nesta conversa.';
+    if (ehIg && c.janela_humana && !c.na_janela) {
+      dica += ' Fora das 24h — a resposta vai com a tag de atendimento humano.';
+    }
+    $('#ch-comp-dica').text(dica);
   }
 
   // ── Envio ─────────────────────────────────────────────────────────────────
@@ -506,8 +555,8 @@
   $(document).on('click', '.ch-modal', function (e) { if (e.target === this) $(this).removeClass('aberto'); });
   $(document).on('keydown', function (e) { if (e.key === 'Escape') $('.ch-modal').removeClass('aberto'); });
 
-  // Template
-  $('#ch-abrir-template').on('click', function () { abrirModal('ch-modal-template'); });
+  // Template — delegado: o botão é redesenhado pelo ajustarCompositor
+  $(document).on('click', '#ch-abrir-template', function () { abrirModal('ch-modal-template'); });
 
   $('#ch-tpl-nome').on('change', function () {
     var $o = $(this).find('option:selected');
@@ -632,11 +681,19 @@
     if (estado.filtros[campo] === valor) {
       estado.filtros[campo] = '';
       $p.removeClass('ativa');
+    } else if (campo === 'canal') {
+      // Canal é ortogonal aos demais: "Instagram + não lidas" faz sentido.
+      // Só um canal por vez, mas sem derrubar o filtro de estado.
+      estado.filtros.canal = valor;
+      $('#ch-filtros .ch-pill[data-filtro=canal]').removeClass('ativa');
+      $p.addClass('ativa');
     } else {
-      // Filtros são exclusivos entre si: dois ativos confundem mais do que ajudam
-      estado.filtros = { status: '', agente: '', nao_lidas: '', q: estado.filtros.q };
+      // Estado/responsável são exclusivos entre si: dois ativos confundem
+      // mais do que ajudam. O canal escolhido sobrevive.
+      var canal = estado.filtros.canal;
+      estado.filtros = { status: '', agente: '', nao_lidas: '', canal: canal, q: estado.filtros.q };
       estado.filtros[campo] = valor;
-      $('#ch-filtros .ch-pill').removeClass('ativa');
+      $('#ch-filtros .ch-pill').not('[data-filtro=canal]').removeClass('ativa');
       $p.addClass('ativa');
     }
     carregarLista();
@@ -712,6 +769,12 @@
   });
 
   // ── Início ────────────────────────────────────────────────────────────────
+  // Chegou de /admin/chat?canal=instagram → já entra filtrado
+  if (CFG.canal) {
+    estado.filtros.canal = CFG.canal;
+    $('#ch-filtros .ch-pill[data-filtro=canal][data-valor="' + CFG.canal + '"]').addClass('ativa');
+  }
+
   carregarLista();
   iniciarPolling();
 

@@ -52,6 +52,9 @@ class ChatInboxController extends Controller
             'fluxos'      => (new ChatFluxoAdminService())->listarPublicados(),
             'meuId'       => AuthHelper::usuarioId(),
             'abrirConversa' => (int)($_GET['conversa'] ?? 0),
+            // Permite cair aqui já filtrado, vindo dos atalhos do dashboard
+            'canalInicial'  => in_array($_GET['canal'] ?? '', ['whatsapp', 'instagram'], true)
+                ? (string)$_GET['canal'] : '',
             'envioOk'     => $this->envio->disponivel(),
             'envioErro'   => $this->envio->erroConfig(),
         ], 'admin');
@@ -69,6 +72,7 @@ class ChatInboxController extends Controller
             'busca'     => (string)($_GET['q'] ?? ''),
             'nao_lidas' => !empty($_GET['nao_lidas']),
             'janela'    => (string)($_GET['janela'] ?? ''),
+            'canal'     => (string)($_GET['canal'] ?? ''),
             'tags'      => array_filter(array_map('intval', (array)($_GET['tags'] ?? []))),
         ];
         if ($f['agente_id'] === 'eu') $f['agente_id'] = AuthHelper::usuarioId();
@@ -92,7 +96,13 @@ class ChatInboxController extends Controller
             'id'          => (int)$c['id'],
             'contato_id'  => (int)$c['contato_id'],
             'nome'        => $c['nome_exibicao'],
-            'telefone'    => $c['telefone_exibicao'] ?: $c['wa_id'],
+            'canal'       => $c['canal'] ?? 'whatsapp',
+            'canal_rotulo'=> $c['canal_rotulo'] ?? 'WhatsApp',
+            // No Instagram é @handle; no WhatsApp, o telefone formatado
+            'telefone'    => $c['identificador'] ?? ($c['telefone_exibicao'] ?: $c['wa_id']),
+            // IG: fora das 24h ainda dá para responder por 7 dias com a tag humana
+            'pode_texto'  => (bool)($c['pode_texto_livre'] ?? $c['na_janela']),
+            'janela_humana' => (bool)($c['ig_janela_humana'] ?? false),
             'status'      => $c['status'],
             'nao_lidas'   => (int)$c['nao_lidas'],
             'preview'     => (string)($c['ultima_preview'] ?? ''),

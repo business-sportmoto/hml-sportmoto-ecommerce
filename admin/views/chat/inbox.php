@@ -62,6 +62,8 @@ $h    = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
           </button>
           <button type="button" class="ch-pill" data-filtro="status" data-valor="pendente">Pendentes</button>
           <button type="button" class="ch-pill" data-filtro="status" data-valor="resolvida">Resolvidas</button>
+          <button type="button" class="ch-pill" data-filtro="canal" data-valor="whatsapp">WhatsApp</button>
+          <button type="button" class="ch-pill" data-filtro="canal" data-valor="instagram">Instagram</button>
         </div>
       </div>
       <div class="ch-lista" id="ch-lista">
@@ -278,6 +280,7 @@ $h    = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
     csrf:      '<?= $h($csrf_token ?? '') ?>',
     meuId:     <?= (int)$meuId ?>,
     abrir:     <?= (int)$abrirConversa ?>,
+    canal:     '<?= $h($canalInicial ?? '') ?>',
     envioOk:   <?= $envioOk ? 'true' : 'false' ?>,
     agentes:   <?= json_encode($agentes, JSON_UNESCAPED_UNICODE) ?>,
     tags:      <?= json_encode($tags, JSON_UNESCAPED_UNICODE) ?>

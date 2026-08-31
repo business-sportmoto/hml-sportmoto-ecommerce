@@ -5,6 +5,7 @@
  * @var array $kpis @var array $serie @var array $serieContatos @var array $porHora
  * @var array $topFluxos @var array $topGatilhos @var array $porTag @var array $falhas
  * @var array $saude @var int $dias @var float|null $tempoResposta
+ * @var array $porCanal @var array $instagram
  */
 $base = defined('BASE_URL') ? BASE_URL : '';
 $h    = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
@@ -150,6 +151,175 @@ $grafico = function (array $dados, array $series, int $altura = 190) use ($h) {
     <?= $kpi('Conversas abertas',  $kpis['conversas_abertas'], $kpis['nao_lidas']['valor'] . ' não lida(s)') ?>
     <?= $kpi('Sessões ativas',     $kpis['sessoes_ativas'],  'fluxos em andamento') ?>
     <?= $kpi('Falhas de envio',    $kpis['falhas']) ?>
+  </div>
+
+  <?php // ── Quebra por canal ───────────────────────────────────────────── ?>
+  <div class="ch-card" style="margin-bottom:16px;">
+    <div class="ch-card-head">
+      <h2>Por canal</h2>
+      <span class="ch-sm ch-mut">a caixa é unificada, mas os canais têm dinâmicas diferentes</span>
+    </div>
+    <div class="ch-tabela-wrap">
+      <table class="ch-tabela">
+        <thead>
+          <tr>
+            <th>Canal</th><th class="ch-num">Contatos</th><th class="ch-num">Novos</th>
+            <th class="ch-num">Recebidas</th><th class="ch-num">Enviadas</th>
+            <th class="ch-num">Janela aberta</th><th class="ch-num">Em aberto</th><th style="width:1%;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($porCanal as $canal => $c): ?>
+          <tr>
+            <td>
+              <span class="ch-flex">
+                <i class="ch-gr-cor" style="background:<?= $h($c['cor']) ?>;"></i>
+                <span class="ch-b"><?= $h($c['rotulo']) ?></span>
+              </span>
+            </td>
+            <td class="ch-num"><?= $n($c['contatos']) ?></td>
+            <td class="ch-num"><?= $n($c['novos']) ?></td>
+            <td class="ch-num"><?= $n($c['recebidas']) ?></td>
+            <td class="ch-num"><?= $n($c['enviadas']) ?></td>
+            <td class="ch-num">
+              <?= $n($c['janela_aberta']) ?>
+              <?php if ($canal === 'instagram' && (int)$c['contatos'] > 0): ?>
+                <div class="ch-sm ch-mut">+7d com tag humana</div>
+              <?php endif; ?>
+            </td>
+            <td class="ch-num">
+              <?= $n($c['conversas_abertas']) ?>
+              <?php if ((int)$c['nao_lidas'] > 0): ?>
+                <div class="ch-sm" style="color:var(--warning);"><?= $n($c['nao_lidas']) ?> não lida(s)</div>
+              <?php endif; ?>
+            </td>
+            <td>
+              <a href="<?= $base ?>/admin/chat/inbox?canal=<?= $h($canal) ?>" class="ch-btn ch-btn--sm">Abrir</a>
+            </td>
+          </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <?php // ── Instagram ──────────────────────────────────────────────────── ?>
+  <div class="ch-card" style="margin-bottom:16px;">
+    <div class="ch-card-head">
+      <h2>Instagram</h2>
+      <div class="ch-flex">
+        <a href="<?= $base ?>/admin/chat/instagram/regras" class="ch-btn ch-btn--sm">Automação de comentários</a>
+        <a href="<?= $base ?>/admin/chat/instagram" class="ch-btn ch-btn--sm">Gerenciar</a>
+      </div>
+    </div>
+
+    <?php if (!$instagram['conectado']): ?>
+      <div class="ch-vazio">
+        <strong>Nenhuma conta conectada</strong>
+        <p style="max-width:52ch;margin:0 auto 14px;">
+          Conectando o Instagram, quem comentar nos seus posts pode receber
+          direct automático — e as conversas caem na mesma caixa de entrada.
+        </p>
+        <a href="<?= $base ?>/admin/chat/instagram" class="ch-btn ch-btn--pri ch-btn--sm">Conectar conta</a>
+      </div>
+    <?php else:
+      $ig = $instagram; $conta = $ig['conta'];
+      // Quanto do que chega vira conversa — a métrica que diz se as regras cobrem o volume
+      $aproveitamento = (int)$ig['comentarios'] > 0
+          ? round(((int)$ig['dms'] / (int)$ig['comentarios']) * 100, 1) : 0.0;
+    ?>
+      <div class="ch-card-body" style="padding-bottom:0;">
+        <div class="ch-flex" style="gap:14px;margin-bottom:16px;flex-wrap:wrap;">
+          <?php if ($conta['foto_url']): ?>
+            <img src="<?= $h($conta['foto_url']) ?>" alt="" width="46" height="46"
+                 style="border-radius:50%;flex:none;">
+          <?php endif; ?>
+          <div style="flex:1;min-width:160px;">
+            <div class="ch-b" style="font-size:14px;">@<?= $h($conta['username']) ?></div>
+            <div class="ch-sm ch-mut">
+              <?= $conta['seguidores'] !== null ? $n($conta['seguidores']) . ' seguidores · ' : '' ?>
+              <?= $n($ig['midias']) ?> publicações sincronizadas
+            </div>
+          </div>
+          <?php if (!(int)$conta['webhook_assinado']): ?>
+            <span class="ch-badge ch-badge--aviso">webhook não assinado</span>
+          <?php else: ?>
+            <span class="ch-badge ch-badge--ok">recebendo eventos</span>
+          <?php endif; ?>
+        </div>
+      </div>
+
+      <?php if ((int)$ig['regras_ativas'] === 0): ?>
+        <div class="ch-aviso ch-aviso--aviso" style="margin:0 16px 16px;">
+          <div>
+            <strong>Nenhuma regra de comentário ativa</strong>
+            Os comentários chegam e ficam registrados, mas ninguém é respondido.
+            <a href="<?= $base ?>/admin/chat/instagram/regras">Criar a primeira regra</a>
+          </div>
+        </div>
+      <?php elseif ((int)$ig['sem_regra'] > 0 && (int)$ig['comentarios'] > 0): ?>
+        <div class="ch-aviso ch-aviso--info" style="margin:0 16px 16px;">
+          <div>
+            <strong><?= $n($ig['sem_regra']) ?> comentário(s) não casaram com nenhuma regra</strong>
+            Vale olhar o que as pessoas escrevem e ampliar as palavras-chave.
+            <a href="<?= $base ?>/admin/chat/instagram/comentarios">Ver comentários</a>
+          </div>
+        </div>
+      <?php endif; ?>
+
+      <div class="ch-kpis" style="margin:0 16px 16px;">
+        <div class="ch-kpi">
+          <div class="ch-kpi-rot">Comentários</div>
+          <div class="ch-kpi-val"><?= $n($ig['comentarios']) ?></div>
+          <div class="ch-kpi-sub">últimos <?= (int)$dias ?> dias</div>
+        </div>
+        <div class="ch-kpi">
+          <div class="ch-kpi-rot">Viraram direct</div>
+          <div class="ch-kpi-val"><?= $n($ig['dms']) ?></div>
+          <div class="ch-kpi-sub"><?= number_format($aproveitamento, 1, ',', '.') ?>% dos comentários</div>
+        </div>
+        <div class="ch-kpi">
+          <div class="ch-kpi-rot">Respostas públicas</div>
+          <div class="ch-kpi-val"><?= $n($ig['respostas']) ?></div>
+        </div>
+        <div class="ch-kpi">
+          <div class="ch-kpi-rot">Regras ativas</div>
+          <div class="ch-kpi-val"><?= $n($ig['regras_ativas']) ?></div>
+        </div>
+        <div class="ch-kpi">
+          <div class="ch-kpi-rot">Falhas de direct</div>
+          <div class="ch-kpi-val" style="<?= (int)$ig['falhas'] > 0 ? 'color:var(--danger)' : '' ?>">
+            <?= $n($ig['falhas']) ?>
+          </div>
+          <?php if ((int)$ig['falhas'] > 0): ?>
+            <div class="ch-kpi-sub"><a href="<?= $base ?>/admin/chat/instagram/comentarios?so_erro=1">ver motivos</a></div>
+          <?php endif; ?>
+        </div>
+      </div>
+
+      <?php if ($ig['top_regras']): ?>
+        <div class="ch-tabela-wrap">
+          <table class="ch-tabela">
+            <thead><tr><th>Regra de comentário</th><th>Palavras</th><th class="ch-num">Disparos</th><th class="ch-num">Directs</th></tr></thead>
+            <tbody>
+              <?php foreach ($ig['top_regras'] as $r): ?>
+              <tr style="<?= (int)$r['ativo'] ? '' : 'opacity:.55;' ?>">
+                <td>
+                  <?= $h($r['nome']) ?>
+                  <?php if (!(int)$r['ativo']): ?>
+                    <span class="ch-badge ch-badge--neutro">inativa</span>
+                  <?php endif; ?>
+                </td>
+                <td class="ch-mono ch-sm ch-mut"><?= $h($r['palavras'] ?: 'qualquer comentário') ?></td>
+                <td class="ch-num"><?= $n($r['total_disparos']) ?></td>
+                <td class="ch-num"><?= $n($r['dms']) ?></td>
+              </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+      <?php endif; ?>
+    <?php endif; ?>
   </div>
 
   <?php // ── Gráficos ───────────────────────────────────────────────────── ?>
