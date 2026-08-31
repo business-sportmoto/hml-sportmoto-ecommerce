@@ -263,16 +263,16 @@ input, select, textarea { font-family: var(--font); }
 .ntf-vazio{padding:40px 16px;text-align:center;color:#a1a1aa;font-size:13px}
 .ntf-modal-foot{padding:8px;text-align:center;border-top:0.5px solid #f0f0f2}
 @media(prefers-color-scheme:dark){
-  .ntf-modal{background:#1c1c1e;border-color:#2c2c2e}
-  .ntf-modal-head,.ntf-filtros,.ntf-modal-foot{border-color:#2c2c2e}
-  .ntf-modal-title,.ntf-item-titulo{color:#f4f4f5}
-  .ntf-item{border-color:#242426}
-  .ntf-item:hover{background:#232325}
-  .ntf-item-naolida{background:#12233a}
-  .ntf-item-naolida:hover{background:#16293f}
-  .ntf-chip{background:#2c2c2e;color:#a1a1aa}
-  .ntf-chip-ativa{background:#f4f4f5;color:#0f0f10}
-  .ntf-bell:hover{background:rgba(255,255,255,.08)}
+  html:not([data-theme="light"]) .ntf-modal {background:#1c1c1e;border-color:#2c2c2e}
+  html:not([data-theme="light"]) .ntf-modal-head, html:not([data-theme="light"]) .ntf-filtros, html:not([data-theme="light"]) .ntf-modal-foot {border-color:#2c2c2e}
+  html:not([data-theme="light"]) .ntf-modal-title, html:not([data-theme="light"]) .ntf-item-titulo {color:#f4f4f5}
+  html:not([data-theme="light"]) .ntf-item {border-color:#242426}
+  html:not([data-theme="light"]) .ntf-item:hover {background:#232325}
+  html:not([data-theme="light"]) .ntf-item-naolida {background:#12233a}
+  html:not([data-theme="light"]) .ntf-item-naolida:hover {background:#16293f}
+  html:not([data-theme="light"]) .ntf-chip {background:#2c2c2e;color:#a1a1aa}
+  html:not([data-theme="light"]) .ntf-chip-ativa {background:#f4f4f5;color:#0f0f10}
+  html:not([data-theme="light"]) .ntf-bell:hover {background:rgba(255,255,255,.08)}
 }
 
 /* ── Sidebar nav ──────────────────────────────────────────── */

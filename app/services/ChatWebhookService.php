@@ -137,7 +137,9 @@ class ChatWebhookService
                     continue;
                 }
                 try {
-                    $r = $ig->processarComentario((array)($change['value'] ?? []), $igUserId);
+                    // `live_comments` roteia para as automações de Live; misturar
+                    // com `comments` faria a régua de live responder post comum
+                    $r = $ig->processarComentario((array)($change['value'] ?? []), $igUserId, $campo);
                     $this->logWebhook(
                         'ig_comentario',
                         (string)($change['value']['id'] ?? ''),
@@ -269,6 +271,24 @@ class ChatWebhookService
         if (ChatConfig::bool('auto_marcar_lida', true) && $conta) {
             try { ChatInstagramClient::daConta($conta)->acaoRemetente($remetente, 'mark_seen'); }
             catch (Throwable $e) {}
+        }
+
+        // ── "Já segui!" da receita de crescimento ──
+        // Tratado antes do roteamento normal: é resposta a uma pergunta que a
+        // própria automação fez, não uma mensagem nova para os gatilhos.
+        if ($botaoId && str_starts_with($botaoId, 'ig_segui_')) {
+            if ($ig->tratarConfirmacaoSeguidor($botaoId, (int)$contato['id'], $remetente, $conta)) {
+                return true;
+            }
+        }
+
+        // ── Resposta a story: régua própria, antes dos gatilhos gerais ──
+        // Chega pelo canal de DM (não por `changes`), então é aqui que a
+        // automação de FAQ de stories precisa ser consultada.
+        if ($tipo === 'story_reply' && $texto !== '') {
+            if ($ig->processarRespostaStory((int)$contato['id'], $texto, $conta)) {
+                return true;
+            }
         }
 
         // ── Roteamento: idêntico ao WhatsApp ──

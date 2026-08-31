@@ -2006,7 +2006,8 @@ width:100%
    e declarado depois, portanto e esta que prevalece. Alterar cores AQUI.
    Formas e tipografia continuam vindo do bloco do topo.
    --------------------------------------------------------------------------- */
-.log_shell,.admin-drawer {
+html[data-theme="dark"] .log_shell,
+html[data-theme="dark"] .admin-drawer {
 color-scheme:dark;
 --log-bg:#080c12;
 --log-surface:#121720;
@@ -2049,7 +2050,18 @@ color:var(--log-ink)
 --admin-drawer-shadow:-20px 0 60px #0000007a
 }
 
-.log_btn,.log_card,.log_kpi,.log_filters,.log_input,.log_select,.log_svc,.log_op,.logrev_ac,.log_ib,.frete_op,.logd_kpi {
+html[data-theme="dark"] .log_btn,
+html[data-theme="dark"] .log_card,
+html[data-theme="dark"] .log_kpi,
+html[data-theme="dark"] .log_filters,
+html[data-theme="dark"] .log_input,
+html[data-theme="dark"] .log_select,
+html[data-theme="dark"] .log_svc,
+html[data-theme="dark"] .log_op,
+html[data-theme="dark"] .logrev_ac,
+html[data-theme="dark"] .log_ib,
+html[data-theme="dark"] .frete_op,
+html[data-theme="dark"] .logd_kpi {
 color-scheme:dark
 }
 
@@ -2203,7 +2215,7 @@ background:#3b82f624
 box-shadow:inset 0 1px 0 #ffffff06
 }
 
-.admin-drawer-body {
+html[data-theme="dark"] .admin-drawer-body {
 --adm-accent:var(--log-brand,#60a5fa);
 --adm-accent-weak:#60a5fa29;
 --adm-ink:#f1f5f9;
@@ -2221,80 +2233,80 @@ background:var(--surface);
 scrollbar-color:#465369 transparent
 }
 
-.admin-drawer-body::-webkit-scrollbar-thumb {
+html[data-theme="dark"] .admin-drawer-body::-webkit-scrollbar-thumb {
 background:#465369;
 border-color:transparent
 }
 
-.admin-drawer-body::-webkit-scrollbar-thumb:hover {
+html[data-theme="dark"] .admin-drawer-body::-webkit-scrollbar-thumb:hover {
 background:#64748b
 }
 
-.admin-drawer-body .adm-section,.admin-drawer-body fieldset {
+html[data-theme="dark"] .admin-drawer-body .adm-section, html[data-theme="dark"] .admin-drawer-body fieldset {
 box-shadow:inset 0 1px 0 #ffffff06
 }
 
-.admin-drawer-body input::placeholder,.admin-drawer-body textarea::placeholder {
+html[data-theme="dark"] .admin-drawer-body input::placeholder, html[data-theme="dark"] .admin-drawer-body textarea::placeholder {
 color:#718096
 }
 
-.admin-drawer-body select {
+html[data-theme="dark"] .admin-drawer-body select {
 background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")
 }
 
-.admin-drawer-body input:disabled,.admin-drawer-body select:disabled,.admin-drawer-body textarea:disabled,.admin-drawer-body input[readonly],.admin-drawer-body textarea[readonly] {
+html[data-theme="dark"] .admin-drawer-body input:disabled, html[data-theme="dark"] .admin-drawer-body select:disabled, html[data-theme="dark"] .admin-drawer-body textarea:disabled, html[data-theme="dark"] .admin-drawer-body input[readonly], html[data-theme="dark"] .admin-drawer-body textarea[readonly] {
 background-color:#090e15;
 color:#6f7b8d;
 border-color:#232c38
 }
 
-.admin-drawer-body input:-webkit-autofill,.admin-drawer-body input:-webkit-autofill:hover,.admin-drawer-body input:-webkit-autofill:focus,.admin-drawer-body textarea:-webkit-autofill,.admin-drawer-body select:-webkit-autofill {
+html[data-theme="dark"] .admin-drawer-body input:-webkit-autofill, html[data-theme="dark"] .admin-drawer-body input:-webkit-autofill:hover, html[data-theme="dark"] .admin-drawer-body input:-webkit-autofill:focus, html[data-theme="dark"] .admin-drawer-body textarea:-webkit-autofill, html[data-theme="dark"] .admin-drawer-body select:-webkit-autofill {
 -webkit-text-fill-color:var(--adm-ink);
 caret-color:var(--adm-ink);
 box-shadow:0 0 0 1000px var(--adm-field-bg) inset;
 transition:background-color 9999s ease-out 0s
 }
 
-.admin-drawer-body .adm-check-card {
+html[data-theme="dark"] .admin-drawer-body .adm-check-card {
 box-shadow:inset 0 1px 0 #ffffff05
 }
 
-.admin-drawer-body input[type="file"]::file-selector-button {
+html[data-theme="dark"] .admin-drawer-body input[type="file"]::file-selector-button {
 box-shadow:0 5px 14px #2563eb33
 }
 
-:where(.admin-drawer-body) button:not([class]),.admin-drawer-body .adm-btn {
+html[data-theme="dark"] :where(.admin-drawer-body) button:not([class]), html[data-theme="dark"] .admin-drawer-body .adm-btn {
 box-shadow:inset 0 1px 0 #ffffff06
 }
 
-.admin-drawer-body .adm-btn--primary {
+html[data-theme="dark"] .admin-drawer-body .adm-btn--primary {
 color:#fff;
 box-shadow:0 6px 18px #2563eb33
 }
 
-.admin-drawer-body .adm-btn--primary:hover {
+html[data-theme="dark"] .admin-drawer-body .adm-btn--primary:hover {
 color:#fff;
 box-shadow:0 9px 24px #2563eb45
 }
 
-.log_shell,.log_table_wrap,.logrev_ac,.logapi_pre {
+html[data-theme="dark"] .log_shell, html[data-theme="dark"] .log_table_wrap, html[data-theme="dark"] .logrev_ac, html[data-theme="dark"] .logapi_pre {
 scrollbar-width:thin;
 scrollbar-color:#465369 transparent
 }
 
-.log_shell ::-webkit-scrollbar,.log_table_wrap::-webkit-scrollbar,.logrev_ac::-webkit-scrollbar,.logapi_pre::-webkit-scrollbar {
+html[data-theme="dark"] .log_shell ::-webkit-scrollbar, html[data-theme="dark"] .log_table_wrap::-webkit-scrollbar, html[data-theme="dark"] .logrev_ac::-webkit-scrollbar, html[data-theme="dark"] .logapi_pre::-webkit-scrollbar {
 width:10px;
 height:10px
 }
 
-.log_shell ::-webkit-scrollbar-thumb,.log_table_wrap::-webkit-scrollbar-thumb,.logrev_ac::-webkit-scrollbar-thumb,.logapi_pre::-webkit-scrollbar-thumb {
+html[data-theme="dark"] .log_shell ::-webkit-scrollbar-thumb, html[data-theme="dark"] .log_table_wrap::-webkit-scrollbar-thumb, html[data-theme="dark"] .logrev_ac::-webkit-scrollbar-thumb, html[data-theme="dark"] .logapi_pre::-webkit-scrollbar-thumb {
 background:#465369;
 border:3px solid transparent;
 border-radius:999px;
 background-clip:content-box
 }
 
-.log_shell ::selection,.admin-drawer ::selection {
+html[data-theme="dark"] .log_shell ::selection, html[data-theme="dark"] .admin-drawer ::selection {
 color:#fff;
 background:#2563eb94
 }
@@ -2333,4 +2345,4 @@ box-shadow:none
 .log_pdf_open, .log_pdf_x { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--log-border, #e5e7eb); background: transparent; color: inherit; cursor: pointer; text-decoration: none; }
 .log_pdf_open:hover, .log_pdf_x:hover { background: rgba(37, 99, 235, .08); }
 .log_pdf_frame { flex: 1 1 auto; width: 100%; border: 0; background: #525659; }
-@media (prefers-color-scheme: dark) { .log_pdf_box { background: var(--log-surface, #1f2937); } }
+@media (prefers-color-scheme: dark) { html:not([data-theme="light"]) .log_pdf_box { background: var(--log-surface, #1f2937); } }

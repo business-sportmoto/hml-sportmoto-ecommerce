@@ -248,7 +248,12 @@ class ChatInstagramService
 
     public function regras(bool $soAtivas = false): array
     {
-        $where = $soAtivas ? 'WHERE r.ativo = 1' : '';
+        // A lixeira fica de fora sempre: automação excluída não pode voltar a
+        // responder cliente por causa de uma consulta esquecida.
+        $where = $soAtivas
+            ? 'WHERE r.ativo = 1 AND r.excluido_em IS NULL'
+            : 'WHERE r.excluido_em IS NULL';
+
         return $this->db->query(
             "SELECT r.*, f.nome AS fluxo_nome, t.nome AS tag_nome, t.cor AS tag_cor,
                     c.username AS conta_username
@@ -375,7 +380,7 @@ class ChatInstagramService
      * @param string $igUserId conta que recebeu
      * @return array{ok:bool, motivo:string, regra_id?:int}
      */
-    public function processarComentario(array $c, string $igUserId): array
+    public function processarComentario(array $c, string $igUserId, string $evento = 'comments'): array
     {
         $commentId = (string)($c['id'] ?? '');
         if ($commentId === '') return ['ok' => false, 'motivo' => 'comentário sem id'];
@@ -418,7 +423,10 @@ class ChatInstagramService
         }
 
         // ── Acha a regra ──
-        $regra = $this->acharRegra($texto, $mediaId, $contaId, $parentId !== '', $fromId);
+        $tipoMidia = (string)($c['media']['media_product_type'] ?? '');
+        $regra = $this->acharRegra(
+            $texto, $mediaId, $contaId, $parentId !== '', $fromId, $evento, $tipoMidia
+        );
         if (!$regra) {
             $this->marcarProcessado($registroId);
             return ['ok' => false, 'motivo' => 'nenhuma regra casou'];
@@ -434,16 +442,32 @@ class ChatInstagramService
         return ['ok' => $r['ok'], 'motivo' => $r['motivo'], 'regra_id' => (int)$regra['id']];
     }
 
-    /** Primeira regra ativa que casa, por prioridade. */
+    /**
+     * Primeira regra ativa que casa, por prioridade.
+     *
+     * @param string $evento    comments | live_comments | story_reply | mentions
+     * @param string $tipoMidia FEED | REELS | VIDEO — distingue post de reel
+     */
     private function acharRegra(
-        string $texto, string $mediaId, ?int $contaId, bool $ehResposta, string $fromId
+        string $texto, string $mediaId, ?int $contaId, bool $ehResposta, string $fromId,
+        string $evento = 'comments', string $tipoMidia = ''
     ): ?array {
         $gat = new ChatGatilhoService($this->db);
+
+        // Sem tipo informado, descobre pelo cache de mídias — é o que separa
+        // "venda pelos reels" de "responda comentários do feed"
+        if ($tipoMidia === '' && $mediaId !== '') {
+            $tipoMidia = (string)$this->tipoDaMidia($mediaId);
+        }
 
         foreach ($this->regras(true) as $regra) {
             // Conta específica
             if ($regra['conta_id'] !== null && $contaId !== null
                 && (int)$regra['conta_id'] !== $contaId) continue;
+
+            // Tipo de gatilho: uma automação de live não responde post comum
+            $gatilho = (string)($regra['gatilho_tipo'] ?? 'comentario');
+            if (!ChatIgReceitaService::gatilhoAceita($gatilho, $evento, $tipoMidia)) continue;
 
             if ($ehResposta && (int)$regra['ignorar_respostas'] === 1) continue;
 
@@ -472,6 +496,18 @@ class ChatInstagramService
             return $regra;
         }
         return null;
+    }
+
+    /** Tipo da mídia pelo cache local (REELS, IMAGE, VIDEO, CAROUSEL_ALBUM). */
+    private function tipoDaMidia(string $mediaId): string
+    {
+        try {
+            $st = $this->db->prepare("SELECT tipo FROM chat_ig_midias WHERE media_id = :m LIMIT 1");
+            $st->execute([':m' => $mediaId]);
+            return (string)($st->fetchColumn() ?: '');
+        } catch (Throwable $e) {
+            return '';
+        }
     }
 
     /** Executa as ações da regra: resposta pública, DM, fluxo, tag. */
@@ -515,7 +551,15 @@ class ChatInstagramService
         // ── 2. DM privado (private reply) ──
         $contatoId = null;
         if ((int)$regra['enviar_dm'] === 1 && ChatConfig::bool('ig_dm_por_comentario', true)) {
-            $mensagem = trim((string)($regra['mensagem_dm'] ?? ''));
+            $exigeSeguidor = (int)($regra['exigir_seguidor'] ?? 0) === 1;
+
+            // Na receita de crescimento, a primeira mensagem é o convite para
+            // seguir — o link só sai depois que a pessoa confirma. Não dá para
+            // checar `is_user_follow_business` aqui: a Meta só devolve esse
+            // campo depois que a pessoa manda mensagem, e comentar não conta.
+            $mensagem = $exigeSeguidor
+                ? trim((string)($regra['mensagem_nao_seguidor'] ?? ''))
+                : trim((string)($regra['mensagem_dm'] ?? ''));
 
             try {
                 if ($mensagem !== '') {
@@ -528,7 +572,17 @@ class ChatInstagramService
                         'comentario'    => $textoComentario,
                     ]);
 
-                    $resp  = $cli->responderNoDirect($commentId, $mensagem);
+                    if ($exigeSeguidor) {
+                        // Botão de confirmação: o payload volta pelo webhook e
+                        // é lá que a verificação de "segue mesmo?" acontece
+                        $resp = $cli->responderNoDirectComOpcoes($commentId, $mensagem, [
+                            ['titulo' => 'Já segui!', 'payload' => 'ig_segui_' . (int)$regra['id']],
+                        ]);
+                    } else {
+                        $mensagem = $this->anexarLink($mensagem, $regra, null, $commentId);
+                        $resp = $cli->responderNoDirect($commentId, $mensagem);
+                    }
+
                     $igsid = (string)($resp['igsid'] ?? '') ?: $fromId;
 
                     // Só agora existe um contato: a private reply abriu a thread
@@ -538,13 +592,20 @@ class ChatInstagramService
                             $contatoId, $mensagem, (string)($resp['wamid'] ?? ''),
                             $commentId, (int)$regra['id']
                         );
+
+                        // Guarda a entrega pendente: quando a pessoa tocar em
+                        // "Já segui!", é daqui que sai qual link mandar
+                        if ($exigeSeguidor) {
+                            $this->contatos->setCampo($contatoId, '_ig_pendente', (int)$regra['id']);
+                        }
                     }
 
                     $this->db->prepare(
                         "UPDATE chat_ig_comentarios SET dm_enviado = 1, contato_id = :ct WHERE id = :id"
                     )->execute([':ct' => $contatoId, ':id' => $registroId]);
 
-                    $feito[] = 'DM enviado';
+                    (new ChatIgAutomacaoService($this->db))->registrarEnvio((int)$regra['id']);
+                    $feito[] = $exigeSeguidor ? 'convite para seguir enviado' : 'DM enviado';
                 }
             } catch (ChatIgException $e) {
                 // 10903 = já usamos a private reply neste comentário. Não é
@@ -596,6 +657,149 @@ class ChatInstagramService
         return $feito
             ? ['ok' => true,  'motivo' => implode(', ', $feito)]
             : ['ok' => false, 'motivo' => 'nenhuma ação concluída'];
+    }
+
+    /**
+     * Anexa o link da automação à mensagem, encurtado para medir o CTR.
+     *
+     * O Instagram não tem botão em private reply, então o link vai no corpo
+     * mesmo. Encurtar não é estética: sem o redirect próprio não há como saber
+     * quantos dos que receberam realmente clicaram.
+     */
+    private function anexarLink(string $mensagem, array $regra, ?int $contatoId, ?string $commentId): string
+    {
+        $destino = trim((string)($regra['link_destino'] ?? ''));
+        if ($destino === '') return $mensagem;
+
+        $curto = (new ChatIgAutomacaoService($this->db))
+            ->gerarLink((int)$regra['id'], $contatoId, $destino, $commentId);
+
+        if (!$curto) return $mensagem;
+
+        $rotulo = trim((string)($regra['link_texto'] ?? '')) ?: 'Acessar';
+        return rtrim($mensagem) . "\n\n" . $rotulo . ': ' . $curto;
+    }
+
+    /**
+     * Resposta a story: aplica as automações de gatilho `story_reply`.
+     *
+     * Diferente do comentário, aqui a thread de DM JÁ está aberta — não existe
+     * private reply nem resposta pública. É envio direto.
+     *
+     * @return bool true se alguma automação respondeu
+     */
+    public function processarRespostaStory(int $contatoId, string $texto, ?array $conta): bool
+    {
+        if (!ChatConfig::bool('ig_comentarios_ativo', true)) return false;
+
+        $regra = $this->acharRegra($texto, '', $conta ? (int)$conta['id'] : null, false, '', 'story_reply');
+        if (!$regra) return false;
+
+        $mensagem = trim((string)($regra['mensagem_dm'] ?? ''));
+        if ($mensagem === '' && empty($regra['fluxo_id'])) return false;
+
+        $contato = $this->contatos->obter($contatoId);
+        $vars    = $contato ? $this->contatos->variaveis($contato) : [];
+
+        if ($mensagem !== '') {
+            $mensagem = ChatContatoService::interpolar($mensagem, array_merge($vars, [
+                'comentario' => $texto,
+                'usuario'    => (string)($contato['ig_username'] ?? ''),
+            ]));
+            $mensagem = $this->anexarLink($mensagem, $regra, $contatoId, null);
+
+            $r = (new ChatEnvioService($this->db))->texto($contatoId, $mensagem, [
+                'origem'    => 'comentario_ig',
+                'origem_id' => (int)$regra['id'],
+                'vars'      => [],   // já interpolado acima
+            ]);
+            if (!$r['ok']) return false;
+
+            (new ChatIgAutomacaoService($this->db))->registrarEnvio((int)$regra['id']);
+        }
+
+        if (!empty($regra['tag_id'])) {
+            $this->contatos->aplicarTag($contatoId, (int)$regra['tag_id']);
+        }
+        if (!empty($regra['fluxo_id'])) {
+            try {
+                (new ChatFluxoMotor($this->db))->iniciar((int)$regra['fluxo_id'], $contatoId, [
+                    '_origem' => 'story_ig', '_regra_id' => (int)$regra['id'], 'resposta_story' => $texto,
+                ]);
+            } catch (Throwable $e) {}
+        }
+
+        $this->registrarDisparo((int)$regra['id']);
+        return true;
+    }
+
+    /**
+     * A pessoa tocou em "Já segui!". Confere de verdade e entrega o link.
+     *
+     * Agora dá para checar: ela mandou mensagem, então a Meta libera o campo
+     * `is_user_follow_business` no perfil.
+     *
+     * @return bool true se o payload era desta mecânica e foi tratado
+     */
+    public function tratarConfirmacaoSeguidor(string $payload, int $contatoId, string $igsid, ?array $conta): bool
+    {
+        if (!preg_match('/^ig_segui_(\d+)$/', $payload, $m)) return false;
+        $regraId = (int)$m[1];
+
+        $regra = $this->regra($regraId);
+        if (!$regra || !$conta) return true;   // payload era nosso, mas não há o que entregar
+
+        // Perfil atualizado: é isto que diz se seguiu mesmo
+        $this->enriquecerPerfil($contatoId, $igsid, $conta);
+
+        $st = $this->db->prepare("SELECT ig_seguidor FROM chat_contatos WHERE id = :id LIMIT 1");
+        $st->execute([':id' => $contatoId]);
+        $segue = $st->fetchColumn();
+
+        $cli = ChatInstagramClient::daConta($conta);
+        $env = new ChatEnvioService($this->db);
+
+        // NULL = a Meta não devolveu o campo. Punir quem talvez tenha seguido
+        // custa mais caro do que entregar para quem não seguiu.
+        if ($segue !== null && (int)$segue === 0) {
+            $msg = trim((string)($regra['mensagem_nao_seguidor'] ?? ''))
+                ?: 'Ainda não consegui te ver na lista de seguidores 👀 Me segue e toca no botão de novo!';
+            try {
+                $cli->enviarRespostasRapidas($igsid, $msg, [
+                    ['titulo' => 'Já segui!', 'payload' => 'ig_segui_' . $regraId],
+                ]);
+            } catch (Throwable $e) {}
+            return true;
+        }
+
+        $mensagem = trim((string)($regra['mensagem_dm'] ?? '')) ?: 'Aqui está o que você pediu:';
+        $mensagem = ChatContatoService::interpolar($mensagem, [
+            'usuario'       => (string)($this->contatos->obter($contatoId)['ig_username'] ?? ''),
+            'primeiro_nome' => (string)($this->contatos->obter($contatoId)['nome_exibicao'] ?? ''),
+            'saudacao'      => $this->saudacao(),
+            'site_nome'     => defined('SITE_NAME') ? SITE_NAME : '',
+        ]);
+        $mensagem = $this->anexarLink($mensagem, $regra, $contatoId, null);
+
+        $env->texto($contatoId, $mensagem, [
+            'origem'    => 'comentario_ig',
+            'origem_id' => $regraId,
+        ]);
+
+        (new ChatIgAutomacaoService($this->db))->registrarEnvio($regraId);
+        $this->contatos->setCampo($contatoId, '_ig_pendente', null);
+
+        if (!empty($regra['tag_id'])) {
+            $this->contatos->aplicarTag($contatoId, (int)$regra['tag_id']);
+        }
+        if (!empty($regra['fluxo_id'])) {
+            try {
+                (new ChatFluxoMotor($this->db))->iniciar((int)$regra['fluxo_id'], $contatoId, [
+                    '_origem' => 'comentario_ig', '_regra_id' => $regraId,
+                ]);
+            } catch (Throwable $e) {}
+        }
+        return true;
     }
 
     // =========================================================================

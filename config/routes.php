@@ -478,6 +478,10 @@ require __DIR__ . '/routes.email-marketing.php';
 Router::get ('/webhooks/whatsapp', 'ChatWebhookController@verificar');
 Router::post('/webhooks/whatsapp', 'ChatWebhookController@receber');
 
+// Link curto das automações do Instagram — é o salto que mede o CTR.
+// Precisa vir ANTES do curinga /{slug}, senão o PageController engole.
+Router::get('/ir/{token}', 'ChatLinkController@ir');
+
 // Deve ser a ÚLTIMA rota do arquivo (curinga)
 Router::get('/{slug}', 'PageController@show');
 

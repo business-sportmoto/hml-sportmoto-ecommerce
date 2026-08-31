@@ -105,3 +105,22 @@ AdminRouter::post('/chat/instagram/{id}/sincronizar',   'ChatInstagramController
 AdminRouter::post('/chat/instagram/{id}/ativo',         'ChatInstagramController@alternarAtivo');
 AdminRouter::post('/chat/instagram/{id}/testar',        'ChatInstagramController@testar');
 AdminRouter::post('/chat/instagram/{id}/desconectar',   'ChatInstagramController@desconectar');
+
+// ── Automações do Instagram (pastas, receitas, editor, insights) ─────────
+// Literais antes das rotas com {id}
+AdminRouter::get ('/chat/automacoes',                  'ChatIgAutomacaoController@index');
+AdminRouter::get ('/chat/automacoes/nova',             'ChatIgAutomacaoController@nova');
+AdminRouter::post('/chat/automacoes/criar',            'ChatIgAutomacaoController@criar');
+AdminRouter::post('/chat/automacoes/pastas/salvar',    'ChatIgAutomacaoController@salvarPasta');
+AdminRouter::post('/chat/automacoes/pastas/{id}/excluir', 'ChatIgAutomacaoController@excluirPasta');
+AdminRouter::get ('/chat/automacoes/{id}',             'ChatIgAutomacaoController@show');
+AdminRouter::get ('/chat/automacoes/{id}/editar',      'ChatIgAutomacaoController@editar');
+AdminRouter::get ('/chat/automacoes/{id}/dados',       'ChatIgAutomacaoController@dados');
+AdminRouter::post('/chat/automacoes/{id}/salvar',      'ChatIgAutomacaoController@salvar');
+AdminRouter::post('/chat/automacoes/{id}/status',      'ChatIgAutomacaoController@status');
+AdminRouter::post('/chat/automacoes/{id}/duplicar',    'ChatIgAutomacaoController@duplicar');
+AdminRouter::post('/chat/automacoes/{id}/excluir',     'ChatIgAutomacaoController@excluir');
+AdminRouter::post('/chat/automacoes/{id}/restaurar',   'ChatIgAutomacaoController@restaurar');
+AdminRouter::post('/chat/automacoes/{id}/remover',     'ChatIgAutomacaoController@remover');
+AdminRouter::post('/chat/automacoes/{id}/pasta',       'ChatIgAutomacaoController@mover');
+AdminRouter::post('/chat/automacoes/{id}/transferir',  'ChatIgAutomacaoController@transferir');

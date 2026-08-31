@@ -191,8 +191,16 @@
         Contatos
       </a>
 
+      <?php // Automações do IG são operacionais: vendedor cria e edita as suas ?>
+      <a href="<?= BASE_URL ?>/admin/chat/automacoes" class="admin-nav-item<?= adminIsActive('/admin/chat/automacoes') ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('automation-02', 'icon icon--md') ?>
+        </span>
+        Automações IG
+      </a>
+
       <?php if ($chatGerir): ?>
-      <a href="<?= BASE_URL ?>/admin/chat/instagram" class="admin-nav-item<?= adminIsActive('/admin/chat/instagram') ?>">
+      <a href="<?= BASE_URL ?>/admin/chat/instagram" class="admin-nav-item<?= adminIsActive('/admin/chat/instagram') && !str_contains($_SERVER['REQUEST_URI'] ?? '', '/automacoes') ? ' active' : '' ?>">
         <span class="admin-nav-icon">
           <?= IconLibrary::render('chat-dashed', 'icon icon--md') ?>
         </span>

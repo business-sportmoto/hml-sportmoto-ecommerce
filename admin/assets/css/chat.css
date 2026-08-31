@@ -620,3 +620,239 @@ html[data-theme="dark"] .ch-msg--out .ch-bolha { color: #e6fff2; }
   .ch-fx-painel { max-height: 380px; }
   .ch-msg { max-width: 88%; }
 }
+
+/* =============================================================================
+   AUTOMAÇÕES DO INSTAGRAM — listagem, pastas, editor e insights
+   ========================================================================== */
+
+/* ── Pastas ──────────────────────────────────────────────────────────────── */
+.ch-pastas { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.ch-pasta {
+  display: inline-flex; align-items: center; gap: 8px; position: relative;
+  padding: 9px 14px; border-radius: 9px; text-decoration: none;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-2); font-size: 13px; font-weight: 600;
+}
+.ch-pasta:hover { border-color: var(--border2); color: var(--text); }
+.ch-pasta.ativa {
+  border-color: var(--blue); color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 8%, transparent);
+}
+.ch-pasta-ico { width: 13px; height: 11px; border-radius: 2px 3px 3px 3px; flex: none; }
+.ch-pasta--nova {
+  border-style: dashed; cursor: pointer; color: var(--blue);
+  font-family: inherit; background: none;
+}
+.ch-pasta--nova:hover {
+  border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 6%, transparent);
+}
+.ch-pasta-x {
+  border: none; background: none; cursor: pointer; color: var(--text-3);
+  font-size: 16px; line-height: 1; padding: 0 0 0 4px; opacity: 0;
+}
+.ch-pasta:hover .ch-pasta-x { opacity: 1; }
+.ch-pasta-x:hover { color: var(--danger); }
+
+/* ── Cartão de automação ─────────────────────────────────────────────────── */
+.ch-aut-lista { display: flex; flex-direction: column; gap: 10px; }
+.ch-aut {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--ch-raio); padding: 14px 16px; transition: border-color .15s;
+}
+.ch-aut:hover { border-color: var(--border2); }
+.ch-aut-topo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ch-aut-nome {
+  font-size: 14.5px; font-weight: 700; color: var(--text);
+  text-decoration: none; flex: 1; min-width: 160px;
+}
+.ch-aut-nome:hover { color: var(--blue); }
+.ch-aut-nums {
+  display: flex; gap: 18px; align-items: center; flex: none;
+  font-size: 13px; font-weight: 600; color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.ch-aut-nums span { min-width: 42px; text-align: right; }
+.ch-aut-acoes { display: flex; gap: 6px; align-items: center; flex: none; }
+.ch-aut-sub {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--border);
+  font-size: 12.5px; color: var(--text-3);
+}
+.ch-aut-gat { font-size: 14px; }
+.ch-aut-dono {
+  margin-left: auto; padding: 2px 9px; border-radius: 20px;
+  background: var(--surface2); font-size: 11.5px; font-weight: 600; color: var(--text-2);
+}
+
+/* ── Menu de contexto ────────────────────────────────────────────────────── */
+.ch-menu {
+  position: absolute; z-index: 8000; display: none; min-width: 190px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 5px;
+  box-shadow: var(--shadow-lg, 0 12px 32px rgba(0,0,0,.22));
+}
+.ch-menu.aberto { display: block; }
+.ch-menu button {
+  display: block; width: 100%; text-align: left; padding: 8px 11px;
+  border: none; background: none; cursor: pointer; border-radius: 7px;
+  font-size: 13px; font-family: inherit; color: var(--text-2);
+}
+.ch-menu button:hover { background: var(--surface2); color: var(--text); }
+.ch-menu button.perigo { color: var(--danger); }
+.ch-menu button.perigo:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+
+/* ── Galeria de receitas ─────────────────────────────────────────────────── */
+.ch-receitas {
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+.ch-receita {
+  display: flex; flex-direction: column; gap: 10px; text-align: left;
+  padding: 18px; border-radius: 12px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface);
+  font-family: inherit; transition: border-color .15s, transform .1s;
+}
+.ch-receita:hover { border-color: var(--blue); transform: translateY(-2px); }
+.ch-receita-ico {
+  width: 44px; height: 44px; border-radius: 11px; flex: none;
+  display: grid; place-items: center; font-size: 21px;
+}
+.ch-receita-nome { font-size: 14.5px; font-weight: 700; color: var(--text); line-height: 1.35; }
+.ch-receita-resumo { font-size: 12.5px; color: var(--text-3); line-height: 1.5; flex: 1; }
+.ch-receita-gat {
+  font-size: 11px; font-weight: 700; color: var(--text-2);
+  background: var(--surface2); padding: 3px 9px; border-radius: 20px; align-self: flex-start;
+}
+
+/* ── Editor em passos ────────────────────────────────────────────────────── */
+.ch-ed { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 16px; align-items: start; }
+.ch-ed-col { display: flex; flex-direction: column; gap: 12px; }
+.ch-ed-passo {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--ch-raio); overflow: hidden;
+}
+.ch-ed-passo-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 15px; border-bottom: 1px solid var(--border);
+}
+.ch-ed-passo-n {
+  width: 23px; height: 23px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; font-size: 11.5px; font-weight: 800;
+  background: var(--blue); color: #fff;
+}
+.ch-ed-passo-tit { font-size: 13.5px; font-weight: 700; color: var(--text); }
+.ch-ed-passo-body { padding: 15px; }
+
+.ch-ed-opcao {
+  display: flex; gap: 9px; align-items: flex-start; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 9px; margin-bottom: 8px;
+  cursor: pointer; font-size: 13px; color: var(--text-2);
+}
+.ch-ed-opcao:hover { border-color: var(--border2); }
+.ch-ed-opcao.ativa { border-color: var(--blue); background: color-mix(in srgb, var(--blue) 7%, transparent); }
+.ch-ed-opcao input { margin-top: 2px; flex: none; accent-color: var(--blue); }
+
+/* Grade de publicações */
+.ch-ed-posts { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 7px; }
+.ch-ed-post { position: relative; aspect-ratio: 1; border-radius: 7px; overflow: hidden; cursor: pointer; }
+.ch-ed-post img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ch-ed-post input { position: absolute; opacity: 0; pointer-events: none; }
+.ch-ed-post::after {
+  content: ''; position: absolute; inset: 0;
+  border: 3px solid transparent; border-radius: 7px; transition: border-color .12s;
+}
+.ch-ed-post.sel::after { border-color: var(--blue); }
+.ch-ed-post.sel::before {
+  content: '\2713'; position: absolute; top: 3px; right: 4px; z-index: 2;
+  width: 17px; height: 17px; border-radius: 50%; background: var(--blue); color: #fff;
+  font-size: 11px; font-weight: 800; display: grid; place-items: center;
+}
+.ch-ed-post-tipo {
+  position: absolute; left: 3px; bottom: 3px; z-index: 2;
+  font-size: 10px; padding: 1px 5px; border-radius: 4px;
+  background: rgba(0,0,0,.6); color: #fff; font-weight: 700;
+}
+
+/* Variações de resposta */
+.ch-ed-var { display: flex; gap: 6px; margin-bottom: 6px; }
+.ch-ed-var .ch-input { flex: 1; }
+
+/* ── Prévia (celular) ────────────────────────────────────────────────────── */
+.ch-preview { position: sticky; top: 16px; display: grid; place-items: center; padding: 20px 0; }
+.ch-fone {
+  width: 300px; border-radius: 34px; padding: 12px;
+  background: #10151c; box-shadow: 0 18px 50px rgba(0,0,0,.3);
+}
+.ch-fone-tela {
+  background: #000; border-radius: 24px; overflow: hidden;
+  min-height: 480px; display: flex; flex-direction: column;
+}
+.ch-fone-topo {
+  display: flex; align-items: center; gap: 8px; padding: 11px 13px;
+  color: #fff; font-size: 12px; border-bottom: 1px solid #262d38;
+}
+.ch-fone-corpo { flex: 1; padding: 13px; overflow-y: auto; }
+.ch-fone-post img { width: 100%; border-radius: 7px; display: block; }
+.ch-fone-legenda { color: #c9d1d9; font-size: 11.5px; line-height: 1.5; margin-top: 9px; }
+.ch-fone-coment {
+  display: flex; gap: 8px; padding: 9px 0;
+  border-top: 1px solid #262d38; margin-top: 9px;
+}
+.ch-fone-av { width: 26px; height: 26px; border-radius: 50%; background: #2c3542; flex: none; }
+.ch-fone-txt { color: #e6edf3; font-size: 12px; line-height: 1.45; }
+.ch-fone-txt b { color: #fff; }
+.ch-fone-dm {
+  background: #262d38; color: #fff; padding: 9px 12px;
+  border-radius: 15px 15px 15px 4px; font-size: 12.5px; line-height: 1.5;
+  margin: 7px 0; white-space: pre-wrap; word-break: break-word;
+}
+.ch-fone-dm--nossa {
+  background: linear-gradient(135deg, #833ab4, #e1306c);
+  border-radius: 15px 15px 4px 15px; margin-left: auto; max-width: 88%;
+}
+.ch-fone-qr {
+  display: inline-block; padding: 6px 13px; border-radius: 16px;
+  border: 1px solid #4a5568; color: #7cc4ff;
+  font-size: 11.5px; font-weight: 600; margin: 3px 3px 0 0;
+}
+.ch-fone-abas { display: flex; gap: 5px; padding: 9px; border-top: 1px solid #262d38; }
+.ch-fone-aba {
+  flex: 1; text-align: center; padding: 6px; border-radius: 16px;
+  font-size: 11.5px; font-weight: 600; color: #8b98a9; cursor: pointer;
+  border: none; background: none; font-family: inherit;
+}
+.ch-fone-aba.ativa { background: #fff; color: #10151c; }
+
+/* ── Insights ────────────────────────────────────────────────────────────── */
+.ch-ins-passos {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px; margin-bottom: 18px;
+}
+.ch-ins-passo {
+  display: flex; gap: 13px; align-items: center; padding: 15px;
+  border: 1px solid var(--border); border-radius: var(--ch-raio); background: var(--surface);
+}
+.ch-ins-passo-ico {
+  width: 52px; height: 52px; border-radius: 11px; flex: none;
+  display: grid; place-items: center; font-size: 25px;
+}
+.ch-ins-passo-tit { font-size: 13.5px; font-weight: 700; color: var(--text); margin-bottom: 3px; }
+.ch-ins-passo-txt { font-size: 12.5px; color: var(--text-3); line-height: 1.5; }
+
+.ch-ins-resumo {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px; background: var(--border); border: 1px solid var(--border);
+  border-radius: var(--ch-raio); overflow: hidden;
+}
+.ch-ins-resumo > div { background: var(--surface); padding: 18px 20px; }
+.ch-ins-rot { font-size: 12px; font-weight: 600; color: var(--text-3); margin-bottom: 7px; }
+.ch-ins-val {
+  font-size: 30px; font-weight: 700; color: var(--text);
+  line-height: 1; font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1000px) {
+  .ch-ed { grid-template-columns: minmax(0, 1fr); }
+  .ch-preview { position: static; }
+}

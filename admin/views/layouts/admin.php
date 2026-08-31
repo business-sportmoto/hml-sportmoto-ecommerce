@@ -269,6 +269,10 @@ function adminIsActive(string $path): string {
   <script src="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.js"></script>
   <script src="<?= PerformanceHelper::assetVersion('js/chat-fluxo.js', true) ?>"></script>
   <?php endif; ?>
+  <?php // Editor e listagem de automacoes do Instagram ?>
+  <?php if (str_contains($_SERVER['REQUEST_URI'] ?? '', '/admin/chat/automacoes')): ?>
+  <script src="<?= PerformanceHelper::assetVersion('js/chat-automacao.js', true) ?>"></script>
+  <?php endif; ?>
 <script src="<?= PerformanceHelper::assetVersion('js/chat.js', true) ?>"></script>
 <?php } ?>
 </body>
