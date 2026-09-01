@@ -262,6 +262,22 @@ class ChatMensagemService
         return $m ? $this->hidratar($m) : null;
     }
 
+    /**
+     * Apaga uma tentativa que a API recusou, para dar lugar a um reenvio.
+     *
+     * Só remove linha `falhou`: mensagem enviada de verdade é histórico e nunca
+     * some do inbox, nem por engano de quem chama.
+     */
+    public function descartarFalha(int $id): bool
+    {
+        if ($id < 1) return false;
+        $st = $this->db->prepare(
+            "DELETE FROM chat_mensagens WHERE id = :id AND status = 'falhou' AND direcao = 'saida'"
+        );
+        $st->execute([':id' => $id]);
+        return $st->rowCount() > 0;
+    }
+
     /** Última mensagem recebida do contato — usada para responder com context. */
     public function ultimaEntrada(int $contatoId): ?array
     {

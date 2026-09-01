@@ -337,17 +337,33 @@ class ChatInboxController extends Controller
             : (string)($f['type'] ?? '');
 
         $mimeBase = strtolower(trim(explode(';', $mime)[0]));
-        [$tipoWa, $ext, $limiteMb] = self::classificarAnexo($mimeBase);
+        $canal    = (string)($cv['canal'] ?? 'whatsapp');
+        $legenda  = trim((string)($_POST['legenda'] ?? '')) ?: null;
+        $tamanho  = (int)($f['size'] ?? 0);
+
+        [$tipoWa, $ext, $limiteMb] = self::classificarAnexo($mimeBase, $canal);
 
         if ($tipoWa === null) {
             $this->json(['ok' => false, 'erro' => "Tipo de arquivo não permitido ($mimeBase)."]); return;
         }
+
+        // Figurinha tem duas restrições que documento não tem: 100 KB e nenhuma
+        // legenda. Nos dois casos o mesmo .webp vale mais como arquivo — chega
+        // inteiro e com o texto do atendente junto.
+        if ($tipoWa === 'sticker' && ($tamanho > 100 * 1024 || $legenda !== null)) {
+            $tipoWa = 'document';
+            $limiteMb = 100;
+        }
+
         // Limite por tipo, não um teto único: a Meta recusa imagem acima de 5 MB
         // e aceita documento até 100 MB. Barrar aqui dá mensagem clara; deixar
         // passar dá erro genérico da API depois do upload.
-        if (($f['size'] ?? 0) > $limiteMb * 1024 * 1024) {
-            $rotulo = ['image' => 'Imagem', 'video' => 'Vídeo', 'audio' => 'Áudio'][$tipoWa] ?? 'Documento';
-            $this->json(['ok' => false, 'erro' => "{$rotulo} pode ter no máximo {$limiteMb} MB."]); return;
+        if ($tamanho > $limiteMb * 1024 * 1024) {
+            $rotulo = ['image' => 'Imagem', 'video' => 'Vídeo', 'audio' => 'Áudio',
+                       'sticker' => 'Figurinha'][$tipoWa] ?? 'Arquivo';
+            $this->json(['ok' => false,
+                'erro' => "{$rotulo} pode ter no máximo " . rtrim(rtrim(number_format($limiteMb, 1, ',', ''), '0'), ',') . " MB."]);
+            return;
         }
 
         $rel = 'uploads/chat/' . date('Y/m');
@@ -364,18 +380,29 @@ class ChatInboxController extends Controller
 
         $url = (defined('BASE_URL') ? BASE_URL : '') . '/' . $rel . '/' . $nomeArquivo;
 
-        $r = $this->envio->midia((int)$cv['contato_id'], $tipoWa, $url, [
+        $opts = [
             'origem'           => 'inbox',
             'autor_usuario_id' => AuthHelper::usuarioId(),
             'pausar_bot'       => true,
-            'legenda'          => trim((string)($_POST['legenda'] ?? '')) ?: null,
+            'legenda'          => $legenda,
             // Sempre, não só em documento: o ChatMetaClient já ignora o nome
             // fora de documento, e sem ele o histórico mostra um áudio anônimo
             // em vez de "entrevista-cliente.mp3".
             'nome_arquivo'     => (string)$f['name'],
             'mime'             => $mimeBase,
-            'tamanho'          => (int)($f['size'] ?? 0),
-        ]);
+            'tamanho'          => $tamanho,
+        ];
+
+        $r = $this->envio->midia((int)$cv['contato_id'], $tipoWa, $url, $opts);
+
+        // A tabela de tipos é a melhor aposta, não uma promessa: a Meta muda o
+        // que aceita sem avisar. Se ela recusou a forma escolhida, reenvia como
+        // arquivo — que ela sempre aceita — e apaga a linha falhada, senão a
+        // thread mostra duas bolhas do mesmo anexo, uma vermelha.
+        if (!$r['ok'] && $r['motivo'] === ChatEnvioService::MOTIVO_API && $tipoWa !== 'document') {
+            $this->mensagens->descartarFalha((int)($r['mensagem_id'] ?? 0));
+            $r = $this->envio->midia((int)$cv['contato_id'], 'document', $url, $opts);
+        }
 
         if (!$r['ok']) {
             $this->json(['ok' => false, 'erro' => $r['erro'], 'motivo' => $r['motivo'],
@@ -387,56 +414,70 @@ class ChatInboxController extends Controller
         $this->json(['ok' => true, 'mensagem' => $msg ? $this->resumoMensagem($msg) : null]);
     }
 
+    /** Extensão por MIME. Só o que a lista abaixo conhece pode ser enviado. */
+    private const EXT_ANEXO = [
+        'image/jpeg' => '.jpg',  'image/png'  => '.png',
+        'image/gif'  => '.gif',  'image/webp' => '.webp',
+        'video/mp4'  => '.mp4',  'video/3gpp' => '.3gp',
+        'video/quicktime' => '.mov', 'video/x-msvideo' => '.avi', 'video/webm' => '.webm',
+        'audio/mpeg' => '.mp3',  'audio/ogg'  => '.ogg',  'audio/mp4'  => '.m4a',
+        'audio/aac'  => '.aac',  'audio/amr'  => '.amr',  'audio/flac' => '.flac',
+        'audio/wav'  => '.wav',  'audio/x-wav'=> '.wav',  'audio/webm' => '.weba',
+        'application/pdf' => '.pdf', 'application/zip' => '.zip',
+        'text/plain' => '.txt',  'text/csv'   => '.csv',
+        'application/msword'       => '.doc',
+        'application/vnd.ms-excel' => '.xls',
+        'application/vnd.ms-powerpoint' => '.ppt',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'   => '.docx',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'         => '.xlsx',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation' => '.pptx',
+        'application/vnd.oasis.opendocument.text'        => '.odt',
+        'application/vnd.oasis.opendocument.spreadsheet' => '.ods',
+    ];
+
     /**
-     * MIME → [tipo da Meta, extensão, limite em MB]. `null` no tipo = recusado.
+     * A melhor forma de enviar este arquivo NESTE canal.
      *
-     * A regra que organiza a tabela: o que a Meta NÃO reproduz como mídia vai
-     * como **documento** em vez de ser recusado. .mov, .gif e .webp chegam ao
-     * cliente como arquivo para baixar — melhor que "tipo não permitido" para
-     * quem só quer mandar o vídeo que gravou no iPhone.
+     * As duas plataformas aceitam conjuntos diferentes, e a mesma extensão
+     * chega de jeito diferente em cada uma:
      *
-     * Limites: imagem 5 MB · vídeo e áudio 16 MB · documento 100 MB.
+     *   .webp → figurinha no WhatsApp · arquivo no Instagram
+     *   .gif  → arquivo no WhatsApp   · imagem animada no Instagram
+     *   .mov  → arquivo no WhatsApp   · vídeo no Instagram
+     *   .wav  → arquivo no WhatsApp   · áudio no Instagram
+     *
+     * O que a plataforma não reproduz nunca é recusado: cai em documento
+     * (WhatsApp) ou file (Instagram), e o cliente baixa. E se mesmo assim a API
+     * recusar a forma escolhida, o upload() reenvia como arquivo — a tabela
+     * aqui é a melhor aposta, não uma promessa.
+     *
+     * @return array{0:?string,1:string,2:int} [tipo, extensão, limite em MB]
      */
-    private static function classificarAnexo(string $mime): array
+    private static function classificarAnexo(string $mime, string $canal = 'whatsapp'): array
     {
-        static $mapa = [
-            // Reproduzem inline no WhatsApp e no Instagram
-            'image/jpeg' => ['image', '.jpg',  5],
-            'image/png'  => ['image', '.png',  5],
-            'video/mp4'  => ['video', '.mp4', 16],
-            'video/3gpp' => ['video', '.3gp', 16],
-            'audio/mpeg' => ['audio', '.mp3', 16],
-            'audio/ogg'  => ['audio', '.ogg', 16],
-            'audio/mp4'  => ['audio', '.m4a', 16],
-            'audio/aac'  => ['audio', '.aac', 16],
-            'audio/amr'  => ['audio', '.amr', 16],
+        $ext = self::EXT_ANEXO[$mime] ?? null;
+        if ($ext === null) return [null, '', 0];
 
-            // A Meta não aceita como mídia — seguem como documento
-            'image/webp'      => ['document', '.webp', 100],
-            'image/gif'       => ['document', '.gif',  100],
-            'video/quicktime' => ['document', '.mov',  100],
-            'video/x-msvideo' => ['document', '.avi',  100],
-            'audio/wav'       => ['document', '.wav',  100],
-            'audio/x-wav'     => ['document', '.wav',  100],
-            'audio/webm'      => ['document', '.weba', 100],
-            'audio/flac'      => ['document', '.flac', 100],
+        if ($canal === 'instagram') {
+            // Limites do Instagram: imagem 8 MB, o resto 25 MB
+            $tipo = match (true) {
+                in_array($mime, ['image/jpeg', 'image/png', 'image/gif'], true) => 'image',
+                in_array($mime, ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm'], true) => 'video',
+                str_starts_with($mime, 'audio/') && $mime !== 'audio/amr' => 'audio',
+                default => 'document',
+            };
+            return [$tipo, $ext, $tipo === 'image' ? 8 : 25];
+        }
 
-            // Documentos
-            'application/pdf'  => ['document', '.pdf',  100],
-            'application/zip'  => ['document', '.zip',  100],
-            'text/plain'       => ['document', '.txt',  100],
-            'text/csv'         => ['document', '.csv',  100],
-            'application/msword'      => ['document', '.doc',  100],
-            'application/vnd.ms-excel'=> ['document', '.xls',  100],
-            'application/vnd.ms-powerpoint' => ['document', '.ppt', 100],
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'   => ['document', '.docx', 100],
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'         => ['document', '.xlsx', 100],
-            'application/vnd.openxmlformats-officedocument.presentationml.presentation' => ['document', '.pptx', 100],
-            'application/vnd.oasis.opendocument.text'        => ['document', '.odt', 100],
-            'application/vnd.oasis.opendocument.spreadsheet' => ['document', '.ods', 100],
-        ];
-
-        return $mapa[$mime] ?? [null, '', 0];
+        // WhatsApp: a Meta valida o MIME por tipo, então a lista é fechada
+        return match (true) {
+            in_array($mime, ['image/jpeg', 'image/png'], true)          => ['image',   $ext,   5],
+            $mime === 'image/webp'                                      => ['sticker', $ext, 0.1],
+            in_array($mime, ['video/mp4', 'video/3gpp'], true)          => ['video',   $ext,  16],
+            in_array($mime, ['audio/aac', 'audio/amr', 'audio/mpeg',
+                             'audio/mp4', 'audio/ogg'], true)           => ['audio',   $ext,  16],
+            default                                                     => ['document', $ext, 100],
+        };
     }
 
     // =========================================================================

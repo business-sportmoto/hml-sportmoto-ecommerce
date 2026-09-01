@@ -129,7 +129,7 @@ $h    = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
                     // servidor manda como documento — por isso entram aqui. ?>
               <input type="file" id="ch-arquivo" style="display:none"
                      accept="image/jpeg,image/png,image/gif,image/webp,
-                             video/mp4,video/3gpp,video/quicktime,
+                             video/mp4,video/3gpp,video/quicktime,video/webm,video/x-msvideo,
                              audio/mpeg,audio/ogg,audio/mp4,audio/aac,audio/amr,audio/wav,audio/flac,
                              .pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.txt,.csv,.zip">
               <textarea id="ch-texto" rows="1" placeholder="Escreva uma mensagem... (Enter envia, Shift+Enter quebra linha)"></textarea>
