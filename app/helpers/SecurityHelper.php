@@ -269,6 +269,18 @@ class SecurityHelper {
     }
 
     public static function setSecurityHeaders(): void {
+        // Fora de produção (homologação/dev), o site NÃO pode ser indexado.
+        // hml.sportmoto.com.br está no ar com o mesmo catálogo do www —
+        // sem isto, a homologação disputa ranking com a loja real.
+        //
+        // É header, e NÃO Disallow no robots.txt, de propósito: robots.txt
+        // bloqueia o RASTREIO, e um bot que não rastreia nunca lê o noindex.
+        // A página bloqueada continua indexável pela URL. O header é a única
+        // diretiva que remove de fato do índice.
+        if (APP_ENV !== 'production') {
+            header('X-Robots-Tag: noindex, nofollow', true);
+        }
+
         // Previne clickjacking
         header('X-Frame-Options: SAMEORIGIN');
 

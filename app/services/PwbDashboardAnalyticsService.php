@@ -105,6 +105,7 @@ final class PwbDashboardAnalyticsService
             'label' => 'Lucro bruto',
             'value' => $this->brl($k['lucro']['valor']),
             'trend' => $this->trend($k['lucro']),
+            'trend_dir' => $this->direcao($k['lucro']),
             'trend_label' => "margem {$k['margem_pct']['valor']}% · sobre {$cobertura}% da receita",
             'icon'  => 'chart',
             'type'  => 'profit',
@@ -117,10 +118,24 @@ final class PwbDashboardAnalyticsService
             'label' => $label,
             'value' => $valor,
             'trend' => $this->trend($m),
+            'trend_dir' => $this->direcao($m),
             'trend_label' => 'vs. período anterior',
             'icon'  => $icone,
             'type'  => $tipo,
         ];
+    }
+
+    /**
+     * Direção da variação, para a tela colorir.
+     *
+     * NULL quando não há base de comparação — nesse caso a variação
+     * nem é exibida, e pintar de verde ou vermelho sugeriria um
+     * movimento que não existe.
+     */
+    private function direcao(array $m): ?string
+    {
+        if ($m['variacao'] === null || (float)$m['variacao'] == 0.0) return null;
+        return (float)$m['variacao'] > 0 ? 'up' : 'down';
     }
 
     /** NULL vira '—': sem base de comparação não existe variação. */

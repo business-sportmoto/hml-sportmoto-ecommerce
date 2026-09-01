@@ -3471,8 +3471,10 @@ $(document).on('change', '#pe-categoria', function () {
       if (titlePreview) titlePreview.textContent = this.value || 'Novo produto';
       if (nomeCount)    nomeCount.textContent = this.value.length + ' caracteres';
 
-      // Só auto-gera slug se ainda não foi editado manualmente
-      if (!slugInput._manuallyEdited && slugInput) {
+      // Só auto-gera slug se ainda não foi editado manualmente.
+      // Produto importado da Tray tem a URL travada (data-slug-travado):
+      // o servidor ignora o campo, então reescrever aqui só enganaria o admin.
+      if (slugInput && !slugInput._manuallyEdited && !slugInput.dataset.slugTravado) {
         slugInput.value = slugify(this.value);
         updateSeoPreview();
       }

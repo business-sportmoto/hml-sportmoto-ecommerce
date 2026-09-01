@@ -42,6 +42,16 @@ function adminIsActive(string $path): string {
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/fluxo-canvas.css', true) ?>">
   <?php } ?>
 
+  <?php // Painel de BI. O <link> vivia dentro da propria view, com caminho
+        // cru e SEM cache-buster. O caminho resolvia, mas o navegador
+        // guardava a primeira versao do arquivo: tudo que foi acrescentado
+        // ao CSS depois (as barras dos graficos, a matriz de coorte) nunca
+        // chegava, e as barras apareciam como texto solto. assetVersion()
+        // versiona pelo hash/mtime e resolve isso. ?>
+  <?php if(trim(adminIsActive('/admin/power-bi')) == 'active'){ ?>
+  <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/powerbi.css', true) ?>">
+  <?php } ?>
+
   <?php if(trim(adminIsActive('/admin/logistica')) == 'active'){ ?>
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/logistica.css', true) ?>">
   <?php } ?>

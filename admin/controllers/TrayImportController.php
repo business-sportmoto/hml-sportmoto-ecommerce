@@ -39,7 +39,7 @@ class TrayImportController extends Controller {
 
         try {
             $tipo = SecurityHelper::sanitizeString($_POST['tipo'] ?? '');
-            if (!in_array($tipo, ['produtos', 'variacoes', 'clientes', 'pedidos'])) {
+            if (!in_array($tipo, ['produtos', 'variacoes', 'clientes', 'pedidos', 'slugs'])) {
                 $this->json(['ok' => false, 'msg' => 'Tipo inválido.']);
                 throw new Exception('Tipo inválido.');
             }
@@ -90,16 +90,47 @@ class TrayImportController extends Controller {
 
     /** POST /admin/importar/chunk */
     public function chunk(): void {
-        $this->verifyCsrf(); 
+        $this->verifyCsrf();
         $jobId = (int)($_POST['job_id'] ?? 0);
         $tipo  = SecurityHelper::sanitizeString($_POST['tipo'] ?? '');
         if (!$jobId) $this->json(['ok' => false, 'msg' => 'job_id inválido.']);
         $result = match($tipo) {
             'clientes' => $this->serviceClientes->processarChunk($jobId),
             'pedidos'  => $this->servicePedidos->processarChunk($jobId),
+            // 'aplicar' precisa ser explicitamente "1": qualquer outro
+            // valor (ausente, vazio, lixo) cai em dry-run. O padrão de um
+            // endpoint que reescreve URL em massa tem que ser não gravar.
+            'slugs'    => $this->service->processarChunkSlugs(
+                              $jobId,
+                              ($_POST['aplicar'] ?? '0') === '1'
+                          ),
             default    => $this->service->processarChunk($jobId),
         };
         $this->json($result);
+    }
+
+    /**
+     * POST /admin/importar/slugs/reset
+     * Zera os contadores do job de slugs para a segunda passada
+     * (verificação → aplicação) sobre o mesmo arquivo.
+     */
+    public function resetSlugs(): void {
+        $this->verifyCsrf();
+        $jobId = (int)($_POST['job_id'] ?? 0);
+        if (!$jobId) $this->json(['ok' => false, 'msg' => 'job_id inválido.']);
+        $this->json($this->service->resetarJobSlugs($jobId));
+    }
+
+    /**
+     * POST /admin/importar/slugs/finalizar
+     * Apaga o CSV temporário depois que as duas passadas terminam.
+     */
+    public function finalizarSlugs(): void {
+        $this->verifyCsrf();
+        $jobId = (int)($_POST['job_id'] ?? 0);
+        if (!$jobId) $this->json(['ok' => false, 'msg' => 'job_id inválido.']);
+        $this->service->finalizarJobSlugs($jobId);
+        $this->json(['ok' => true]);
     }
 
     /** GET /admin/importar/status?job_id= */

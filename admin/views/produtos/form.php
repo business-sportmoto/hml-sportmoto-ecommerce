@@ -85,14 +85,34 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
               </div>
             </div>
 
+            <?php
+              // URL travada para produto importado da Tray: o slug veio da
+              // coluna "Endereço do Produto (URL Tray)" e é a mesma URL já
+              // indexada pelo Google. Só a reimportação do CSV pode alterar.
+              $slugTravado = $isEdit && trim((string)($p['tray_id'] ?? '')) !== '';
+            ?>
             <div class="form-group">
-              <label class="pe-label">Slug (URL)</label>
+              <label class="pe-label">
+                Slug (URL)
+                <?php if ($slugTravado): ?>
+                <span class="pe-slug-lock-badge" title="URL definida pela importação da Tray">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
+                       stroke="currentColor" stroke-width="3" stroke-linecap="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2"/>
+                    <path d="M7 11V7a5 5 0 0110 0v4"/>
+                  </svg>
+                  Travada
+                </span>
+                <?php endif; ?>
+              </label>
               <div class="pe-input-prefix-wrap">
                 <span class="pe-input-prefix">/produto/</span>
                 <input type="text" name="slug" id="pe-slug"
                        class="form-control"
                        value="<?= View::e($p['slug'] ?? '') ?>"
-                       placeholder="gerado-automaticamente">
+                       placeholder="gerado-automaticamente"
+                       <?= $slugTravado ? 'readonly data-slug-travado="1"' : '' ?>>
+                <?php if (!$slugTravado): ?>
                 <button type="button" class="pe-slug-regen" id="btn-regen-slug"
                         title="Regenerar a partir do nome">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
@@ -101,7 +121,16 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
                     <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
                   </svg>
                 </button>
+                <?php endif; ?>
               </div>
+              <?php if ($slugTravado): ?>
+              <div class="pe-field-hint">
+                Produto importado da Tray (código <?= View::e($p['tray_id']) ?>).
+                A URL vem do arquivo de importação e não muda ao editar — é a
+                mesma que o Google já indexou. Para alterá-la, ajuste na Tray e
+                reimporte o CSV.
+              </div>
+              <?php endif; ?>
             </div>
 
             <div class="form-group" id="pe-descricao-curta">

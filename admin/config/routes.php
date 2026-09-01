@@ -557,6 +557,8 @@ AdminRouter::get ('/importar/preview',            'TrayImportController@preview'
 AdminRouter::post('/importar/chunk',              'TrayImportController@chunk');
 AdminRouter::get ('/importar/status',             'TrayImportController@status');
 AdminRouter::post('/importar/processar-imagens',  'TrayImportController@processarImagens');
+AdminRouter::post('/importar/slugs/reset',        'TrayImportController@resetSlugs');
+AdminRouter::post('/importar/slugs/finalizar',    'TrayImportController@finalizarSlugs');
 
 # Motor de Automação v2 (grafo) — Fase 1
 AdminRouter::get('/fluxos',                'FluxoAdminController@index');

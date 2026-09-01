@@ -1689,6 +1689,9 @@ function fecharModal(id) {
       // Busca preview
       $.get(IMPORT_URL+'/preview', { job_id: res.job_id, tipo: tipo })
       .done(function(pres){
+        // O preview de slugs recusa CSV sem as colunas necessárias —
+        // mostrar a área de ação nesse caso convidaria a rodar assim mesmo.
+        if (pres && pres.ok === false) { Toast.error(pres.msg || 'CSV inválido.'); return; }
         renderPreview(tipo, pres, res.job_id);
         $preview.show();
       });
@@ -1697,6 +1700,10 @@ function fecharModal(id) {
   }
 
   function renderPreview(tipo, res, jobId) {
+    if (tipo === 'slugs') {
+      renderPreviewSlugs(res, jobId);
+      return;
+    }
     if (tipo === 'clientes') {
       renderPreviewClientes(res, jobId);
       $('#preview-clientes').show();
@@ -1761,6 +1768,190 @@ function fecharModal(id) {
   setupUpload('produtos');
   setupUpload('variacoes');
   setupUpload('clientes');
+  setupUpload('slugs');
+
+  // ── Sobrescrever URLs (job 'slugs') ───────────────────
+  // Duas passadas sobre o MESMO arquivo: verificação (não grava) e
+  // aplicação. O botão de aplicar só aparece depois da verificação —
+  // reescrever URL em massa sem ver o de/para antes é irreversível
+  // na prática, porque o slug antigo se perde.
+  var SLUG_ROTULOS = {
+    alterado       : ['Vai alterar',    '#2563eb'],
+    ja_igual       : ['Já correto',     '#16a34a'],
+    sem_referencia : ['Sem referência', '#94a3b8'],
+    sem_url        : ['Sem URL',        '#94a3b8'],
+    nao_encontrado : ['Não encontrado', '#f59e0b'],
+    ambiguo        : ['Ambíguo',        '#f59e0b'],
+    conflito       : ['Conflito',       '#dc2626']
+  };
+  var MAX_LINHAS_RELATORIO = 300;
+
+  var _slugJobId = null, _slugTotais = {}, _slugLinhas = [], _slugTruncado = false;
+
+  function slugBadge(status) {
+    var r = SLUG_ROTULOS[status] || [status, '#94a3b8'];
+    return '<span style="display:inline-block;padding:1px 8px;border-radius:99px;font-size:11px;'
+         + 'font-weight:800;color:#fff;background:' + r[1] + ';">' + r[0] + '</span>';
+  }
+
+  function esc(s) { return $('<i>').text(s == null ? '' : s).html(); }
+
+  function renderPreviewSlugs(res, jobId) {
+    _slugJobId = jobId;
+    $('#preview-slugs-total').text(res.total + ' linhas no arquivo');
+    var tbody = $('#preview-slugs-table tbody').empty();
+    res.preview.forEach(function (p) {
+      tbody.append(
+        '<tr><td><code style="font-size:11px;">' + esc(p.referencia) + '</code></td>'
+        + '<td style="font-size:11.5px;color:var(--c-text-muted);">' + esc(p.de || '—') + '</td>'
+        + '<td style="font-size:11.5px;">' + esc(p.para || '—') + '</td>'
+        + '<td>' + slugBadge(p.status) + '</td></tr>'
+      );
+    });
+    $('#preview-slugs').show();
+    $('#progresso-slugs').hide();
+  }
+
+  function resetContadoresSlugs() {
+    _slugTotais = {}; _slugLinhas = []; _slugTruncado = false;
+    $('#slugs-relatorio-table tbody').empty();
+    $('#slugs-relatorio').hide();
+    $('#slugs-acoes').hide();
+    $('#slugs-resumo').empty();
+  }
+
+  function renderResumoSlugs() {
+    var html = '';
+    Object.keys(SLUG_ROTULOS).forEach(function (k) {
+      var n = _slugTotais[k] || 0;
+      if (!n) return;
+      html += '<div style="text-align:center;padding:8px 4px;border:1px solid var(--c-border);border-radius:8px;">'
+            + '<div style="font-size:18px;font-weight:900;color:' + SLUG_ROTULOS[k][1] + ';">' + n + '</div>'
+            + '<div style="color:var(--c-text-muted);">' + SLUG_ROTULOS[k][0] + '</div></div>';
+    });
+    $('#slugs-resumo').html(html);
+  }
+
+  function processarChunkSlugs(aplicar, onDone) {
+    $.post(IMPORT_URL + '/chunk', {
+      job_id : _slugJobId,
+      tipo   : 'slugs',
+      aplicar: aplicar ? '1' : '0',
+      _token : $('meta[name="csrf-token"]').attr('content') || ''
+    })
+    .done(function (res) {
+      if (!res.ok) { Toast.error(res.msg || 'Erro ao processar.'); return; }
+
+      Object.keys(res.resumo || {}).forEach(function (k) {
+        _slugTotais[k] = (_slugTotais[k] || 0) + res.resumo[k];
+      });
+
+      (res.linhas || []).forEach(function (l) {
+        if (_slugLinhas.length < MAX_LINHAS_RELATORIO) _slugLinhas.push(l);
+        else _slugTruncado = true;
+      });
+
+      var pct = res.total > 0 ? Math.round(res.processadas / res.total * 100) : 0;
+      $('#prog-slugs-pct').text(pct + '%');
+      $('#prog-slugs-bar').css('width', pct + '%');
+      $('#slugs-msg').text('Linha ' + res.processadas + ' de ' + res.total + '…');
+      renderResumoSlugs();
+
+      if (res.concluido) { onDone(); }
+      else { setTimeout(function () { processarChunkSlugs(aplicar, onDone); }, 120); }
+    })
+    .fail(function () { Toast.error('Erro de rede ao processar o CSV.'); });
+  }
+
+  function renderRelatorioSlugs() {
+    var tbody = $('#slugs-relatorio-table tbody').empty();
+    _slugLinhas.forEach(function (l) {
+      var dePara = (l.status === 'alterado' || l.status === 'conflito')
+        ? '<code style="font-size:11px;color:var(--c-text-muted);">' + esc(l.de) + '</code>'
+          + ' <span style="color:var(--c-text-muted);">→</span> '
+          + '<code style="font-size:11px;">' + esc(l.para) + '</code>'
+        : '<span style="font-size:12px;color:var(--c-text-muted);">' + esc(l.detalhe || '—') + '</span>';
+      tbody.append(
+        '<tr><td style="color:var(--c-text-muted);">' + l.linha + '</td>'
+        + '<td><code style="font-size:11px;">' + esc(l.referencia || '—') + '</code></td>'
+        + '<td>' + dePara + '</td>'
+        + '<td>' + slugBadge(l.status) + '</td></tr>'
+      );
+    });
+    $('#slugs-relatorio-nota').text(
+      _slugTruncado ? 'mostrando as ' + MAX_LINHAS_RELATORIO + ' primeiras' : _slugLinhas.length + ' linha(s)'
+    );
+    $('#slugs-relatorio').toggle(_slugLinhas.length > 0);
+  }
+
+  $('#btn-verificar-slugs').on('click', function () {
+    if (!_slugJobId) return;
+    resetContadoresSlugs();
+    $('#preview-slugs').hide();
+    $('#progresso-slugs').show();
+    $('#slugs-fase-titulo').text('Verificando (nada é gravado)…');
+
+    $.post(IMPORT_URL + '/slugs/reset', {
+      job_id: _slugJobId,
+      _token: $('meta[name="csrf-token"]').attr('content') || ''
+    })
+    .done(function (r) {
+      if (!r.ok) { Toast.error(r.msg); return; }
+      processarChunkSlugs(false, function () {
+        renderRelatorioSlugs();
+        var vaiAlterar = _slugTotais.alterado || 0;
+        $('#slugs-msg').text('Verificação concluída.');
+
+        if (vaiAlterar > 0) {
+          $('#slugs-aviso-aplicar').html(
+            '<strong>' + vaiAlterar + '</strong> URL(s) serão sobrescritas. '
+            + 'As URLs antigas não são guardadas — se algum produto já estiver '
+            + 'indexado com a URL atual, ela deixa de existir.'
+          );
+          $('#slugs-acoes').show();
+        } else {
+          Toast.success('Nenhuma URL precisa mudar.');
+        }
+      });
+    })
+    .fail(function () { Toast.error('Erro ao preparar a verificação.'); });
+  });
+
+  $('#btn-aplicar-slugs').on('click', function () {
+    var vaiAlterar = _slugTotais.alterado || 0;
+    if (!confirm('Sobrescrever ' + vaiAlterar + ' URL(s) de produto? Esta ação não tem desfazer.')) return;
+
+    var $btn = $(this).prop('disabled', true);
+    resetContadoresSlugs();
+    $('#slugs-fase-titulo').text('Aplicando…');
+
+    $.post(IMPORT_URL + '/slugs/reset', {
+      job_id: _slugJobId,
+      _token: $('meta[name="csrf-token"]').attr('content') || ''
+    })
+    .done(function (r) {
+      if (!r.ok) { Toast.error(r.msg); $btn.prop('disabled', false); return; }
+      processarChunkSlugs(true, function () {
+        renderRelatorioSlugs();
+        $('#slugs-msg').html('✓ ' + (_slugTotais.alterado || 0) + ' URL(s) atualizadas.');
+        Toast.success('URLs atualizadas.');
+        $.post(IMPORT_URL + '/slugs/finalizar', {
+          job_id: _slugJobId,
+          _token: $('meta[name="csrf-token"]').attr('content') || ''
+        });
+        _slugJobId = null;
+      });
+    })
+    .fail(function () { Toast.error('Erro ao aplicar.'); $btn.prop('disabled', false); });
+  });
+
+  $('#btn-cancelar-slugs').on('click', function () {
+    $('#progresso-slugs').hide();
+    $('#file-slugs').val('');
+    $('#file-slugs-nome').hide();
+    resetContadoresSlugs();
+    _slugJobId = null;
+  });
 
   // ── Pedidos: dois inputs separados ────────────────────
   var _pedArq1 = null, _pedArq2 = null;

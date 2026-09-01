@@ -503,9 +503,7 @@ class ProdutosController extends Controller {
         }
 
         $db   = Database::getInstance()->getConnection();
-        $slug = $id > 0
-                ? SlugHelper::unique($nome, 'produtos', (string)$id)
-                : SlugHelper::unique($nome, 'produtos');
+        $slug = $this->resolverSlugProduto($db, $id, $nome);
 
         $campos = [
             'nome'             => $nome,
@@ -787,6 +785,60 @@ class ProdutosController extends Controller {
             LogService::error('Erro ao salvar produto: ' . $e->getMessage());
             $this->json(['ok' => false, 'msg' => 'Erro ao salvar: ' . $e->getMessage()]);
         }
+    }
+
+    /**
+     * Resolve o slug de um produto ao salvar.
+     *
+     * A URL é ativo de SEO, não um campo derivado do nome. Regras, em ordem:
+     *
+     *  1. Produto vindo da Tray (tray_id preenchido) tem a URL CONGELADA.
+     *     O slug dele veio da coluna "Endereço do Produto (URL Tray)" e é a
+     *     mesma URL que o Google já indexou em www.sportmoto.com.br. Editar
+     *     o produto no painel não pode mexer nisso — nem pelo nome, nem pelo
+     *     campo do formulário. Só a reimportação do CSV altera.
+     *  2. Produto nativo: respeita o que o admin digitou no campo "Slug (URL)".
+     *  3. Campo vazio (tipicamente produto novo): gera a partir do nome.
+     *
+     * Em 2 e 3 garante unicidade ignorando o próprio registro.
+     *
+     * ANTES: `SlugHelper::unique($nome, 'produtos', (string)$id)` — o $id ia
+     * na posição do parâmetro $column, virando `WHERE 123 = ?`, que nunca casa.
+     * Resultado: nenhuma checagem de unicidade e a URL reescrita pelo nome a
+     * cada save. Era a causa das URLs mudando sozinhas ao editar.
+     */
+    private function resolverSlugProduto(PDO $db, int $id, string $nome): string
+    {
+        // ── Produto existente: verifica origem e slug atual ──
+        if ($id > 0) {
+            $stmt = $db->prepare(
+                "SELECT slug, tray_id FROM produtos WHERE id = ? LIMIT 1"
+            );
+            $stmt->execute([$id]);
+            $atual = $stmt->fetch();
+
+            if ($atual) {
+                $daTray    = trim((string)($atual['tray_id'] ?? '')) !== '';
+                $slugAtual = trim((string)($atual['slug'] ?? ''));
+
+                // 1. Importado da Tray → URL congelada
+                if ($daTray && $slugAtual !== '') {
+                    return $slugAtual;
+                }
+            }
+        }
+
+        // 2. Slug digitado pelo admin (normalizado — o campo é texto livre)
+        $slugPost = SlugHelper::make((string)($_POST['slug'] ?? ''));
+
+        // 3. Vazio → deriva do nome
+        $base = $slugPost !== '' ? $slugPost : SlugHelper::make($nome);
+
+        if ($base === '') {
+            $base = 'produto';
+        }
+
+        return SlugHelper::unique($base, 'produtos', 'slug', $id);
     }
 
     // ── Upload de imagem ──────────────────────────────────

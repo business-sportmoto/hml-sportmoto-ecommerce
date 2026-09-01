@@ -136,11 +136,16 @@
   font-size: 11.5px; color: var(--pwb-text3); margin-top: 2px;
 }
 .pwb_kpi_trend svg { width: 13px; height: 13px; }
-.pwb_kpi_trend_value { font-weight: 800; color: var(--pwb-green); }
-/* Variação negativa: o layout não distingue sinal, então o CSS lê o
-   próprio texto. Sem isso, uma queda de 30% apareceria em verde. */
-.pwb_kpi_trend_value:not(:empty) { color: var(--pwb-green); }
-.pwb_kpi_card:has(.pwb_kpi_trend_value:not(:empty)) .pwb_kpi_trend_value { color: var(--pwb-green); }
+/* O sinal vem do PHP (kpi.trend_dir), nao do CSS.
+   A versao anterior tinha tres regras que TODAS pintavam de verde,
+   com um comentario afirmando que a queda saia em vermelho — CSS nao
+   le o texto do elemento, entao -30% aparecia verde. */
+.pwb_kpi_trend_value { font-weight: 800; color: var(--pwb-text2); }
+.pwb_kpi_up   .pwb_kpi_trend_value,
+.pwb_kpi_up   .pwb_kpi_trend svg { color: var(--pwb-green); }
+.pwb_kpi_down .pwb_kpi_trend_value,
+.pwb_kpi_down .pwb_kpi_trend svg { color: var(--pwb-danger); }
+.pwb_kpi_down .pwb_kpi_trend svg { transform: scaleY(-1); }
 .pwb_kpi_icon {
   width: 34px; height: 34px; flex-shrink: 0;
   display: grid; place-items: center; border-radius: 9px;
@@ -152,7 +157,27 @@
 .pwb_kpi_customers .pwb_kpi_icon { background: var(--blue-lt, #eff6ff); color: var(--pwb-blue); }
 
 /* ── Painéis ─────────────────────────────────────────── */
+/* O markup usa `pwb_chart_grid` (9 vezes). A folha definia
+   `pwb_grid_2`, que NÃO existe no HTML — resultado: todas as seções
+   de duas colunas empilhavam em largura cheia. Era a maior parte do
+   "espaçamento errado". */
+.pwb_chart_grid,
 .pwb_grid_2 { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+
+/* Na visão geral o primeiro bloco é assimétrico: o gráfico grande
+   ao lado do menor. */
+.pwb_chart_grid_overview { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+@media (min-width: 900px) {
+  .pwb_chart_grid_overview { grid-template-columns: 1.6fr 1fr; }
+}
+
+/* Painel que ocupa a linha inteira mesmo dentro de um grid. */
+.pwb_panel_wide { grid-column: 1 / -1; }
+
+/* Classe de altura herdada do markup. Hoje é inerte de propósito —
+   a altura vem do conteúdo (ver .pwb_chart_box). Mantida para não
+   quebrar o HTML existente. */
+.pwb_chart_tall { }
 .pwb_panel {
   background: var(--pwb-surface); border: 1px solid var(--pwb-border);
   border-radius: var(--pwb-radius); padding: 16px 18px; min-width: 0;
@@ -166,17 +191,15 @@
 .pwb_panel_hint { font-size: 11.5px; color: var(--pwb-text3); }
 
 /* O <canvas> do markup é substituído por SVG no carregamento.
-   A altura mínima reserva o espaço para o layout não "pular". */
-.pwb_chart_box { min-height: 190px; display: grid; place-items: center; }
-.pwb_chart_tall { min-height: 280px; }
-/* Barras e linha ocupam a largura toda; só o aviso de "sem dados"
-   continua centralizado. */
-/* Com conteudo real, a altura vem do conteudo: reservar 190px para
-   3 barras deixava metade do painel vazio. O min-height so vale
-   enquanto o grafico nao existe. */
-.pwb_chart_box:has(.pwb_bars),
-.pwb_chart_box:has(.pwb_linebox) { min-height: 0; place-items: stretch; }
-.pwb_chart_canvas { max-width: 100%; }
+   A altura vem do CONTEÚDO, nunca de um min-height no container:
+   reservar 190px para três barras deixava metade do painel vazio.
+   A versão anterior corrigia isso com :has(), o que fazia o layout
+   depender do suporte a um seletor — num navegador sem ele, o espaço
+   morto voltava. Agora não depende de nada. */
+.pwb_chart_box { display: block; }
+/* O canvas só existe até o JS trocá-lo por SVG. Altura zero evita a
+   caixa fantasma de 300x150 (tamanho padrão do elemento) piscando. */
+.pwb_chart_canvas { display: block; max-width: 100%; height: 0; }
 .pwb_legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; font-size: 12px; color: var(--pwb-text2); }
 
 /* ── Tabelas ─────────────────────────────────────────── */
@@ -262,7 +285,12 @@
   display: flex; justify-content: space-between;
   font-size: 11px; color: var(--pwb-text3); margin-top: 6px;
 }
-.pwb_chart_vazio { font-size: 12.5px; color: var(--pwb-text3); margin: 0; }
+/* O aviso de vazio é o único que precisa de altura própria — sem ela
+   o painel colapsa numa linha de texto colada no título. */
+.pwb_chart_vazio {
+  font-size: 12.5px; color: var(--pwb-text3); margin: 0;
+  min-height: 90px; display: grid; place-items: center;
+}
 
 /* ── Matriz de coorte ────────────────────────────────── */
 .pwb_coorte_tabela .pwb_th,
@@ -291,3 +319,13 @@
 .pwb_abc_a { background: var(--green-lt, #ecfdf5); color: #047857; }
 .pwb_abc_b { background: var(--blue-lt, #eff6ff);  color: var(--pwb-blue); }
 .pwb_abc_c { background: var(--pwb-surface2);      color: var(--pwb-text3); }
+
+/* ── Classes do markup que ainda não tinham regra ─────── */
+/* Todas existiam no HTML herdado e caíam no estilo padrão do
+   navegador. Nenhuma quebrava a página, mas juntas deixavam o
+   cabeçalho e a barra lateral desalinhados. */
+.pwb_header_title_box { min-width: 0; }
+.pwb_nav_label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pwb_kpi_trend_label { color: var(--pwb-text3); }
+.pwb_notification_button { overflow: visible; }
+.pwb_thead { background: transparent; }

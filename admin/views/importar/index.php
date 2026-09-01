@@ -112,6 +112,109 @@ $statusLabels = [
     <div id="progresso-produtos" style="display:none;margin-top:16px;">
       <?php echo renderProgressCard('produtos'); ?>
     </div>
+
+    <!-- ── Sobrescrever URLs (slugs) ──────────────── -->
+    <div class="admin-card" style="margin-top:24px;border-left:3px solid var(--warning, #f59e0b);">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--c-border);">
+        <h3 style="margin:0 0 6px;font-size:14px;font-weight:800;">
+          Sobrescrever URLs pelo CSV
+        </h3>
+        <p style="margin:0;font-size:13px;color:var(--c-text-muted);line-height:1.6;">
+          Reescreve <strong>apenas</strong> o endereço (slug) dos produtos já cadastrados,
+          casando a coluna <code>Referência</code> do CSV com o
+          <code>SKU / Código</code> do produto no site. Nenhum outro campo é tocado —
+          preço, estoque e descrição ficam como estão.
+        </p>
+        <p style="margin:10px 0 0;font-size:12.5px;color:var(--c-text-muted);line-height:1.6;">
+          Use antes da virada de DNS, para devolver às páginas do site as mesmas
+          URLs que o Google já indexou em <code>www.sportmoto.com.br</code>.
+          A verificação roda primeiro e <strong>não grava nada</strong>.
+        </p>
+      </div>
+
+      <div class="import-upload-area" id="upload-area-slugs" style="margin:16px 20px;">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+          <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+        </svg>
+        <p>Arraste o <strong>mesmo CSV de produtos</strong> aqui</p>
+        <small>Só as colunas "Referência" e "Endereço do Produto (URL Tray)" são lidas</small>
+        <label class="btn btn-outline" style="margin-top:12px;cursor:pointer;">
+          Selecionar arquivo
+          <input type="file" id="file-slugs" accept=".csv" style="display:none;">
+        </label>
+        <div id="file-slugs-nome" style="display:none;margin-top:10px;font-size:13px;color:var(--c-text-muted);"></div>
+      </div>
+
+      <!-- Preview do de/para -->
+      <div id="preview-slugs" style="display:none;">
+        <div style="padding:0 20px 4px;display:flex;align-items:center;justify-content:space-between;">
+          <h4 style="margin:0;font-size:13px;font-weight:800;">Amostra — 5 primeiras linhas</h4>
+          <span id="preview-slugs-total" class="odh-count-badge"></span>
+        </div>
+        <div class="table-wrap" style="padding:0 20px;">
+          <table class="admin-table" id="preview-slugs-table">
+            <thead><tr>
+              <th style="width:110px;">Referência</th>
+              <th>URL atual</th>
+              <th>URL do CSV</th>
+              <th style="width:130px;">Situação</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div style="padding:14px 20px;border-top:1px solid var(--c-border);margin-top:12px;">
+          <button type="button" class="btn btn-primary" id="btn-verificar-slugs">
+            Verificar todas as linhas
+          </button>
+          <span style="font-size:12.5px;color:var(--c-text-muted);margin-left:10px;">
+            Percorre o CSV inteiro sem gravar nada.
+          </span>
+        </div>
+      </div>
+
+      <!-- Progresso + relatório -->
+      <div id="progresso-slugs" style="display:none;padding:0 20px 20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <h4 style="margin:0;font-size:13px;font-weight:800;" id="slugs-fase-titulo">Verificando…</h4>
+          <span id="prog-slugs-pct" style="font-size:20px;font-weight:900;color:#2563eb;">0%</span>
+        </div>
+        <div style="height:8px;background:#f1f5f9;border-radius:99px;overflow:hidden;margin-bottom:14px;">
+          <div id="prog-slugs-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#f59e0b,#2563eb);border-radius:99px;transition:width .3s;"></div>
+        </div>
+
+        <div id="slugs-resumo" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;font-size:12.5px;margin-bottom:14px;"></div>
+
+        <div id="slugs-relatorio" style="display:none;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <h4 style="margin:0;font-size:13px;font-weight:800;">Divergências encontradas</h4>
+            <span id="slugs-relatorio-nota" style="font-size:12px;color:var(--c-text-muted);"></span>
+          </div>
+          <div class="table-wrap" style="max-height:420px;overflow:auto;">
+            <table class="admin-table" id="slugs-relatorio-table">
+              <thead><tr>
+                <th style="width:60px;">Linha</th>
+                <th style="width:110px;">Referência</th>
+                <th>De → Para</th>
+                <th style="width:150px;">Situação</th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="slugs-acoes" style="display:none;margin-top:16px;padding-top:14px;border-top:1px solid var(--c-border);">
+          <button type="button" class="btn btn-primary" id="btn-aplicar-slugs">
+            Aplicar alterações
+          </button>
+          <button type="button" class="btn btn-ghost" id="btn-cancelar-slugs">Cancelar</button>
+          <div id="slugs-aviso-aplicar" style="font-size:12.5px;color:var(--c-text-muted);margin-top:10px;"></div>
+        </div>
+
+        <div id="slugs-msg" style="margin-top:12px;font-size:13px;color:var(--c-text-muted);"></div>
+      </div>
+    </div>
   </div>
 
   <!-- ── Aba Variações ───────────────────────────── -->

@@ -100,6 +100,11 @@ if (!function_exists('pwb_render_kpi')) {
     {
         $type = $kpi['type'] ?? 'default';
         $cardClass = 'pwb_kpi_card pwb_kpi_' . preg_replace('/[^a-z0-9_-]/i', '', $type);
+        // Direcao da variacao: quem sabe o sinal e o PHP. O CSS nao
+        // consegue ler "+8%" vs "-30%" do texto.
+        if (!empty($kpi['trend_dir']) && in_array($kpi['trend_dir'], ['up','down'], true)) {
+            $cardClass .= ' pwb_kpi_' . $kpi['trend_dir'];
+        }
         ?>
         <article class="<?= pwb_e($cardClass) ?>">
             <div class="pwb_kpi_content">
@@ -152,8 +157,6 @@ $pwb_meta = $pwb_dashboard_data['meta'] ?? [];
 // A view nao extraia 'charts'; o painel executivo le os insights dai.
 $pwb_charts = $pwb_dashboard_data['charts'] ?? [];
 ?>
-
-<link rel="stylesheet" href="<?= BASE_URL ?>/admin/assets/css/powerbi.css">
 
 <div class="pwb_dashboard" data-pwb-api-url="<?= pwb_e($pwb_dashboard_config['api_url']) ?>">
     <script type="application/json" id="pwb_dashboard_payload"><?= json_encode($pwb_dashboard_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?></script>
