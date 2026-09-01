@@ -582,6 +582,11 @@ html[data-theme="dark"] .ch-comp-menu {
 .ch-grav-btn--enviar { background: var(--ch-wa); color: #fff; }
 .ch-grav-btn--enviar:hover { background: var(--ch-wa-dark); color: #fff; }
 
+/* Enquanto o navegador decide a permissão: o botão precisa mostrar que ouviu
+   o clique, senão parece que não fez nada. */
+.ch-comp-btn.aguardando { opacity: .5; }
+.ch-comp-btn.aguardando svg { animation: chPulsa 1s ease-in-out infinite; }
+
 .ch-grav-ponto {
   width: 9px; height: 9px; border-radius: 50%; background: var(--danger); flex: none;
   animation: chPulsa 1.4s ease-in-out infinite;

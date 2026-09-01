@@ -169,17 +169,18 @@ $h    = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
                       <?= $h($rotulo) ?>
                     </button>
                   <?php endforeach; ?>
-                  <button type="button" id="ch-gravar">
-                    <span class="ch-comp-menu-ico" style="background:#16a34a">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v4"/></svg>
-                    </span>
-                    Gravar áudio
-                  </button>
                 </div>
               </div>
 
               <input type="file" id="ch-arquivo" style="display:none">
               <textarea id="ch-texto" rows="1" placeholder="Escreva uma mensagem... (Enter envia, Shift+Enter quebra linha)"></textarea>
+              <?php // Ao lado do enviar, não escondido no menu: gravar é ação de
+                    // um clique, não escolha de tipo de arquivo. ?>
+              <button type="button" class="ch-comp-btn" id="ch-gravar" title="Gravar áudio">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v4"/>
+                </svg>
+              </button>
               <button type="button" class="ch-comp-btn ch-comp-btn--enviar" id="ch-enviar" title="Enviar">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>

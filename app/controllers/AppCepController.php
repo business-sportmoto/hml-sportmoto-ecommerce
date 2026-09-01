@@ -33,6 +33,53 @@ class AppCepController extends AppApiController
     }
 
     /**
+     * GET /api/app/v1/cep/{cep}
+     *
+     * Só CONSULTA — não salva nada. É o que preenche rua, bairro, cidade e UF
+     * no formulário de endereço, para a pessoa digitar 8 dígitos em vez de
+     * quatro campos.
+     *
+     * Separado de `salvar` de propósito: aquele grava o CEP do dispositivo e
+     * muda o frete que aparece na vitrine inteira. Quem está preenchendo um
+     * endereço de presente para outra cidade não quer que a vitrine passe a
+     * calcular frete para lá.
+     *
+     * Público: cadastrar endereço no checkout de visitante também passa por
+     * aqui, e o ViaCEP não é segredo de ninguém.
+     */
+    public function consultar(string $cep = ''): void
+    {
+        $this->bootOpcional();
+        $this->liberarSessao();
+
+        $digitos = preg_replace('/\D/', '', $cep) ?? '';
+
+        if (strlen($digitos) !== 8) {
+            $this->falha(422, 'cep_invalido', 'Informe um CEP com 8 dígitos.');
+        }
+
+        // consultarViaCep() já tem cache de 24h: dois clientes do mesmo bairro
+        // não geram duas chamadas externas.
+        $dados = CepController::consultarViaCep($digitos);
+
+        if (!$dados) {
+            $this->falha(404, 'cep_nao_encontrado',
+                'Não encontramos esse CEP. Confira ou preencha o endereço à mão.');
+        }
+
+        // `bairro` volta vazio em cidade com CEP único — e a coluna é NOT NULL.
+        // Mandar o campo vazio é honesto: o formulário pede que a pessoa
+        // complete, em vez de o salvamento estourar depois.
+        $this->ok(['endereco' => [
+            'cep'        => substr($digitos, 0, 5) . '-' . substr($digitos, 5),
+            'logradouro' => trim((string)($dados['logradouro'] ?? '')),
+            'bairro'     => trim((string)($dados['bairro'] ?? '')),
+            'cidade'     => trim((string)($dados['localidade'] ?? '')),
+            'estado'     => strtoupper(trim((string)($dados['uf'] ?? ''))),
+        ]]);
+    }
+
+    /**
      * POST /api/app/v1/cep    Corpo: { cep, salvar_endereco? }
      */
     public function salvar(): void

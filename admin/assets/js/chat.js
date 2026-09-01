@@ -553,19 +553,45 @@
       return 'weba';   // audio/webm
     },
 
-    iniciar: function () {
-      var fmt = this.formato();
-      if (!fmt || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        toast('Este navegador não grava áudio.', 'erro');
-        return;
+    /** Por que o microfone não vai abrir — '' quando vai. */
+    impedimento: function () {
+      if (!window.isSecureContext) {
+        return 'O navegador só libera o microfone em HTTPS com certificado aceito. '
+             + 'Abra o painel por https e aceite o certificado.';
       }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        return 'Este navegador não expõe o microfone para páginas.';
+      }
+      if (!this.formato()) return 'Este navegador não sabe gravar áudio (MediaRecorder).';
+      return '';
+    },
+
+    iniciar: function () {
+      var impede = this.impedimento();
+      if (impede) { toast(impede, 'erro'); return; }
 
       var self = this;
+      var fmt  = this.formato();
+
+      // Feedback ANTES de pedir permissão. Sem isto, clicar em gravar e esperar
+      // o navegador decidir parecia que o botão não fazia nada — foi o que
+      // aconteceu: a barra só aparecia depois do getUserMedia resolver.
+      $('#ch-gravar').addClass('aguardando').prop('disabled', true);
+
       navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+        $('#ch-gravar').removeClass('aguardando').prop('disabled', false);
+
         self.stream  = stream;
         self.pedacos = [];
-        self.rec = new MediaRecorder(stream, { mimeType: fmt });
+        try {
+          self.rec = fmt ? new MediaRecorder(stream, { mimeType: fmt }) : new MediaRecorder(stream);
+        } catch (e) {
+          stream.getTracks().forEach(function (t) { t.stop(); });
+          toast('Falha ao iniciar a gravação: ' + e.message, 'erro');
+          return;
+        }
         self.rec.ondataavailable = function (e) { if (e.data && e.data.size) self.pedacos.push(e.data); };
+        self.rec.onerror = function () { toast('A gravação foi interrompida.', 'erro'); self.cancelar(); };
         self.rec.start(250);
 
         self.t0 = Date.now(); self.pausadoEm = 0;
@@ -573,9 +599,19 @@
         $('#ch-gravador').addClass('ativo').removeClass('ch-grav-pausado');
         self.contar();
         self.desenhar(stream);
-      }).catch(function () {
-        // Permissão negada ou nenhum microfone: dizer qual dos dois seria chute
-        toast('Não foi possível acessar o microfone.', 'erro');
+      }).catch(function (err) {
+        $('#ch-gravar').removeClass('aguardando').prop('disabled', false);
+
+        // Cada motivo pede uma ação diferente de quem está atendendo
+        var nome = (err && err.name) || '';
+        var msg = nome === 'NotAllowedError'
+              ? 'Permissão de microfone negada. Libere no cadeado da barra de endereço e clique de novo.'
+          : nome === 'NotFoundError' || nome === 'DevicesNotFoundError'
+              ? 'Nenhum microfone encontrado neste computador.'
+          : nome === 'NotReadableError'
+              ? 'O microfone está ocupado por outro programa.'
+              : 'Não foi possível acessar o microfone' + (nome ? ' (' + nome + ')' : '') + '.';
+        toast(msg, 'erro');
       });
     },
 
@@ -683,6 +719,8 @@
   };
 
   $('#ch-gravar').on('click', function () { fecharMenu(); Grav.iniciar(); });
+  // Enter no campo vazio com anexo nenhum não deve disparar gravação — só
+  // o clique no botão inicia.
   $('#ch-grav-ok').on('click', function () { Grav.concluir(); });
   $('#ch-grav-pausar').on('click', function () { Grav.pausar(); });
   $('#ch-grav-cancelar').on('click', function () { Grav.cancelar(); });

@@ -180,6 +180,9 @@ AppRouter::delete($v . '/conta/cartoes/{id:\d+}',   'AppCheckoutController@remov
 // antes de decidir criar conta. O CEP fica no dispositivo, que é o que o
 // cookie `ec_cep` representa na web.
 AppRouter::get   ($v . '/cep',            'AppCepController@ativo');
+// Consulta pura, para preencher o formulário de endereço. Não confundir com o
+// POST abaixo, que GRAVA o CEP do dispositivo e muda o frete da vitrine.
+AppRouter::get   ($v . '/cep/{cep:[\d-]{8,9}}', 'AppCepController@consultar');
 AppRouter::post  ($v . '/cep',            'AppCepController@salvar');
 AppRouter::delete($v . '/cep',            'AppCepController@remover');
 AppRouter::get   ($v . '/frete/produto',  'AppCepController@produto');
@@ -191,7 +194,12 @@ AppRouter::get   ($v . '/frete/produto',  'AppCepController@produto');
 AppRouter::get   ($v . '/conta/cabecalho',                      'AppEnderecosController@cabecalho');
 
 AppRouter::get   ($v . '/conta/enderecos',                      'AppEnderecosController@index');
+AppRouter::post  ($v . '/conta/enderecos',                      'AppEnderecosController@criar');
+// A rota com /principal vem antes da de {id} puro: o sufixo literal precisa
+// ganhar do parâmetro solto.
 AppRouter::post  ($v . '/conta/enderecos/{id:\d+}/principal',   'AppEnderecosController@tornarPrincipal');
+AppRouter::patch ($v . '/conta/enderecos/{id:\d+}',             'AppEnderecosController@atualizar');
+AppRouter::delete($v . '/conta/enderecos/{id:\d+}',             'AppEnderecosController@excluir');
 
 // Literais antes de {id}: "contador" e "lidas" seriam capturados como id.
 AppRouter::get   ($v . '/conta/notificacoes/contador',          'AppNotificacoesController@contador');
