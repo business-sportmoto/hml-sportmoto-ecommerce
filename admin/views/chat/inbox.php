@@ -125,13 +125,17 @@ $h    = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
                   <path d="M21.4 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.2-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
                 </svg>
               </button>
-              <?php // O que a Meta recusa como mídia (gif, webp, mov, wav) o
-                    // servidor manda como documento — por isso entram aqui. ?>
-              <input type="file" id="ch-arquivo" style="display:none"
-                     accept="image/jpeg,image/png,image/gif,image/webp,
-                             video/mp4,video/3gpp,video/quicktime,video/webm,video/x-msvideo,
-                             audio/mpeg,audio/ogg,audio/mp4,audio/aac,audio/amr,audio/wav,audio/flac,
-                             .pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.txt,.csv,.zip">
+              <?php
+              // Uma linha só: o accept é lista separada por vírgula, e quebra de
+              // linha dentro do atributo depende do navegador aparar o espaço.
+              // O que uma plataforma não reproduz o servidor manda como arquivo,
+              // então tudo daqui é enviável nos dois canais.
+              $aceita = 'image/jpeg,image/png,image/gif,image/webp,'
+                      . 'video/mp4,video/3gpp,video/quicktime,video/webm,video/x-msvideo,'
+                      . 'audio/mpeg,audio/ogg,audio/mp4,audio/aac,audio/amr,audio/wav,audio/flac,'
+                      . '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.txt,.csv,.zip';
+              ?>
+              <input type="file" id="ch-arquivo" style="display:none" accept="<?= $aceita ?>">
               <textarea id="ch-texto" rows="1" placeholder="Escreva uma mensagem... (Enter envia, Shift+Enter quebra linha)"></textarea>
               <button type="button" class="ch-comp-btn ch-comp-btn--enviar" id="ch-enviar" title="Enviar">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

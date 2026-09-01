@@ -67,13 +67,24 @@ class PerformanceHelper {
 
     private static function resolverHash(string $path, bool $adm = false): string
     {
-        $env = defined('APP_ENV') ? APP_ENV : 'development';
+        $env      = defined('APP_ENV') ? APP_ENV : 'development';
+        $fullPath = (!$adm ? ASSET_PATH : ADMIN_PATH . '/assets') . $path;
 
         if ($env === 'production') {
-            return self::carregarManifest()[$path] ?? '1';
+            // A chave do admin leva prefixo: /css/admin.css existe nos DOIS
+            // lugares, e sem o prefixo o painel era versionado pelo hash do
+            // arquivo do site — mudava o CSS do admin e a URL continuava igual.
+            $chave = ($adm ? '/admin' : '') . $path;
+            $hash  = self::carregarManifest()[$chave] ?? null;
+            if ($hash !== null) return $hash;
+
+            // Ausente do manifesto significava '1' — constante, ou seja, cache
+            // eterno no navegador e na Cloudflare. mtime custa um stat e garante
+            // que o arquivo novo chegue mesmo se o manifesto não for regerado.
+            return file_exists($fullPath) ? (string)filemtime($fullPath) : '1';
         }
-        $fullPath = (!$adm ? ASSET_PATH : ADMIN_PATH.'/assets') . $path;
-        return file_exists($fullPath) ? substr(md5_file($fullPath), 0, 8) :  1;
+
+        return file_exists($fullPath) ? substr(md5_file($fullPath), 0, 8) : '1';
     }
 
     private static function carregarManifest(): array
