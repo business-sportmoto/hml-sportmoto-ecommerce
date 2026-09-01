@@ -210,7 +210,201 @@ final class PwbDashboardAnalyticsService
             ];
         }
 
+        // ── Onda C ────────────────────────────────────────
+        $pagamentos = [];
+        foreach ($this->bi->pagamentoAprovacao($p, 'metodo') as $r) {
+            $pagamentos[] = [
+                'method'   => ucfirst(str_replace('_', ' ', (string)$r['chave'])),
+                'attempts' => $this->num((float)$r['tentativas']),
+                'approved' => $this->num((float)$r['aprovadas']),
+                'rate'     => number_format((float)$r['taxa_aprovacao'], 1, ',', '.') . '%',
+                'value'    => $this->brl((float)$r['valor_aprovado']),
+                // Vocabulário próprio: "Prejuízo" (que serve para margem)
+                // não significa nada aplicado a taxa de aprovação.
+                'level'    => $r['taxa_aprovacao'] >= 90 ? 'Saudável'
+                            : ($r['taxa_aprovacao'] >= 70 ? 'Atenção' : 'Crítico'),
+            ];
+        }
+
+        $cupons = [];
+        foreach ($this->bi->cupons($p, 15) as $r) {
+            $cupons[] = [
+                'code'     => $r['codigo'],
+                'type'     => $r['tipo'],
+                'uses'     => $this->num((float)$r['efetivados']),
+                'clients'  => $this->num((float)$r['clientes']),
+                'discount' => $this->brl((float)$r['desconto']),
+                'revenue'  => $this->brl((float)$r['receita']),
+                // Retorno < 1 = o desconto custou mais que a venda.
+                'roi'      => $r['retorno'] === null
+                            ? '—' : number_format((float)$r['retorno'], 1, ',', '.') . 'x',
+                'level'    => $r['retorno'] === null ? 'Sem custo'
+                            : ((float)$r['retorno'] < 3 ? 'Margem baixa' : 'Saudável'),
+            ];
+        }
+
+        $giro = [];
+        foreach ($this->bi->giroEstoque(90, 25) as $r) {
+            $giro[] = [
+                'product'  => $r['produto'] ?? '—',
+                'brand'    => $r['marca_nome'] ?? '—',
+                'stock'    => (string)(int)$r['saldo'],
+                'sold'     => (string)(int)$r['vendido'],
+                'daily'    => number_format((float)$r['media_diaria'], 2, ',', '.'),
+                // Dias de cobertura diz mais que unidades: "40 peças"
+                // não significa nada sem o ritmo de saída.
+                'coverage' => $r['dias_cobertura'] === null
+                            ? '—' : (int)$r['dias_cobertura'] . ' dias',
+                'level'    => $r['classificacao'],
+            ];
+        }
+
+        $parado = [];
+        foreach ($this->bi->estoqueParado(90, 20) as $r) {
+            $parado[] = [
+                'product' => $r['produto'] ?? '—',
+                'stock'   => (string)(int)$r['saldo'],
+                'value'   => $r['valor_estoque'] === null
+                           ? '— (sem custo)' : $this->brl((float)$r['valor_estoque']),
+                'since'   => $r['ultima_venda']
+                           ? (int)$r['dias_sem_vender'] . ' dias' : 'nunca vendeu',
+            ];
+        }
+
+        $devol = [];
+        foreach ($this->bi->devolucoes($p) as $r) {
+            $devol[] = [
+                'reason' => $r['motivo'],
+                'type'   => ucfirst((string)$r['tipo']),
+                'units'  => $this->num((float)$r['unidades']),
+                'value'  => $this->brl((float)$r['valor']),
+            ];
+        }
+
+        $cancel = [];
+        foreach ($this->bi->cancelamentos($p) as $r) {
+            $cancel[] = [
+                'reason' => $r['motivo'],
+                'orders' => $this->num((float)$r['pedidos']),
+                'value'  => $this->brl((float)$r['valor']),
+            ];
+        }
+
+        $transp = [];
+        foreach ($this->bi->transportadoras($p) as $r) {
+            $transp[] = [
+                'carrier'  => $r['transportadora'],
+                'shipments'=> $this->num((float)$r['envios']),
+                'cost'     => $r['custo_real_medio'] === null
+                            ? '—' : $this->brl((float)$r['custo_real_medio']),
+                'days'     => $r['dias_entrega'] === null
+                            ? '—' : number_format((float)$r['dias_entrega'], 1, ',', '.'),
+                'delivered'=> number_format((float)$r['pct_entregue'], 0) . '%',
+            ];
+        }
+
+        // ── Onda D ────────────────────────────────────────
+        $abc = [];
+        foreach (array_slice($this->bi->curvaABC($p, 'produto', 60), 0, 30) as $r) {
+            $abc[] = [
+                'position'   => (string)$r['posicao'],
+                'name'       => $r['nome'],
+                'revenue'    => $this->brl((float)$r['receita']),
+                'share'      => number_format((float)$r['pct_receita'], 2, ',', '.') . '%',
+                'cumulative' => number_format((float)$r['pct_acumulado'], 1, ',', '.') . '%',
+                'profit'     => $r['lucro'] === null ? '— (sem custo)' : $this->brl((float)$r['lucro']),
+                'class'      => $r['classe'],
+            ];
+        }
+
+        $canais = [];
+        foreach ($this->bi->ranking($p, 'canal', 10) as $r) {
+            $canais[] = [
+                'channel'  => $r['nome'],
+                'revenue'  => $this->brl((float)$r['receita']),
+                'orders'   => $this->num((float)$r['pedidos']),
+                'clients'  => $this->num((float)$r['clientes']),
+                'ticket'   => $this->brl((float)$r['pedidos'] > 0 ? (float)$r['receita'] / (float)$r['pedidos'] : 0),
+                'margin'   => $r['margem_pct'] === null
+                            ? '— (sem custo)' : number_format((float)$r['margem_pct'], 1, ',', '.') . '%',
+            ];
+        }
+
+        $metas = [];
+        foreach ($this->bi->metas($p) as $m) {
+            $metas[] = [
+                'metric'   => $m['metrica'],
+                'target'   => $m['alvo_label'] ?? 'Loja inteira',
+                'period'   => date('d/m/y', strtotime($m['periodo_ini'])) . ' – '
+                            . date('d/m/y', strtotime($m['periodo_fim'])),
+                'goal'     => $this->brl((float)$m['valor_meta']),
+                'done'     => $this->brl((float)$m['realizado']),
+                'pct'      => $m['pct'] === null ? '—' : number_format((float)$m['pct'], 1, ',', '.') . '%',
+                'missing'  => $this->brl((float)$m['falta']),
+                // Só a dimensão 'loja' tem realizado implementado; as
+                // outras devolvem 0 de propósito, e dizer isso evita
+                // que "0%" seja lido como "não vendeu nada".
+                'level'    => $m['dimensao'] !== 'loja' ? 'Não calculado'
+                            : ((float)($m['pct'] ?? 0) >= 100 ? 'Saudável'
+                              : ((float)($m['pct'] ?? 0) >= 70 ? 'Atenção' : 'Crítico')),
+            ];
+        }
+
+        $alta = [];
+        foreach ($this->bi->tendenciaProdutos(30, 'alta', 8) as $r) {
+            $alta[] = ['name' => $r['nome_produto'],
+                       'now' => $this->brl((float)$r['receita_atual']),
+                       'before' => $this->brl((float)$r['receita_anterior']),
+                       'change' => '+' . number_format((float)$r['variacao_pct'], 0) . '%'];
+        }
+        $queda = [];
+        foreach ($this->bi->tendenciaProdutos(30, 'queda', 8) as $r) {
+            $queda[] = ['name' => $r['nome_produto'],
+                        'now' => $this->brl((float)$r['receita_atual']),
+                        'before' => $this->brl((float)$r['receita_anterior']),
+                        'change' => number_format((float)$r['variacao_pct'], 0) . '%'];
+        }
+
+        $alertas = [];
+        foreach ($this->bi->alertas($p) as $a) {
+            $alertas[] = [
+                'level'  => ['critico'=>'Crítico','alto'=>'Alto',
+                             'medio'=>'Médio','informativo'=>'Informativo'][$a['nivel']] ?? $a['nivel'],
+                'title'  => $a['titulo'],
+                'detail' => $a['detalhe'],
+            ];
+        }
+
+        $freteTipo = [];
+        foreach ($this->bi->fretePorTipo($p) as $r) {
+            $freteTipo[] = [
+                'type'    => $r['tipo_frete'],
+                'labels'  => $this->num((float)$r['etiquetas']),
+                // Avulso sem pedido é o esperado; dizer "0" ali sugeriria
+                // falha onde não há.
+                'linked'  => $r['tipo_frete'] === 'Avulso'
+                           ? 'n/a (frete direto)' : $this->num((float)$r['com_pedido']),
+                'tracked' => $this->num((float)$r['com_rastreio']),
+                'cost'    => $r['custo_real_medio'] === null
+                           ? '— (valor_postado vazio)' : $this->brl((float)$r['custo_real_medio']),
+            ];
+        }
+
         return [
+            'frete_tipo'    => $freteTipo,
+            'abc'           => $abc,
+            'canais'        => $canais,
+            'metas'         => $metas,
+            'alta'          => $alta,
+            'queda'         => $queda,
+            'alertas'       => $alertas,
+            'pagamentos'    => $pagamentos,
+            'cupons'        => $cupons,
+            'giro'          => $giro,
+            'parado'        => $parado,
+            'devolucoes'    => $devol,
+            'cancelamentos' => $cancel,
+            'transportadoras' => $transp,
             'rfm'           => $rfm,
             'risco'         => $risco,
             'geo_uf'        => $this->geo($p, 'uf', 27),
@@ -280,7 +474,48 @@ final class PwbDashboardAnalyticsService
             ],
         ];
 
-        return ['access' => $funil, 'ai' => $saude, 'recompra' => $recompra];
+        $c   = $this->bi->carrinhos($p);
+        $car = [
+            ['label' => 'Carrinhos abandonados',
+             'value' => $this->num((float)($c['kpi']['carrinhos'] ?? 0)),
+             'hint'  => $this->brl((float)($c['kpi']['valor_abandonado'] ?? 0)) . ' em aberto'],
+            ['label' => 'Ticket abandonado',
+             'value' => $this->brl((float)($c['kpi']['ticket'] ?? 0)),
+             'hint'  => 'média por carrinho'],
+            ['label' => 'Taxa de recuperação',
+             'value' => number_format((float)($c['kpi']['taxa_recuperacao'] ?? 0), 1, ',', '.') . '%',
+             'hint'  => (int)($c['kpi']['recuperados'] ?? 0) . ' recuperados'],
+            ['label' => 'Receita recuperada',
+             'value' => $this->brl((float)($c['kpi']['valor_recuperado'] ?? 0)),
+             'hint'  => (float)($c['kpi']['valor_recuperado'] ?? 0) > 0
+                      ? 'confirmada' : 'reconciliação nunca marcou nada — ver 04-bugs'],
+        ];
+
+        $pr  = $this->bi->projecaoMes();
+        $par = $this->bi->pareto($p, 'produto');
+
+        $proj = [
+            ['label' => 'Realizado no mês',
+             'value' => $this->brl((float)$pr['realizado']),
+             'hint'  => $pr['dias_passados'] . ' de ' . $pr['dias_no_mes'] . ' dias'],
+            ['label' => 'Cenário conservador',
+             'value' => $this->brl((float)$pr['conservador']), 'hint' => 'run-rate menos a variação diária'],
+            ['label' => 'Cenário provável',
+             'value' => $this->brl((float)$pr['provavel']),
+             'hint'  => 'confiança ' . $pr['confianca'] . ' · ' . $pr['aviso']],
+            ['label' => 'Cenário otimista',
+             'value' => $this->brl((float)$pr['otimista']), 'hint' => 'run-rate mais a variação diária'],
+        ];
+
+        $conc = [
+            ['label' => 'Concentração 80/20',
+             'value' => $par['itens_80'] . ' de ' . $par['itens'],
+             'hint'  => $par['pct_itens'] . '% dos produtos fazem 80% da receita'],
+        ];
+
+        return ['access' => $funil, 'ai' => $saude,
+                'recompra' => $recompra, 'carrinho' => $car,
+                'projecao' => $proj, 'concentracao' => $conc];
     }
 
     /**
@@ -323,6 +558,12 @@ final class PwbDashboardAnalyticsService
             'coorte'         => $this->bi->coorte(12),
             'recompra'       => $this->bi->recompra()['distribuicao'],
             'geo_uf'         => $this->bi->geografia($p, 'uf', 15),
+            'parcelas'       => $this->bi->parcelas($p),
+            'recusas'        => $this->bi->recusas($p, 8),
+            'desconto'       => $this->bi->impactoDesconto($p),
+            'devolvidos'     => $this->bi->produtosDevolvidos($p, 10),
+            'carrinho_status'=> $this->bi->carrinhos($p)['por_status'],
+            'insights'       => $this->bi->insights($p),
         ];
     }
 

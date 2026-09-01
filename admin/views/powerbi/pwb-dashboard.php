@@ -38,6 +38,19 @@ if (!function_exists('pwb_badge_class')) {
         // Status vindos do BI. Sem estas regras tudo caía em
         // 'default' e "Prejuízo" ficava com a mesma cor de "Saudável" —
         // a cor é justamente o que faz a linha ruim saltar aos olhos.
+        // Prioridade de alerta primeiro: numa central de alertas a
+        // severidade e a informacao principal da linha.
+        foreach ([
+            'pwb_badge_danger'  => ['crítico', 'critico'],
+            'pwb_badge_warning' => ['alto'],
+            'pwb_badge_info'    => ['médio', 'medio'],
+            'pwb_badge_default' => ['informativo', 'não calculado', 'nao calculado'],
+        ] as $classe => $termos) {
+            foreach ($termos as $t) {
+                if ($normalized === $t) return $classe;
+            }
+        }
+
         foreach ([
             'pwb_badge_success' => ['saudável', 'concluído', 'campeo', 'fiei'],
             'pwb_badge_danger'  => ['prejuízo', 'zerado', 'perdido', 'em risco', 'devolvido'],
@@ -136,6 +149,8 @@ $pwb_kpis = $pwb_dashboard_data['kpis'] ?? [];
 $pwb_tables = $pwb_dashboard_data['tables'] ?? [];
 $pwb_metrics = $pwb_dashboard_data['metrics'] ?? [];
 $pwb_meta = $pwb_dashboard_data['meta'] ?? [];
+// A view nao extraia 'charts'; o painel executivo le os insights dai.
+$pwb_charts = $pwb_dashboard_data['charts'] ?? [];
 ?>
 
 <link rel="stylesheet" href="<?= BASE_URL ?>/admin/assets/css/powerbi.css">
@@ -156,6 +171,13 @@ $pwb_meta = $pwb_dashboard_data['meta'] ?? [];
             <button class="pwb_nav_item" type="button" data-pwb-view="products"><?= pwb_icon('box') ?><span class="pwb_nav_label">Produtos</span></button>
             <button class="pwb_nav_item" type="button" data-pwb-view="customers"><?= pwb_icon('users') ?><span class="pwb_nav_label">Clientes</span></button>
             <button class="pwb_nav_item" type="button" data-pwb-view="geo"><?= pwb_icon('access') ?><span class="pwb_nav_label">Geografia</span></button>
+            <button class="pwb_nav_item" type="button" data-pwb-view="pagamentos"><?= pwb_icon('currency') ?><span class="pwb_nav_label">Pagamentos</span></button>
+            <button class="pwb_nav_item" type="button" data-pwb-view="cupons"><?= pwb_icon('percent') ?><span class="pwb_nav_label">Cupons</span></button>
+            <button class="pwb_nav_item" type="button" data-pwb-view="posvenda"><?= pwb_icon('alert') ?><span class="pwb_nav_label">Pós-venda</span></button>
+            <button class="pwb_nav_item" type="button" data-pwb-view="logistica"><?= pwb_icon('box') ?><span class="pwb_nav_label">Logística</span></button>
+            <button class="pwb_nav_item" type="button" data-pwb-view="rentabilidade"><?= pwb_icon('currency') ?><span class="pwb_nav_label">Rentabilidade</span></button>
+            <button class="pwb_nav_item" type="button" data-pwb-view="metas"><?= pwb_icon('trend') ?><span class="pwb_nav_label">Metas e projeção</span></button>
+            <button class="pwb_nav_item" type="button" data-pwb-view="central"><?= pwb_icon('alert') ?><span class="pwb_nav_label">Central executiva</span></button>
             <button class="pwb_nav_item" type="button" data-pwb-view="access"><?= pwb_icon('access') ?><span class="pwb_nav_label">Funil</span></button>
             <button class="pwb_nav_item" type="button" data-pwb-view="ai"><?= pwb_icon('ai') ?><span class="pwb_nav_label">Saúde do dado</span></button>
             <button class="pwb_nav_item" type="button" data-pwb-view="faq"><?= pwb_icon('faq') ?><span class="pwb_nav_label">Perguntas</span></button>
@@ -413,6 +435,426 @@ $pwb_meta = $pwb_dashboard_data['meta'] ?? [];
             </article>
         </section>
 
+        <section class="pwb_view" data-pwb-panel="pagamentos">
+            <article class="pwb_panel">
+                <div class="pwb_panel_header">
+                    <h2 class="pwb_panel_title">Aprovação por método</h2>
+                    <span class="pwb_panel_hint">Sobre TENTATIVAS, inclusive as recusadas</span>
+                </div>
+                <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                    <thead class="pwb_thead"><tr class="pwb_tr">
+                        <th class="pwb_th">Método</th><th class="pwb_th">Tentativas</th>
+                        <th class="pwb_th">Aprovadas</th><th class="pwb_th">Taxa</th>
+                        <th class="pwb_th">Valor aprovado</th><th class="pwb_th">Situação</th>
+                    </tr></thead>
+                    <tbody class="pwb_tbody">
+                    <?php foreach (($pwb_tables['pagamentos'] ?? []) as $r): ?>
+                        <tr class="pwb_tr">
+                            <td class="pwb_td"><?= pwb_e($r['method']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['attempts']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['approved']) ?></td>
+                            <td class="pwb_td"><strong><?= pwb_e($r['rate']) ?></strong></td>
+                            <td class="pwb_td"><?= pwb_e($r['value']) ?></td>
+                            <td class="pwb_td"><span class="pwb_badge <?= pwb_e(pwb_badge_class($r['level'])) ?>"><?= pwb_e($r['level']) ?></span></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table></div>
+            </article>
+            <div class="pwb_chart_grid">
+                <article class="pwb_panel"><h2 class="pwb_panel_title">Receita por parcela</h2>
+                    <div class="pwb_chart_box"><canvas class="pwb_chart_canvas" id="pwb_chart_parcelas"></canvas></div></article>
+                <article class="pwb_panel"><h2 class="pwb_panel_title">Motivos de recusa</h2>
+                    <div class="pwb_chart_box"><canvas class="pwb_chart_canvas" id="pwb_chart_recusas"></canvas></div></article>
+            </div>
+        </section>
+
+        <section class="pwb_view" data-pwb-panel="cupons">
+            <article class="pwb_panel">
+                <div class="pwb_panel_header">
+                    <h2 class="pwb_panel_title">Desempenho por cupom</h2>
+                    <span class="pwb_panel_hint">Retorno = receita gerada por real de desconto</span>
+                </div>
+                <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                    <thead class="pwb_thead"><tr class="pwb_tr">
+                        <th class="pwb_th">Cupom</th><th class="pwb_th">Tipo</th>
+                        <th class="pwb_th">Usos</th><th class="pwb_th">Clientes</th>
+                        <th class="pwb_th">Desconto</th><th class="pwb_th">Receita</th>
+                        <th class="pwb_th">Retorno</th>
+                    </tr></thead>
+                    <tbody class="pwb_tbody">
+                    <?php foreach (($pwb_tables['cupons'] ?? []) as $r): ?>
+                        <tr class="pwb_tr">
+                            <td class="pwb_td"><strong><?= pwb_e($r['code']) ?></strong></td>
+                            <td class="pwb_td"><?= pwb_e($r['type']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['uses']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['clients']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['discount']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['revenue']) ?></td>
+                            <td class="pwb_td"><span class="pwb_badge <?= pwb_e(pwb_badge_class($r['level'])) ?>"><?= pwb_e($r['roi']) ?></span></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table></div>
+            </article>
+            <article class="pwb_panel">
+                <div class="pwb_panel_header">
+                    <h2 class="pwb_panel_title">Com desconto × sem desconto</h2>
+                    <span class="pwb_panel_hint">O desconto aumentou o ticket ou só entregou margem?</span>
+                </div>
+                <div class="pwb_chart_box"><canvas class="pwb_chart_canvas" id="pwb_chart_desconto"></canvas></div>
+            </article>
+        </section>
+
+        <section class="pwb_view" data-pwb-panel="posvenda">
+            <div class="pwb_metric_grid">
+                <?php foreach (($pwb_metrics['carrinho'] ?? []) as $item): ?><?php pwb_render_metric_card($item); ?><?php endforeach; ?>
+            </div>
+            <div class="pwb_chart_grid">
+                <article class="pwb_panel">
+                    <h2 class="pwb_panel_title">Devoluções por motivo</h2>
+                    <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                        <thead class="pwb_thead"><tr class="pwb_tr">
+                            <th class="pwb_th">Motivo</th><th class="pwb_th">Tipo</th>
+                            <th class="pwb_th">Unidades</th><th class="pwb_th">Valor</th>
+                        </tr></thead>
+                        <tbody class="pwb_tbody">
+                        <?php if (empty($pwb_tables['devolucoes'])): ?>
+                            <tr class="pwb_tr"><td class="pwb_td" colspan="4">Nenhuma devolução no período.</td></tr>
+                        <?php else: foreach ($pwb_tables['devolucoes'] as $r): ?>
+                            <tr class="pwb_tr">
+                                <td class="pwb_td"><?= pwb_e($r['reason']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($r['type']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($r['units']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($r['value']) ?></td>
+                            </tr>
+                        <?php endforeach; endif; ?>
+                        </tbody>
+                    </table></div>
+                </article>
+                <article class="pwb_panel">
+                    <div class="pwb_panel_header">
+                        <h2 class="pwb_panel_title">Cancelamentos por motivo</h2>
+                        <span class="pwb_panel_hint">Motivo estruturado nasceu na Fase 1</span>
+                    </div>
+                    <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                        <thead class="pwb_thead"><tr class="pwb_tr">
+                            <th class="pwb_th">Motivo</th><th class="pwb_th">Pedidos</th><th class="pwb_th">Valor</th>
+                        </tr></thead>
+                        <tbody class="pwb_tbody">
+                        <?php if (empty($pwb_tables['cancelamentos'])): ?>
+                            <tr class="pwb_tr"><td class="pwb_td" colspan="3">Nenhum cancelamento no período.</td></tr>
+                        <?php else: foreach ($pwb_tables['cancelamentos'] as $r): ?>
+                            <tr class="pwb_tr">
+                                <td class="pwb_td"><?= pwb_e($r['reason']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($r['orders']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($r['value']) ?></td>
+                            </tr>
+                        <?php endforeach; endif; ?>
+                        </tbody>
+                    </table></div>
+                </article>
+            </div>
+            <article class="pwb_panel">
+                <h2 class="pwb_panel_title">Produtos mais devolvidos</h2>
+                <div class="pwb_chart_box"><canvas class="pwb_chart_canvas" id="pwb_chart_devolvidos"></canvas></div>
+            </article>
+        </section>
+
+        <section class="pwb_view" data-pwb-panel="logistica">
+            <!-- Aviso PERMANENTE enquanto o vínculo não existir: sem ele,
+                 uma tabela vazia se leria como "não houve envio". -->
+            <div class="form-alert form-alert--warning" style="margin-bottom:14px;font-size:13px;">
+                <strong>Custo real de frete ainda sem base.</strong>
+                <code>valor_postado</code> — o que a transportadora efetivamente
+                cobrou na postagem — está vazio em todas as etiquetas, então
+                custo real e subsídio por pedido não têm o que mostrar.
+                O <em>vínculo</em> com o pedido funciona: etiquetas de
+                <code>canal='pedido'</code> amarram em 100%. Reversa e frete
+                avulso aparecem sem pedido por natureza, não por falha.
+            </div>
+            <article class="pwb_panel">
+                <div class="pwb_panel_header">
+                    <h2 class="pwb_panel_title">Etiquetas por tipo</h2>
+                    <span class="pwb_panel_hint">Somar os três daria um "envios" que não responde nada</span>
+                </div>
+                <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                    <thead class="pwb_thead"><tr class="pwb_tr">
+                        <th class="pwb_th">Tipo</th><th class="pwb_th">Etiquetas</th>
+                        <th class="pwb_th">Com pedido</th><th class="pwb_th">Com rastreio</th>
+                        <th class="pwb_th">Custo real médio</th>
+                    </tr></thead>
+                    <tbody class="pwb_tbody">
+                    <?php foreach (($pwb_tables['frete_tipo'] ?? []) as $r): ?>
+                        <tr class="pwb_tr">
+                            <td class="pwb_td"><strong><?= pwb_e($r['type']) ?></strong></td>
+                            <td class="pwb_td"><?= pwb_e($r['labels']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['linked']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['tracked']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['cost']) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table></div>
+            </article>
+
+            <article class="pwb_panel">
+                <h2 class="pwb_panel_title">Transportadoras</h2>
+                <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                    <thead class="pwb_thead"><tr class="pwb_tr">
+                        <th class="pwb_th">Transportadora</th><th class="pwb_th">Envios</th>
+                        <th class="pwb_th">Custo real médio</th><th class="pwb_th">Dias até entregar</th>
+                        <th class="pwb_th">Entregues</th>
+                    </tr></thead>
+                    <tbody class="pwb_tbody">
+                    <?php if (empty($pwb_tables['transportadoras'])): ?>
+                        <tr class="pwb_tr"><td class="pwb_td" colspan="5">Nenhuma etiqueta no período.</td></tr>
+                    <?php else: foreach ($pwb_tables['transportadoras'] as $r): ?>
+                        <tr class="pwb_tr">
+                            <td class="pwb_td"><?= pwb_e($r['carrier']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['shipments']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['cost']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['days']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['delivered']) ?></td>
+                        </tr>
+                    <?php endforeach; endif; ?>
+                    </tbody>
+                </table></div>
+            </article>
+            <div class="pwb_chart_grid">
+                <article class="pwb_panel">
+                    <div class="pwb_panel_header">
+                        <h2 class="pwb_panel_title">Giro de estoque</h2>
+                        <span class="pwb_panel_hint">Cobertura = dias de estoque no ritmo atual</span>
+                    </div>
+                    <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                        <thead class="pwb_thead"><tr class="pwb_tr">
+                            <th class="pwb_th">Produto</th><th class="pwb_th">Saldo</th>
+                            <th class="pwb_th">Vendido (90d)</th><th class="pwb_th">Cobertura</th>
+                            <th class="pwb_th">Giro</th>
+                        </tr></thead>
+                        <tbody class="pwb_tbody">
+                        <?php foreach (array_slice($pwb_tables['giro'] ?? [], 0, 12) as $r): ?>
+                            <tr class="pwb_tr">
+                                <td class="pwb_td"><?= pwb_e($r['product']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($r['stock']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($r['sold']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($r['coverage']) ?></td>
+                                <td class="pwb_td"><span class="pwb_badge <?= pwb_e(pwb_badge_class($r['level'])) ?>"><?= pwb_e($r['level']) ?></span></td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table></div>
+                </article>
+                <article class="pwb_panel">
+                    <div class="pwb_panel_header">
+                        <h2 class="pwb_panel_title">Estoque parado</h2>
+                        <span class="pwb_panel_hint">Com saldo, sem venda há 90+ dias</span>
+                    </div>
+                    <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                        <thead class="pwb_thead"><tr class="pwb_tr">
+                            <th class="pwb_th">Produto</th><th class="pwb_th">Saldo</th>
+                            <th class="pwb_th">Valor parado</th><th class="pwb_th">Sem vender há</th>
+                        </tr></thead>
+                        <tbody class="pwb_tbody">
+                        <?php foreach (array_slice($pwb_tables['parado'] ?? [], 0, 12) as $r): ?>
+                            <tr class="pwb_tr">
+                                <td class="pwb_td"><?= pwb_e($r['product']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($r['stock']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($r['value']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($r['since']) ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table></div>
+                </article>
+            </div>
+        </section>
+
+        <section class="pwb_view" data-pwb-panel="rentabilidade">
+            <div class="pwb_metric_grid">
+                <?php foreach (($pwb_metrics['concentracao'] ?? []) as $item): ?><?php pwb_render_metric_card($item); ?><?php endforeach; ?>
+            </div>
+            <article class="pwb_panel">
+                <div class="pwb_panel_header">
+                    <h2 class="pwb_panel_title">Curva ABC</h2>
+                    <span class="pwb_panel_hint">A = até 80% da receita acumulada · B = até 95% · C = cauda</span>
+                </div>
+                <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                    <thead class="pwb_thead"><tr class="pwb_tr">
+                        <th class="pwb_th">#</th><th class="pwb_th">Produto</th>
+                        <th class="pwb_th">Receita</th><th class="pwb_th">Participação</th>
+                        <th class="pwb_th">Acumulado</th><th class="pwb_th">Lucro</th>
+                        <th class="pwb_th">Classe</th>
+                    </tr></thead>
+                    <tbody class="pwb_tbody">
+                    <?php foreach (($pwb_tables['abc'] ?? []) as $r): ?>
+                        <tr class="pwb_tr">
+                            <td class="pwb_td"><?= pwb_e($r['position']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['name']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['revenue']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['share']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['cumulative']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['profit']) ?></td>
+                            <td class="pwb_td"><span class="pwb_badge pwb_abc_<?= pwb_e(strtolower($r['class'])) ?>"><?= pwb_e($r['class']) ?></span></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table></div>
+            </article>
+            <article class="pwb_panel">
+                <div class="pwb_panel_header">
+                    <h2 class="pwb_panel_title">Canais de venda</h2>
+                    <span class="pwb_panel_hint">Canal nasceu na Fase 1 — histórico anterior foi classificado por backfill</span>
+                </div>
+                <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                    <thead class="pwb_thead"><tr class="pwb_tr">
+                        <th class="pwb_th">Canal</th><th class="pwb_th">Receita</th>
+                        <th class="pwb_th">Pedidos</th><th class="pwb_th">Clientes</th>
+                        <th class="pwb_th">Ticket</th><th class="pwb_th">Margem</th>
+                    </tr></thead>
+                    <tbody class="pwb_tbody">
+                    <?php foreach (($pwb_tables['canais'] ?? []) as $r): ?>
+                        <tr class="pwb_tr">
+                            <td class="pwb_td"><strong><?= pwb_e($r['channel']) ?></strong></td>
+                            <td class="pwb_td"><?= pwb_e($r['revenue']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['orders']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['clients']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['ticket']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['margin']) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table></div>
+            </article>
+        </section>
+
+        <section class="pwb_view" data-pwb-panel="metas">
+            <div class="pwb_metric_grid">
+                <?php foreach (($pwb_metrics['projecao'] ?? []) as $item): ?><?php pwb_render_metric_card($item); ?><?php endforeach; ?>
+            </div>
+            <article class="pwb_panel">
+                <div class="pwb_panel_header">
+                    <h2 class="pwb_panel_title">Metas do período</h2>
+                    <span class="pwb_panel_hint">
+                        <a href="<?= pwb_e($pwb_dashboard_config['settings_url']) ?>">Cadastrar metas</a>
+                    </span>
+                </div>
+                <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                    <thead class="pwb_thead"><tr class="pwb_tr">
+                        <th class="pwb_th">Métrica</th><th class="pwb_th">Recorte</th>
+                        <th class="pwb_th">Período</th><th class="pwb_th">Meta</th>
+                        <th class="pwb_th">Realizado</th><th class="pwb_th">Atingido</th>
+                        <th class="pwb_th">Falta</th><th class="pwb_th">Situação</th>
+                    </tr></thead>
+                    <tbody class="pwb_tbody">
+                    <?php if (empty($pwb_tables['metas'])): ?>
+                        <tr class="pwb_tr"><td class="pwb_td" colspan="8">
+                            Nenhuma meta cadastrada para este período.
+                        </td></tr>
+                    <?php else: foreach ($pwb_tables['metas'] as $r): ?>
+                        <tr class="pwb_tr">
+                            <td class="pwb_td"><?= pwb_e($r['metric']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['target']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['period']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['goal']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['done']) ?></td>
+                            <td class="pwb_td"><strong><?= pwb_e($r['pct']) ?></strong></td>
+                            <td class="pwb_td"><?= pwb_e($r['missing']) ?></td>
+                            <td class="pwb_td"><span class="pwb_badge <?= pwb_e(pwb_badge_class($r['level'])) ?>"><?= pwb_e($r['level']) ?></span></td>
+                        </tr>
+                    <?php endforeach; endif; ?>
+                    </tbody>
+                </table></div>
+            </article>
+        </section>
+
+        <section class="pwb_view" data-pwb-panel="central">
+            <!-- Insights primeiro: é o que se lê em 5 segundos -->
+            <article class="pwb_panel">
+                <h2 class="pwb_panel_title">Insights do negócio</h2>
+                <ul class="pwb_insights">
+                    <?php foreach (($pwb_charts['insights'] ?? []) as $i): ?>
+                        <li class="pwb_insight"><?= pwb_e($i) ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            </article>
+
+            <article class="pwb_panel">
+                <div class="pwb_panel_header">
+                    <h2 class="pwb_panel_title">Central de alertas</h2>
+                    <span class="pwb_panel_hint">Alerta que não pôde ser avaliado aparece como informativo — nunca some</span>
+                </div>
+                <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                    <thead class="pwb_thead"><tr class="pwb_tr">
+                        <th class="pwb_th">Prioridade</th><th class="pwb_th">Alerta</th><th class="pwb_th">Detalhe</th>
+                    </tr></thead>
+                    <tbody class="pwb_tbody">
+                    <?php if (empty($pwb_tables['alertas'])): ?>
+                        <tr class="pwb_tr"><td class="pwb_td" colspan="3">Nenhum alerta.</td></tr>
+                    <?php else: foreach ($pwb_tables['alertas'] as $r): ?>
+                        <tr class="pwb_tr">
+                            <td class="pwb_td"><span class="pwb_badge <?= pwb_e(pwb_badge_class($r['level'])) ?>"><?= pwb_e($r['level']) ?></span></td>
+                            <td class="pwb_td"><?= pwb_e($r['title']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['detail']) ?></td>
+                        </tr>
+                    <?php endforeach; endif; ?>
+                    </tbody>
+                </table></div>
+            </article>
+
+            <div class="pwb_chart_grid">
+                <article class="pwb_panel">
+                    <div class="pwb_panel_header">
+                        <h2 class="pwb_panel_title">Produtos em alta</h2>
+                        <span class="pwb_panel_hint">30 dias vs. 30 anteriores</span>
+                    </div>
+                    <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                        <thead class="pwb_thead"><tr class="pwb_tr">
+                            <th class="pwb_th">Produto</th><th class="pwb_th">Antes</th>
+                            <th class="pwb_th">Agora</th><th class="pwb_th">Variação</th>
+                        </tr></thead>
+                        <tbody class="pwb_tbody">
+                        <?php if (empty($pwb_tables['alta'])): ?>
+                            <tr class="pwb_tr"><td class="pwb_td" colspan="4">Base insuficiente para comparar períodos.</td></tr>
+                        <?php else: foreach ($pwb_tables['alta'] as $r): ?>
+                            <tr class="pwb_tr">
+                                <td class="pwb_td"><?= pwb_e($r['name']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($r['before']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($r['now']) ?></td>
+                                <td class="pwb_td"><span class="pwb_badge pwb_badge_success"><?= pwb_e($r['change']) ?></span></td>
+                            </tr>
+                        <?php endforeach; endif; ?>
+                        </tbody>
+                    </table></div>
+                </article>
+                <article class="pwb_panel">
+                    <div class="pwb_panel_header">
+                        <h2 class="pwb_panel_title">Produtos em queda</h2>
+                        <span class="pwb_panel_hint">30 dias vs. 30 anteriores</span>
+                    </div>
+                    <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                        <thead class="pwb_thead"><tr class="pwb_tr">
+                            <th class="pwb_th">Produto</th><th class="pwb_th">Antes</th>
+                            <th class="pwb_th">Agora</th><th class="pwb_th">Variação</th>
+                        </tr></thead>
+                        <tbody class="pwb_tbody">
+                        <?php if (empty($pwb_tables['queda'])): ?>
+                            <tr class="pwb_tr"><td class="pwb_td" colspan="4">Base insuficiente para comparar períodos.</td></tr>
+                        <?php else: foreach ($pwb_tables['queda'] as $r): ?>
+                            <tr class="pwb_tr">
+                                <td class="pwb_td"><?= pwb_e($r['name']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($r['before']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($r['now']) ?></td>
+                                <td class="pwb_td"><span class="pwb_badge pwb_badge_danger"><?= pwb_e($r['change']) ?></span></td>
+                            </tr>
+                        <?php endforeach; endif; ?>
+                        </tbody>
+                    </table></div>
+                </article>
+            </div>
+        </section>
+
         <section class="pwb_view" data-pwb-panel="access">
             <div class="pwb_metric_grid">
                 <?php foreach (($pwb_metrics['access'] ?? []) as $item): ?><?php pwb_render_metric_card($item); ?><?php endforeach; ?>
@@ -608,6 +1050,22 @@ $pwb_meta = $pwb_dashboard_data['meta'] ?? [];
   barras('pwb_chart_geo_uf', (charts.geo_uf || []).map(function (r) {
     return { rotulo: r.local, valor: r.receita, texto: brl(r.receita) };
   }), '#2563eb');
+
+  barras('pwb_chart_parcelas', (charts.parcelas || []).map(function (r) {
+    return { rotulo: r.parcelas + 'x', valor: r.receita, texto: brl(r.receita) };
+  }), '#2563eb');
+
+  barras('pwb_chart_recusas', (charts.recusas || []).map(function (r) {
+    return { rotulo: r.motivo, valor: r.ocorrencias, texto: r.ocorrencias + 'x' };
+  }), '#dc2626');
+
+  barras('pwb_chart_desconto', (charts.desconto || []).map(function (r) {
+    return { rotulo: r.grupo, valor: r.ticket, texto: brl(r.ticket) + ' de ticket' };
+  }), '#d97706');
+
+  barras('pwb_chart_devolvidos', (charts.devolvidos || []).map(function (r) {
+    return { rotulo: r.produto, valor: r.valor, texto: brl(r.valor) };
+  }), '#dc2626');
 
   linha('pwb_chart_ai_usage', charts.daily || []);
 

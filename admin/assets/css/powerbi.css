@@ -273,3 +273,21 @@
 /* O hover da linha nao pode apagar a escala de cor da celula, que e a
    informacao principal da matriz. */
 .pwb_coorte_tabela .pwb_tr:hover { background: transparent; }
+
+/* ── Insights e curva ABC ────────────────────────────── */
+.pwb_insights { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.pwb_insight {
+  padding: 10px 12px 10px 32px; position: relative;
+  background: var(--pwb-surface2); border-radius: 9px;
+  font-size: 13.5px; line-height: 1.5;
+}
+.pwb_insight::before {
+  content: '→'; position: absolute; left: 12px; top: 10px;
+  color: var(--pwb-blue); font-weight: 800;
+}
+
+/* A/B/C com cores proprias: a classe e a informacao principal da
+   linha, e cinza uniforme obriga a ler o numero para saber. */
+.pwb_abc_a { background: var(--green-lt, #ecfdf5); color: #047857; }
+.pwb_abc_b { background: var(--blue-lt, #eff6ff);  color: var(--pwb-blue); }
+.pwb_abc_c { background: var(--pwb-surface2);      color: var(--pwb-text3); }

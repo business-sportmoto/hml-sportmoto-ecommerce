@@ -82,6 +82,19 @@ final class BiService
      */
     public function kpis(array $p): array
     {
+        // Deriva o período anterior quando o chamador passou só
+        // ini/fim. Sem isto, qualquer consumidor que montasse o
+        // intervalo à mão (alertas, insights, um relatório novo)
+        // quebrava com TypeError em vez de simplesmente comparar.
+        if (!isset($p['ini_ant'], $p['fim_ant'])) {
+            $ini    = new DateTimeImmutable($p['ini']);
+            $fim    = new DateTimeImmutable($p['fim']);
+            $dias   = max(1, (int)$ini->diff($fim)->days + 1);
+            $fimAnt = $ini->modify('-1 day');
+            $p['fim_ant'] = $fimAnt->format('Y-m-d');
+            $p['ini_ant'] = $fimAnt->modify('-' . ($dias - 1) . ' days')->format('Y-m-d');
+        }
+
         $atual    = $this->agregados($p['ini'], $p['fim']);
         $anterior = $this->agregados($p['ini_ant'], $p['fim_ant']);
 
@@ -917,13 +930,35 @@ final class BiService
     // ════════════════════════════════════════════════════
 
     /**
+     * Volume de etiquetas por tipo.
+     *
+     * `log_etiquetas.canal` separa venda da plataforma, logística
+     * reversa e frete avulso. Somar os três dá um número de "envios"
+     * que não corresponde a nenhuma pergunta real de negócio.
+     */
+    public function fretePorTipo(array $p): array
+    {
+        return $this->todos(
+            "SELECT tipo_frete,
+                    COUNT(*)                        AS etiquetas,
+                    SUM(pedido_id IS NOT NULL)      AS com_pedido,
+                    SUM(codigo_rastreio IS NOT NULL) AS com_rastreio,
+                    ROUND(AVG(custo_real),2)        AS custo_real_medio
+               FROM bi_fato_frete
+              WHERE data BETWEEN ? AND ?
+              GROUP BY tipo_frete
+              ORDER BY etiquetas DESC",
+            [$p['ini'], $p['fim']]
+        );
+    }
+
+    /**
      * Desempenho por transportadora.
      *
-     * ⚠ Hoje devolve pouco ou nada: `log_etiquetas.pedido_id` é NULL
-     * em 100% das linhas e `valor_postado` nunca é preenchido. Ver
-     * `bi_fato_frete` e o indicador `frete_ligado_ao_pedido` em
-     * `bi_saude_dados`. A consulta está pronta para quando o módulo
-     * de logística passar a gravar o vínculo.
+     * ⚠ `custo_real` e a divergência dependem de
+     * `log_etiquetas.valor_postado`, que hoje está vazio em todas as
+     * linhas — é o cron pós-postagem que o preenche. Prazo e vínculo
+     * com o pedido funcionam normalmente.
      */
     public function transportadoras(array $p): array
     {
@@ -942,6 +977,294 @@ final class BiService
               ORDER BY envios DESC",
             [$p['ini'], $p['fim']]
         );
+    }
+
+    // ════════════════════════════════════════════════════
+    // RENTABILIDADE E CONCENTRAÇÃO
+    // ════════════════════════════════════════════════════
+
+    /**
+     * Curva ABC por receita acumulada.
+     *
+     * A = até 80% da receita · B = até 95% · C = a cauda.
+     * O corte é sobre o ACUMULADO ordenado, não sobre o valor de cada
+     * item: é isso que faz "A" significar "o grupo que sustenta o
+     * negócio" em vez de "os itens caros".
+     *
+     * Por receita, não por lucro, enquanto a cobertura de custo for
+     * baixa — ABC por lucro com 0% de custo classificaria tudo como C.
+     */
+    public function curvaABC(array $p, string $dim = 'produto', int $limite = 200): array
+    {
+        $linhas = $this->ranking($p, $dim, $limite);
+        $total  = array_sum(array_map(fn($r) => (float)$r['receita'], $linhas));
+        if ($total <= 0) return [];
+
+        $acum = 0.0;
+        foreach ($linhas as $i => &$l) {
+            $acum += (float)$l['receita'];
+            $pct   = 100 * $acum / $total;
+            $l['posicao']       = $i + 1;
+            $l['pct_receita']   = round(100 * (float)$l['receita'] / $total, 2);
+            $l['pct_acumulado'] = round($pct, 2);
+            $l['classe']        = $pct <= 80 ? 'A' : ($pct <= 95 ? 'B' : 'C');
+        }
+        return $linhas;
+    }
+
+    /**
+     * Concentração 80/20. Responde "quantos itens fazem 80% da
+     * receita" — o número que diz se o negócio está apoiado em poucos
+     * produtos (risco) ou espalhado.
+     */
+    public function pareto(array $p, string $dim = 'produto'): array
+    {
+        $abc = $this->curvaABC($p, $dim, 500);
+        if (empty($abc)) return ['itens' => 0, 'itens_80' => 0, 'pct_itens' => 0.0, 'dimensao' => $dim];
+
+        $n80 = count(array_filter($abc, fn($r) => $r['classe'] === 'A'));
+        return [
+            'itens'     => count($abc),
+            'itens_80'  => $n80,
+            'pct_itens' => round(100 * $n80 / count($abc), 1),
+            'dimensao'  => $dim,
+        ];
+    }
+
+    /**
+     * Produtos em ascensão ou queda: período recente contra o
+     * imediatamente anterior de mesma duração.
+     *
+     * Exige base mínima no período anterior, senão qualquer produto
+     * que vendeu 1 unidade pela primeira vez apareceria com "+100%" e
+     * dominaria o ranking de crescimento.
+     */
+    public function tendenciaProdutos(int $dias = 30, string $direcao = 'alta', int $limite = 10): array
+    {
+        $ordem = $direcao === 'queda' ? 'ASC' : 'DESC';
+
+        return $this->todos(
+            "SELECT produto_id, nome_produto,
+                    ROUND(SUM(CASE WHEN data >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+                                   THEN receita ELSE 0 END),2) AS receita_atual,
+                    ROUND(SUM(CASE WHEN data <  DATE_SUB(CURDATE(), INTERVAL ? DAY)
+                                   THEN receita ELSE 0 END),2) AS receita_anterior,
+                    ROUND(100 * (
+                        SUM(CASE WHEN data >= DATE_SUB(CURDATE(), INTERVAL ? DAY) THEN receita ELSE 0 END)
+                      - SUM(CASE WHEN data <  DATE_SUB(CURDATE(), INTERVAL ? DAY) THEN receita ELSE 0 END)
+                    ) / NULLIF(SUM(CASE WHEN data < DATE_SUB(CURDATE(), INTERVAL ? DAY)
+                                        THEN receita ELSE 0 END),0), 1) AS variacao_pct
+               FROM bi_fato_item
+              WHERE venda_valida = 1
+                AND data >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+              GROUP BY produto_id, nome_produto
+             HAVING receita_anterior > 0 AND variacao_pct IS NOT NULL
+              ORDER BY variacao_pct {$ordem}
+              LIMIT " . (int)$limite,
+            [$dias, $dias, $dias, $dias, $dias, $dias * 2]
+        );
+    }
+
+    // ════════════════════════════════════════════════════
+    // PROJEÇÃO
+    // ════════════════════════════════════════════════════
+
+    /**
+     * Projeção do mês corrente por run-rate, com três cenários.
+     *
+     * A amplitude dos cenários vem do DESVIO PADRÃO das vendas
+     * diárias do mês, não de um "±20%" arbitrário: mês irregular
+     * merece intervalo largo, mês estável merece intervalo apertado.
+     *
+     * `confianca` é honesta sobre a base: o histórico começa em
+     * dez/2025, então até dez/2026 não existe ano anterior para
+     * sazonalidade e a projeção é run-rate puro.
+     */
+    public function projecaoMes(): array
+    {
+        $hoje       = new DateTimeImmutable('today');
+        $iniMes     = $hoje->modify('first day of this month');
+        $fimMes     = $hoje->modify('last day of this month');
+        $diasNoMes  = (int)$fimMes->format('d');
+        $diasPassados = (int)$hoje->format('d');
+
+        $d = $this->um(
+            "SELECT COALESCE(SUM(total),0) AS receita,
+                    COUNT(*)               AS pedidos,
+                    COALESCE(STDDEV_SAMP(diario),0) AS desvio
+               FROM bi_fato_pedido f
+               LEFT JOIN (SELECT data AS d2, SUM(total) AS diario
+                            FROM bi_fato_pedido
+                           WHERE venda_valida = 1 AND data BETWEEN ? AND ?
+                           GROUP BY data) s ON s.d2 = f.data
+              WHERE f.venda_valida = 1 AND f.data BETWEEN ? AND ?",
+            [$iniMes->format('Y-m-d'), $hoje->format('Y-m-d'),
+             $iniMes->format('Y-m-d'), $hoje->format('Y-m-d')]
+        );
+
+        $receita  = (float)($d['receita'] ?? 0);
+        $mediaDia = $diasPassados > 0 ? $receita / $diasPassados : 0.0;
+        $restam   = max(0, $diasNoMes - $diasPassados);
+        $provavel = $receita + ($mediaDia * $restam);
+
+        // Desvio diário propagado pelos dias que faltam.
+        $desvio = (float)($d['desvio'] ?? 0);
+        $margem = $desvio * sqrt(max(1, $restam));
+
+        return [
+            'mes'            => $hoje->format('Y-m'),
+            'dias_passados'  => $diasPassados,
+            'dias_no_mes'    => $diasNoMes,
+            'realizado'      => round($receita, 2),
+            'media_diaria'   => round($mediaDia, 2),
+            'conservador'    => round(max(0, $provavel - $margem), 2),
+            'provavel'       => round($provavel, 2),
+            'otimista'       => round($provavel + $margem, 2),
+            'pedidos'        => (int)($d['pedidos'] ?? 0),
+            // Menos de 5 dias corridos não sustenta projeção nenhuma.
+            'confianca'      => $diasPassados < 5 ? 'baixa'
+                              : ($desvio > $mediaDia ? 'baixa' : 'media'),
+            'aviso'          => 'Run-rate puro. O histórico começa em dez/2025 — '
+                              . 'sem ano anterior, não há ajuste de sazonalidade.',
+        ];
+    }
+
+    // ════════════════════════════════════════════════════
+    // ALERTAS E INSIGHTS
+    // ════════════════════════════════════════════════════
+
+    /**
+     * Alertas priorizados.
+     *
+     * Cada alerta só é emitido se o dado que o sustenta existir. Um
+     * alerta que não pôde ser avaliado vira um item 'informativo'
+     * dizendo isso — silêncio por falta de dado é indistinguível de
+     * silêncio por estar tudo bem, e essa ambiguidade é o pior
+     * resultado possível numa central de alertas.
+     *
+     * @return array<int,array{nivel:string,titulo:string,detalhe:string}>
+     */
+    public function alertas(array $p): array
+    {
+        $a = [];
+
+        // Ruptura iminente: ≤ 7 dias de cobertura no ritmo atual.
+        foreach ($this->giroEstoque(90, 100) as $g) {
+            if ($g['dias_cobertura'] !== null && (int)$g['dias_cobertura'] <= 7 && (int)$g['saldo'] > 0) {
+                $a[] = ['nivel' => 'critico',
+                        'titulo' => 'Ruptura em ' . (int)$g['dias_cobertura'] . ' dias: ' . $g['produto'],
+                        'detalhe' => (int)$g['saldo'] . ' em estoque, saída de '
+                                   . number_format((float)$g['media_diaria'], 2, ',', '.') . '/dia'];
+            }
+        }
+
+        // Queda de faturamento contra o período anterior equivalente.
+        $k = $this->kpis($p);
+        if ($k['faturamento']['variacao'] !== null && $k['faturamento']['variacao'] <= -20) {
+            $a[] = ['nivel' => 'critico',
+                    'titulo' => 'Faturamento caiu ' . abs($k['faturamento']['variacao']) . '%',
+                    'detalhe' => 'contra o período anterior de mesma duração'];
+        }
+
+        // Taxa de aprovação de pagamento.
+        foreach ($this->pagamentoAprovacao($p, 'metodo') as $m) {
+            if ((int)$m['tentativas'] >= 5 && (float)$m['taxa_aprovacao'] < 70) {
+                $a[] = ['nivel' => 'alto',
+                        'titulo' => 'Aprovação baixa em ' . $m['chave'] . ': ' . $m['taxa_aprovacao'] . '%',
+                        'detalhe' => (int)$m['aprovadas'] . ' de ' . (int)$m['tentativas'] . ' tentativas'];
+            }
+        }
+
+        // Cliente de alto valor parado.
+        foreach ($this->clientesRisco(5) as $c) {
+            $a[] = ['nivel' => 'alto',
+                    'titulo' => 'Cliente parado: ' . ($c['nome'] ?? '—'),
+                    'detalhe' => (int)$c['dias_sem_comprar'] . ' dias sem comprar ('
+                               . number_format((float)$c['vezes_o_normal'], 1, ',', '.')
+                               . 'x o intervalo dele) · ' . $this->moeda((float)$c['receita'])];
+        }
+
+        // Estoque parado com valor conhecido.
+        $paradoValor = 0.0;
+        foreach ($this->estoqueParado(180, 200) as $e) $paradoValor += (float)($e['valor_estoque'] ?? 0);
+        if ($paradoValor > 0) {
+            $a[] = ['nivel' => 'medio',
+                    'titulo' => $this->moeda($paradoValor) . ' parados há 180+ dias',
+                    'detalhe' => 'produtos com saldo e sem venda no período'];
+        }
+
+        // Lacunas de dado que impedem análise — informativo, nunca silêncio.
+        foreach ($this->saude() as $s) {
+            if ((float)($s['pct'] ?? 0) < 50) {
+                $a[] = ['nivel' => 'informativo',
+                        'titulo' => 'Cobertura baixa: ' . $s['descricao'],
+                        'detalhe' => ($s['pct'] ?? 0) . '% (' . $s['preenchido'] . ' de ' . $s['total']
+                                   . ') — análises que dependem disto ficam incompletas'];
+            }
+        }
+
+        $ordem = ['critico' => 0, 'alto' => 1, 'medio' => 2, 'informativo' => 3];
+        usort($a, fn($x, $y) => $ordem[$x['nivel']] <=> $ordem[$y['nivel']]);
+        return $a;
+    }
+
+    /**
+     * Insights em texto. Só afirma o que o dado sustenta — nada aqui
+     * é gerado quando a base é insuficiente.
+     */
+    public function insights(array $p): array
+    {
+        $out = [];
+        $k   = $this->kpis($p);
+
+        if ($k['faturamento']['variacao'] !== null) {
+            $v = $k['faturamento']['variacao'];
+            $out[] = ($v >= 0 ? 'Faturamento cresceu ' : 'Faturamento caiu ')
+                   . abs($v) . '% contra o período anterior.';
+        }
+        if ($k['ticket_medio']['variacao'] !== null) {
+            $v = $k['ticket_medio']['variacao'];
+            $out[] = 'Ticket médio ' . ($v >= 0 ? 'subiu ' : 'caiu ') . abs($v) . '%.';
+        }
+
+        $par = $this->pareto($p, 'produto');
+        if ($par['itens'] > 0 && $par['itens_80'] > 0) {
+            $out[] = $par['itens_80'] . ' de ' . $par['itens'] . ' produtos ('
+                   . $par['pct_itens'] . '%) concentram 80% da receita.';
+        }
+
+        $rec = $this->recompra();
+        if ($rec['total_clientes'] > 0) {
+            $out[] = 'Taxa de recompra em ' . $rec['taxa_recompra'] . '% sobre '
+                   . $rec['total_clientes'] . ' clientes.';
+        }
+
+        $uf = $this->geografia($p, 'uf', 1);
+        if (!empty($uf)) {
+            $out[] = $uf[0]['local'] . ' lidera com ' . $this->moeda((float)$uf[0]['receita']) . '.';
+        }
+
+        $alta = $this->tendenciaProdutos(30, 'alta', 1);
+        if (!empty($alta)) {
+            $out[] = $alta[0]['nome_produto'] . ' cresceu '
+                   . $alta[0]['variacao_pct'] . '% nos últimos 30 dias.';
+        }
+
+        // Se a margem não pode ser afirmada, dizer isso É o insight.
+        $cob = 0.0;
+        foreach ($this->saude() as $s) if ($s['indicador'] === 'custo_item') $cob = (float)$s['pct'];
+        if ($cob < 100) {
+            $out[] = 'Margem calculável sobre apenas ' . $cob . '% dos itens vendidos — '
+                   . 'cadastre o custo para liberar as análises de rentabilidade.';
+        }
+
+        return $out;
+    }
+
+    /** Formatação mínima usada só nos textos de alerta/insight. */
+    private function moeda(float $v): string
+    {
+        return 'R$ ' . number_format($v, 2, ',', '.');
     }
 
     /**
