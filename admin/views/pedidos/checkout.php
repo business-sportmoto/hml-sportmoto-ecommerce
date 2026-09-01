@@ -17,6 +17,7 @@ $ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int
     </div>
     <div class="sep_head_acoes">
       <a href="<?= BASE_URL ?>/admin/pedidos" class="btn btn-secondary"><?= $ico('arrow-back', 15) ?> Pedidos</a>
+      <a href="<?= BASE_URL ?>/admin/pedidos/checkout/estacao" class="btn btn-secondary"><?= $ico('barcode-scanner', 15) ?> Estação de bipagem</a>
       <button type="button" class="btn btn-primary" id="sepImprimirTodos" <?= empty($fila) ? 'disabled' : '' ?>>
         <?= $ico('printer', 15) ?> Imprimir envios (<span id="sepCount"><?= count($fila) ?></span>)
       </button>

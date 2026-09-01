@@ -122,7 +122,7 @@
             if (ev.key !== 'Enter') return;
             ev.preventDefault();
 
-            var codigo = $.trim($campo.val());
+            var codigo = String($campo.val() ?? '').trim();
             if (!codigo) return;
             $campo.val('').trigger('focus');
 
@@ -209,6 +209,173 @@
 
         pintar();
         $campo.trigger('focus');
+    })();
+
+
+    /* ═══════════════════════════════════════════════════════
+       TELA: estação de bipagem
+       ═══════════════════════════════════════════════════════ */
+    (function () {
+        var $est = $('#sepEstacao');
+        if (!$est.length) return;
+
+        var $campo  = $('#estCodigo');
+        var $status = $('#estStatus');
+        var sessao  = [];            // memoria do turno, so no navegador
+
+        function attr(s) { return esc(s).replace(/"/g, '&quot;'); }
+        function foco()  { $campo.trigger('focus').trigger('select'); }
+
+        function status(msg, tipo) {
+            $status.attr('class', 'est_status is-' + (tipo || 'info')).text(msg || '');
+        }
+
+        function brl(v) {
+            return 'R$ ' + (Number(v) || 0).toFixed(2).replace('.', ',');
+        }
+
+        function linhaItem(i) {
+            var img = i.imagem
+                ? '<img class="est_item_img" src="' + attr(i.imagem) + '" alt="">'
+                : '<span class="est_item_img est_item_img--vazia"></span>';
+
+            var meta = [];
+            if (i.variacao) meta.push(esc(i.variacao));
+            if (i.sku)      meta.push('SKU ' + esc(i.sku));
+            if (i.ean)      meta.push('EAN ' + esc(i.ean));
+
+            return '<div class="est_item">' + img +
+                   '<div class="est_item_txt">' +
+                     '<div class="est_item_nome">' + esc(i.nome) + '</div>' +
+                     (meta.length ? '<div class="est_item_meta">' + meta.join(' · ') + '</div>' : '') +
+                   '</div>' +
+                   '<div class="est_item_qtd">' + (i.quantidade | 0) + '<small>un</small></div>' +
+                   '<div class="est_item_preco">' + brl(i.preco) + '</div>' +
+                   '</div>';
+        }
+
+        function mostrar(p) {
+            var h = '<div class="est_campos">' +
+                '<div><span>Nº do pedido</span><strong>#' + (p.id | 0) + '</strong>' +
+                  '<div class="est_mono">' + esc(p.codigo) + '</div></div>' +
+                '<div><span>Nº de rastreio</span><strong class="est_mono">' +
+                  (p.codigo_rastreio ? esc(p.codigo_rastreio) : '—') + '</strong></div>' +
+                '<div><span>Método de envio</span><strong>' +
+                  (p.metodo_envio ? esc(p.metodo_envio) : '—') + '</strong></div>' +
+                '<div><span>Destinatário</span><strong>' + esc(p.destinatario) + '</strong>' +
+                  '<div class="est_mono">' + esc(p.cidade_uf) + '</div></div>' +
+                '</div>';
+
+            h += '<div class="est_selos">' +
+                 '<span class="sep_tag ' + (p.nfe_ok ? 'sep_tag--ok' : 'sep_tag--espera') + '">' +
+                   (p.nfe_ok ? 'NF ' + esc(p.nfe_numero) : 'sem NF-e') + '</span>' +
+                 '<span class="sep_tag sep_tag--neutro">' + (p.pecas | 0) + ' peça(s)</span>' +
+                 '<span class="sep_tag sep_tag--neutro">' + brl(p.total) + '</span>' +
+                 '</div>';
+
+            h += '<div class="est_secao">SKU / Variação</div><div class="est_itens">';
+            (p.itens || []).forEach(function (i) { h += linhaItem(i); });
+            h += '</div>';
+
+            h += '<a class="btn btn-secondary est_ir" href="' + attr(p.url_conferencia) + '">Abrir conferência</a>';
+
+            $('#estVazio').prop('hidden', true);
+            $('#estPedido').prop('hidden', false).html(h);
+        }
+
+        function registrar(p) {
+            // Ja passou nesta sessao: avisa em vez de duplicar a linha. Bipar
+            // duas vezes o mesmo pedido e o erro mais comum na bancada.
+            var repetido = sessao.some(function (x) { return x.id === p.id; });
+            if (repetido) {
+                status('Pedido #' + p.id + ' já foi escaneado nesta sessão.', 'aviso');
+                return;
+            }
+            sessao.push({ id: p.id, codigo: p.codigo, rastreio: p.codigo_rastreio, metodo: p.metodo_envio });
+            pintarSessao();
+        }
+
+        function pintarSessao() {
+            $('#estTotal').text(sessao.length);
+            if (!sessao.length) {
+                $('#estLista').html('<tr class="est_lista_vazia"><td colspan="4">Nada escaneado nesta sessão.</td></tr>');
+                return;
+            }
+            var h = '';
+            // Mais recente no topo: e o que o operador acabou de fazer.
+            sessao.slice().reverse().forEach(function (x, idx) {
+                h += '<tr><td>' + (sessao.length - idx) + '</td>' +
+                     '<td class="est_mono">' + esc(x.codigo) + '</td>' +
+                     '<td class="est_mono">' + (x.rastreio ? esc(x.rastreio) : '—') + '</td>' +
+                     '<td>' + (x.metodo ? esc(x.metodo) : '—') + '</td></tr>';
+            });
+            $('#estLista').html(h);
+        }
+
+        function buscar() {
+            var codigo = String($campo.val() ?? '').trim();
+            if (!codigo) { foco(); return; }
+
+            status('Buscando...', 'info');
+
+            $.ajax({
+                url: window.SEP_BASE + '/estacao/buscar',
+                method: 'POST',
+                dataType: 'json',
+                data: csrf({ codigo: codigo }),
+                headers: { 'X-CSRF-TOKEN': window.CSRF_TOKEN || '' }
+            }).done(function (r) {
+                $campo.val('');
+                if (!r || !r.ok) {
+                    status((r && r.msg) || 'Não encontrado.', 'erro');
+                    foco();
+                    return;
+                }
+
+                var p = r.pedido;
+                mostrar(p);
+
+                // Filtro de metodo: pegar o pedido do transportador errado e o
+                // tipo de engano que so aparece quando a saca ja foi lacrada.
+                var filtro = String($('#estMetodo').val() || '');
+                if (filtro && p.metodo_envio !== filtro) {
+                    status('Atenção: este pedido é "' + (p.metodo_envio || 'sem método') +
+                           '", diferente do filtro "' + filtro + '".', 'aviso');
+                } else {
+                    status('Encontrado por ' + (r.via || 'código') + '.', 'ok');
+                }
+
+                registrar(p);
+                foco();
+            }).fail(function () {
+                status('Falha de rede na busca.', 'erro');
+                foco();
+            });
+        }
+
+        // O leitor digita e manda Enter sozinho.
+        $campo.on('keydown', function (ev) {
+            if (ev.key === 'Enter') { ev.preventDefault(); buscar(); }
+        });
+        $('#estBuscar').on('click', buscar);
+
+        $('#estLimpar').on('click', function () {
+            sessao = [];
+            pintarSessao();
+            $('#estPedido').prop('hidden', true).empty();
+            $('#estVazio').prop('hidden', false);
+            status('');
+            foco();
+        });
+
+        // O foco tem que voltar sozinho: o operador bipa sem olhar para a tela,
+        // e um clique perdido no fundo faria a proxima leitura sumir.
+        $(document).on('click', function (ev) {
+            if (!$(ev.target).is('input, select, textarea, button, a')) foco();
+        });
+
+        pintarSessao();
+        foco();
     })();
 
 })(jQuery);

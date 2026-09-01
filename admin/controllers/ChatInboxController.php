@@ -411,6 +411,11 @@ class ChatInboxController extends Controller
         if (($_POST['agente_id'] ?? '') === 'eu') $agente = AuthHelper::usuarioId();
 
         $this->conversas->atribuir($id, $agente ?: null);
+
+        // O service filtra o caso "peguei para mim" — quem clicou não precisa
+        // ser avisado do próprio clique.
+        (new ChatNotificacaoService())->atribuida($id, $agente, AuthHelper::usuarioId());
+
         $this->json(['ok' => true, 'contadores' => $this->conversas->contadores(AuthHelper::usuarioId())]);
     }
 

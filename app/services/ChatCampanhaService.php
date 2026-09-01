@@ -302,6 +302,10 @@ class ChatCampanhaService
                 "UPDATE chat_campanhas SET status = 'concluida', concluido_em = NOW() WHERE id = :id"
             )->execute([':id' => $campanhaId]);
             (new ChatMensagemService($this->db))->recalcularCampanha($campanhaId);
+
+            // Depois do recálculo: os totais do aviso precisam ser os finais
+            (new ChatNotificacaoService($this->db))->campanhaConcluida($campanhaId);
+
             $out['fim'] = true;
             return $out;
         }

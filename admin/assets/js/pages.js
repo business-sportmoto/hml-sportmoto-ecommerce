@@ -655,7 +655,7 @@ $(function () {
                 $errBox.prop('hidden', true);
                 $okBox.prop('hidden', true);
 
-                var motivo = $.trim($('#estorno-motivo').val());
+                var motivo = String($('#estorno-motivo').val() ?? '').trim();
 
                 if (motivo.length < 5) {
                     $errBox
@@ -669,7 +669,7 @@ $(function () {
                 var valor = '';
 
                 if (tipo === 'parcial') {
-                    valor = $.trim($('#estorno-valor').val());
+                    valor = String($('#estorno-valor').val() ?? '').trim();
 
                     if (!valor || parseFloat(valor) <= 0) {
                         $errBox

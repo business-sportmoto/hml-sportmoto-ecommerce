@@ -24,6 +24,7 @@ class ChatWebhookService
     private ChatConversaService $conversas;
     private ChatMensagemService $mensagens;
     private ChatGatilhoService  $gatilhos;
+    private ChatNotificacaoService $notif;
 
     public function __construct(?PDO $db = null)
     {
@@ -32,6 +33,7 @@ class ChatWebhookService
         $this->conversas = new ChatConversaService($this->db);
         $this->mensagens = new ChatMensagemService($this->db);
         $this->gatilhos  = new ChatGatilhoService($this->db);
+        $this->notif     = new ChatNotificacaoService($this->db);
     }
 
     // =========================================================================
@@ -292,7 +294,7 @@ class ChatWebhookService
         }
 
         // ── Roteamento: idêntico ao WhatsApp ──
-        $this->rotear($contato, $conversa, [
+        $botRespondeu = $this->rotear($contato, $conversa, [
             'texto'      => $texto,
             'tipo'       => $tipo,
             'referencia' => '',
@@ -300,6 +302,11 @@ class ChatWebhookService
             'titulo'     => $botaoTitulo,
             'wamid'      => $mid,
         ]);
+
+        $this->notif->entrada(
+            (int)$conversa['id'], $contato,
+            $texto ?: $this->rotuloTipo($tipo), $botRespondeu
+        );
 
         return true;
     }
@@ -362,7 +369,7 @@ class ChatWebhookService
         }
 
         // ── Roteamento ──
-        $this->rotear($contato, $conversa, [
+        $botRespondeu = $this->rotear($contato, $conversa, [
             'texto'      => $extraido['texto'],
             'tipo'       => $tipo,
             'referencia' => $extraido['referencia'],
@@ -371,20 +378,51 @@ class ChatWebhookService
             'wamid'      => $wamid,
         ]);
 
+        // ── Sino ──
+        // Depois do roteamento porque o aviso depende de o robô ter respondido
+        // ou não. Nunca antes: avisaria gente para uma conversa que a automação
+        // resolve sozinha em seguida.
+        $this->notif->entrada(
+            (int)$conversa['id'], $contato,
+            $extraido['texto'] ?: $this->rotuloTipo($tipo), $botRespondeu
+        );
+
         return true;
+    }
+
+    /** Mensagem sem texto (foto, áudio) precisa de algo legível na notificação. */
+    private function rotuloTipo(string $tipo): string
+    {
+        return [
+            'image'    => '📷 Enviou uma imagem',
+            'video'    => '🎥 Enviou um vídeo',
+            'audio'    => '🎤 Enviou um áudio',
+            'voice'    => '🎤 Enviou um áudio',
+            'document' => '📎 Enviou um documento',
+            'sticker'  => 'Enviou uma figurinha',
+            'location' => '📍 Enviou uma localização',
+            'contacts' => 'Enviou um contato',
+            'share'    => 'Compartilhou uma publicação',
+            'story_reply' => 'Respondeu ao seu story',
+        ][$tipo] ?? 'Nova mensagem';
     }
 
     /**
      * Decide quem responde: sessão em andamento, gatilho, ou ninguém.
+     *
+     * @return bool a automação assumiu a resposta. Quem chama usa isto para
+     *              decidir se ainda vale avisar um humano — 'tag' e 'humano'
+     *              devolvem false de propósito: a primeira não responde nada e
+     *              a segunda existe justamente para chamar gente.
      */
-    private function rotear(array $contato, array $conversa, array $entrada): void
+    private function rotear(array $contato, array $conversa, array $entrada): bool
     {
         // 1. Bot desligado globalmente → só inbox
-        if (!ChatConfig::bool('bot_ativo', true)) return;
+        if (!ChatConfig::bool('bot_ativo', true)) return false;
 
         // 2. Humano assumiu esta conversa → o bot cala
         $cvAtual = $this->conversas->obter((int)$conversa['id']) ?: $conversa;
-        if ($this->conversas->botPausado($cvAtual)) return;
+        if ($this->conversas->botPausado($cvAtual)) return false;
 
         $motor     = new ChatFluxoMotor($this->db);
         $contatoId = (int)$contato['id'];
@@ -403,10 +441,10 @@ class ChatWebhookService
                 $this->gatilhos->executar(
                     ['acao' => 'optout', 'gatilho' => null], $contato, $entrada
                 );
-                return;
+                return true;
             }
 
-            if ($motor->entregarResposta($contatoId, $resposta)) return;
+            if ($motor->entregarResposta($contatoId, $resposta)) return true;
         }
 
         // 4. Gatilhos
@@ -416,12 +454,15 @@ class ChatWebhookService
         if ($decisao['gatilho']
             && (int)($decisao['gatilho']['so_fora_fluxo'] ?? 1) === 1
             && $motor->temSessaoAtiva($contatoId)) {
-            return;
+            return true;
         }
 
         if ($decisao['acao'] !== 'nenhuma') {
             $this->gatilhos->executar($decisao, $contato, $entrada);
+            return in_array($decisao['acao'], ['fluxo', 'mensagem', 'optout'], true);
         }
+
+        return false;
     }
 
     // =========================================================================

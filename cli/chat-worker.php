@@ -109,7 +109,17 @@ do {
             }
         }
 
-        // ── D. Limpeza (1x por hora) ──
+        // ── D. Sino: o que ninguém vê acontecer ──
+        // Cliente esperando e canal falhando não geram evento nenhum — são
+        // ausências. Só um worker olhando o relógio percebe.
+        $notif = new ChatNotificacaoService();
+
+        $esperando = $notif->semResposta();
+        if ($esperando > 0) $log("sem resposta: $esperando conversa(s) avisada(s)");
+
+        if ($notif->falhasDeEnvio()) $log('falhas de envio: gestores avisados');
+
+        // ── E. Limpeza (1x por hora) ──
         if ((int)date('i') === 3) {
             $apagados = (new ChatWebhookService())->limparLogAntigo(15);
             if ($apagados > 0) $log("log de webhook: $apagados linha(s) antiga(s) removida(s)");

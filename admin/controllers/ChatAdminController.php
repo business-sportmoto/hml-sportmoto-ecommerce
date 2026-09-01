@@ -93,8 +93,11 @@ class ChatAdminController extends Controller
 
         // Whitelist: só estas chaves podem ser gravadas pela tela
         $booleanos = ['bot_ativo', 'quiet_hours_ativo', 'auto_marcar_lida',
-                      'assinatura_obrigatoria', 'baixar_midia', 'assinatura_agente'];
-        $inteiros  = ['quiet_hours_inicio', 'quiet_hours_fim', 'pausa_bot_minutos', 'janela_horas'];
+                      'assinatura_obrigatoria', 'baixar_midia', 'assinatura_agente',
+                      'notif_conversa_nova', 'notif_mensagem', 'notif_atribuicao',
+                      'notif_campanha'];
+        $inteiros  = ['quiet_hours_inicio', 'quiet_hours_fim', 'pausa_bot_minutos', 'janela_horas',
+                      'notif_silencio_min', 'notif_sem_resposta_min', 'notif_falhas_min'];
 
         $pares = [];
         foreach ($booleanos as $c) $pares[$c] = !empty($_POST[$c]) ? '1' : '0';
@@ -106,6 +109,11 @@ class ChatAdminController extends Controller
                 'quiet_hours_inicio', 'quiet_hours_fim' => max(0, min(23, $v)),
                 'janela_horas'                          => max(1, min(24, $v)),
                 'pausa_bot_minutos'                     => max(0, min(1440, $v)),
+                // 0 desliga o aviso; o teto de 24h evita "avise em 3 dias",
+                // que na prática é o mesmo que não avisar
+                'notif_sem_resposta_min'                => max(0, min(1440, $v)),
+                'notif_silencio_min'                    => max(0, min(1440, $v)),
+                'notif_falhas_min'                      => max(0, min(1000, $v)),
                 default                                 => $v,
             };
             $pares[$c] = (string)$v;

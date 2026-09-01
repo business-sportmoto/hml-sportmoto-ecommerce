@@ -31,15 +31,16 @@
  */
 class NotificacaoService
 {
-    public const CATEGORIAS = ['pedido','promocao','sistema','estoque','financeiro','conta'];
+    public const CATEGORIAS = ['pedido','promocao','sistema','estoque','financeiro','conta','atendimento'];
 
     public const LABELS_CATEGORIA = [
-        'pedido'     => 'Pedidos',
-        'promocao'   => 'Promoções',
-        'sistema'    => 'Sistema',
-        'estoque'    => 'Estoque',
-        'financeiro' => 'Financeiro',
-        'conta'      => 'Conta',
+        'pedido'      => 'Pedidos',
+        'promocao'    => 'Promoções',
+        'sistema'     => 'Sistema',
+        'estoque'     => 'Estoque',
+        'financeiro'  => 'Financeiro',
+        'conta'       => 'Conta',
+        'atendimento' => 'Atendimento',
     ];
 
     /** Ícone (Bootstrap Icons) e cor por categoria — usado no modal */
@@ -50,6 +51,7 @@ class NotificacaoService
         'estoque'    => ['icone' => 'bi-clipboard-data','cor' => '#f59e0b'],
         'financeiro' => ['icone' => 'bi-cash-coin',     'cor' => '#16a34a'],
         'conta'      => ['icone' => 'bi-person',        'cor' => '#6366f1'],
+        'atendimento'=> ['icone' => 'bi-chat-dots',     'cor' => '#0891b2'],
     ];
 
     /** Batch do fan-out de broadcast */

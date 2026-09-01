@@ -3111,3 +3111,203 @@ html[data-theme="dark"] .fp-selo{background:var(--pgto-surface-2) !important;col
 /* Cabecalho da lista de pedidos: Checkout e Novo pedido lado a lado. */
 .ped_head_acoes { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .ped_head_acoes .btn svg { width: 15px; height: 15px; }
+
+/* ###########################################################################
+   ESTAÇÃO DE BIPAGEM
+   ###########################################################################
+   Tela de bancada: fica aberta o turno inteiro e é operada com leitor, não com
+   mouse. Por isso o campo de leitura é grande, os blocos são largos e não há
+   nada disputando atenção com o pedido escaneado.
+   ########################################################################### */
+
+.est_tela { padding: 0 0 24px; }
+
+.est_barra {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.est_barra .btn { margin-left: auto; }
+
+.est_fechar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-md);
+  color: var(--text-2);
+  text-decoration: none;
+}
+.est_fechar:hover { background: var(--surface2); color: var(--text); }
+
+.est_titulo {
+  font-weight: 700;
+  font-size: 15px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.est_info {
+  margin: 16px 20px 0;
+  padding: 11px 14px;
+  border-radius: var(--r-md);
+  background: var(--blue-lt);
+  border: 1px solid var(--blue-bd);
+  color: var(--text-2);
+  font-size: 12.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── busca ────────────────────────────────────────────────────────────── */
+.est_busca {
+  display: flex;
+  gap: 10px;
+  margin: 16px 20px 0;
+  flex-wrap: wrap;
+}
+.est_metodo { max-width: 230px; }
+
+/* O campo é o centro da tela: o operador bipa sem olhar, e precisa enxergar
+   de longe que a leitura entrou. */
+.est_input {
+  flex: 1 1 320px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 17px !important;
+  font-weight: 600;
+  letter-spacing: .5px;
+  padding: 13px 16px !important;
+}
+
+.est_status {
+  margin: 10px 20px 0;
+  font-size: 13px;
+  font-weight: 600;
+  min-height: 20px;
+}
+.est_status.is-ok    { color: var(--success); }
+.est_status.is-erro  { color: var(--danger); }
+.est_status.is-aviso { color: var(--warning); }
+.est_status.is-info  { color: var(--text-3); }
+
+/* ── grid ─────────────────────────────────────────────────────────────── */
+.est_grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  margin: 16px 20px 0;
+  align-items: start;
+}
+@media (max-width: 1000px) {
+  .est_grid { grid-template-columns: 1fr; }
+}
+
+.est_vazio {
+  text-align: center;
+  padding: 40px 16px;
+  color: var(--text-3);
+}
+.est_vazio p { margin: 10px 0 0; font-size: 13px; }
+
+/* ── pedido escaneado ─────────────────────────────────────────────────── */
+.est_campos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 18px;
+}
+.est_campos > div { min-width: 0; }
+.est_campos span {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--text-3);
+  margin-bottom: 3px;
+}
+.est_campos strong {
+  display: block;
+  font-size: 15px;
+  word-break: break-word;
+}
+
+.est_mono {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  color: var(--text-2);
+  word-break: break-all;
+}
+
+.est_selos { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+
+.est_secao {
+  margin: 18px 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--text-3);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.est_itens { display: flex; flex-direction: column; gap: 10px; }
+
+.est_item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface2);
+}
+.est_item_img {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.est_item_img--vazia { display: inline-block; }
+
+.est_item_txt { flex: 1 1 auto; min-width: 0; }
+.est_item_nome { font-weight: 600; font-size: 13.5px; }
+.est_item_meta {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 2px;
+  word-break: break-all;
+}
+.est_item_qtd {
+  font-size: 19px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.est_item_qtd small { font-size: 11px; font-weight: 600; color: var(--text-3); margin-left: 2px; }
+.est_item_preco { font-weight: 700; white-space: nowrap; font-size: 13px; }
+
+.est_ir { margin-top: 16px; }
+
+/* ── sessão ───────────────────────────────────────────────────────────── */
+.est_sessao_head h3 { margin: 0; }
+.est_sessao_body { padding: 0; }
+.est_lista th, .est_lista td { white-space: nowrap; }
+.est_lista_vazia td {
+  text-align: center;
+  color: var(--text-3);
+  padding: 26px 10px;
+  font-size: 13px;
+}

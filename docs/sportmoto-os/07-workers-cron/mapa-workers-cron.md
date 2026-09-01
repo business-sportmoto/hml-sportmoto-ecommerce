@@ -38,7 +38,14 @@ Fases por rodada:
   A) resolve timeouts de "esperar resposta"
   B) acorda sessões que estavam dormindo (nó esperar)
   C) consome a fila das campanhas, respeitando ritmo_por_minuto
-  D) limpa chat_webhook_log com mais de 15 dias (1x/hora, no minuto :03)
+  D) avisos do sino que não têm evento próprio:
+       · cliente esperando resposta há mais de notif_sem_resposta_min
+       · N falhas de envio na última hora (notif_falhas_min)
+     Sem este cron, esses dois avisos simplesmente não acontecem — são
+     ausências, e ausência não dispara webhook. O resto do sino do
+     atendimento (mensagem nova, atribuição, campanha concluída) sai do
+     próprio evento e não depende do worker.
+  E) limpa chat_webhook_log com mais de 15 dias (1x/hora, no minuto :03)
 
 Uso:
   php cli/chat-worker.php

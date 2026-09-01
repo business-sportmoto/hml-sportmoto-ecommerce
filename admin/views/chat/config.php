@@ -316,6 +316,97 @@ $on   = fn(string $k, bool $d = false) => in_array(strtolower((string)($config[$
       </div>
     </div>
 
+    <div class="ch-card" style="margin-bottom:16px;">
+      <div class="ch-card-head">
+        <h2>6. Avisos no sino</h2>
+        <span class="ch-sm ch-mut">categoria <strong>Atendimento</strong></span>
+      </div>
+      <div class="ch-card-body">
+        <div class="ch-aviso ch-aviso--info">
+          <div>
+            Cai no sino do topo do painel, junto das outras notificações. Nada disso
+            vai para o cliente — é comunicação interna da equipe.
+          </div>
+        </div>
+
+        <div class="ch-campo">
+          <label class="ch-check">
+            <input type="checkbox" name="notif_conversa_nova" value="1" <?= $on('notif_conversa_nova', true) ? 'checked' : '' ?>>
+            <span>
+              <strong>Mensagem sem responsável</strong>
+              <div class="ch-ajuda">
+                Avisa quem atende (super, gerente, vendedor). Fica quieto quando a
+                automação já respondeu — ninguém precisa correr para uma conversa
+                que o robô está conduzindo.
+              </div>
+            </span>
+          </label>
+        </div>
+
+        <div class="ch-campo">
+          <label class="ch-check">
+            <input type="checkbox" name="notif_mensagem" value="1" <?= $on('notif_mensagem', true) ? 'checked' : '' ?>>
+            <span>
+              <strong>Mensagem numa conversa que tem responsável</strong>
+              <div class="ch-ajuda">Só o responsável recebe.</div>
+            </span>
+          </label>
+        </div>
+
+        <div class="ch-campo">
+          <label class="ch-check">
+            <input type="checkbox" name="notif_atribuicao" value="1" <?= $on('notif_atribuicao', true) ? 'checked' : '' ?>>
+            <span>
+              <strong>Conversa atribuída a você</strong>
+              <div class="ch-ajuda">Pegar uma conversa para si não gera aviso.</div>
+            </span>
+          </label>
+        </div>
+
+        <div class="ch-campo">
+          <label class="ch-check">
+            <input type="checkbox" name="notif_campanha" value="1" <?= $on('notif_campanha', true) ? 'checked' : '' ?>>
+            <span>
+              <strong>Campanha concluída</strong>
+              <div class="ch-ajuda">Vai para quem criou a campanha, com o resumo de enviados e falhas.</div>
+            </span>
+          </label>
+        </div>
+
+        <div class="ch-grid-3">
+          <div class="ch-campo">
+            <label class="ch-label">Silêncio por conversa (min)</label>
+            <input type="number" class="ch-input" name="notif_silencio_min" min="0" max="1440"
+                   value="<?= (int)$cfg('notif_silencio_min', 15) ?>">
+            <div class="ch-ajuda">
+              Cinco mensagens seguidas viram <strong>um</strong> aviso. É o que separa
+              um sino útil de um que todo mundo aprende a ignorar. <strong>0</strong> = avisa sempre.
+            </div>
+          </div>
+          <div class="ch-campo">
+            <label class="ch-label">Cliente esperando há (min)</label>
+            <input type="number" class="ch-input" name="notif_sem_resposta_min" min="0" max="1440"
+                   value="<?= (int)$cfg('notif_sem_resposta_min', 30) ?>">
+            <div class="ch-ajuda">
+              Um aviso por espera, para o responsável — ou para os gestores, se a
+              conversa estiver sem dono. Depende do <strong>cron do worker</strong>.
+              <strong>0</strong> = desligado.
+            </div>
+          </div>
+          <div class="ch-campo">
+            <label class="ch-label">Falhas de envio em 1h</label>
+            <input type="number" class="ch-input" name="notif_falhas_min" min="0" max="1000"
+                   value="<?= (int)$cfg('notif_falhas_min', 5) ?>">
+            <div class="ch-ajuda">
+              A partir daqui, avisa os gestores com o último erro — costuma ser o
+              diagnóstico inteiro (token expirado, template pausado).
+              <strong>0</strong> = desligado.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="ch-flex" style="justify-content:flex-end;gap:8px;margin-bottom:20px;">
       <span id="ch-cfg-msg" class="ch-sm"></span>
       <button type="submit" class="ch-btn ch-btn--pri">Salvar configuração</button>
