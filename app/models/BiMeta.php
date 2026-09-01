@@ -131,18 +131,19 @@ class BiMeta {
             if ($id) {
                 $this->db->prepare(
                     "UPDATE bi_metas SET periodo_ini=?, periodo_fim=?, granularidade=?,
-                            metrica=?, dimensao=?, dimensao_id=?, valor_meta=?, observacao=?
+                            metrica=?, dimensao=?, dimensao_id=?, dimensao_valor=?,
+                            valor_meta=?, observacao=?
                       WHERE id=?"
-                )->execute([$ini,$fim,$gran,$metrica,$dimensao,$dimId,$valor,$obs,$id]);
+                )->execute([$ini,$fim,$gran,$metrica,$dimensao,$dimId,$dimVal,$valor,$obs,$id]);
                 return ['ok'=>true,'msg'=>'Meta atualizada.','id'=>$id];
             }
 
             $this->db->prepare(
                 "INSERT INTO bi_metas
                  (periodo_ini,periodo_fim,granularidade,metrica,dimensao,dimensao_id,
-                  valor_meta,observacao,criado_por)
-                 VALUES (?,?,?,?,?,?,?,?,?)"
-            )->execute([$ini,$fim,$gran,$metrica,$dimensao,$dimId,$valor,$obs,
+                  dimensao_valor,valor_meta,observacao,criado_por)
+                 VALUES (?,?,?,?,?,?,?,?,?,?)"
+            )->execute([$ini,$fim,$gran,$metrica,$dimensao,$dimId,$dimVal,$valor,$obs,
                         AuthHelper::usuarioId() ?: null]);
 
             return ['ok'=>true,'msg'=>'Meta criada.','id'=>(int)$this->db->lastInsertId()];
@@ -161,6 +162,31 @@ class BiMeta {
 
     public function excluir(int $id): bool {
         return $this->db->prepare("DELETE FROM bi_metas WHERE id = ?")->execute([$id]);
+    }
+
+    /**
+     * Opções de alvo por dimensão, para o combo dependente do admin.
+     *
+     * Canais saem de `pedidos` (os que REALMENTE existem) em vez de
+     * uma lista fixa: meta para canal que nunca vendeu nasce órfã e
+     * nunca é atingida.
+     */
+    public function alvos(): array {
+        return [
+            'vendedor'  => $this->db->query(
+                "SELECT id, nome FROM vendedores WHERE ativo = 1 ORDER BY nome"
+            )->fetchAll(),
+            'marca'     => $this->db->query(
+                "SELECT id, nome FROM marcas WHERE ativo = 1 ORDER BY nome"
+            )->fetchAll(),
+            'categoria' => $this->db->query(
+                "SELECT id, nome FROM categorias WHERE ativo = 1 ORDER BY nome"
+            )->fetchAll(),
+            'canal'     => $this->db->query(
+                "SELECT DISTINCT canal AS id, canal AS nome
+                   FROM pedidos WHERE canal <> '' ORDER BY canal"
+            )->fetchAll(),
+        ];
     }
 
     private static function dataValida(string $d): bool {

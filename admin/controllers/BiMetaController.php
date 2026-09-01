@@ -31,7 +31,7 @@ class BiMetaController extends Controller {
         $granuls  = BiMeta::GRANULARIDADES;
 
         // Alvos possíveis por dimensão, para o combo dependente.
-        $alvos = $this->alvos();
+        $alvos = $this->model->alvos();
 
         $this->render('bi/metas', compact(
             'metas','filtros','metricas','dimensoes','granuls','alvos'
@@ -68,28 +68,5 @@ class BiMetaController extends Controller {
         $this->json($this->model->excluir($id)
             ? ['ok' => true,  'msg' => 'Meta excluída.']
             : ['ok' => false, 'msg' => 'Não foi possível excluir.']);
-    }
-
-    /**
-     * Opções de alvo por dimensão. Vendedores ativos, marcas e
-     * categorias ativas, e os canais que REALMENTE existem em
-     * pedidos — listar canal que nunca foi usado só gera meta órfã.
-     */
-    private function alvos(): array {
-        $db = Database::getInstance()->getConnection();
-        return [
-            'vendedor'  => $db->query(
-                "SELECT id, nome FROM vendedores WHERE ativo = 1 ORDER BY nome"
-            )->fetchAll(),
-            'marca'     => $db->query(
-                "SELECT id, nome FROM marcas WHERE ativo = 1 ORDER BY nome"
-            )->fetchAll(),
-            'categoria' => $db->query(
-                "SELECT id, nome FROM categorias WHERE ativo = 1 ORDER BY nome"
-            )->fetchAll(),
-            'canal'     => $db->query(
-                "SELECT DISTINCT canal AS id, canal AS nome FROM pedidos ORDER BY canal"
-            )->fetchAll(),
-        ];
     }
 }
