@@ -380,6 +380,12 @@ class AppPerfilController extends AppApiController
             // dois interruptores diferentes — ver AuthController::getCanais2FA.
             'dois_fatores'     => (new TwoFactorService())->isAtivo($usuarioId),
             'app_autenticador' => $totp->isAtivo($usuarioId),
+            // Quantos códigos de backup ainda valem. Zero com o TOTP ativo é
+            // uma conta a um aparelho perdido de ficar inacessível — a tela
+            // precisa saber disso para avisar.
+            'codigos_backup'   => $totp->isAtivo($usuarioId)
+                ? $totp->contarCodigosBackupRestantes($usuarioId)
+                : 0,
             'tem_celular'      => strlen((string)preg_replace('/\D/', '', (string)($perfil['celular'] ?? ''))) >= 10,
             'sessoes_ativas'   => count((new SessionManager())->getActiveSessions($usuarioId)),
         ]]);
@@ -388,8 +394,9 @@ class AppPerfilController extends AppApiController
     /**
      * POST /api/app/v1/conta/seguranca/2fa   Corpo: { ativo }
      *
-     * Só o 2FA por envio. O app autenticador exige QR Code e confirmação de
-     * código — fica no fluxo web, e o app leva para lá.
+     * Só o 2FA por envio. O app autenticador tem fluxo próprio, em
+     * AppTotpController — são dois interruptores independentes, e a loja os
+     * trata separado (ver AuthController::getCanais2FA).
      */
     public function alternar2fa(): void
     {

@@ -119,10 +119,23 @@ class AdminPedidoController extends Controller {
             return $row;
         }, $stmtPromo->fetchAll());
 
+        // ── Etiqueta de envio ─────────────────────────────
+        // O status decide se o bloco aparece; quem autoriza a emissao e a regra
+        // do SeparacaoService — a mesma do checkout de expedicao — para as duas
+        // telas nao divergirem sobre quando pode emitir.
+        $separacao      = new SeparacaoService();
+        $etiquetaCtx    = $separacao->contextoEtiqueta($id);
+        $mostraEtiqueta = in_array(
+            (string)($pedido['status_pedido'] ?? ''),
+            [SeparacaoService::STATUS_ORIGEM, SeparacaoService::STATUS_SEPARACAO],
+            true
+        );
+
         $this->render('pedidos/show', compact(
             'pedido','itens','historico','nf',
             'todosStatus','statusMap','statusDef','podeEditarItens',
-            'blingMap','blingLogs','cupomUso','promocoesAplicadas'
+            'blingMap','blingLogs','cupomUso','promocoesAplicadas',
+            'etiquetaCtx','mostraEtiqueta'
         ), 'admin');
     }
 
@@ -433,6 +446,12 @@ class AdminPedidoController extends Controller {
     public function gerarEtiqueta(int $id): void {
         $this->verifyCsrf();
         AuthHelper::requireAdminLevel('super', 'gerente', 'vendedor');
+
+        // A trava da NF-e vale aqui tambem. A view ja esconde o botao, mas isso
+        // e so a tela: sem esta linha um POST direto emitiria etiqueta cobrada
+        // em pedido sem nota, contornando a regra do checkout.
+        $pode = (new SeparacaoService())->podeGerarEtiqueta($id);
+        if (empty($pode['ok'])) $this->json($pode);
 
         $this->json($this->service->gerarEtiqueta($id, [
             'transportadora_id' => (int)($_POST['transportadora_id'] ?? 0),

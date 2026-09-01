@@ -473,6 +473,55 @@ $ordemAtual = (int)($statusDef['ordenacao'] ?? 0);
         </div>
       </div>
 
+      <!-- ETIQUETA DE ENVIO -->
+      <?php if (!empty($mostraEtiqueta)): ?>
+      <?php
+        // Mesmo helper das telas de logistica. O tamanho vem do font-size do
+        // wrapper, e nao de width/height: os Material Symbols ja trazem esses
+        // atributos no proprio <svg>, e atributo duplicado nao sobrescreve —
+        // o primeiro vence, entao o icone sairia sempre em 24px.
+        $ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int)$s . 'px">'
+            . (class_exists('IconLibrary') ? IconLibrary::ref($n, '') : '') . '</span>';
+      ?>
+      <div class="admin-card ap-action-card" style="margin-top:14px;">
+        <h3 class="ap-card-title">Etiqueta de envio</h3>
+        <div style="padding:14px 18px 16px;display:flex;flex-direction:column;gap:10px;">
+
+          <?php if (!empty($etiquetaCtx['etiqueta'])): ?>
+            <span class="badge badge-success" style="align-self:flex-start;">Etiqueta emitida</span>
+            <div style="font-family:'SF Mono',monospace;font-size:13px;letter-spacing:.5px;">
+              <?= View::e($etiquetaCtx['etiqueta']['codigo_rastreio'] ?? '') ?>
+            </div>
+            <?php if (!empty($etiquetaCtx['etiqueta']['url_pdf'])): ?>
+              <a class="btn btn-outline" target="_blank" rel="noopener"
+                 href="<?= View::e($etiquetaCtx['etiqueta']['url_pdf']) ?>">
+                <?= $ico('printer', 15) ?> Imprimir etiqueta
+              </a>
+            <?php endif; ?>
+
+          <?php elseif (empty($etiquetaCtx['pode']['ok'])): ?>
+            <div style="background:var(--warning-lt);border:1px solid var(--warning-bd);
+                        border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--warning);">
+              <?= View::e($etiquetaCtx['pode']['msg'] ?? 'Etiqueta indisponível.') ?>
+            </div>
+
+          <?php else: ?>
+            <select id="sel-transportadora" class="form-control">
+              <option value="">Carregando…</option>
+            </select>
+            <button type="button" class="btn btn-primary" id="btn-gerar-etiqueta" disabled>
+              <?= $ico('etiqueta', 15) ?> Gerar etiqueta
+            </button>
+            <div style="font-size:12px;color:var(--text-3);">
+              Emite de verdade na transportadora e tem custo.
+            </div>
+            <div id="etiqueta-msg" style="display:none;"></div>
+          <?php endif; ?>
+
+        </div>
+      </div>
+      <?php endif; ?>
+
       <!-- PAGAMENTO -->
       <div class="admin-card ap-action-card" style="margin-top:14px;">
         <h3 class="ap-card-title">Dados de pagamento</h3>
@@ -900,6 +949,77 @@ var statusAtualEhCancelado = '<?= $isCancelado ? 'true' : 'false' ?>' === 'true'
       $res.html(
         '<div style="color:var(--danger);font-size:13px;">Erro de conexão. Tente novamente.</div>'
       ).show();
+    });
+  });
+})();
+</script>
+
+<script>
+/* Etiqueta de envio — a mesma emissao do checkout de expedicao, a partir da
+   pagina do pedido. O botao so libera com transportadora escolhida; a trava da
+   NF-e ja foi aplicada no servidor antes de renderizar e e revalidada no POST. */
+(function () {
+  var $sel = $('#sel-transportadora');
+  var $btn = $('#btn-gerar-etiqueta');
+  if (!$sel.length || !$btn.length) return;
+
+  var $msg = $('#etiqueta-msg');
+
+  function aviso(txt, cor) {
+    $msg.attr('style',
+      'background:var(--' + cor + '-lt);border:1px solid var(--' + cor + '-bd);' +
+      'border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--' + cor + ');'
+    ).text(txt).show();
+  }
+
+  $.getJSON('<?= ADMIN_URL ?>/pedidos/opcoes-envio')
+    .done(function (r) {
+      $sel.empty().append($('<option>', { value: '', text: 'Selecione a transportadora e o serviço…' }));
+      ((r && r.transportadoras) || []).forEach(function (t) {
+        (t.servicos || []).forEach(function (sv) {
+          $sel.append($('<option>', {
+            value: t.id + '|' + sv.codigo,
+            text : t.nome + ' — ' + sv.nome
+          }));
+        });
+      });
+      if ($sel.find('option').length <= 1) {
+        $sel.empty().append($('<option>', { value: '', text: 'Nenhum serviço de envio cadastrado' }));
+      }
+    })
+    .fail(function () {
+      $sel.empty().append($('<option>', { value: '', text: 'Falha ao carregar transportadoras' }));
+    });
+
+  $sel.on('change', function () { $btn.prop('disabled', !$sel.val()); });
+
+  $btn.on('click', function () {
+    var val = String($sel.val() || '');
+    if (!val) { aviso('Selecione a transportadora.', 'warning'); return; }
+    if (!window.confirm('Emitir a etiqueta agora? A transportadora cobra por isso.')) return;
+
+    var partes = val.split('|');
+    CK.btnLoading($btn);
+    $msg.hide();
+
+    $.post('<?= ADMIN_URL ?>/pedidos/' + PEDIDO_ID + '/etiqueta', {
+      _token            : CSRF_TOKEN,
+      transportadora_id : partes[0],
+      servico_codigo    : partes[1],
+      servico_nome      : $sel.find('option:selected').text()
+    })
+    .done(function (r) {
+      CK.btnLoading($btn, false);
+      if (!r || !r.ok) {
+        aviso((r && r.msg) || 'Falha ao emitir a etiqueta.', 'danger');
+        return;
+      }
+      adminToast('Etiqueta emitida' + (r.codigo_rastreio ? ' — ' + r.codigo_rastreio : '') + '.', 'success');
+      setTimeout(function () { window.location.reload(); }, 900);
+    })
+    .fail(function () {
+      CK.btnLoading($btn, false);
+      aviso('Falha de rede ao emitir a etiqueta.', 'danger');
     });
   });
 })();

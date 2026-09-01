@@ -114,6 +114,14 @@ AppRouter::delete($v . '/conta/sessoes',               'AppPerfilController@ence
 AppRouter::delete($v . '/conta/sessoes/{id:\d+}',      'AppPerfilController@encerrarSessao');
 AppRouter::get   ($v . '/conta/seguranca',             'AppPerfilController@seguranca');
 AppRouter::post  ($v . '/conta/seguranca/2fa',         'AppPerfilController@alternar2fa');
+
+// App autenticador (TOTP). Rotas literais mais longas ANTES das curtas:
+// /desativar/solicitar precisa vir antes de /desativar.
+AppRouter::post  ($v . '/conta/seguranca/totp/iniciar',              'AppTotpController@iniciar');
+AppRouter::post  ($v . '/conta/seguranca/totp/confirmar',            'AppTotpController@confirmar');
+AppRouter::post  ($v . '/conta/seguranca/totp/desativar/solicitar',  'AppTotpController@desativarSolicitar');
+AppRouter::post  ($v . '/conta/seguranca/totp/desativar',            'AppTotpController@desativar');
+AppRouter::post  ($v . '/conta/seguranca/totp/backup',               'AppTotpController@regenerarBackup');
 AppRouter::get   ($v . '/conta/avaliacoes',            'AppPerfilController@avaliacoes');
 AppRouter::get   ($v . '/conta/favoritos/ids',         'AppContaController@favoritosIds'); // antes de /favoritos
 AppRouter::get   ($v . '/conta/favoritos',             'AppContaController@favoritos');

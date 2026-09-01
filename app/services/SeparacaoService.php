@@ -358,10 +358,48 @@ class SeparacaoService
         $p = $this->paraConferencia($pedidoId);
         if (!$p) return ['ok' => false, 'msg' => 'Pedido não encontrado.'];
 
+        return $this->regraEtiqueta($p);
+    }
+
+    /**
+     * Tudo que uma tela precisa para desenhar o bloco de etiqueta.
+     *
+     * A pagina do pedido faz duas perguntas ao mesmo tempo — "ja tem etiqueta?"
+     * e "pode emitir?". Chamar podeGerarEtiqueta() ao lado de paraConferencia()
+     * responderia as duas repetindo o mesmo carregamento; aqui e um so.
+     */
+    public function contextoEtiqueta(int $pedidoId): array
+    {
+        $p = $this->paraConferencia($pedidoId);
+        if (!$p) {
+            return [
+                'pode'     => ['ok' => false, 'msg' => 'Pedido não encontrado.'],
+                'etiqueta' => null,
+                'nfe_ok'   => false,
+            ];
+        }
+
+        return [
+            'pode'     => $this->regraEtiqueta($p),
+            'etiqueta' => $p['etiqueta'] ?? null,
+            'nfe_ok'   => (bool) $p['nfe_ok'],
+        ];
+    }
+
+    /**
+     * A regra de quando pode emitir, separada de quem carrega o pedido.
+     *
+     * Fica uma so porque as duas rotas que emitem etiqueta passam por aqui: o
+     * checkout de expedicao e a pagina do pedido. Duplicar a condicao era o
+     * caminho curto para a pagina do pedido furar a trava da NF-e sem ninguem
+     * perceber — e etiqueta emitida e etiqueta cobrada.
+     */
+    private function regraEtiqueta(array $p): array
+    {
         if (!empty($p['codigo_rastreio'])) {
             return ['ok' => false, 'msg' => 'Este pedido já tem rastreio: ' . $p['codigo_rastreio']];
         }
-        if (!$p['nfe_ok']) {
+        if (empty($p['nfe_ok'])) {
             return ['ok' => false, 'msg' => 'Aguardando a NF-e ser emitida no Bling.'];
         }
         return ['ok' => true];

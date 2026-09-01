@@ -331,20 +331,32 @@ class ChatInboxController extends Controller
             $this->json(['ok' => false, 'erro' => 'Upload inválido.']); return;
         }
 
-        // MIME real do conteúdo, nunca o que o browser declarou
-        $mime = function_exists('mime_content_type')
-            ? (mime_content_type($f['tmp_name']) ?: '')
-            : (string)($f['type'] ?? '');
+        $canal   = (string)($cv['canal'] ?? 'whatsapp');
+        $legenda = trim((string)($_POST['legenda'] ?? '')) ?: null;
+        $tamanho = (int)($f['size'] ?? 0);
 
-        $mimeBase = strtolower(trim(explode(';', $mime)[0]));
-        $canal    = (string)($cv['canal'] ?? 'whatsapp');
-        $legenda  = trim((string)($_POST['legenda'] ?? '')) ?: null;
-        $tamanho  = (int)($f['size'] ?? 0);
-
-        [$tipoWa, $ext, $limiteMb] = self::classificarAnexo($mimeBase, $canal);
+        // O FORMATO vem da extensão. mime_content_type() erra demais para isso:
+        // mp3 com tag ID3 vira application/octet-stream, m4a vira audio/x-m4a.
+        // Usá-lo como whitelist é o que impedia mandar música.
+        $ext = strtolower(pathinfo((string)$f['name'], PATHINFO_EXTENSION));
+        [$tipoWa, $mimeBase, $limiteMb] = self::classificarAnexo($ext, $canal);
 
         if ($tipoWa === null) {
-            $this->json(['ok' => false, 'erro' => "Tipo de arquivo não permitido ($mimeBase)."]); return;
+            $this->json(['ok' => false,
+                'erro' => $ext === '' ? 'Arquivo sem extensão.' : "Arquivos .$ext não são aceitos."]);
+            return;
+        }
+
+        // O sniff decide SEGURANÇA, não formato. O arquivo fica público em
+        // uploads/chat/: HTML ali é XSS no nosso domínio, executável é malware
+        // com a nossa marca. Renomear para .pdf não engana esta checagem.
+        $sniff = function_exists('mime_content_type')
+            ? strtolower(trim(explode(';', (string)mime_content_type($f['tmp_name']))[0]))
+            : '';
+        if ($sniff !== '' && in_array($sniff, self::MIME_PERIGOSO, true)) {
+            $this->json(['ok' => false,
+                'erro' => "O conteúdo do arquivo não confere com .$ext ($sniff). Envio bloqueado."]);
+            return;
         }
 
         // Figurinha tem duas restrições que documento não tem: 100 KB e nenhuma
@@ -373,7 +385,7 @@ class ChatInboxController extends Controller
         }
 
         // Nome aleatório: o nome original do usuário nunca vira caminho no disco
-        $nomeArquivo = bin2hex(random_bytes(16)) . $ext;
+        $nomeArquivo = bin2hex(random_bytes(16)) . '.' . $ext;
         if (!move_uploaded_file($f['tmp_name'], $dir . '/' . $nomeArquivo)) {
             $this->json(['ok' => false, 'erro' => 'Falha ao gravar o arquivo.']); return;
         }
@@ -414,25 +426,55 @@ class ChatInboxController extends Controller
         $this->json(['ok' => true, 'mensagem' => $msg ? $this->resumoMensagem($msg) : null]);
     }
 
-    /** Extensão por MIME. Só o que a lista abaixo conhece pode ser enviado. */
-    private const EXT_ANEXO = [
-        'image/jpeg' => '.jpg',  'image/png'  => '.png',
-        'image/gif'  => '.gif',  'image/webp' => '.webp',
-        'video/mp4'  => '.mp4',  'video/3gpp' => '.3gp',
-        'video/quicktime' => '.mov', 'video/x-msvideo' => '.avi', 'video/webm' => '.webm',
-        'audio/mpeg' => '.mp3',  'audio/ogg'  => '.ogg',  'audio/mp4'  => '.m4a',
-        'audio/aac'  => '.aac',  'audio/amr'  => '.amr',  'audio/flac' => '.flac',
-        'audio/wav'  => '.wav',  'audio/x-wav'=> '.wav',  'audio/webm' => '.weba',
-        'application/pdf' => '.pdf', 'application/zip' => '.zip',
-        'text/plain' => '.txt',  'text/csv'   => '.csv',
-        'application/msword'       => '.doc',
-        'application/vnd.ms-excel' => '.xls',
-        'application/vnd.ms-powerpoint' => '.ppt',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'   => '.docx',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'         => '.xlsx',
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation' => '.pptx',
-        'application/vnd.oasis.opendocument.text'        => '.odt',
-        'application/vnd.oasis.opendocument.spreadsheet' => '.ods',
+    /**
+     * Extensão → MIME que vamos declarar. É a EXTENSÃO que manda, não o sniff.
+     *
+     * `mime_content_type()` erra demais para servir de whitelist:
+     *   .mp3 com tag ID3 → application/octet-stream   (é a maioria dos mp3)
+     *   .m4a             → audio/x-m4a  (apelido, não o nome oficial)
+     *   .ogg             → às vezes text/plain
+     * Com o sniff como whitelist, mandar música simplesmente não funcionava.
+     *
+     * O sniff continua sendo usado — mas só como GUARDA, em MIME_PERIGOSO:
+     * decide se o conteúdo é perigoso, não qual é o formato.
+     */
+    private const ANEXO_POR_EXT = [
+        'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png',
+        'gif' => 'image/gif',  'webp' => 'image/webp',
+
+        'mp4' => 'video/mp4',  '3gp' => 'video/3gpp', 'mov'  => 'video/quicktime',
+        'avi' => 'video/x-msvideo', 'webm' => 'video/webm', 'm4v' => 'video/mp4',
+
+        'mp3' => 'audio/mpeg', 'ogg' => 'audio/ogg',  'oga'  => 'audio/ogg',
+        'm4a' => 'audio/mp4',  'aac' => 'audio/aac',  'amr'  => 'audio/amr',
+        'wav' => 'audio/wav',  'flac'=> 'audio/flac', 'opus' => 'audio/ogg',
+
+        'pdf' => 'application/pdf', 'zip' => 'application/zip',
+        'txt' => 'text/plain',      'csv' => 'text/csv',
+        'doc'  => 'application/msword',
+        'xls'  => 'application/vnd.ms-excel',
+        'ppt'  => 'application/vnd.ms-powerpoint',
+        'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'odt'  => 'application/vnd.oasis.opendocument.text',
+        'ods'  => 'application/vnd.oasis.opendocument.spreadsheet',
+    ];
+
+    /**
+     * Conteúdo que nunca sobe, qualquer que seja a extensão.
+     *
+     * O arquivo fica público em uploads/chat/. Um HTML ali é XSS hospedado no
+     * nosso domínio; um executável é distribuição de malware com a nossa marca.
+     * Renomear para .pdf não ajuda: quem decide aqui é o sniff do conteúdo.
+     */
+    private const MIME_PERIGOSO = [
+        'text/html', 'application/xhtml+xml', 'image/svg+xml',
+        'application/x-msdownload', 'application/x-dosexec', 'application/vnd.microsoft.portable-executable',
+        'application/x-executable', 'application/x-sharedlib', 'application/x-mach-binary',
+        'application/x-php', 'text/x-php', 'application/x-httpd-php',
+        'application/javascript', 'text/javascript',
+        'application/x-msi', 'application/x-bat', 'application/x-sh', 'text/x-shellscript',
     ];
 
     /**
@@ -451,12 +493,13 @@ class ChatInboxController extends Controller
      * recusar a forma escolhida, o upload() reenvia como arquivo — a tabela
      * aqui é a melhor aposta, não uma promessa.
      *
-     * @return array{0:?string,1:string,2:int} [tipo, extensão, limite em MB]
+     * @param  string $ext extensão SEM ponto, minúscula ("mp3", "jpg")
+     * @return array{0:?string,1:string,2:float} [tipo, mime declarado, limite em MB]
      */
-    private static function classificarAnexo(string $mime, string $canal = 'whatsapp'): array
+    private static function classificarAnexo(string $ext, string $canal = 'whatsapp'): array
     {
-        $ext = self::EXT_ANEXO[$mime] ?? null;
-        if ($ext === null) return [null, '', 0];
+        $mime = self::ANEXO_POR_EXT[strtolower(ltrim($ext, '.'))] ?? null;
+        if ($mime === null) return [null, '', 0];
 
         if ($canal === 'instagram') {
             // Limites do Instagram: imagem 8 MB, o resto 25 MB
@@ -466,17 +509,17 @@ class ChatInboxController extends Controller
                 str_starts_with($mime, 'audio/') && $mime !== 'audio/amr' => 'audio',
                 default => 'document',
             };
-            return [$tipo, $ext, $tipo === 'image' ? 8 : 25];
+            return [$tipo, $mime, $tipo === 'image' ? 8 : 25];
         }
 
         // WhatsApp: a Meta valida o MIME por tipo, então a lista é fechada
         return match (true) {
-            in_array($mime, ['image/jpeg', 'image/png'], true)          => ['image',   $ext,   5],
-            $mime === 'image/webp'                                      => ['sticker', $ext, 0.1],
-            in_array($mime, ['video/mp4', 'video/3gpp'], true)          => ['video',   $ext,  16],
+            in_array($mime, ['image/jpeg', 'image/png'], true)          => ['image',   $mime,   5],
+            $mime === 'image/webp'                                      => ['sticker', $mime, 0.1],
+            in_array($mime, ['video/mp4', 'video/3gpp'], true)          => ['video',   $mime,  16],
             in_array($mime, ['audio/aac', 'audio/amr', 'audio/mpeg',
-                             'audio/mp4', 'audio/ogg'], true)           => ['audio',   $ext,  16],
-            default                                                     => ['document', $ext, 100],
+                             'audio/mp4', 'audio/ogg'], true)           => ['audio',   $mime,  16],
+            default                                                     => ['document', $mime, 100],
         };
     }
 
