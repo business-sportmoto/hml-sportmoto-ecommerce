@@ -338,7 +338,25 @@ class ChatInboxController extends Controller
         // O FORMATO vem da extensão. mime_content_type() erra demais para isso:
         // mp3 com tag ID3 vira application/octet-stream, m4a vira audio/x-m4a.
         // Usá-lo como whitelist é o que impedia mandar música.
-        $ext = strtolower(pathinfo((string)$f['name'], PATHINFO_EXTENSION));
+        $ext     = strtolower(pathinfo((string)$f['name'], PATHINFO_EXTENSION));
+        $arquivo = (string)$f['tmp_name'];
+        $veioDeUpload = true;
+
+        // Gravação de voz do navegador: o Chrome só empacota Opus em WebM, e a
+        // Meta quer Opus em OGG. Trocar o recipiente é `-c:a copy` — não
+        // recodifica, não perde qualidade, leva milissegundos. Sem ffmpeg no
+        // servidor a gravação ainda sai, como arquivo para baixar.
+        if (!empty($_POST['gravacao']) && in_array($ext, ['weba', 'webm'], true)) {
+            $ogg = self::remuxarOgg($arquivo);
+            if ($ogg !== null) {
+                $arquivo = $ogg; $ext = 'ogg';
+                $veioDeUpload = false;
+                $tamanho = (int)filesize($ogg);
+            } else {
+                $ext = 'weba';   // segue como arquivo
+            }
+        }
+
         [$tipoWa, $mimeBase, $limiteMb] = self::classificarAnexo($ext, $canal);
 
         if ($tipoWa === null) {
@@ -351,7 +369,7 @@ class ChatInboxController extends Controller
         // uploads/chat/: HTML ali é XSS no nosso domínio, executável é malware
         // com a nossa marca. Renomear para .pdf não engana esta checagem.
         $sniff = function_exists('mime_content_type')
-            ? strtolower(trim(explode(';', (string)mime_content_type($f['tmp_name']))[0]))
+            ? strtolower(trim(explode(';', (string)mime_content_type($arquivo))[0]))
             : '';
         if ($sniff !== '' && in_array($sniff, self::MIME_PERIGOSO, true)) {
             $this->json(['ok' => false,
@@ -385,8 +403,13 @@ class ChatInboxController extends Controller
         }
 
         // Nome aleatório: o nome original do usuário nunca vira caminho no disco
+        // move_uploaded_file() só aceita o arquivo que veio no POST; o remuxado
+        // é nosso, então vai de rename().
         $nomeArquivo = bin2hex(random_bytes(16)) . '.' . $ext;
-        if (!move_uploaded_file($f['tmp_name'], $dir . '/' . $nomeArquivo)) {
+        $destino     = $dir . '/' . $nomeArquivo;
+        $moveu = $veioDeUpload ? move_uploaded_file($arquivo, $destino) : @rename($arquivo, $destino);
+        if (!$moveu) {
+            if (!$veioDeUpload) @unlink($arquivo);
             $this->json(['ok' => false, 'erro' => 'Falha ao gravar o arquivo.']); return;
         }
 
@@ -448,6 +471,7 @@ class ChatInboxController extends Controller
         'mp3' => 'audio/mpeg', 'ogg' => 'audio/ogg',  'oga'  => 'audio/ogg',
         'm4a' => 'audio/mp4',  'aac' => 'audio/aac',  'amr'  => 'audio/amr',
         'wav' => 'audio/wav',  'flac'=> 'audio/flac', 'opus' => 'audio/ogg',
+        'weba'=> 'audio/webm',   // gravação do navegador (Opus dentro de WebM)
 
         'pdf' => 'application/pdf', 'zip' => 'application/zip',
         'txt' => 'text/plain',      'csv' => 'text/csv',
@@ -519,8 +543,46 @@ class ChatInboxController extends Controller
             in_array($mime, ['video/mp4', 'video/3gpp'], true)          => ['video',   $mime,  16],
             in_array($mime, ['audio/aac', 'audio/amr', 'audio/mpeg',
                              'audio/mp4', 'audio/ogg'], true)           => ['audio',   $mime,  16],
+            // audio/webm a Meta não toca — cai em documento logo abaixo
             default                                                     => ['document', $mime, 100],
         };
+    }
+
+    /**
+     * Troca o recipiente de WebM para OGG mantendo o Opus intacto.
+     *
+     * `-c:a copy` é remux, não recodificação: o fluxo de áudio é o mesmo byte a
+     * byte. Serve para a Meta, que aceita Opus mas só dentro de OGG.
+     *
+     * Devolve o caminho do arquivo novo, ou null se não houver ffmpeg — nesse
+     * caso quem chama manda a gravação como arquivo, que sempre funciona.
+     */
+    private static function remuxarOgg(string $origem): ?string
+    {
+        if (!function_exists('exec')) return null;
+
+        $bin = getenv('FFMPEG_BIN') ?: 'ffmpeg';
+        $saida = sys_get_temp_dir() . '/chat-' . bin2hex(random_bytes(8)) . '.ogg';
+
+        $cmd = escapeshellarg($bin) . ' -hide_banner -loglevel error -y'
+             . ' -i ' . escapeshellarg($origem)
+             . ' -vn -c:a copy -f ogg ' . escapeshellarg($saida) . ' 2>&1';
+
+        $linhas = []; $codigo = 1;
+        try { @exec($cmd, $linhas, $codigo); } catch (Throwable $e) { return null; }
+
+        if ($codigo !== 0 || !is_file($saida) || filesize($saida) < 100) {
+            @unlink($saida);
+            if (class_exists('LogService')) {
+                try {
+                    LogService::warning('chat: remux para ogg falhou', [
+                        'codigo' => $codigo, 'saida' => implode(' | ', array_slice($linhas, 0, 3)),
+                    ], 'chat');
+                } catch (Throwable $e) {}
+            }
+            return null;
+        }
+        return $saida;
     }
 
     // =========================================================================

@@ -452,7 +452,8 @@
   }
 
   // ── Anexo ─────────────────────────────────────────────────────────────────
-  var anexo = null;   // File escolhido, ainda não enviado
+  var anexo = null;         // File escolhido, ainda não enviado
+  var anexoGravado = false; // veio do microfone — o servidor remuxa para ogg
 
   function tamanho(bytes) {
     bytes = Number(bytes) || 0;
@@ -468,8 +469,9 @@
     return '📄';
   }
 
-  function mostrarAnexo(f) {
+  function mostrarAnexo(f, gravado) {
     anexo = f;
+    anexoGravado = !!gravado;
     var $m = $('#ch-anexo-mini').empty();
 
     // Miniatura de verdade para imagem; ícone para o resto
@@ -489,13 +491,36 @@
 
   function limparAnexo() {
     anexo = null;
+    anexoGravado = false;
     $('#ch-comp-anexo').removeClass('ativo');
     $('#ch-anexo-mini').empty();
     $('#ch-arquivo').val('');
+    $('#ch-comp-livre .ch-comp-linha').show();
     $('#ch-texto').attr('placeholder', 'Escreva uma mensagem... (Enter envia, Shift+Enter quebra linha)');
   }
 
-  $('#ch-anexar').on('click', function () { $('#ch-arquivo').click(); });
+  // ── Menu de anexos ────────────────────────────────────────────────────────
+  function fecharMenu() {
+    $('#ch-comp-menu').removeClass('aberto');
+    $('#ch-anexar').attr('aria-expanded', 'false');
+  }
+
+  $('#ch-anexar').on('click', function (e) {
+    e.stopPropagation();
+    var abriu = !$('#ch-comp-menu').hasClass('aberto');
+    $('#ch-comp-menu').toggleClass('aberto', abriu);
+    $(this).attr('aria-expanded', abriu ? 'true' : 'false');
+  });
+  $('#ch-comp-menu').on('click', function (e) { e.stopPropagation(); });
+  $(document).on('click', fecharMenu);
+  $(document).on('keydown', function (e) { if (e.key === 'Escape') fecharMenu(); });
+
+  // Cada item abre o seletor já filtrado no seu tipo
+  $('#ch-comp-menu').on('click', '[data-anexo]', function () {
+    $('#ch-arquivo').attr('accept', $(this).data('accept')).val('').click();
+    fecharMenu();
+  });
+
   $('#ch-anexo-x').on('click', limparAnexo);
 
   $('#ch-arquivo').on('change', function () {
@@ -503,6 +528,164 @@
     if (!f || !estado.conversaId) return;
     mostrarAnexo(f);
   });
+
+  // ── Gravador de voz ───────────────────────────────────────────────────────
+  // O navegador grava em Opus. O WhatsApp aceita Opus, mas dentro de OGG; o
+  // Chrome só sabe empacotar em WebM. O servidor remuxa (ver ChatInboxController)
+  // — é troca de recipiente, não recodificação, então não perde qualidade.
+  var Grav = {
+    rec: null, stream: null, pedacos: [], t0: 0, pausadoEm: 0, timer: null,
+    audioCtx: null, analise: null, raf: null,
+
+    formato: function () {
+      if (!window.MediaRecorder) return null;
+      // OGG primeiro: onde o navegador souber (Firefox), nem precisa remuxar
+      var tentativas = ['audio/ogg;codecs=opus', 'audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
+      for (var i = 0; i < tentativas.length; i++) {
+        if (MediaRecorder.isTypeSupported(tentativas[i])) return tentativas[i];
+      }
+      return null;
+    },
+
+    extensao: function (mime) {
+      if (mime.indexOf('audio/ogg') === 0) return 'ogg';
+      if (mime.indexOf('audio/mp4') === 0) return 'm4a';
+      return 'weba';   // audio/webm
+    },
+
+    iniciar: function () {
+      var fmt = this.formato();
+      if (!fmt || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        toast('Este navegador não grava áudio.', 'erro');
+        return;
+      }
+
+      var self = this;
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+        self.stream  = stream;
+        self.pedacos = [];
+        self.rec = new MediaRecorder(stream, { mimeType: fmt });
+        self.rec.ondataavailable = function (e) { if (e.data && e.data.size) self.pedacos.push(e.data); };
+        self.rec.start(250);
+
+        self.t0 = Date.now(); self.pausadoEm = 0;
+        $('#ch-comp-livre .ch-comp-linha, #ch-comp-anexo').hide();
+        $('#ch-gravador').addClass('ativo').removeClass('ch-grav-pausado');
+        self.contar();
+        self.desenhar(stream);
+      }).catch(function () {
+        // Permissão negada ou nenhum microfone: dizer qual dos dois seria chute
+        toast('Não foi possível acessar o microfone.', 'erro');
+      });
+    },
+
+    contar: function () {
+      var self = this;
+      clearInterval(this.timer);
+      this.timer = setInterval(function () {
+        if (self.rec && self.rec.state === 'paused') return;
+        var s = Math.floor((Date.now() - self.t0 - self.pausadoEm) / 1000);
+        $('#ch-grav-tempo').text(Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'));
+        // Teto de 5 min: acima disso o arquivo passa do limite da Meta
+        if (s >= 300) self.concluir();
+      }, 250);
+    },
+
+    /** Onda do áudio real — barra parada não diz se o microfone pegou. */
+    desenhar: function (stream) {
+      try {
+        var Ctx = window.AudioContext || window.webkitAudioContext;
+        this.audioCtx = new Ctx();
+        var src = this.audioCtx.createMediaStreamSource(stream);
+        this.analise = this.audioCtx.createAnalyser();
+        this.analise.fftSize = 256;
+        src.connect(this.analise);
+      } catch (e) { return; }
+
+      var cv = document.getElementById('ch-grav-onda');
+      var ctx = cv.getContext('2d');
+      var dados = new Uint8Array(this.analise.frequencyBinCount);
+      var self = this;
+
+      (function quadro() {
+        self.raf = requestAnimationFrame(quadro);
+        if (!self.analise) return;
+
+        var r = cv.getBoundingClientRect();
+        cv.width = r.width; cv.height = r.height;
+        self.analise.getByteTimeDomainData(dados);
+
+        ctx.clearRect(0, 0, cv.width, cv.height);
+        ctx.fillStyle = getComputedStyle(cv).color || '#667085';
+
+        var barras = Math.max(8, Math.floor(cv.width / 4));
+        var passo  = Math.floor(dados.length / barras);
+        for (var i = 0; i < barras; i++) {
+          var v = Math.abs(dados[i * passo] - 128) / 128;
+          var h = Math.max(2, v * cv.height);
+          ctx.fillRect(i * 4, (cv.height - h) / 2, 2, h);
+        }
+      })();
+    },
+
+    pausar: function () {
+      if (!this.rec) return;
+      if (this.rec.state === 'recording') {
+        this.rec.pause();
+        this.pausaT0 = Date.now();
+        $('#ch-gravador').addClass('ch-grav-pausado');
+      } else if (this.rec.state === 'paused') {
+        this.rec.resume();
+        this.pausadoEm += Date.now() - (this.pausaT0 || Date.now());
+        $('#ch-gravador').removeClass('ch-grav-pausado');
+      }
+    },
+
+    /** Fecha tudo e devolve o blob (ou null se cancelado). */
+    encerrar: function (aoTerminar) {
+      var self = this;
+      clearInterval(this.timer);
+      if (this.raf) cancelAnimationFrame(this.raf);
+      this.raf = null; this.analise = null;
+      if (this.audioCtx) { try { this.audioCtx.close(); } catch (e) {} this.audioCtx = null; }
+
+      var fecharStream = function () {
+        if (self.stream) self.stream.getTracks().forEach(function (t) { t.stop(); });
+        self.stream = null;
+        $('#ch-gravador').removeClass('ativo ch-grav-pausado');
+        $('#ch-comp-livre .ch-comp-linha').show();
+        $('#ch-grav-tempo').text('0:00');
+      };
+
+      if (!this.rec) { fecharStream(); aoTerminar(null); return; }
+
+      var mime = this.rec.mimeType || 'audio/webm';
+      this.rec.onstop = function () {
+        var blob = self.pedacos.length ? new Blob(self.pedacos, { type: mime }) : null;
+        self.rec = null; self.pedacos = [];
+        fecharStream();
+        aoTerminar(blob);
+      };
+      try { this.rec.stop(); } catch (e) { this.rec = null; fecharStream(); aoTerminar(null); }
+    },
+
+    concluir: function () {
+      var self = this;
+      this.encerrar(function (blob) {
+        if (!blob || blob.size < 1200) { toast('Gravação curta demais.', 'erro'); return; }
+        var ext = self.extensao(blob.type);
+        var nome = 'audio-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.' + ext;
+        mostrarAnexo(new File([blob], nome, { type: blob.type }), true);
+      });
+    },
+
+    cancelar: function () { this.encerrar(function () {}); }
+  };
+
+  $('#ch-gravar').on('click', function () { fecharMenu(); Grav.iniciar(); });
+  $('#ch-grav-ok').on('click', function () { Grav.concluir(); });
+  $('#ch-grav-pausar').on('click', function () { Grav.pausar(); });
+  $('#ch-grav-cancelar').on('click', function () { Grav.cancelar(); });
 
   function enviarAnexo() {
     var f = anexo;
@@ -512,6 +695,7 @@
     fd.append('arquivo', f);
     fd.append('csrf_token', CSRF);
     fd.append('legenda', ($('#ch-texto').val() || '').trim());
+    if (anexoGravado) fd.append('gravacao', '1');
 
     var $t = $('#ch-texto').prop('disabled', true);
     $('#ch-enviar, #ch-anexar').prop('disabled', true);

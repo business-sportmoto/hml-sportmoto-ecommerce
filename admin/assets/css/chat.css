@@ -338,7 +338,16 @@ html[data-theme="dark"] .ch {
   height: calc(100vh - 150px);
   min-height: 520px;
 }
-.ch-inbox > * { background: var(--surface); min-width: 0; display: flex; flex-direction: column; }
+/* min-height:0 nas TRÊS colunas. Item de grid, igual item de flex, nasce com
+   min-height:auto e se recusa a encolher abaixo do conteúdo: a thread crescia
+   junto com a conversa, passava da altura do .ch-inbox e o compositor era
+   cortado pelo overflow:hidden. Vale para as três — a lista e o painel do
+   contato crescem do mesmo jeito. */
+.ch-inbox > * {
+  background: var(--surface); min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
+}
+.ch-lista, .ch-painel { min-height: 0; }
 
 /* Coluna 1: lista de conversas */
 .ch-lista-head { padding: 12px; border-bottom: 1px solid var(--border); flex: none; }
@@ -527,6 +536,65 @@ html[data-theme="dark"] .ch-msg--out .ch-bolha { color: #e6fff2; }
 }
 .ch-comp-anexo-x:hover { color: var(--danger); }
 .ch-comp-linha { display: flex; gap: 8px; align-items: flex-end; }
+
+/* Menu de anexos — um alvo por tipo de arquivo, como no WhatsApp. Um seletor
+   só, com accept de tudo, obriga o atendente a caçar o arquivo no meio de
+   todos os formatos; aqui cada item já abre filtrado. */
+.ch-comp-mais { position: relative; flex: none; }
+.ch-comp-menu {
+  position: absolute; bottom: calc(100% + 10px); left: 0; z-index: 40;
+  min-width: 216px; padding: 6px; display: none;
+  background: var(--surface); border: 1px solid var(--ch-line);
+  border-radius: var(--ch-raio);
+  box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 12px 28px -8px rgba(16,24,40,.22);
+}
+html[data-theme="dark"] .ch-comp-menu {
+  box-shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 28px -8px rgba(0,0,0,.6);
+}
+.ch-comp-menu.aberto { display: block; }
+.ch-comp-menu button {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 9px 10px; border: none; background: none; cursor: pointer;
+  border-radius: var(--ch-r); font-family: inherit; font-size: 14px;
+  color: var(--text); text-align: left;
+}
+.ch-comp-menu button:hover { background: var(--surface2); }
+.ch-comp-menu-ico {
+  width: 30px; height: 30px; border-radius: 8px; flex: none;
+  display: grid; place-items: center; color: #fff;
+}
+.ch-comp-menu-ico svg { width: 16px; height: 16px; }
+
+/* ── Gravador de voz ─────────────────────────────────────────────────────── */
+.ch-gravador {
+  display: none; align-items: center; gap: 12px;
+  padding: 8px 12px; border-radius: 24px; background: var(--surface2);
+  border: 1px solid var(--ch-line2);
+}
+.ch-gravador.ativo { display: flex; }
+.ch-grav-btn {
+  width: 34px; height: 34px; border-radius: 50%; border: none; flex: none;
+  background: none; color: var(--ch-mut); cursor: pointer;
+  display: grid; place-items: center;
+}
+.ch-grav-btn:hover { background: rgba(127,127,127,.16); color: var(--text); }
+.ch-grav-btn svg { width: 18px; height: 18px; }
+.ch-grav-btn--enviar { background: var(--ch-wa); color: #fff; }
+.ch-grav-btn--enviar:hover { background: var(--ch-wa-dark); color: #fff; }
+
+.ch-grav-ponto {
+  width: 9px; height: 9px; border-radius: 50%; background: var(--danger); flex: none;
+  animation: chPulsa 1.4s ease-in-out infinite;
+}
+@keyframes chPulsa { 50% { opacity: .25; } }
+.ch-grav-pausado .ch-grav-ponto { animation: none; opacity: .35; }
+
+.ch-grav-tempo {
+  font-size: 14px; font-weight: 500; color: var(--text);
+  font-variant-numeric: tabular-nums; min-width: 42px;
+}
+/* Onda desenhada do áudio real: barra parada não diz se o microfone pegou */
+.ch-grav-onda { flex: 1; height: 28px; min-width: 60px; display: block; }
 .ch-comp textarea {
   flex: 1; min-height: 40px; max-height: 150px; resize: none;
   padding: 10px 12px; font-size: 13.5px; font-family: inherit; line-height: 1.4;
@@ -553,7 +621,7 @@ html[data-theme="dark"] .ch-msg--out .ch-bolha { color: #e6fff2; }
 .ch-comp-bloqueado strong { display: block; margin-bottom: 3px; }
 
 /* Coluna 3: painel do contato */
-.ch-painel { overflow-y: auto; }
+.ch-painel { overflow-y: auto; flex: 1; }
 .ch-painel-sec { padding: 14px; border-bottom: 1px solid var(--border); }
 .ch-painel-tit {
   font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 12px;

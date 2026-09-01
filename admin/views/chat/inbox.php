@@ -119,23 +119,66 @@ $h    = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
               <button type="button" class="ch-comp-anexo-x" id="ch-anexo-x" title="Remover anexo">&times;</button>
             </div>
 
-            <div class="ch-comp-linha">
-              <button type="button" class="ch-comp-btn" id="ch-anexar" title="Anexar arquivo">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21.4 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.2-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
-                </svg>
+            <?php // Gravação de voz: ocupa a linha do compositor enquanto grava ?>
+            <div class="ch-gravador" id="ch-gravador">
+              <button type="button" class="ch-grav-btn" id="ch-grav-cancelar" title="Descartar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
               </button>
+              <span class="ch-grav-ponto"></span>
+              <span class="ch-grav-tempo" id="ch-grav-tempo">0:00</span>
+              <canvas class="ch-grav-onda" id="ch-grav-onda"></canvas>
+              <button type="button" class="ch-grav-btn" id="ch-grav-pausar" title="Pausar">
+                <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+              </button>
+              <button type="button" class="ch-grav-btn ch-grav-btn--enviar" id="ch-grav-ok" title="Concluir gravação">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+              </button>
+            </div>
+
+            <div class="ch-comp-linha">
               <?php
-              // Uma linha só: o accept é lista separada por vírgula, e quebra de
-              // linha dentro do atributo depende do navegador aparar o espaço.
-              // O que uma plataforma não reproduz o servidor manda como arquivo,
-              // então tudo daqui é enviável nos dois canais.
-              $aceita = 'image/jpeg,image/png,image/gif,image/webp,'
-                      . 'video/mp4,video/3gpp,video/quicktime,video/webm,video/x-msvideo,'
-                      . 'audio/mpeg,audio/ogg,audio/mp4,audio/aac,audio/amr,audio/wav,audio/flac,'
-                      . '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.txt,.csv,.zip';
+              // Um alvo por tipo: cada item já abre o seletor filtrado, em vez de
+              // largar o atendente num diálogo com todos os formatos misturados.
+              $grupos = [
+                'documento' => ['Documento', '#7c3aed',
+                    '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.txt,.csv,.zip',
+                    '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/>'],
+                'midia' => ['Fotos e vídeos', '#2563eb',
+                    'image/jpeg,image/png,image/gif,image/webp,video/mp4,video/3gpp,video/quicktime,video/webm,video/x-msvideo',
+                    '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>'],
+                'audio' => ['Áudio', '#ea580c',
+                    'audio/mpeg,audio/ogg,audio/mp4,audio/aac,audio/amr,audio/wav,audio/flac,.mp3,.m4a,.ogg,.wav,.flac,.aac,.opus',
+                    '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>'],
+                'figurinha' => ['Figurinha', '#0d9488', 'image/webp,.webp',
+                    '<circle cx="12" cy="12" r="9"/><path d="M9 10h.01M15 10h.01M8.5 14.5a4.5 4.5 0 007 0"/>'],
+              ];
               ?>
-              <input type="file" id="ch-arquivo" style="display:none" accept="<?= $aceita ?>">
+              <div class="ch-comp-mais">
+                <button type="button" class="ch-comp-btn" id="ch-anexar" title="Anexar" aria-expanded="false">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <path d="M12 5v14M5 12h14"/>
+                  </svg>
+                </button>
+
+                <div class="ch-comp-menu" id="ch-comp-menu">
+                  <?php foreach ($grupos as $k => [$rotulo, $cor, $accept, $path]): ?>
+                    <button type="button" data-anexo="<?= $h($k) ?>" data-accept="<?= $h($accept) ?>">
+                      <span class="ch-comp-menu-ico" style="background:<?= $cor ?>">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><?= $path ?></svg>
+                      </span>
+                      <?= $h($rotulo) ?>
+                    </button>
+                  <?php endforeach; ?>
+                  <button type="button" id="ch-gravar">
+                    <span class="ch-comp-menu-ico" style="background:#16a34a">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v4"/></svg>
+                    </span>
+                    Gravar áudio
+                  </button>
+                </div>
+              </div>
+
+              <input type="file" id="ch-arquivo" style="display:none">
               <textarea id="ch-texto" rows="1" placeholder="Escreva uma mensagem... (Enter envia, Shift+Enter quebra linha)"></textarea>
               <button type="button" class="ch-comp-btn ch-comp-btn--enviar" id="ch-enviar" title="Enviar">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
