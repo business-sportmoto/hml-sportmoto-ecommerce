@@ -1669,6 +1669,46 @@ class CheckoutController extends Controller {
             }
         }
     
+        // ── Dados que precisam ser CONGELADOS no pedido ──────────────
+        // Duas lacunas que cegavam o BI e a comissão:
+        //
+        //  · vendedor — este INSERT (o caminho de produção) nunca
+        //    gravou codigo_vendedor. Só o Order::createFromCart
+        //    gravava, e ele não é usado no checkout real: resultado,
+        //    2 de 94 pedidos tinham vendedor e a comissão ficou sem
+        //    base. Cart::getVendedorInfo() já resolve tanto o carrinho
+        //    próprio quanto o compartilhado.
+        //
+        //  · endereço — endereco_entrega_snapshot estava 100% NULL, e
+        //    a geografia dependia de JOIN em `enderecos`, que o
+        //    cliente pode editar depois da compra. O snapshot congela
+        //    a geografia do momento da venda.
+        //
+        // Enriquecimento não pode derrubar venda: falha aqui é logada
+        // e o pedido segue com os campos nulos.
+        $codigoVendedor   = null;
+        $enderecoSnapshot = null;
+        try {
+            $carrinhoIdAtual = $cart->getCarrinhoId();
+            if ($carrinhoIdAtual) {
+                $codigoVendedor = Cart::getVendedorInfo((int)$carrinhoIdAtual)['vendedor_codigo'] ?: null;
+            }
+            // Mesmas chaves já usadas em pedidos.endereco_entrega —
+            // a view bi_pedido_geografia lê as duas pelo mesmo caminho.
+            $enderecoSnapshot = json_encode([
+                'destinatario' => $endereco['nome_destinatario'] ?? null,
+                'cep'          => $endereco['cep']               ?? null,
+                'logradouro'   => $endereco['logradouro']        ?? null,
+                'numero'       => $endereco['numero']            ?? null,
+                'complemento'  => $endereco['complemento']       ?? null,
+                'bairro'       => $endereco['bairro']            ?? null,
+                'cidade'       => $endereco['cidade']            ?? null,
+                'estado'       => $endereco['estado']            ?? null,
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            error_log('[process] congelamento BI falhou: ' . $e->getMessage());
+        }
+
         // 5. Transação: cria pedido + itens + reserva estoque
         $db->beginTransaction();
         try {
@@ -1677,8 +1717,9 @@ class CheckoutController extends Controller {
                 (cliente_id, codigo, status_pedido, status_pagamento,
                 forma_pagamento, parcelas, subtotal, desconto, frete, total,
                 endereco_entrega_id, frete_descricao, frete_prazo, frete_codigo,
-                observacao_cliente, cartao_bandeira, cartao_ultimos_4, criado_em)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())"
+                observacao_cliente, cartao_bandeira, cartao_ultimos_4,
+                codigo_vendedor, endereco_entrega_snapshot, criado_em)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())"
             )->execute([
                 $clienteId, $codigo,
                 'aguardando_pagamento', 'pendente',
@@ -1691,6 +1732,8 @@ class CheckoutController extends Controller {
                 $observacao,
                 $cartaoBandeira,
                 $cartaoUltimos4,
+                $codigoVendedor,
+                $enderecoSnapshot,
             ]);
             $pedidoId = (int)$db->lastInsertId();
     
@@ -1708,8 +1751,14 @@ class CheckoutController extends Controller {
                     ? round($desconto * ($valorTotal / $subtotal), 2)
                     : 0.0;
     
+                // BUG: aqui ia $subtotal — o subtotal do CARRINHO INTEIRO,
+                // repetido em toda linha de item. Confirmado nos dados:
+                // 28 de 109 itens gravados com valor errado (os pedidos
+                // com mais de um item). Nada quebrou porque o read path
+                // em Order.php:274 já prefere valor_final_item; a coluna
+                // era lixo write-only. Agora grava o total da linha.
                 $stmtItem->execute([
-                    $pedidoId, $item['nome'], $subtotal,
+                    $pedidoId, $item['nome'], $valorTotal,
                     (int)$item['produto_id'],
                     $item['sku_id'] ? (int)$item['sku_id'] : null,
                     $qtd, $valorUnit, $valorUnit,

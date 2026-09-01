@@ -99,8 +99,9 @@ class PedidoStatus {
         $this->db->prepare(
             "INSERT INTO pedido_status
              (slug, label, cor, icone_key, padrao, ativo, ordenacao,
-              estorna_estoque, cancela_cupom, bloqueia_edicao_itens, notifica_cliente)
-             VALUES (?,?,?,?,0,?,?,?,?,?,?)"
+              estorna_estoque, cancela_cupom, bloqueia_edicao_itens, notifica_cliente,
+              classe_bi)
+             VALUES (?,?,?,?,0,?,?,?,?,?,?,?)"
         )->execute([
             $slug,
             trim($dados['label']),
@@ -112,6 +113,7 @@ class PedidoStatus {
             (int)($dados['cancela_cupom']          ?? 0),
             (int)($dados['bloqueia_edicao_itens']  ?? 1),
             (int)($dados['notifica_cliente']       ?? 1),
+            self::normalizarClasseBi($dados['classe_bi'] ?? null),
         ]);
 
         self::$cache = []; // invalida cache
@@ -154,7 +156,8 @@ class PedidoStatus {
                 cancela_cupom         = COALESCE(?, cancela_cupom),
                 bloqueia_edicao_itens = COALESCE(?, bloqueia_edicao_itens),
                 notifica_cliente      = COALESCE(?, notifica_cliente),
-                slug                  = COALESCE(?, slug)
+                slug                  = COALESCE(?, slug),
+                classe_bi             = COALESCE(?, classe_bi)
              WHERE id = ?"
         )->execute([
             isset($dados['label'])                ? trim($dados['label'])                : null,
@@ -167,11 +170,38 @@ class PedidoStatus {
             isset($dados['bloqueia_edicao_itens'])  ? (int)$dados['bloqueia_edicao_itens']: null,
             isset($dados['notifica_cliente'])       ? (int)$dados['notifica_cliente']     : null,
             $dados['slug'] ?? null,
+            array_key_exists('classe_bi', $dados)
+                ? self::normalizarClasseBi($dados['classe_bi'])
+                : null,
             $id,
         ]);
 
         self::$cache = [];
         return true;
+    }
+
+    /**
+     * Classificação contábil aceita pelo BI.
+     * Chave: label para o admin.
+     */
+    public const CLASSES_BI = [
+        'pre_venda'    => 'Pré-venda (não conta faturamento)',
+        'venda'        => 'Venda (conta no faturamento)',
+        'cancelamento' => 'Cancelamento',
+        'devolucao'    => 'Devolução',
+    ];
+
+    /**
+     * Whitelist server-side do classe_bi.
+     *
+     * Valor desconhecido cai em 'pre_venda' — o default seguro. Um
+     * status mal classificado que NÃO entra no faturamento é um erro
+     * visível (alguém nota a receita faltando); um que entra por
+     * engano infla o número em silêncio e ninguém percebe.
+     */
+    private static function normalizarClasseBi(?string $valor): string {
+        $v = strtolower(trim((string)$valor));
+        return isset(self::CLASSES_BI[$v]) ? $v : 'pre_venda';
     }
 
     /**

@@ -41,6 +41,14 @@ class AdminStatusPedidoController extends Controller {
             'notifica_cliente'      => (int)($_POST['notifica_cliente']                    ?? 1),
         ];
 
+        // classe_bi só entra em $dados se veio no POST. Se entrasse
+        // sempre com um default, qualquer edição feita por um form
+        // antigo (que não conhece o campo) rebaixaria o status para
+        // 'pre_venda' e derrubaria a receita dele do BI em silêncio.
+        if (isset($_POST['classe_bi'])) {
+            $dados['classe_bi'] = SecurityHelper::sanitizeString($_POST['classe_bi']);
+        }
+
         // Normaliza icone_key vazio para null
         if (empty($dados['icone_key'])) $dados['icone_key'] = null;
 

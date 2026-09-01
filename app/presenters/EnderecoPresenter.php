@@ -56,7 +56,28 @@ final class EnderecoPresenter
             'estado'      => strtoupper((string)($e['estado'] ?? '')),
             'principal'   => !empty($e['principal']),
             'observacao'  => $e['observacao_entrega'] ?: null,
+
+            // O telefone existe para o formulário de edição poder devolvê-lo
+            // intacto. Sem ele o campo abriria vazio, e salvar uma correção de
+            // número da casa APAGARIA o telefone que a transportadora usa para
+            // ligar quando não acha o endereço.
+            'telefone'    => self::telefone($e['telefone_contato'] ?? null),
         ];
+    }
+
+    /** "(51) 98973-9674" — a coluna guarda só dígitos. */
+    private static function telefone(?string $telefone): ?string
+    {
+        $d = preg_replace('/\D/', '', (string)$telefone) ?? '';
+
+        if (strlen($d) === 11) {
+            return sprintf('(%s) %s-%s', substr($d, 0, 2), substr($d, 2, 5), substr($d, 7));
+        }
+        if (strlen($d) === 10) {
+            return sprintf('(%s) %s-%s', substr($d, 0, 2), substr($d, 2, 4), substr($d, 6));
+        }
+
+        return $d !== '' ? $d : null;
     }
 
     private static function cep(?string $cep): ?string

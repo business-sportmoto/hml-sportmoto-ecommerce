@@ -245,6 +245,29 @@ class SecurityHelper {
         return $pre !== '/' && ($uri === $pre || str_starts_with($uri, $pre . '/'));
     }
 
+    /**
+     * Headers de segurança do PAINEL.
+     *
+     * Separado do setSecurityHeaders() de propósito: aquele monta uma CSP
+     * desenhada para o checkout da loja (Mercado Pago, ClearSale, Cloudflare
+     * Stream). Aplicá-la no painel quebraria o Drawflow (jsdelivr), as fontes
+     * do Google e os handlers inline — então aqui vai só o subconjunto que o
+     * admin precisa, sem CSP.
+     *
+     * Existe porque em servidor **nginx** o .htaccess é ignorado: sem esta
+     * chamada, o painel só recebe o que a configuração do servidor mandar.
+     */
+    public static function setAdminHeaders(): void {
+        if (headers_sent()) return;
+
+        header('X-Frame-Options: SAMEORIGIN');
+        header('X-Content-Type-Options: nosniff');
+        header('Referrer-Policy: strict-origin-when-cross-origin');
+
+        // (self) e não () — o atendimento grava áudio de voz. Ver ehPainel().
+        header('Permissions-Policy: camera=(), microphone=(self), geolocation=()');
+    }
+
     public static function setSecurityHeaders(): void {
         // Previne clickjacking
         header('X-Frame-Options: SAMEORIGIN');

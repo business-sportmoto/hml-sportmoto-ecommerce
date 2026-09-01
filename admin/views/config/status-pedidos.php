@@ -233,6 +233,23 @@ $coresPossiveis = [
         </div>
       </div>
 
+      <!-- Classificação contábil (BI) -->
+      <div style="border-top:1px solid var(--c-border);padding-top:14px;margin-top:4px;">
+        <p style="font-size:12.5px;font-weight:800;color:var(--c-dark);margin:0 0 6px;">
+          Como o BI deve contar este status
+        </p>
+        <p style="font-size:11.5px;color:var(--text-3);margin:0 0 10px;line-height:1.5;">
+          Define se pedidos neste status entram no faturamento dos relatórios.
+          Status novo nasce como <strong>Pré-venda</strong> e não conta receita
+          até ser classificado aqui.
+        </p>
+        <select id="sp-classe-bi" class="form-control">
+          <?php foreach (PedidoStatus::CLASSES_BI as $k => $lbl): ?>
+            <option value="<?= htmlspecialchars($k) ?>"><?= htmlspecialchars($lbl) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+
       <!-- Flags de comportamento -->
       <div style="border-top:1px solid var(--c-border);padding-top:14px;margin-top:4px;">
         <p style="font-size:12.5px;font-weight:800;color:var(--c-dark);margin:0 0 12px;">

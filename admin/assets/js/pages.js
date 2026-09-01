@@ -80,7 +80,8 @@ $(function () {
           estorna_estoque:       $('#sp-estorna-estoque').is(':checked') ? 1 : 0,
           cancela_cupom:         $('#sp-cancela-cupom').is(':checked') ? 1 : 0,
           bloqueia_edicao_itens: $('#sp-bloqueia-edicao').is(':checked') ? 1 : 0,
-          notifica_cliente:      $('#sp-notifica-cliente').is(':checked') ? 1 : 0
+          notifica_cliente:      $('#sp-notifica-cliente').is(':checked') ? 1 : 0,
+          classe_bi:             $('#sp-classe-bi').val() || 'pre_venda'
       };
 
       CK.post(BASE + '/salvar', dados)
@@ -139,6 +140,7 @@ $(function () {
       document.getElementById('sp-cancela-cupom').checked          = s ? !!s.cancela_cupom : false;
       document.getElementById('sp-bloqueia-edicao').checked        = s ? !!s.bloqueia_edicao_itens : true;
       document.getElementById('sp-notifica-cliente').checked       = s ? !!s.notifica_cliente : true;
+      document.getElementById('sp-classe-bi').value = (s && s.classe_bi) ? s.classe_bi : 'pre_venda';
 
       // Slug
       var slugInput = document.getElementById('sp-slug');

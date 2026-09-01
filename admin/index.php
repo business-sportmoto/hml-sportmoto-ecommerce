@@ -42,6 +42,11 @@ spl_autoload_register(function (string $class): void {
 // var_dump(ROOT_PATH);
 // $svc = new EmailMarketingService();
 
+// Antes de qualquer saída. Em servidor nginx o .htaccess é ignorado, então sem
+// esta linha o painel depende inteiramente da configuração do servidor — e foi
+// o que segurou o microfone da gravação de voz em homologação.
+SecurityHelper::setAdminHeaders();
+
 Session::start();
 // Session::logoutAdmin();
 // var_dump($_SESSION); exit;
