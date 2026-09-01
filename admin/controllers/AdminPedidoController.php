@@ -55,6 +55,8 @@ class AdminPedidoController extends Controller {
         // Status dinâmicos do banco
         $statusModel     = new PedidoStatus();
         $todosStatus     = $statusModel->getAtivos();
+        // Motivos para o combo que aparece ao cancelar (ver show.php)
+        $motivosCancel   = $this->model->motivosCancelamento();
         $statusMap       = $statusModel->getMapBySlug();
         $statusDef       = $statusMap[$pedido['status_pedido']] ?? null;
         $podeEditarItens = !($statusDef['bloqueia_edicao_itens'] ?? true);
@@ -133,7 +135,7 @@ class AdminPedidoController extends Controller {
 
         $this->render('pedidos/show', compact(
             'pedido','itens','historico','nf',
-            'todosStatus','statusMap','statusDef','podeEditarItens',
+            'todosStatus','statusMap','statusDef','podeEditarItens','motivosCancel',
             'blingMap','blingLogs','cupomUso','promocoesAplicadas',
             'etiquetaCtx','mostraEtiqueta'
         ), 'admin');
@@ -212,7 +214,16 @@ class AdminPedidoController extends Controller {
             $this->json(['ok' => false, 'msg' => 'Status inválido ou inativo.']);
         } 
  
-        $resultado = $this->service->mudarStatus($id, $novoStatus, $observacao, $adminId, $notificar);
+        // Motivo de cancelamento — o service só o usa quando o status
+        // destino é classe_bi='cancelamento', então mandar sempre é
+        // inofensivo e evita um if aqui que teria que repetir a regra.
+        $motivoId  = !empty($_POST['motivo_cancelamento_id'])
+                   ? (int)$_POST['motivo_cancelamento_id'] : null;
+        $motivoObs = SecurityHelper::sanitizeString($_POST['motivo_cancelamento_obs'] ?? '') ?: null;
+
+        $resultado = $this->service->mudarStatus(
+            $id, $novoStatus, $observacao, $adminId, $notificar, $motivoId, $motivoObs
+        );
 
         if ($resultado['ok']) {
             $historico = $this->model->getHistorico($id);

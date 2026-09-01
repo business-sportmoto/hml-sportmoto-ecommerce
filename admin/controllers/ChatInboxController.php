@@ -332,6 +332,7 @@ class ChatInboxController extends Controller
         }
 
         $canal   = (string)($cv['canal'] ?? 'whatsapp');
+        $semFfmpeg = false;
         $legenda = trim((string)($_POST['legenda'] ?? '')) ?: null;
         $tamanho = (int)($f['size'] ?? 0);
 
@@ -354,6 +355,7 @@ class ChatInboxController extends Controller
                 $tamanho = (int)filesize($ogg);
             } else {
                 $ext = 'weba';   // segue como arquivo
+                $semFfmpeg = true;
             }
         }
 
@@ -446,7 +448,16 @@ class ChatInboxController extends Controller
         }
 
         $msg = $r['mensagem_id'] ? $this->mensagens->obter((int)$r['mensagem_id']) : null;
-        $this->json(['ok' => true, 'mensagem' => $msg ? $this->resumoMensagem($msg) : null]);
+
+        // Degradar em silêncio seria pior: o atendente acha que mandou um áudio
+        // tocável e o cliente recebe um arquivo para baixar.
+        $aviso = ($semFfmpeg && $tipoWa !== 'audio')
+            ? 'Sem ffmpeg no servidor, a gravação foi enviada como arquivo — '
+              . 'o cliente vai precisar baixar para ouvir.'
+            : null;
+
+        $this->json(['ok' => true, 'aviso' => $aviso,
+                     'mensagem' => $msg ? $this->resumoMensagem($msg) : null]);
     }
 
     /**

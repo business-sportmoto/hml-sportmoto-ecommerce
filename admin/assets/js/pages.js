@@ -771,10 +771,21 @@ $(function () {
     CK.formAlertClear($msg);
     CK.btnLoading($btn);
  
+    // Motivo obrigatório ao cancelar: sem isso o relatório de
+    // cancelamentos volta a ser uma pilha de texto livre.
+    var $optStatus = $('#sel-novo-status option:selected');
+    if ($optStatus.data('classe') === 'cancelamento' && !$('#sel-motivo-cancel').val()) {
+      CK.btnLoading($btn, false);
+      CK.formAlertSet($msg, 'Selecione o motivo do cancelamento.');
+      return;
+    }
+
     CK.post(endpoint('/status'), {
       status_pedido: $('#sel-novo-status').val(),
       observacao:    $('#obs-status').val(),
       notificar:     $('#chk-notificar-status').is(':checked') ? 1 : 0,
+      motivo_cancelamento_id:  $('#sel-motivo-cancel').val()  || '',
+      motivo_cancelamento_obs: $('#txt-motivo-cancel').val()  || '',
     }).done(function (res) {
       CK.btnLoading($btn, false);
       if (res.ok) {
@@ -1058,6 +1069,24 @@ $(function () {
       }
       // Pré-marca o checkbox de notificação conforme o flag do status
       document.getElementById('chk-notificar-status').checked = opt.dataset.notifica == '1';
+
+      // Motivo do cancelamento aparece só quando o destino é de
+      // cancelamento. Lê data-classe (classe_bi), nunca o slug: o
+      // admin pode criar status de cancelamento próprios.
+      var wrap = document.getElementById('wrap-motivo-cancel');
+      if (wrap) {
+        wrap.style.display = opt.dataset.classe === 'cancelamento' ? 'flex' : 'none';
+      }
+    }
+
+    // Campo de texto livre só para o motivo que o exige ("Outro")
+    var selMotivo = document.getElementById('sel-motivo-cancel');
+    if (selMotivo) {
+      selMotivo.addEventListener('change', function () {
+        var o = this.options[this.selectedIndex];
+        document.getElementById('txt-motivo-cancel').style.display =
+          (o && o.dataset.exigeTexto == '1') ? 'block' : 'none';
+      });
     }
 
     sel.addEventListener('change', verificarFlags);

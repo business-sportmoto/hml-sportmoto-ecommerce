@@ -334,7 +334,17 @@ class AdminAnaliseController extends Controller
         )->execute([':sp' => $slug, ':spg' => $statusPgto, ':pago' => $pagoEm, ':id' => $pedidoId]);
 
         try {
-            (new AdminPedidoService())->mudarStatus($pedidoId, $slug, $observacao, 0, true);
+            // Recusa na análise de risco já sabe o próprio motivo — não
+            // faz sentido pedir ao admin. Sem isto, todo cancelamento
+            // por antifraude cairia em "motivo não informado" e o
+            // relatório perderia a maior causa isolada de cancelamento.
+            $motivoId = $slug !== 'pagamento_aprovado'
+                ? (new AdminPedido())->motivoCancelamentoIdPorSlug('pagamento_recusado')
+                : null;
+
+            (new AdminPedidoService())->mudarStatus(
+                $pedidoId, $slug, $observacao, 0, true, $motivoId, $observacao
+            );
         } catch (\Throwable $e) {
             LogService::exception($e, 'warning', 'pagamento', [
                 'pedido_id' => $pedidoId, 'acao' => 'mudarStatus_analise',

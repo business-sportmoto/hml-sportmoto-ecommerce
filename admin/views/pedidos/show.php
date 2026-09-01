@@ -430,11 +430,30 @@ $ordemAtual = (int)($statusDef['ordenacao'] ?? 0);
                     data-cancela="<?= (int)$s['cancela_cupom'] ?>"
                     data-notifica="<?= (int)$s['notifica_cliente'] ?>"
                     data-reserva="<?= (int)($s['reserva_estoque'] ?? 0) ?>"
+                    data-classe="<?= View::e($s['classe_bi'] ?? 'pre_venda') ?>"
                     <?= $statusPedido === $s['slug'] ? 'selected' : '' ?>>
               <?= View::e($s['label']) ?>
             </option>
             <?php endforeach; ?>
           </select>
+
+          <!-- Motivo do cancelamento: só aparece quando o status destino
+               é de cancelamento. Devolução já tinha motivo catalogado;
+               cancelamento virava texto livre e não agregava. -->
+          <div id="wrap-motivo-cancel" style="display:none;flex-direction:column;gap:8px;">
+            <select id="sel-motivo-cancel" class="form-control">
+              <option value="">Motivo do cancelamento…</option>
+              <?php foreach (($motivosCancel ?? []) as $mc): ?>
+              <option value="<?= (int)$mc['id'] ?>"
+                      data-exige-texto="<?= (int)$mc['exige_texto'] ?>">
+                <?= View::e($mc['label']) ?>
+              </option>
+              <?php endforeach; ?>
+            </select>
+            <input type="text" id="txt-motivo-cancel" class="form-control"
+                   maxlength="500" style="display:none;"
+                   placeholder="Descreva o motivo…">
+          </div>
 
           <!-- Aviso de flags destrutivos -->
           <div id="status-flags-aviso" style="display:none;"

@@ -66,7 +66,9 @@ class AdminPedidoService {
         string $novoStatus,
         ?string $observacao,
         int    $adminId,
-        bool   $notificar = false
+        bool   $notificar = false,
+        ?int   $motivoCancelamentoId = null,
+        ?string $motivoCancelamentoObs = null
     ): array {
         $pedido = $this->model->findById($pedidoId);
         if (!$pedido) {
@@ -90,6 +92,30 @@ class AdminPedidoService {
         } catch (\Throwable $e) {
             error_log('[AdminPedidoService] mudarStatus updateStatus: ' . $e->getMessage());
             return ['ok' => false, 'msg' => 'Erro ao atualizar status: ' . $e->getMessage().' - '. $e->getLine().' - '. $e->getFile()];
+        }
+
+        // ── Motivo de cancelamento ────────────────────────────
+        // Devolução sempre teve motivo catalogado; cancelamento não —
+        // era texto livre em pedido_historico.observacao, que não
+        // agrega em relatório. Aqui ele vira dado.
+        //
+        // A condição olha classe_bi, NUNCA o slug: o admin pode criar
+        // status de cancelamento próprios, e hardcodar 'cancelado'
+        // deixaria esses de fora silenciosamente.
+        if ($novoStatus !== $statusAtual) {
+            $viraCancelamento = ($statusDef['classe_bi']      ?? null) === 'cancelamento';
+            $saiuDeCancelado  = ($statusAtualDef['classe_bi'] ?? null) === 'cancelamento';
+
+            if ($viraCancelamento) {
+                $this->model->setMotivoCancelamento(
+                    $pedidoId, $motivoCancelamentoId, $motivoCancelamentoObs
+                );
+            } elseif ($saiuDeCancelado) {
+                // Reativação: limpa o motivo. Sem isto o pedido volta a
+                // vender carregando um "cancelado por falta de estoque"
+                // que o relatório continuaria contando.
+                $this->model->setMotivoCancelamento($pedidoId, null, null);
+            }
         }
 
         // ── Efeitos colaterais via flags do banco ─────────────

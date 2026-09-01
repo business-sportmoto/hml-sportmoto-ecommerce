@@ -1686,6 +1686,18 @@ class CheckoutController extends Controller {
         //
         // Enriquecimento não pode derrubar venda: falha aqui é logada
         // e o pedido segue com os campos nulos.
+        // Canal: o app finaliza pelo MESMO process() (ver
+        // AppCheckoutRunner), então sem isto toda venda do app seria
+        // contada como site. A constante APP_API vem do bootstrap da
+        // API — é sinal de servidor, não campo do cliente, e portanto
+        // não dá para forjar mandando canal no POST.
+        $canal = (defined('APP_API') && APP_API) ? 'app' : 'site';
+
+        // Atribuição de marketing congelada no pedido — ver
+        // ClickCaptureService::atribuicaoAtual() para o porquê de
+        // copiar em vez de fazer join depois.
+        $atrib = ClickCaptureService::atribuicaoAtual($clienteId);
+
         $codigoVendedor   = null;
         $enderecoSnapshot = null;
         try {
@@ -1718,8 +1730,9 @@ class CheckoutController extends Controller {
                 forma_pagamento, parcelas, subtotal, desconto, frete, total,
                 endereco_entrega_id, frete_descricao, frete_prazo, frete_codigo,
                 observacao_cliente, cartao_bandeira, cartao_ultimos_4,
-                codigo_vendedor, endereco_entrega_snapshot, criado_em)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())"
+                codigo_vendedor, endereco_entrega_snapshot, canal,
+                utm_source, utm_medium, utm_campaign, click_id, criado_em)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())"
             )->execute([
                 $clienteId, $codigo,
                 'aguardando_pagamento', 'pendente',
@@ -1734,14 +1747,29 @@ class CheckoutController extends Controller {
                 $cartaoUltimos4,
                 $codigoVendedor,
                 $enderecoSnapshot,
+                $canal,
+                $atrib['utm_source'],
+                $atrib['utm_medium'],
+                $atrib['utm_campaign'],
+                $atrib['click_id'],
             ]);
             $pedidoId = (int)$db->lastInsertId();
     
+            // Custo de TODOS os itens numa query só — o loop abaixo roda
+            // dentro da transação do pedido e uma query por item seguraria
+            // locks à toa. Custo desconhecido volta NULL, nunca 0.
+            $custos = CustoService::resolverLote(array_map(
+                fn($i) => ['produto_id' => $i['produto_id'] ?? null,
+                           'sku_id'     => $i['sku_id']     ?? null],
+                $itens
+            ));
+
             $stmtItem = $db->prepare(
                 "INSERT INTO pedido_itens
                 (pedido_id, nome_produto, subtotal, produto_id, sku, quantidade,
-                preco_unitario, valor_original, desconto_cupom, valor_final_item, cupom_id)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+                preco_unitario, valor_original, desconto_cupom, valor_final_item, cupom_id,
+                custo_unitario, custo_origem)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
             );
             foreach ($itens as $item) {
                 $valorUnit  = (float)$item['valor_unitario'];
@@ -1757,12 +1785,18 @@ class CheckoutController extends Controller {
                 // com mais de um item). Nada quebrou porque o read path
                 // em Order.php:274 já prefere valor_final_item; a coluna
                 // era lixo write-only. Agora grava o total da linha.
+                $custoItem = $custos[CustoService::chave(
+                    (int)$item['produto_id'],
+                    $item['sku_id'] ? (int)$item['sku_id'] : null
+                )] ?? ['custo' => null, 'origem' => null];
+
                 $stmtItem->execute([
                     $pedidoId, $item['nome'], $valorTotal,
                     (int)$item['produto_id'],
                     $item['sku_id'] ? (int)$item['sku_id'] : null,
                     $qtd, $valorUnit, $valorUnit,
                     $descItem, $valorTotal - $descItem, $cupomId,
+                    $custoItem['custo'], $custoItem['origem'],
                 ]);
     
                 if (!empty($item['sku_id'])) {

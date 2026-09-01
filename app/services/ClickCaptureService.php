@@ -51,9 +51,25 @@ final class ClickCaptureService
             // fbp: só lemos (quem cria é o Pixel do navegador, na Fase 2)
             $fbp = $_COOKIE[self::COOKIE_FBP] ?? null;
 
-            // Se não veio NENHUM sinal de anúncio e não há fbc/fbp,
-            // não há o que gravar — sai barato.
-            if ($fbclid === null && $gclid === null && !$fbc && !$fbp) {
+            // UTM entra na condição de captura, não só de carona.
+            //
+            // Antes, uma chegada que trazia SÓ utm (link de e-mail
+            // marketing, bio do Instagram, QR code impresso) caía no
+            // return abaixo e era jogada fora: a tabela só ganhava
+            // linha se houvesse click ID de anúncio ou cookie _fbp.
+            // Como o Pixel cria _fbp para todo visitante, nasciam
+            // milhares de linhas sem utm nenhuma e ZERO linhas de
+            // tráfego de campanha não-paga — foi exatamente o que se
+            // viu no banco: 344 de 352 linhas existiam só pelo _fbp e
+            // utm_source estava 100% NULL.
+            $utmSource   = self::paramUtm('utm_source');
+            $utmMedium   = self::paramUtm('utm_medium');
+            $utmCampaign = self::paramUtm('utm_campaign');
+            $temUtm      = $utmSource !== null || $utmMedium !== null || $utmCampaign !== null;
+
+            // Se não veio NENHUM sinal de anúncio nem utm e não há
+            // fbc/fbp, não há o que gravar — sai barato.
+            if ($fbclid === null && $gclid === null && !$temUtm && !$fbc && !$fbp) {
                 return;
             }
 
@@ -62,11 +78,66 @@ final class ClickCaptureService
                 return; // sem token de visitante, não liga a ninguém
             }
 
-            self::gravar($token, $fbclid, $gclid, $fbc, $fbp);
+            self::gravar($token, $fbclid, $gclid, $fbc, $fbp,
+                         $utmSource, $utmMedium, $utmCampaign);
 
         } catch (\Throwable $e) {
             // captura NUNCA quebra a navegação
             error_log('[ClickCapture] ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Atribuição a congelar no pedido: a última chegada COM origem
+     * conhecida deste visitante, dentro da janela de 90 dias.
+     *
+     * Por que congelar em vez de fazer join na hora do relatório:
+     * tracking_clicks é ligada por visitante_token (cookie). Cookie
+     * expira, o cliente troca de aparelho, limpa o navegador — e a
+     * atribuição do pedido de ontem muda ou some. Copiar para o
+     * pedido no momento da compra torna o dado imutável, que é o que
+     * um relatório financeiro exige.
+     *
+     * Modelo: último clique com origem. Linhas geradas só pelo cookie
+     * _fbp (sem utm e sem click id) são ignoradas — elas existem para
+     * todo visitante e não dizem de onde ele veio.
+     *
+     * @return array{utm_source:?string,utm_medium:?string,utm_campaign:?string,click_id:?string}
+     */
+    public static function atribuicaoAtual(?int $clienteId = null): array
+    {
+        $vazio = ['utm_source' => null, 'utm_medium' => null,
+                  'utm_campaign' => null, 'click_id' => null];
+        try {
+            $token = self::visitanteToken();
+            if ($token === null && $clienteId === null) return $vazio;
+
+            $db = Database::getInstance()->getConnection();
+
+            // Casa por token OU por cliente: quem logou tem as duas
+            // pistas, e o cliente sobrevive à troca de dispositivo.
+            $st = $db->prepare(
+                "SELECT utm_source, utm_medium, utm_campaign, gclid, fbclid
+                   FROM tracking_clicks
+                  WHERE (visitante_token = ? OR (? IS NOT NULL AND cliente_id = ?))
+                    AND (utm_source IS NOT NULL OR gclid IS NOT NULL OR fbclid IS NOT NULL)
+                    AND criado_em >= (NOW() - INTERVAL " . self::DIAS . " DAY)
+                  ORDER BY criado_em DESC
+                  LIMIT 1"
+            );
+            $st->execute([$token, $clienteId, $clienteId]);
+            $r = $st->fetch();
+            if (!$r) return $vazio;
+
+            return [
+                'utm_source'   => $r['utm_source']   ?: null,
+                'utm_medium'   => $r['utm_medium']   ?: null,
+                'utm_campaign' => $r['utm_campaign'] ?: null,
+                'click_id'     => $r['gclid'] ?: ($r['fbclid'] ?: null),
+            ];
+        } catch (\Throwable $e) {
+            error_log('[ClickCapture] atribuicaoAtual: ' . $e->getMessage());
+            return $vazio;
         }
     }
 
@@ -101,6 +172,35 @@ final class ClickCaptureService
         return ($v !== '') ? mb_substr($v, 0, 500) : null;
     }
 
+    /**
+     * Lê um parâmetro UTM. Sanitização mais permissiva que param().
+     *
+     * param() só deixa passar [A-Za-z0-9_-.] porque foi escrito para
+     * fbclid/gclid, que são opacos e alfanuméricos. Aplicá-la a UTM
+     * deforma valor legítimo em silêncio: "black friday 2026" virava
+     * "blackfriday2026" e "email|jan" virava "emailjan", quebrando o
+     * agrupamento por campanha no relatório.
+     *
+     * Aqui espaço, +, |, :, / e vírgula sobrevivem; o que some é o
+     * que poderia virar injeção ou lixo de controle. O limite de 255
+     * casa com a coluna.
+     */
+    private static function paramUtm(string $nome): ?string
+    {
+        $v = $_GET[$nome] ?? '';
+        if (!is_string($v)) return null;
+
+        $v = trim($v);
+        if ($v === '') return null;
+
+        // Remove caracteres de controle e tags; mantém pontuação usual de campanha.
+        $v = preg_replace('/[\x00-\x1F\x7F<>"\']/u', '', $v) ?? '';
+        $v = preg_replace('/\s+/u', ' ', $v) ?? '';
+        $v = trim($v);
+
+        return ($v !== '') ? mb_substr($v, 0, 255) : null;
+    }
+
     /** Token do visitante (mesmo sm_vt do TrackingService). */
     private static function visitanteToken(): ?string
     {
@@ -116,7 +216,8 @@ final class ClickCaptureService
      */
     private static function gravar(
         string $token, ?string $fbclid, ?string $gclid,
-        ?string $fbc, ?string $fbp
+        ?string $fbc, ?string $fbp,
+        ?string $utmSource = null, ?string $utmMedium = null, ?string $utmCampaign = null
     ): void {
         $db = Database::getInstance()->getConnection();
 
@@ -127,6 +228,13 @@ final class ClickCaptureService
             return;
         }
         if ($gclid !== null && self::jaCapturado($db, $token, 'gclid', $gclid)) {
+            return;
+        }
+        // Mesma ideia para utm_source: sem isto, cada página navegada
+        // com a utm ainda na URL viraria uma linha nova e a atribuição
+        // "último clique" apontaria para a última página vista em vez
+        // da chegada.
+        if ($utmSource !== null && self::jaCapturado($db, $token, 'utm_source', $utmSource)) {
             return;
         }
 
@@ -144,9 +252,9 @@ final class ClickCaptureService
             $fbc,
             self::urlAtual(),
             mb_substr($_SERVER['HTTP_REFERER'] ?? '', 0, 1000) ?: null,
-            self::param('utm_source'),
-            self::param('utm_medium'),
-            self::param('utm_campaign'),
+            $utmSource,
+            $utmMedium,
+            $utmCampaign,
         ]);
     }
 
@@ -160,7 +268,7 @@ final class ClickCaptureService
     private static function jaCapturado(PDO $db, string $token, string $coluna, string $valor): bool
     {
         // Whitelist da coluna (nunca interpola input do usuário em SQL)
-        if (!in_array($coluna, ['fbclid', 'gclid'], true)) {
+        if (!in_array($coluna, ['fbclid', 'gclid', 'utm_source'], true)) {
             return false;
         }
 

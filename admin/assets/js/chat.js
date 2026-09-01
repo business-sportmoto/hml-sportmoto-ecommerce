@@ -259,9 +259,11 @@
       } else if (m.tipo === 'video') {
         corpo += '<video src="' + u + '" controls preload="metadata"></video>';
         if (nome) corpo += '<div class="ch-bolha-arq">' + nome + '</div>';
-      } else if (m.tipo === 'audio') {
-        // Áudio de música tem nome; áudio de voz não — só mostra quando existe
-        if (nome) corpo += '<div class="ch-bolha-arq">🎵 ' + nome + '</div>';
+      } else if (m.tipo === 'audio' || String(m.midia_mime || '').indexOf('audio/') === 0) {
+        // Pelo MIME, não só pelo tipo: sem ffmpeg no servidor a gravação segue
+        // ao cliente como arquivo, mas aqui ela continua sendo áudio e tem de
+        // tocar em vez de virar link de download.
+        if (nome && !/^audio-\d{4}-/.test(nome)) corpo += '<div class="ch-bolha-arq">🎵 ' + nome + '</div>';
         corpo += '<audio src="' + u + '" controls preload="none"></audio>';
       } else {
         corpo += '<a class="ch-bolha-doc" href="' + u + '" target="_blank" rel="noopener" download>' +
@@ -705,6 +707,11 @@
       try { this.rec.stop(); } catch (e) { this.rec = null; fecharStream(); aoTerminar(null); }
     },
 
+    /**
+      * O ➤ da barra ENVIA, não anexa. É o que o botão promete e o que o
+      * WhatsApp faz — parar num "agora aperte o outro enviar" obrigava a
+      * digitar algo para o áudio sair.
+      */
     concluir: function () {
       var self = this;
       this.encerrar(function (blob) {
@@ -712,6 +719,7 @@
         var ext = self.extensao(blob.type);
         var nome = 'audio-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.' + ext;
         mostrarAnexo(new File([blob], nome, { type: blob.type }), true);
+        enviarAnexo(true);   // voz vai sozinha; o texto digitado fica no campo
       });
     },
 
@@ -725,14 +733,17 @@
   $('#ch-grav-pausar').on('click', function () { Grav.pausar(); });
   $('#ch-grav-cancelar').on('click', function () { Grav.cancelar(); });
 
-  function enviarAnexo() {
+  function enviarAnexo(semLegenda) {
     var f = anexo;
     if (!f || !estado.conversaId) return;
 
     var fd = new FormData();
     fd.append('arquivo', f);
     fd.append('csrf_token', CSRF);
-    fd.append('legenda', ($('#ch-texto').val() || '').trim());
+    // A Meta ignora legenda em áudio (ChatMetaClient::enviarMidia). Mandar o
+    // texto junto de um áudio o descartaria em silêncio — melhor deixá-lo no
+    // campo para o atendente enviar como mensagem própria.
+    fd.append('legenda', semLegenda ? '' : ($('#ch-texto').val() || '').trim());
     if (anexoGravado) fd.append('gravacao', '1');
 
     var $t = $('#ch-texto').prop('disabled', true);
@@ -743,9 +754,10 @@
       type: 'POST', data: fd, processData: false, contentType: false, dataType: 'json'
     }).done(function (r) {
       if (r.ok) {
-        $t.val('').css('height', 'auto');
+        if (!semLegenda) $t.val('').css('height', 'auto');
         limparAnexo();
         if (r.mensagem) renderMensagens([r.mensagem], false);
+        if (r.aviso) toast(r.aviso, 'aviso');
         carregarLista();
       } else if (r.fora_janela) {
         toast('A janela de 24h fechou. Use um template.', 'erro');

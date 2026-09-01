@@ -42,6 +42,20 @@ $tiposVar  = array_filter($atributos_tipos, fn($t) => $t['papel'] === 'variacao'
       </div>
     </div>
 
+    <div class="pe-sku-card-preco">
+      <label class="pe-label" style="font-size:11px;">Custo</label>
+      <div class="pe-price-input-wrap">
+        <span class="pe-price-prefix" style="font-size:12px;">R$</span>
+        <input type="number"
+               name="skus[<?= $key ?>][custo]"
+               class="form-control pe-price-input"
+               value="<?= !empty($sku['custo']) ? number_format((float)$sku['custo'], 2, '.', '') : '' ?>"
+               step="0.01" min="0" placeholder="—"
+               title="Em branco = desconhecido. Tem precedencia sobre o custo do produto."
+               style="font-size:13px;">
+      </div>
+    </div>
+
     <div class="pe-sku-card-estoque">
       <label class="pe-label" style="font-size:11px;">Estoque</label>
       <input type="number"

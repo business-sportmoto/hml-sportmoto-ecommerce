@@ -300,9 +300,10 @@ class TrayPedidoImportService
                     cupom_id,
                     observacao_cliente, observacao_interna,
                     endereco_entrega,
+                    canal,
                     criado_em, atualizado_em
                 ) VALUES (
-                    ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+                    ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
                 )"
             )->execute([
                 $trayId,
@@ -325,6 +326,7 @@ class TrayPedidoImportService
                 $this->utf8($r[self::P['obs_cliente']] ?? '') ?: null,
                 $this->utf8($r[self::P['obs_loja']]    ?? '') ?: null,
                 $enderecoJson,
+                'tray',   // canal — venda importada da Tray, não do site
                 $criadoEm,
                 $criadoEm,
             ]);

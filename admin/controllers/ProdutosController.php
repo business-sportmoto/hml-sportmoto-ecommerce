@@ -429,6 +429,12 @@ class ProdutosController extends Controller {
         $precoPromo  = !empty($_POST['preco_promo']) && (float)$_POST['preco_promo'] > 0
                     ? (float)str_replace(',', '.', $_POST['preco_promo'])
                     : null;
+        // Campo vazio ou zero vira NULL de propósito: no BI, custo 0
+        // seria lido como margem de 100%. Ausência tem que continuar
+        // sendo ausência.
+        $precoCusto  = !empty($_POST['preco_custo']) && (float)str_replace(',', '.', $_POST['preco_custo']) > 0
+                    ? (float)str_replace(',', '.', $_POST['preco_custo'])
+                    : null;
         $promoIn     = !empty($_POST['promo_inicio']) ? $_POST['promo_inicio'] : null;
         $promoFim    = !empty($_POST['promo_fim'])    ? $_POST['promo_fim']    : null;
         // $estoque     = SecurityHelper::sanitizeInt($_POST['estoque_total']   ?? 0);
@@ -511,6 +517,9 @@ class ProdutosController extends Controller {
             'bling_id'         => SecurityHelper::sanitizeString($_POST['bling_id'] ?? '') ?: null,
             'preco'            => $preco,
             'preco_promo'      => $precoPromo,
+            // Custo desconhecido é NULL, jamais 0 — 0 viraria "100% de
+            // margem" no BI. Ver app/services/CustoService.php.
+            'preco_custo'      => $precoCusto,
             'promo_inicio'     => $promoIn,
             'promo_fim'        => $promoFim,
             // 'estoque_total'    => $estoque,
@@ -681,14 +690,21 @@ class ProdutosController extends Controller {
 
             if (!empty($skus)) {
                 $stmtSkuUpdate = $db->prepare(
+                    // custo = IF(?, ?, custo): existem outras tabelas de SKU
+                    // no form que não renderizam o campo de custo. Se o
+                    // UPDATE gravasse direto, salvar por uma delas APAGARIA
+                    // o custo — e a margem histórica junto. O flag distingue
+                    // "campo ausente no POST" (preserva) de "campo enviado
+                    // vazio" (limpa de propósito).
                     "UPDATE produto_skus
-                    SET sku=?, preco=?, preco_promo=?, estoque=?, ativo=?
+                    SET sku=?, preco=?, preco_promo=?, estoque=?, ativo=?,
+                        custo = IF(?, ?, custo)
                     WHERE id=? AND produto_id=?"
                 );
                 $stmtSkuInsert = $db->prepare(
                     "INSERT INTO produto_skus
-                    (produto_id, sku, preco, preco_promo, estoque, ativo)
-                    VALUES (?,?,?,?,?,?)"
+                    (produto_id, sku, preco, preco_promo, estoque, ativo, custo)
+                    VALUES (?,?,?,?,?,?,?)"
                 );
                 $stmtDelAttrs  = $db->prepare(
                     "DELETE FROM sku_atributos WHERE sku_id=?"
@@ -706,6 +722,12 @@ class ProdutosController extends Controller {
                                 : null;
                     $skuEst    = SecurityHelper::sanitizeInt($sku['estoque']     ?? 0);
                     $skuAtivo  = isset($sku['ativo']) && $sku['ativo'] == '1' ? 1 : 0;
+                    // Custo do SKU tem precedência sobre o do produto:
+                    // variações têm custo diferente. Vazio = NULL.
+                    $temCusto  = array_key_exists('custo', $sku);
+                    $skuCusto  = !empty($sku['custo']) && (float)str_replace(',', '.', $sku['custo']) > 0
+                                ? (float)str_replace(',', '.', $sku['custo'])
+                                : null;
                     $attrs     = $sku['atributos'] ?? [];
 
                     if (empty($skuCodigo)) continue;
@@ -715,11 +737,12 @@ class ProdutosController extends Controller {
                         $skuId = (int)$key;
                         $stmtSkuUpdate->execute([
                             $skuCodigo, $skuPreco, $skuPromo, $skuEst, $skuAtivo,
+                            $temCusto ? 1 : 0, $skuCusto,
                             $skuId, $id,
                         ]);
                     } else {
                         $stmtSkuInsert->execute([
-                            $id, $skuCodigo, $skuPreco, $skuPromo, $skuEst, $skuAtivo,
+                            $id, $skuCodigo, $skuPreco, $skuPromo, $skuEst, $skuAtivo, $skuCusto,
                         ]);
                         $skuId = (int)$db->lastInsertId();
                     }

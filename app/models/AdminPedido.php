@@ -262,6 +262,60 @@ class AdminPedido {
     }
 
     /**
+     * Grava (ou limpa) o motivo de cancelamento do pedido.
+     *
+     * Passar null nos dois argumentos limpa — é o que acontece quando
+     * um pedido cancelado é reativado.
+     */
+    public function setMotivoCancelamento(int $id, ?int $motivoId, ?string $obs): void {
+        // Motivo inexistente vira NULL em vez de FK quebrada: o combo
+        // do admin é conveniência, não autorização.
+        if ($motivoId !== null) {
+            $stmt = $this->db->prepare(
+                "SELECT id FROM motivos_cancelamento WHERE id = ? AND ativo = 1"
+            );
+            $stmt->execute([$motivoId]);
+            if (!$stmt->fetchColumn()) {
+                $motivoId = null;
+            }
+        }
+
+        $this->db->prepare(
+            "UPDATE pedidos
+                SET motivo_cancelamento_id  = ?,
+                    motivo_cancelamento_obs = ?,
+                    atualizado_em           = NOW()
+              WHERE id = ?"
+        )->execute([$motivoId, $obs !== null ? mb_substr($obs, 0, 500) : null, $id]);
+    }
+
+    /**
+     * Resolve o id de um motivo de cancelamento pelo slug.
+     * Usado quando o próprio sistema já sabe o motivo (ex.: recusa na
+     * análise de risco) e não faz sentido perguntar ao admin.
+     */
+    public function motivoCancelamentoIdPorSlug(string $slug): ?int {
+        $stmt = $this->db->prepare(
+            "SELECT id FROM motivos_cancelamento WHERE slug = ? AND ativo = 1 LIMIT 1"
+        );
+        $stmt->execute([$slug]);
+        $id = $stmt->fetchColumn();
+        return $id ? (int)$id : null;
+    }
+
+    /**
+     * Motivos de cancelamento ativos, para o combo do admin.
+     */
+    public function motivosCancelamento(): array {
+        return $this->db->query(
+            "SELECT id, label, slug, origem, exige_texto
+               FROM motivos_cancelamento
+              WHERE ativo = 1
+              ORDER BY ordenacao ASC, label ASC"
+        )->fetchAll();
+    }
+
+    /**
      * Atualiza status de pagamento.
      */
     public function updateStatusPagamento(
@@ -506,8 +560,8 @@ class AdminPedido {
              (cliente_id, codigo, status_pedido, status_pagamento,
               forma_pagamento, parcelas, subtotal, desconto, frete, total,
               endereco_entrega_id, frete_descricao, observacao_cliente,
-              observacao_interna, criado_em)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())"
+              observacao_interna, canal, criado_em)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())"
         )->execute([
             $dados['cliente_id'],
             $codigo,
@@ -523,6 +577,11 @@ class AdminPedido {
             $dados['frete_descricao']   ?? null,
             $dados['observacao_cliente']?? null,
             $dados['observacao_interna']?? 'Pedido criado manualmente via admin.',
+            // Canal fixo: quem chama este método É o admin. Antes a
+            // única pista de que o pedido era manual era o formato do
+            // código e um texto em observacao_interna — heurística,
+            // não dado.
+            $dados['canal'] ?? 'admin',
         ]);
         return (int)$this->db->lastInsertId();
     }

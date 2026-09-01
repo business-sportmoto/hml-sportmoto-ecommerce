@@ -479,6 +479,69 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
               </div>
             </div>
 
+            <!-- Custo — base de toda análise de margem -->
+            <div class="pe-grid-3" style="margin-top:14px;">
+              <div class="form-group">
+                <label class="pe-label">Custo de aquisição</label>
+                <div class="pe-price-input-wrap">
+                  <span class="pe-price-prefix">R$</span>
+                  <input type="number" name="preco_custo" id="pe-preco-custo"
+                         class="form-control pe-price-input"
+                         value="<?= !empty($p['preco_custo']) ? number_format((float)$p['preco_custo'], 2, '.', '') : '' ?>"
+                         placeholder="0,00" step="0.01" min="0">
+                </div>
+                <small style="color:var(--text-3);font-size:11px;">
+                  Em branco = desconhecido. O produto fica de fora do cálculo de margem
+                  — nunca entra como margem de 100%.
+                </small>
+              </div>
+              <div class="form-group">
+                <label class="pe-label">Margem estimada</label>
+                <div class="pe-discount-badge" id="pe-margem-badge">
+                  <span id="pe-margem-val">—</span>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="pe-label">Lucro por unidade</label>
+                <div class="pe-discount-badge" id="pe-lucro-badge">
+                  <span id="pe-lucro-val">—</span>
+                </div>
+              </div>
+            </div>
+
+            <script>
+            // Margem ao vivo: quem digita o custo vê na hora o que ganha.
+            // Usa o preço promocional quando existe — é o que o cliente paga.
+            (function () {
+              var custo = document.getElementById('pe-preco-custo'),
+                  preco = document.getElementById('pe-preco'),
+                  promo = document.getElementById('pe-preco-promo'),
+                  mVal  = document.getElementById('pe-margem-val'),
+                  lVal  = document.getElementById('pe-lucro-val');
+              if (!custo || !preco) return;
+
+              function brl(v) {
+                return 'R$ ' + v.toFixed(2).replace('.', ',');
+              }
+              function calc() {
+                var c = parseFloat(custo.value) || 0,
+                    p = parseFloat(promo && promo.value) || parseFloat(preco.value) || 0;
+                if (c <= 0 || p <= 0) { mVal.textContent = '—'; lVal.textContent = '—'; return; }
+                var lucro  = p - c,
+                    margem = (lucro / p) * 100;
+                lVal.textContent = brl(lucro);
+                mVal.textContent = margem.toFixed(1).replace('.', ',') + '%';
+                var cor = margem < 0 ? '#dc2626' : (margem < 15 ? '#d97706' : '#16a34a');
+                mVal.style.color = cor;
+                lVal.style.color = cor;
+              }
+              [custo, preco, promo].forEach(function (el) {
+                if (el) el.addEventListener('input', calc);
+              });
+              calc();
+            })();
+            </script>
+
             <!-- Período da promoção -->
             <div class="pe-promo-periodo" id="pe-promo-periodo"
                  style="<?= empty($p['preco_promo']) ? 'display:none' : '' ?>">
