@@ -72,6 +72,20 @@ $icons = [
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+
+  <?php // Aplica o tema antes de qualquer CSS pintar. Sem isto a pagina pisca
+        // no tema anterior a cada navegacao (FOUC). Ausencia de atributo e um
+        // estado valido: significa "seguir o sistema". ?>
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('loja-tema');
+        if (t === 'claro')       document.documentElement.setAttribute('data-theme', 'light');
+        else if (t === 'escuro') document.documentElement.setAttribute('data-theme', 'dark');
+        // qualquer outro valor (inclusive nenhum) = sistema: nao marca nada
+      } catch (e) { /* modo privativo: cai no sistema */ }
+    })();
+  </script>
   <?php View::partial('partials/seo-tags') ?>
   
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/main.css') ?>">
@@ -79,6 +93,8 @@ $icons = [
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/clips.css') ?>">
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/pwa-native.css') ?>">
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/toast.css') ?>">
+  <?php // Depois dos outros: e ele que redeclara os tokens de :root. ?>
+  <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/tema.css') ?>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -217,6 +233,8 @@ $icons = [
   
   <script src="<?= PerformanceHelper::assetVersion('js/jquery.min.js') ?>"></script>
   <script src="<?= PerformanceHelper::assetVersion('js/toast.js') ?>" defer></script>
+  <?php // Controle de tema da pagina de conta; a aplicacao na carga e do <head>. ?>
+  <script src="<?= PerformanceHelper::assetVersion('js/tema.js') ?>" defer></script>
   
   <script src="<?= PerformanceHelper::assetVersion('js/main.js') ?>" defer></script>
   <script src="<?= PerformanceHelper::assetVersion('js/checkout.js') ?>" defer></script>

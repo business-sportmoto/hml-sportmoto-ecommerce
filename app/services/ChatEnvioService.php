@@ -103,6 +103,9 @@ class ChatEnvioService
             'origem'    => $origem,
             'legenda'   => $opts['legenda'] ?? null,
             'nome_arquivo' => $opts['nome_arquivo'] ?? null,
+            // Só para o histórico: a Meta descobre o tipo pela própria URL
+            'mime'      => $opts['mime'] ?? null,
+            'tamanho'   => $opts['tamanho'] ?? null,
         ], $opts);
     }
 
@@ -268,6 +271,13 @@ class ChatEnvioService
             'tipo'             => $this->tipoPersistido($spec),
             'texto'            => $this->textoPersistido($spec),
             'payload'          => $this->payloadPersistido($spec),
+            // Sem isto o anexo enviado pelo atendimento ficava gravado com
+            // tipo 'image' e URL nula — e a thread mostrava "Anexo não
+            // disponível" para uma foto que o cliente recebeu normalmente.
+            'midia_url'        => $this->midiaUrl($spec),
+            'midia_mime'       => $spec['mime'] ?? null,
+            'midia_nome'       => $spec['nome_arquivo'] ?? null,
+            'midia_tamanho'    => $spec['tamanho'] ?? null,
             'wamid'            => $wamid,
             'resposta_a'       => $respostaA,
             'status'           => $erro ? 'falhou' : 'enviado',
@@ -586,6 +596,19 @@ class ChatEnvioService
             'localizacao' => 'location',
             default       => 'text',
         };
+    }
+
+    /**
+     * URL do anexo, para a thread conseguir exibi-lo.
+     *
+     * `origem` aceita URL pública OU media id já subido na Meta. Só a URL serve
+     * para o inbox renderizar; um id gravado aqui viraria <img src="123456">.
+     */
+    private function midiaUrl(array $spec): ?string
+    {
+        if (($spec['tipo'] ?? '') !== 'midia') return null;
+        $o = (string)($spec['origem'] ?? '');
+        return str_starts_with($o, 'http://') || str_starts_with($o, 'https://') ? $o : null;
     }
 
     /** Texto que aparece na bolha do inbox. */

@@ -67,8 +67,18 @@ class ChatFluxoMotor
             if (!$trigger) return null;
 
             if ($conversaId === null) {
-                $cv = $this->ctx->conversas->obterPorContato($contatoId)
-                   ?: $this->ctx->conversas->garantir($contatoId);
+                // O canal precisa vir do contato. Sem isto, um fluxo disparado
+                // por comentário do Instagram amarrava a sessão a uma conversa
+                // de WhatsApp — criando uma conversa fantasma por contato do IG.
+                $canal = 'whatsapp';
+                try {
+                    $stC = $this->db->prepare("SELECT canal FROM chat_contatos WHERE id = :id LIMIT 1");
+                    $stC->execute([':id' => $contatoId]);
+                    $canal = (string)($stC->fetchColumn() ?: 'whatsapp');
+                } catch (Throwable $e) { /* fica no padrão */ }
+
+                $cv = $this->ctx->conversas->obterPorContato($contatoId, $canal)
+                   ?: $this->ctx->conversas->garantir($contatoId, $canal);
                 $conversaId = (int)($cv['id'] ?? 0) ?: null;
             }
 

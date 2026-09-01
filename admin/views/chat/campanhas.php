@@ -33,7 +33,7 @@ $badge = [
 
   <div class="ch-aviso ch-aviso--info">
     <div>
-      <strong>Como a Meta trata disparo em massa</strong>
+      <strong class="ch-aviso-tit">Como a Meta trata disparo em massa</strong>
       Para quem <em>não</em> escreveu para a loja nas últimas 24h, só um
       <strong>template aprovado</strong> passa. Campanha de texto livre alcança apenas
       quem está com a janela aberta — os demais são marcados como “pulados”, não como erro.

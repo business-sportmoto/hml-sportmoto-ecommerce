@@ -15,7 +15,7 @@ $qs = fn(array $e = []) => '?' . http_build_query(array_merge($_GET, $e));
 $badgeStatus = [
     'ativa'    => ['ATIVA',    'ok'],
     'rascunho' => ['RASCUNHO', 'neutro'],
-    'parada'   => ['PARADA',   'aviso'],
+    'parada'   => ['PARADA',   'neutro'],
 ];
 
 /** "há 5 meses" — a listagem do ManyChat mostra assim, e é mais legível. */
@@ -43,14 +43,17 @@ $haQuanto = function (?string $dt) {
     <div class="ch-head-acoes">
       <a href="<?= $base ?>/admin/chat/instagram" class="ch-btn">Conta</a>
       <a href="<?= $base ?>/admin/chat/instagram/comentarios" class="ch-btn">Comentários</a>
-      <a href="<?= $base ?>/admin/chat/automacoes/nova" class="ch-btn ch-btn--pri">+ Nova Automação</a>
+      <a href="<?= $base ?>/admin/chat/automacoes/nova" class="ch-btn ch-btn--pri">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Nova Automação
+      </a>
     </div>
   </div>
 
   <?php if (!$contaOk): ?>
     <div class="ch-aviso ch-aviso--erro">
       <div>
-        <strong>Nenhuma conta do Instagram conectada</strong>
+        <strong class="ch-aviso-tit">Nenhuma conta do Instagram conectada</strong>
         As automações não disparam sem uma conta ativa.
         <a href="<?= $base ?>/admin/chat/instagram">Conectar agora</a>
       </div>
@@ -60,14 +63,15 @@ $haQuanto = function (?string $dt) {
   <?php // ── Filtros ────────────────────────────────────────────────────── ?>
   <form method="get" class="ch-filtros">
     <?php if (!empty($filtros['lixeira'])): ?><input type="hidden" name="lixeira" value="1"><?php endif; ?>
-    <div class="ch-campo" style="flex:2 1 220px;">
-      <label class="ch-label">Buscar</label>
+    <?php // Sem rótulos acima dos campos: o texto do placeholder já diz o que
+          // cada controle faz, e a linha fica com a mesma altura do início ao fim. ?>
+    <div class="ch-campo ch-busca" style="flex:2 1 240px;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       <input type="text" class="ch-input" name="q" value="<?= $h($filtros['busca']) ?>"
-             placeholder="Pesquisar todas as automações">
+             placeholder="Pesquisar todas as automações" aria-label="Pesquisar automações">
     </div>
     <div class="ch-campo">
-      <label class="ch-label">Gatilho</label>
-      <select class="ch-select" name="gatilho">
+      <select class="ch-select" name="gatilho" aria-label="Gatilho" data-auto>
         <option value="">Qualquer gatilho</option>
         <?php foreach ($gatilhos as $g => $meta): ?>
           <option value="<?= $h($g) ?>" <?= $filtros['gatilho'] === $g ? 'selected' : '' ?>>
@@ -77,17 +81,16 @@ $haQuanto = function (?string $dt) {
       </select>
     </div>
     <div class="ch-campo">
-      <label class="ch-label">Estado</label>
-      <select class="ch-select" name="status">
-        <option value="">Estados variados</option>
+      <select class="ch-select" name="status" aria-label="Estado do gatilho" data-auto>
+        <option value="">Estados variados do gatilho</option>
         <option value="ativa"    <?= $filtros['status'] === 'ativa'    ? 'selected' : '' ?>>Ativa</option>
         <option value="rascunho" <?= $filtros['status'] === 'rascunho' ? 'selected' : '' ?>>Rascunho</option>
         <option value="parada"   <?= $filtros['status'] === 'parada'   ? 'selected' : '' ?>>Parada</option>
       </select>
     </div>
-    <div class="ch-campo" style="flex:0;">
-      <button type="submit" class="ch-btn ch-btn--pri">Filtrar</button>
-    </div>
+    <?php // Botão só aparece sem JS: com JS os selects já aplicam sozinhos e a
+          // busca vai no Enter, como na referência. ?>
+    <noscript><button type="submit" class="ch-btn">Filtrar</button></noscript>
   </form>
 
   <?php // ── Pastas ─────────────────────────────────────────────────────── ?>
@@ -141,7 +144,8 @@ $haQuanto = function (?string $dt) {
     </div>
 
     <a href="<?= $base ?>/admin/chat/automacoes?lixeira=1"
-       class="ch-btn ch-btn--sm <?= !empty($filtros['lixeira']) ? 'ch-btn--pri' : '' ?>">
+       class="ch-btn ch-btn--sm <?= !empty($filtros['lixeira']) ? 'ch-btn--pri' : 'ch-btn--texto' ?>">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
       Lixeira <?= (int)$contadores['lixeira'] > 0 ? '(' . $n($contadores['lixeira']) . ')' : '' ?>
     </a>
   </div>
@@ -170,14 +174,25 @@ $haQuanto = function (?string $dt) {
     </div>
   <?php else: ?>
 
+    <?php // Cabeçalho das colunas fora dos cartões. As larguras vivem no CSS
+          // (.ch-aut-cab-nums e .ch-aut-nums usam o mesmo valor). ?>
+    <div class="ch-aut-cab">
+      <span class="ch-aut-cab-nome">Nome</span>
+      <span class="ch-aut-cab-nums">
+        <span>Execuções</span>
+        <span>CTR</span>
+        <span>Modificado</span>
+      </span>
+    </div>
+
     <div class="ch-aut-lista">
       <?php foreach ($automacoes as $a):
         [$stLbl, $stCor] = $badgeStatus[$a['status']] ?? [$a['status'], 'neutro'];
         $naLixeira = !empty($a['excluido_em']);
       ?>
-      <div class="ch-aut" data-id="<?= (int)$a['id'] ?>">
+      <div class="ch-aut <?= $a['status'] === 'ativa' ? '' : 'ch-aut--inativa' ?>" data-id="<?= (int)$a['id'] ?>">
         <div class="ch-aut-topo">
-          <span class="ch-badge ch-badge--<?= $stCor ?>"><?= $h($stLbl) ?></span>
+          <span class="ch-badge ch-badge--estado ch-badge--<?= $stCor ?>"><?= $h($stLbl) ?></span>
 
           <a href="<?= $base ?>/admin/chat/automacoes/<?= (int)$a['id'] ?>" class="ch-aut-nome">
             <?= $h($a['nome']) ?>
@@ -230,9 +245,9 @@ $haQuanto = function (?string $dt) {
           <?php endif; ?>
 
           <?php if ($a['dono_nome']): ?>
-            <span class="ch-aut-dono" title="Criada por"><?= $h($a['dono_nome']) ?></span>
+            <span class="ch-aut-dono" title="Criada por">· <?= $h($a['dono_nome']) ?></span>
           <?php elseif (!$naLixeira): ?>
-            <span class="ch-aut-dono ch-mut" title="Sem dono definido">do time</span>
+            <span class="ch-aut-dono" title="Sem dono definido">· do time</span>
           <?php endif; ?>
         </div>
       </div>

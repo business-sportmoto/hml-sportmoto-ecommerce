@@ -332,9 +332,64 @@ class ChatIgAutomacaoService
                 ':ip'    => (int)($padrao['ignorar_proprios'] ?? 1),
                 ':uma'   => (int)($padrao['uma_vez_por_pessoa'] ?? 0),
             ]);
-            return ['ok' => true, 'id' => (int)$this->db->lastInsertId()];
+            $id = (int)$this->db->lastInsertId();
+
+            // Receita que responde por fluxo nasce com o fluxo junto e já
+            // vinculado. Criar a automação e deixar o "escolha um fluxo" vazio
+            // seria empurrar para o usuário um passo que a receita promete.
+            $fluxoId = !empty($meta['cria_fluxo']) ? $this->criarFluxoVinculado($id, $nome) : null;
+
+            return ['ok' => true, 'id' => $id, 'fluxo_id' => $fluxoId];
         } catch (Throwable $e) {
             return ['ok' => false, 'erro' => 'Falha ao criar: ' . $e->getMessage()];
+        }
+    }
+
+    /**
+     * Cria o fluxo da automação e devolve o id.
+     *
+     * O fluxo nasce com um bloco de disparo manual ligado a um texto: sem
+     * trigger o motor não acha por onde entrar (ChatFluxoMotor::acharTrigger),
+     * e um canvas vazio não ensina nada a quem abre o editor pela primeira vez.
+     *
+     * Falhar aqui não invalida a automação — ela fica sem fluxo e o editor
+     * mostra o aviso. Por isso o try/catch em vez de derrubar a criação.
+     */
+    private function criarFluxoVinculado(int $automacaoId, string $nome): ?int
+    {
+        try {
+            $adm = new ChatFluxoAdminService($this->db);
+            $fluxoId = $adm->criar(
+                mb_substr($nome, 0, 110),
+                'Fluxo da automação do Instagram #' . $automacaoId,
+                $this->usuarioId() ?: null
+            );
+
+            $adm->salvarRascunho($fluxoId, [
+                'nos' => [
+                    ['chave' => 'inicio', 'tipo' => 'gatilho_manual', 'pos' => [80, 120], 'config' => []],
+                    ['chave' => 'ola',    'tipo' => 'msg_texto',      'pos' => [400, 120], 'config' => [
+                        'texto' => "Oi, {{primeiro_nome}}! 👋\n\nVi seu comentário. Como posso ajudar?",
+                    ]],
+                ],
+                'conexoes' => [
+                    ['de' => 'inicio', 'para' => 'ola', 'porta' => 'saida'],
+                ],
+            ]);
+
+            $this->db->prepare("UPDATE chat_ig_regras SET fluxo_id = :f WHERE id = :id")
+                     ->execute([':f' => $fluxoId, ':id' => $automacaoId]);
+
+            return $fluxoId;
+        } catch (Throwable $e) {
+            if (class_exists('LogService')) {
+                try {
+                    LogService::warning('chat_ig: falha ao criar fluxo da automação', [
+                        'automacao_id' => $automacaoId, 'erro' => $e->getMessage(),
+                    ], 'chat');
+                } catch (Throwable $x) {}
+            }
+            return null;
         }
     }
 
@@ -464,6 +519,26 @@ class ChatIgAutomacaoService
 
             if ((int)$a['enviar_dm'] === 1 && trim((string)$a['mensagem_dm']) === '' && !$a['fluxo_id']) {
                 return ['ok' => false, 'erro' => 'Escreva a mensagem do direct antes de ativar.'];
+            }
+
+            // O motor só entra em fluxo publicado (ChatFluxoMotor::iniciar).
+            // Sem esta checagem a automação ativa, responde o comentário e o
+            // direct fica mudo — falha silenciosa, a pior de diagnosticar.
+            if ($a['fluxo_id']) {
+                $st = $this->db->prepare(
+                    "SELECT nome, status, versao_publicada FROM chat_fluxos WHERE id = :f LIMIT 1"
+                );
+                $st->execute([':f' => (int)$a['fluxo_id']]);
+                $fx = $st->fetch(PDO::FETCH_ASSOC);
+
+                if (!$fx) {
+                    return ['ok' => false, 'erro' => 'O fluxo vinculado não existe mais. Escolha outro.'];
+                }
+                if ($fx['status'] !== 'publicado' || (int)$fx['versao_publicada'] < 1) {
+                    return ['ok' => false, 'erro' =>
+                        'O fluxo “' . $fx['nome'] . '” ainda não foi publicado. '
+                        . 'Abra o editor de fluxo e publique — só assim o direct responde.'];
+                }
             }
         }
 

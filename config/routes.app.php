@@ -226,6 +226,12 @@ AppRouter::get ($v . '/clips/{id:\d+}/comentarios',   'AppClipsController@coment
 AppRouter::post($v . '/clips/{id:\d+}/comentarios',   'AppClipsController@comentar');
 AppRouter::get ($v . '/clips/{id:\d+}',        'AppClipsController@detalhe');
 
+// ── Central de ajuda ────────────────────────────────────────────────────────
+// Um GET só entrega o FAQ inteiro; a busca acontece no aparelho. Ver o
+// cabeçalho de AppAjudaController para o porquê de não haver rota de busca.
+AppRouter::get ($v . '/ajuda',                                 'AppAjudaController@index');
+AppRouter::post($v . '/ajuda/perguntas/{id:\d+}/visualizacao', 'AppAjudaController@visualizar');
+
 // Diagnóstico da ponte de sessão. Só responde com APP_DEBUG ligado — é o teste
 // de aceitação da Fase 0 (o carrinho anônimo precisa persistir sem cookie).
 AppRouter::get ($v . '/_diagnostico',          'AppSistemaController@diagnostico');

@@ -5777,6 +5777,12 @@ html[data-theme="dark"], html[data-theme="dark"].theme-dark, html[data-theme="da
   width: 1em;
   height: 1em;
   display: block;
+  /* Quem pinta de fato e o fill="currentColor" que IconLibrary::sprite() copia
+     do SVG de origem para o <symbol>. Isto aqui e a segunda camada: cobre um
+     icone cujo arquivo nao traga o atributo (pix, boleto), que sem isso sairia
+     preto no tema escuro. Marca que pinta no proprio path (google) nao e
+     afetada — fill em elemento filho vence o do ancestral. */
+  fill: currentColor;
 }
 
 .log_ico {

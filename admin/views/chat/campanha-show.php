@@ -61,7 +61,7 @@ $rodando  = $c['status'] === 'enviando';
   <?php if ($rodando): ?>
     <div class="ch-aviso ch-aviso--info" id="ch-aviso-rodando">
       <div>
-        <strong>Envio em andamento</strong>
+        <strong class="ch-aviso-tit">Envio em andamento</strong>
         O worker consome a fila a cada minuto, no ritmo de
         <?= (int)$c['ritmo_por_minuto'] ?> mensagens/minuto. Esta página atualiza sozinha.
       </div>
@@ -70,7 +70,7 @@ $rodando  = $c['status'] === 'enviando';
 
   <?php if ($c['erro_detalhe']): ?>
     <div class="ch-aviso ch-aviso--erro">
-      <div><strong>Erro</strong> <?= $h($c['erro_detalhe']) ?></div>
+      <div><strong class="ch-aviso-tit">Erro</strong> <?= $h($c['erro_detalhe']) ?></div>
     </div>
   <?php endif; ?>
 
@@ -107,7 +107,7 @@ $rodando  = $c['status'] === 'enviando';
   <?php if ((int)$c['total_pulados'] > 0 && $c['tipo'] === 'texto'): ?>
     <div class="ch-aviso ch-aviso--aviso">
       <div>
-        <strong><?= $n($c['total_pulados']) ?> contato(s) não foram alcançados</strong>
+        <strong class="ch-aviso-tit"><?= $n($c['total_pulados']) ?> contato(s) não foram alcançados</strong>
         Campanha de texto livre só chega em quem tem a janela de 24h aberta.
         Para alcançar o resto, refaça a campanha com um template aprovado.
       </div>

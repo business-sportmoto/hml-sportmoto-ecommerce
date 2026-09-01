@@ -49,7 +49,7 @@ if (trim((string)$a['link_destino']) === '' && (int)$a['enviar_dm'] === 1) {
     <div class="ch-fx-titulo">
       <a href="<?= $base ?>/admin/chat/automacoes" class="ch-btn ch-btn--ico" title="Voltar">←</a>
       <span><?= $h($a['nome']) ?></span>
-      <span class="ch-badge ch-badge--<?= $stCor ?>"><?= $h($stLbl) ?></span>
+      <span class="ch-badge ch-badge--estado ch-badge--<?= $stCor ?>"><?= $h($stLbl) ?></span>
     </div>
 
     <select class="ch-select" id="ch-i-dias" style="width:auto;padding:6px 10px;font-size:12.5px;">

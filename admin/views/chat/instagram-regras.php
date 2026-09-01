@@ -28,7 +28,7 @@ $rotuloEscopo = ['todas' => 'Todos os posts', 'midia' => 'Posts escolhidos', 'no
   <?php if (!$contas): ?>
     <div class="ch-aviso ch-aviso--erro">
       <div>
-        <strong>Nenhuma conta do Instagram conectada</strong>
+        <strong class="ch-aviso-tit">Nenhuma conta do Instagram conectada</strong>
         As regras só funcionam com uma conta ativa.
         <a href="<?= $base ?>/admin/chat/instagram">Conectar agora</a>
       </div>
@@ -36,7 +36,7 @@ $rotuloEscopo = ['todas' => 'Todos os posts', 'midia' => 'Posts escolhidos', 'no
   <?php elseif (!$midias): ?>
     <div class="ch-aviso ch-aviso--aviso">
       <div>
-        <strong>Nenhuma publicação sincronizada</strong>
+        <strong class="ch-aviso-tit">Nenhuma publicação sincronizada</strong>
         Sem isso, só dá para criar regras que valem para <em>todos</em> os posts.
         <a href="<?= $base ?>/admin/chat/instagram">Sincronizar publicações</a>
       </div>
@@ -157,7 +157,7 @@ $rotuloEscopo = ['todas' => 'Todos os posts', 'midia' => 'Posts escolhidos', 'no
 
   <div class="ch-aviso ch-aviso--info ch-mt">
     <div>
-      <strong>O que a Meta permite</strong>
+      <strong class="ch-aviso-tit">O que a Meta permite</strong>
       O direct a partir de um comentário só pode ser aberto <strong>uma vez por comentário</strong>,
       dentro de 7 dias. O sistema respeita isso automaticamente — se a mesma pessoa comentar
       de novo, aí sim vale um novo direct.

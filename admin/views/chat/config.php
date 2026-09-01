@@ -71,7 +71,7 @@ $on   = fn(string $k, bool $d = false) => in_array(strtolower((string)($config[$
       <?php if (!$temSecret): ?>
         <div class="ch-aviso ch-aviso--erro" style="margin:16px 0 0;">
           <div>
-            <strong>O bot não vai responder até isso ser resolvido</strong>
+            <strong class="ch-aviso-tit">O bot não vai responder até isso ser resolvido</strong>
             Sem <code>META_APP_SECRET</code> não há como provar que a mensagem veio mesmo da Meta,
             e o webhook recusa tudo. Copie a “Chave Secreta do App” no painel da Meta e cole no
             <code>.env</code>, depois recarregue esta página.
@@ -132,7 +132,7 @@ $on   = fn(string $k, bool $d = false) => in_array(strtolower((string)($config[$
       <?php if ((int)$saude['webhooks_recusados_24h'] > 0): ?>
         <div class="ch-aviso ch-aviso--aviso" style="margin-bottom:0;">
           <div>
-            <strong><?= (int)$saude['webhooks_recusados_24h'] ?> chamada(s) recusada(s) nas últimas 24h</strong>
+            <strong class="ch-aviso-tit"><?= (int)$saude['webhooks_recusados_24h'] ?> chamada(s) recusada(s) nas últimas 24h</strong>
             Assinatura inválida. Confira se a <code>META_APP_SECRET</code> é a do MESMO app
             que envia o webhook.
           </div>
@@ -455,7 +455,7 @@ $on   = fn(string $k, bool $d = false) => in_array(strtolower((string)($config[$
 
   <div class="ch-aviso ch-aviso--info ch-mt">
     <div>
-      <strong>Não esqueça do cron</strong>
+      <strong class="ch-aviso-tit">Não esqueça do cron</strong>
       Esperas, timeouts e campanhas dependem do worker rodando a cada minuto:
       <div class="ch-mono ch-sm" style="margin-top:6px;">
         * * * * * cd <?= $h(defined('ROOT_PATH') ? ROOT_PATH : '/caminho/do/projeto') ?> &amp;&amp; php cli/chat-worker.php &gt;&gt; storage/logs/chat-worker.log 2&gt;&amp;1

@@ -46,6 +46,7 @@ class AppHomeController extends AppApiController
             'veiculo_ativo'  => $this->veiculoAtivo($ctx),
             'categorias'     => $this->categorias($ctx),
             'menu'           => $this->menu($ctx),
+            'beneficios'     => $this->beneficios($ctx),
             'marcas'         => $this->marcasDestaque($ctx),
             'comunidade'     => $this->comunidade($ctx),
         ]);
@@ -151,6 +152,37 @@ class AppHomeController extends AppApiController
         }
 
         return ClipPresenter::colecao($clips, $ctx);
+    }
+
+    /**
+     * A faixa de benefícios — frete grátis, garantia, parcelamento.
+     *
+     * Mesma consulta de views/partials/benefits-slider.php, e a mesma chave de
+     * cache: mexer num benefício no admin limpa os dois de uma vez.
+     *
+     * @return array<int,array>
+     */
+    private function beneficios(PresenterContext $ctx): array
+    {
+        try {
+            $rows = CacheHelper::get('benefits_slider');
+
+            if (!$rows) {
+                $st = $this->db()->query(
+                    "SELECT icone, titulo, descricao, link, css_classe
+                     FROM beneficios_slider
+                     WHERE ativo = 1
+                     ORDER BY ordem ASC"
+                );
+                $rows = $st->fetchAll();
+                CacheHelper::set('benefits_slider', $rows, 3600);
+            }
+        } catch (\Throwable $e) {
+            AppLog::exception($e, ['acao' => 'home_beneficios']);
+            return [];
+        }
+
+        return $rows ? BeneficioPresenter::colecao($rows, $ctx) : [];
     }
 
     /**

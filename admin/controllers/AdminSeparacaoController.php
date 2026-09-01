@@ -97,6 +97,28 @@ class AdminSeparacaoController extends Controller
         ], 'admin');
     }
 
+
+    // ── GET /admin/pedidos/checkout/{id}/nf ───────────────
+    //
+    // NF simplificada (romaneio) na mesma termica da etiqueta de separacao.
+    // Nao e documento fiscal: e o comprovante que vai dentro da caixa.
+    public function imprimirNf(int $id): void
+    {
+        $pedido = $this->separacao->paraConferencia($id);
+        if (!$pedido) $this->notFound();
+
+        $this->render('pedidos/checkout-nf', [
+            'page_title' => 'NF simplificada — pedido ' . $pedido['codigo'],
+            'pedido'     => $pedido,
+            'loja'       => [
+                'nome'     => ConfigHelper::get('site_nome', 'Loja'),
+                'cnpj'     => ConfigHelper::get('site_cnpj', ''),
+                'telefone' => ConfigHelper::get('site_telefone', ''),
+                'email'    => ConfigHelper::get('site_email', ''),
+            ],
+        ], 'impressao');
+    }
+
     // ── POST /admin/pedidos/checkout/bipar ────────────────
     public function bipar(): void
     {

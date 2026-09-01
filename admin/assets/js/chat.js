@@ -248,17 +248,29 @@
     // Mídia
     if (m.midia_url) {
       var u = esc(m.midia_url);
+      var nome = m.midia_nome ? esc(m.midia_nome) : '';
+
       if (m.tipo === 'image' || m.tipo === 'sticker') {
-        corpo += '<img src="' + u + '" alt="" loading="lazy" onclick="window.open(this.src)">';
+        // data-lightbox: o plugin do painel escuta no document, então imagem
+        // inserida depois pelo polling também abre ampliada.
+        corpo += '<img src="' + u + '" alt="' + nome + '" loading="lazy"' +
+                 ' data-lightbox="ch-thread" data-lightbox-src="' + u + '"' +
+                 (nome ? ' data-lightbox-caption="' + nome + '"' : '') + '>';
       } else if (m.tipo === 'video') {
         corpo += '<video src="' + u + '" controls preload="metadata"></video>';
+        if (nome) corpo += '<div class="ch-bolha-arq">' + nome + '</div>';
       } else if (m.tipo === 'audio') {
+        // Áudio de música tem nome; áudio de voz não — só mostra quando existe
+        if (nome) corpo += '<div class="ch-bolha-arq">🎵 ' + nome + '</div>';
         corpo += '<audio src="' + u + '" controls preload="none"></audio>';
       } else {
-        corpo += '<a class="ch-bolha-doc" href="' + u + '" target="_blank" rel="noopener">' +
+        corpo += '<a class="ch-bolha-doc" href="' + u + '" target="_blank" rel="noopener" download>' +
                  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
                  '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>' +
-                 '<span>' + esc(m.midia_nome || 'Documento') + '</span></a>';
+                 '<span class="ch-bolha-doc-id">' +
+                   '<span class="ch-bolha-doc-nome">' + (nome || 'Documento') + '</span>' +
+                   (m.midia_tamanho ? '<span class="ch-bolha-doc-tam">' + tamanho(m.midia_tamanho) + '</span>' : '') +
+                 '</span></a>';
       }
     } else if (m.tipo === 'image' || m.tipo === 'video' || m.tipo === 'audio' || m.tipo === 'document') {
       // Mídia recebida mas não baixada (config desligada ou download falhou)
@@ -439,8 +451,100 @@
     $('#ch-comp-dica').text(dica);
   }
 
+  // ── Anexo ─────────────────────────────────────────────────────────────────
+  var anexo = null;   // File escolhido, ainda não enviado
+
+  function tamanho(bytes) {
+    bytes = Number(bytes) || 0;
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(0) + ' KB';
+    return (bytes / 1048576).toFixed(1).replace('.', ',') + ' MB';
+  }
+
+  function iconeDe(mime) {
+    if (mime.indexOf('audio/') === 0) return '🎵';
+    if (mime.indexOf('video/') === 0) return '🎬';
+    if (mime.indexOf('image/') === 0) return '🖼️';
+    return '📄';
+  }
+
+  function mostrarAnexo(f) {
+    anexo = f;
+    var $m = $('#ch-anexo-mini').empty();
+
+    // Miniatura de verdade para imagem; ícone para o resto
+    if (f.type.indexOf('image/') === 0) {
+      var url = URL.createObjectURL(f);
+      $m.append($('<img>').attr('src', url).addClass('ch-comp-anexo-mini')
+                          .on('load', function () { URL.revokeObjectURL(url); }));
+    } else {
+      $m.text(iconeDe(f.type));
+    }
+
+    $('#ch-anexo-nome').text(f.name);
+    $('#ch-anexo-meta').text(tamanho(f.size));
+    $('#ch-comp-anexo').addClass('ativo');
+    $('#ch-texto').attr('placeholder', 'Legenda (opcional) — Enter envia').focus();
+  }
+
+  function limparAnexo() {
+    anexo = null;
+    $('#ch-comp-anexo').removeClass('ativo');
+    $('#ch-anexo-mini').empty();
+    $('#ch-arquivo').val('');
+    $('#ch-texto').attr('placeholder', 'Escreva uma mensagem... (Enter envia, Shift+Enter quebra linha)');
+  }
+
+  $('#ch-anexar').on('click', function () { $('#ch-arquivo').click(); });
+  $('#ch-anexo-x').on('click', limparAnexo);
+
+  $('#ch-arquivo').on('change', function () {
+    var f = this.files && this.files[0];
+    if (!f || !estado.conversaId) return;
+    mostrarAnexo(f);
+  });
+
+  function enviarAnexo() {
+    var f = anexo;
+    if (!f || !estado.conversaId) return;
+
+    var fd = new FormData();
+    fd.append('arquivo', f);
+    fd.append('csrf_token', CSRF);
+    fd.append('legenda', ($('#ch-texto').val() || '').trim());
+
+    var $t = $('#ch-texto').prop('disabled', true);
+    $('#ch-enviar, #ch-anexar').prop('disabled', true);
+
+    $.ajax({
+      url: BASE + '/admin/chat/inbox/' + estado.conversaId + '/upload',
+      type: 'POST', data: fd, processData: false, contentType: false, dataType: 'json'
+    }).done(function (r) {
+      if (r.ok) {
+        $t.val('').css('height', 'auto');
+        limparAnexo();
+        if (r.mensagem) renderMensagens([r.mensagem], false);
+        carregarLista();
+      } else if (r.fora_janela) {
+        toast('A janela de 24h fechou. Use um template.', 'erro');
+      } else {
+        toast(r.erro || 'Falha no envio do arquivo.', 'erro');
+      }
+    }).fail(function () {
+      toast('Erro de rede no upload.', 'erro');
+    }).always(function () {
+      $t.prop('disabled', false).focus();
+      // O botão nunca fica preso desabilitado, dê no que der no upload
+      $('#ch-enviar, #ch-anexar').prop('disabled', false);
+    });
+  }
+
   // ── Envio ─────────────────────────────────────────────────────────────────
   function enviarTexto() {
+    // Com anexo escolhido, o mesmo botão manda o arquivo e usa o texto como
+    // legenda — não são dois fluxos de envio para o atendente decorar.
+    if (anexo) { enviarAnexo(); return; }
+
     var $t = $('#ch-texto');
     var texto = ($t.val() || '').trim();
     if (!texto || !estado.conversaId) return;
@@ -477,41 +581,6 @@
   }).on('input', function () {
     this.style.height = 'auto';
     this.style.height = Math.min(this.scrollHeight, 150) + 'px';
-  });
-
-  // Anexo
-  $('#ch-anexar').on('click', function () { $('#ch-arquivo').click(); });
-
-  $('#ch-arquivo').on('change', function () {
-    var f = this.files && this.files[0];
-    if (!f || !estado.conversaId) return;
-
-    if (f.size > 16 * 1024 * 1024) { toast('Arquivo maior que 16 MB.', 'erro'); this.value = ''; return; }
-
-    var fd = new FormData();
-    fd.append('arquivo', f);
-    fd.append('csrf_token', CSRF);
-    fd.append('legenda', ($('#ch-texto').val() || '').trim());
-
-    var $b = $('#ch-anexar').prop('disabled', true);
-
-    $.ajax({
-      url: BASE + '/admin/chat/inbox/' + estado.conversaId + '/upload',
-      type: 'POST', data: fd, processData: false, contentType: false, dataType: 'json'
-    }).done(function (r) {
-      if (r.ok) {
-        $('#ch-texto').val('');
-        if (r.mensagem) renderMensagens([r.mensagem], false);
-        carregarLista();
-      } else {
-        toast(r.erro || 'Falha no envio do arquivo.', 'erro');
-      }
-    }).fail(function () {
-      toast('Erro de rede no upload.', 'erro');
-    }).always(function () {
-      $b.prop('disabled', false);
-      $('#ch-arquivo').val('');
-    });
   });
 
   // ── Ações da conversa ─────────────────────────────────────────────────────

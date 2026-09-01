@@ -40,7 +40,7 @@ $ehLive    = $a['gatilho_tipo'] === 'live';
       <a href="<?= $base ?>/admin/chat/automacoes" class="ch-btn ch-btn--ico" title="Voltar">←</a>
       <input type="text" class="ch-fx-nome-input" id="ch-a-nome"
              value="<?= $h($a['nome']) ?>" maxlength="140" title="Clique para renomear">
-      <span class="ch-badge ch-badge--<?= $stCor ?>" id="ch-a-status-badge"><?= $h($stLbl) ?></span>
+      <span class="ch-badge ch-badge--estado ch-badge--<?= $stCor ?>" id="ch-a-status-badge"><?= $h($stLbl) ?></span>
     </div>
 
     <?php if ($pastas): ?>
@@ -294,17 +294,47 @@ $ehLive    = $a['gatilho_tipo'] === 'live';
                     </select>
                   </div>
                 <?php endif; ?>
-                <?php if ($usa('fluxo')): ?>
+                <?php if ($usa('fluxo')):
+                  $fxId  = (int)($a['fluxo_id'] ?? 0);
+                  $fxAtu = null;
+                  foreach ($fluxos as $f) { if ((int)$f['id'] === $fxId) { $fxAtu = $f; break; } }
+                ?>
                   <div class="ch-campo">
                     <label class="ch-label">Continuar num fluxo</label>
-                    <select class="ch-select" name="fluxo_id">
+                    <select class="ch-select" name="fluxo_id" id="ch-a-fluxo">
                       <option value="0">Nenhum</option>
                       <?php foreach ($fluxos as $f): ?>
-                        <option value="<?= (int)$f['id'] ?>" <?= (int)($a['fluxo_id'] ?? 0) === (int)$f['id'] ? 'selected' : '' ?>>
-                          <?= $h($f['nome']) ?>
+                        <option value="<?= (int)$f['id'] ?>" <?= $fxId === (int)$f['id'] ? 'selected' : '' ?>>
+                          <?= $h($f['nome']) ?><?= $f['status'] !== 'publicado' ? ' (' . $h($f['status']) . ')' : '' ?>
                         </option>
                       <?php endforeach; ?>
                     </select>
+                    <div class="ch-ajuda">
+                      O fluxo assume a conversa no direct — perguntas, condições, espera,
+                      transferência para atendente.
+                    </div>
+
+                    <?php if ($fxAtu): ?>
+                      <div class="ch-flex" style="margin-top:10px;gap:8px;flex-wrap:wrap;">
+                        <a href="<?= $base ?>/admin/chat/fluxos/<?= (int)$fxAtu['id'] ?>"
+                           class="ch-btn ch-btn--sm">Abrir editor de fluxo</a>
+                        <?php if ($fxAtu['status'] !== 'publicado' || (int)$fxAtu['versao_publicada'] < 1): ?>
+                          <span class="ch-badge ch-badge--aviso">fluxo não publicado</span>
+                        <?php endif; ?>
+                      </div>
+
+                      <?php // Motor só entra em fluxo publicado — sem isso a automação
+                            // dispara, responde o comentário e nada acontece no direct. ?>
+                      <?php if ($fxAtu['status'] !== 'publicado' || (int)$fxAtu['versao_publicada'] < 1): ?>
+                        <div class="ch-aviso ch-aviso--aviso" style="margin:10px 0 0;">
+                          <div>
+                            <strong class="ch-aviso-tit">Publique o fluxo antes de ativar</strong>
+                            O motor só entra em fluxo publicado. Do jeito que está, a automação
+                            responde o comentário e o direct fica mudo.
+                          </div>
+                        </div>
+                      <?php endif; ?>
+                    <?php endif; ?>
                   </div>
                 <?php endif; ?>
               </div>

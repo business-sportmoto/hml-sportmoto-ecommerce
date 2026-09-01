@@ -37,7 +37,7 @@ $aprovados = array_filter($templates, fn($t) => strtoupper((string)$t['status'])
 
   <div class="ch-aviso ch-aviso--info">
     <div>
-      <strong>Templates não são criados aqui</strong>
+      <strong class="ch-aviso-tit">Templates não são criados aqui</strong>
       Você cria e submete para aprovação no
       <a href="https://business.facebook.com/wa/manage/message-templates/" target="_blank" rel="noopener">Gerenciador do WhatsApp</a>.
       Esta tela é um espelho: sincronize depois de criar ou de a Meta aprovar algo,
@@ -105,7 +105,7 @@ $aprovados = array_filter($templates, fn($t) => strtoupper((string)$t['status'])
 
   <div class="ch-aviso ch-aviso--aviso ch-mt">
     <div>
-      <strong>Como as variáveis funcionam</strong>
+      <strong class="ch-aviso-tit">Como as variáveis funcionam</strong>
       No texto do template, a Meta usa <code>{{1}}</code>, <code>{{2}}</code>… na ordem.
       Ao montar uma campanha ou um bloco de template no fluxo, você diz o que entra em cada
       posição — e ali pode usar as variáveis do contato, como

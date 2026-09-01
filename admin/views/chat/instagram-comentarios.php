@@ -147,7 +147,7 @@ $n    = fn($v) => number_format((float)$v, 0, ',', '.');
 
   <div class="ch-aviso ch-aviso--info ch-mt">
     <div>
-      <strong>Por que alguns comentários não viram DM</strong>
+      <strong class="ch-aviso-tit">Por que alguns comentários não viram DM</strong>
       As razões normais são: nenhuma regra casou, o direct daquele comentário já tinha sido
       usado (a Meta permite uma vez só), ou a pessoa bloqueou mensagens de contas que não segue.
       Nenhuma delas é erro de configuração.

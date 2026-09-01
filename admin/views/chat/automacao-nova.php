@@ -22,7 +22,7 @@ $h    = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
   <?php if (!$contaOk): ?>
     <div class="ch-aviso ch-aviso--aviso">
       <div>
-        <strong>Nenhuma conta do Instagram conectada</strong>
+        <strong class="ch-aviso-tit">Nenhuma conta do Instagram conectada</strong>
         Dá para montar a automação agora, mas ela só dispara depois de conectar.
         <a href="<?= $base ?>/admin/chat/instagram">Conectar conta</a>
       </div>
@@ -46,6 +46,7 @@ $h    = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
   <div class="ch-receitas ch-mt">
     <?php foreach ($receitas as $r): ?>
       <button type="button" class="ch-receita" data-receita="<?= $h($r['chave']) ?>">
+        <?php if (!empty($r['cria_fluxo'])): ?><span class="ch-receita-selo">Fluxo</span><?php endif; ?>
         <span class="ch-receita-ico" style="background:<?= $h($r['cor']) ?>1f;">
           <?= $r['icone'] ?>
         </span>
@@ -58,7 +59,7 @@ $h    = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 
   <div class="ch-aviso ch-aviso--info ch-mt">
     <div>
-      <strong>Como funciona</strong>
+      <strong class="ch-aviso-tit">Como funciona</strong>
       Toda automação começa como <strong>rascunho</strong>: você ajusta os textos, vê a prévia
       e só depois ativa. Nada é enviado a ninguém antes disso.
     </div>

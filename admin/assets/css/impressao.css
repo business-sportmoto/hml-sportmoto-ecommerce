@@ -176,6 +176,23 @@
   text-align: center;
 }
 
+/* ── NF simplificada ───────────────────────────────────────────────────── */
+.imp_loja { font-size: 15px; }
+
+/* A chave da NF-e tem 44 digitos: quebra em blocos para conferir a olho. */
+.imp_chave {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 9px;
+  line-height: 1.5;
+  word-break: break-all;
+  margin-top: 0.8mm;
+}
+
+.imp_rastreio {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  letter-spacing: 0.5px;
+}
+
 /* Na tela (conferindo antes de mandar), mostra a etiqueta como um papel. */
 @media screen {
   .imp_body {

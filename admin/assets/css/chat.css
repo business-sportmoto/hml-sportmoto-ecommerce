@@ -1,200 +1,328 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 /* =============================================================================
    admin/assets/css/chat.css
-   Módulo Chat — WhatsApp conversacional
+   Módulo Chat — atendimento conversacional (WhatsApp + Instagram)
 
-   Usa APENAS os tokens semânticos do admin.css (--bg, --surface, --surface2,
-   --border, --text, --text-2, --text-3, --success, --warning, --danger, --info,
-   --blue, --green). Eles já invertem sob html[data-theme="dark"], então o
-   módulo herda os dois temas sem duplicar nenhuma paleta aqui.
+   LINGUAGEM VISUAL
+   Desenhada a partir da referência do ManyChat. As regras que dão o tom, e que
+   valem para qualquer tela nova deste módulo:
+
+     · Inter, quatro pesos. Títulos com tracking negativo — é o que impede a
+       tipografia de parecer "padrão do navegador".
+     · Cinco tamanhos de texto e DOIS raios (8px em controle, 12px em cartão).
+       Escala curta é o que faz uma interface parecer desenhada por uma pessoa.
+     · Nada de sombra em cartão, nada de gradiente decorativo, nada de
+       hover que levanta o elemento. Superfície plana + 1px de borda.
+     · Rótulo de coluna e microtexto em CAIXA NORMAL, nunca versalete espaçado.
+     · Cor só onde significa alguma coisa. O estado normal é cinza.
+     · O cinza secundário é #667085 — bem mais escuro que o do resto do painel.
+       Cinza claro demais em texto de apoio é o que dá aparência de rascunho.
+
+   Herda os tokens semânticos do admin.css (--surface, --border, --text…), que
+   já invertem sob html[data-theme="dark"] — por isso os dois temas saem de
+   graça. Só o que a referência muda de verdade é redefinido aqui.
    ========================================================================== */
 
 .ch {
-  --ch-wa:        #25d366;   /* verde do WhatsApp — identidade do canal */
+  /* Tipografia */
+  --ch-font: 'Inter', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+
+  /* Cinzas da referência */
+  --ch-mut:   #667085;   /* texto de apoio */
+  --ch-line:  var(--border);
+  --ch-line2: var(--border2);
+  --ch-chip:  var(--surface2);
+
+  /* Raios — só dois */
+  --ch-r:     8px;    /* botão, campo, chip */
+  --ch-raio:  12px;   /* cartão */
+
+  /* Identidade dos canais */
+  --ch-wa:        #25d366;
   --ch-wa-dark:   #128c7e;
   --ch-bolha-in:  var(--surface2);
   --ch-bolha-out: #d9fdd3;
-  --ch-raio:      12px;
-  --ch-gap:       16px;
+
+  --ch-gap:   16px;
 }
 html[data-theme="dark"] .ch {
+  --ch-mut:       #8b96a5;
   --ch-bolha-out: #144d37;
   --ch-bolha-in:  #1d2836;
 }
 
-.ch { color: var(--text); }
+.ch {
+  color: var(--text);
+  font-family: var(--ch-font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
 .ch *, .ch *::before, .ch *::after { box-sizing: border-box; }
+.ch input, .ch select, .ch textarea, .ch button { font-family: var(--ch-font); }
 
 /* ── Cabeçalho de página ─────────────────────────────────────────────────── */
 .ch-head {
-  display: flex; align-items: flex-start; justify-content: space-between;
-  gap: 16px; flex-wrap: wrap; margin-bottom: 20px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 24px;
 }
-.ch-head h1 { font-size: 20px; font-weight: 700; margin: 0 0 4px; color: var(--text); }
-.ch-head p  { font-size: 13px; color: var(--text-3); margin: 0; max-width: 70ch; }
+.ch-head h1 {
+  font-size: 26px; font-weight: 700; margin: 0; color: var(--text);
+  letter-spacing: -.02em; line-height: 1.25;
+}
+.ch-head p {
+  font-size: 14px; color: var(--ch-mut); margin: 6px 0 0;
+  max-width: 68ch; line-height: 1.5;
+}
 .ch-head-acoes { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
 /* ── Botões ──────────────────────────────────────────────────────────────── */
 .ch-btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 8px 14px; border-radius: 8px;
-  border: 1px solid var(--border); background: var(--surface);
-  color: var(--text); font-size: 13px; font-weight: 600;
-  cursor: pointer; text-decoration: none; line-height: 1.2;
-  transition: background .15s, border-color .15s, opacity .15s;
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  height: 40px; padding: 0 16px; border-radius: var(--ch-r);
+  border: 1px solid var(--ch-line2); background: var(--surface);
+  color: var(--text); font-size: 14px; font-weight: 600;
+  cursor: pointer; text-decoration: none; line-height: 1;
+  transition: background .14s ease, border-color .14s ease, color .14s ease;
   white-space: nowrap;
 }
-.ch-btn:hover:not(:disabled) { background: var(--surface2); border-color: var(--border2); }
-.ch-btn:disabled { opacity: .5; cursor: not-allowed; }
-.ch-btn svg { width: 15px; height: 15px; flex: none; }
+.ch-btn:hover:not(:disabled) { background: var(--surface2); }
+.ch-btn:focus-visible {
+  outline: none; border-color: var(--blue);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue) 14%, transparent);
+}
+.ch-btn:disabled { opacity: .45; cursor: not-allowed; }
+.ch-btn svg { width: 16px; height: 16px; flex: none; }
 
-.ch-btn--pri    { background: var(--blue);    border-color: var(--blue);    color: #fff; }
-.ch-btn--pri:hover:not(:disabled)    { background: var(--blue);    filter: brightness(1.1); }
-.ch-btn--wa     { background: var(--ch-wa-dark); border-color: var(--ch-wa-dark); color: #fff; }
-.ch-btn--wa:hover:not(:disabled)     { filter: brightness(1.12); }
-.ch-btn--perigo { background: var(--danger);  border-color: var(--danger);  color: #fff; }
-.ch-btn--perigo:hover:not(:disabled) { filter: brightness(1.1); }
-.ch-btn--sm     { padding: 5px 10px; font-size: 12px; border-radius: 7px; }
-.ch-btn--ico    { padding: 7px; }
-.ch-btn--ico svg { width: 16px; height: 16px; }
+.ch-btn--pri { background: var(--blue); border-color: var(--blue); color: #fff; }
+.ch-btn--pri:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--blue) 88%, #000);
+  border-color: color-mix(in srgb, var(--blue) 88%, #000);
+}
+.ch-btn--wa { background: var(--ch-wa-dark); border-color: var(--ch-wa-dark); color: #fff; }
+.ch-btn--wa:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ch-wa-dark) 88%, #000);
+  border-color: color-mix(in srgb, var(--ch-wa-dark) 88%, #000);
+}
+.ch-btn--perigo { background: var(--danger); border-color: var(--danger); color: #fff; }
+.ch-btn--perigo:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 88%, #000);
+  border-color: color-mix(in srgb, var(--danger) 88%, #000);
+}
+/* Destrutivo sem peso de bloco: para ação que fica sempre à vista, como o
+   "excluir bloco" no pé do painel — vermelho cheio ali domina a tela toda. */
+.ch-btn--perigo-vazado {
+  background: none; color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 38%, transparent);
+}
+.ch-btn--perigo-vazado:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  border-color: var(--danger); color: var(--danger);
+}
+
+/* Terciário: ação secundária que não merece peso de caixa (Lixeira, Ver tudo) */
+.ch-btn--texto {
+  border-color: transparent; background: none; color: var(--ch-mut);
+  padding: 0 8px; font-weight: 500;
+}
+.ch-btn--texto:hover:not(:disabled) { background: var(--surface2); color: var(--text); }
+
+.ch-btn--sm  { height: 32px; padding: 0 12px; font-size: 13px; }
+.ch-btn--sm svg { width: 14px; height: 14px; }
+.ch-btn--ico { width: 40px; padding: 0; }
+.ch-btn--ico.ch-btn--sm { width: 32px; }
 
 /* ── Cartões ─────────────────────────────────────────────────────────────── */
 .ch-card {
-  background: var(--surface); border: 1px solid var(--border);
+  background: var(--surface); border: 1px solid var(--ch-line);
   border-radius: var(--ch-raio); overflow: hidden;
 }
 .ch-card-head {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border);
+  gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--ch-line);
 }
-.ch-card-head h2 { font-size: 14px; font-weight: 700; margin: 0; color: var(--text); }
-.ch-card-body { padding: 16px; }
+.ch-card-head h2 {
+  font-size: 15px; font-weight: 600; margin: 0; color: var(--text);
+  letter-spacing: -.01em;
+}
+.ch-card-body { padding: 20px; }
 
 /* ── KPIs ────────────────────────────────────────────────────────────────── */
 .ch-kpis {
-  display: grid; gap: 12px; margin-bottom: 20px;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  display: grid; gap: 12px; margin-bottom: 24px;
+  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
 }
 .ch-kpi {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--ch-raio); padding: 14px 16px;
+  background: var(--surface); border: 1px solid var(--ch-line);
+  border-radius: var(--ch-raio); padding: 18px 20px;
 }
+/* Caixa normal, não versalete espaçado: é o rótulo da referência */
 .ch-kpi-rot {
-  font-size: 11px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: .5px; color: var(--text-3); margin-bottom: 8px;
-  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 500; color: var(--ch-mut); margin-bottom: 10px;
+  display: flex; align-items: center; gap: 6px; line-height: 1.3;
 }
 .ch-kpi-val {
-  font-size: 26px; font-weight: 700; color: var(--text);
-  line-height: 1.1; font-variant-numeric: tabular-nums;
+  font-size: 28px; font-weight: 700; color: var(--text);
+  line-height: 1.1; letter-spacing: -.02em; font-variant-numeric: tabular-nums;
 }
-.ch-kpi-var { font-size: 12px; font-weight: 600; margin-top: 5px; display: flex; align-items: center; gap: 4px; }
+/* Texto corrido, não flex: em caixa estreita o flex quebrava a seta numa linha
+   e o número na de baixo, e "↑ / 100,0%" empilhado não quer dizer nada. */
+.ch-kpi-var { font-size: 13px; font-weight: 600; margin-top: 8px; line-height: 1.4; }
+.ch-kpi-var span { white-space: nowrap; }
 .ch-kpi-var--sobe  { color: var(--success); }
 .ch-kpi-var--desce { color: var(--danger); }
-.ch-kpi-var--igual { color: var(--text-3); }
-.ch-kpi-sub { font-size: 11.5px; color: var(--text-3); margin-top: 5px; }
+.ch-kpi-var--igual { color: var(--ch-mut); }
+.ch-kpi-sub { font-size: 13px; color: var(--ch-mut); margin-top: 6px; line-height: 1.4; }
 
 /* ── Etiquetas ───────────────────────────────────────────────────────────── */
 .ch-tag {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px 8px; border-radius: 20px;
-  font-size: 11px; font-weight: 600; line-height: 1.6;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 6px;
+  font-size: 12px; font-weight: 500; line-height: 1.5;
   white-space: nowrap;
 }
+/* Retangular e discreto. Caixa normal: a maioria destes chips traz frase
+   ("nenhuma chamada recebida", "último em 12/03"), e versalete em frase fica
+   ilegível — ele só serve para palavra de estado. */
 .ch-badge {
   display: inline-flex; align-items: center; gap: 5px;
-  padding: 3px 9px; border-radius: 20px;
-  font-size: 11px; font-weight: 700; white-space: nowrap;
+  padding: 4px 8px; border-radius: 6px;
+  font-size: 12px; font-weight: 500; line-height: 1.3;
+  white-space: nowrap; background: var(--ch-chip); color: var(--ch-mut);
 }
-.ch-badge--ok    { color: var(--success); background: color-mix(in srgb, var(--success) 15%, transparent); }
-.ch-badge--aviso { color: var(--warning); background: color-mix(in srgb, var(--warning) 15%, transparent); }
-.ch-badge--erro  { color: var(--danger);  background: color-mix(in srgb, var(--danger) 15%, transparent); }
-.ch-badge--info  { color: var(--info);    background: color-mix(in srgb, var(--info) 15%, transparent); }
-.ch-badge--neutro{ color: var(--text-3);  background: var(--surface2); }
+/* O chip de estado da listagem — o STOPPED / DRAFT da referência */
+.ch-badge--estado {
+  font-size: 11px; font-weight: 600; line-height: 1.2;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.ch-badge--ok    { color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); }
+.ch-badge--aviso { color: var(--warning); background: color-mix(in srgb, var(--warning) 14%, transparent); }
+.ch-badge--erro  { color: var(--danger);  background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.ch-badge--info  { color: var(--info);    background: color-mix(in srgb, var(--info) 12%, transparent); }
+.ch-badge--neutro{ color: var(--ch-mut);  background: var(--ch-chip); }
 
 /* ── Formulários ─────────────────────────────────────────────────────────── */
-.ch-campo { margin-bottom: 14px; }
+.ch-campo { margin-bottom: 18px; }
 .ch-label {
-  display: block; font-size: 12px; font-weight: 600;
-  color: var(--text-2); margin-bottom: 6px;
+  display: block; font-size: 14px; font-weight: 500;
+  color: var(--text-2); margin-bottom: 7px; line-height: 1.35;
 }
-.ch-ajuda { font-size: 11.5px; color: var(--text-3); margin-top: 5px; line-height: 1.5; }
+.ch-ajuda { font-size: 13px; color: var(--ch-mut); margin-top: 7px; line-height: 1.5; }
 .ch-input, .ch-select, .ch-textarea {
-  width: 100%; padding: 9px 11px; font-size: 13px; font-family: inherit;
-  border: 1px solid var(--border); border-radius: 8px;
-  background: var(--bg); color: var(--text); line-height: 1.4;
+  width: 100%; height: 40px; padding: 0 12px; font-size: 14px; font-family: inherit;
+  border: 1px solid var(--ch-line2); border-radius: var(--ch-r);
+  background: var(--surface); color: var(--text); line-height: 1.4;
+  transition: border-color .14s ease, box-shadow .14s ease;
 }
+.ch-input::placeholder, .ch-textarea::placeholder { color: var(--ch-mut); }
+.ch-input:hover, .ch-select:hover, .ch-textarea:hover { border-color: var(--ch-mut); }
 .ch-input:focus, .ch-select:focus, .ch-textarea:focus {
   outline: none; border-color: var(--blue);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 18%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue) 14%, transparent);
 }
-.ch-textarea { min-height: 90px; resize: vertical; }
-.ch-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--text-2); cursor: pointer; }
-.ch-check input { margin-top: 2px; flex: none; accent-color: var(--blue); }
-.ch-grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
-.ch-grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; }
+/* Seta própria: a nativa muda de forma em cada sistema e denuncia o "sem desenho" */
+.ch-select {
+  appearance: none; -webkit-appearance: none; padding-right: 36px; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23667085' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center;
+}
+.ch-textarea { height: auto; min-height: 104px; padding: 10px 12px; resize: vertical; }
+.ch-check {
+  display: flex; align-items: flex-start; gap: 10px;
+  font-size: 14px; color: var(--text-2); cursor: pointer; line-height: 1.45;
+}
+.ch-check input { margin-top: 2px; flex: none; accent-color: var(--blue); width: 16px; height: 16px; }
+.ch-check strong { font-weight: 600; color: var(--text); }
+.ch-grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.ch-grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 16px; }
+
+/* Campo de busca com lupa embutida */
+.ch-busca { position: relative; }
+.ch-busca .ch-input { padding-left: 38px; }
+.ch-busca svg {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  width: 16px; height: 16px; color: var(--ch-mut); pointer-events: none;
+}
 
 /* ── Tabelas ─────────────────────────────────────────────────────────────── */
 .ch-tabela-wrap { overflow-x: auto; }
-.ch-tabela { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ch-tabela { width: 100%; border-collapse: collapse; font-size: 14px; }
+/* Cabeçalho sem fundo e em caixa normal — como "Nome / CTR / Modificado" */
 .ch-tabela th {
-  text-align: left; padding: 10px 14px; font-size: 11px; font-weight: 700;
-  text-transform: uppercase; letter-spacing: .5px; color: var(--text-3);
-  border-bottom: 1px solid var(--border); white-space: nowrap; background: var(--surface2);
+  text-align: left; padding: 12px 20px; font-size: 13px; font-weight: 500;
+  color: var(--ch-mut); border-bottom: 1px solid var(--ch-line);
+  white-space: nowrap; background: none;
 }
-.ch-tabela td { padding: 11px 14px; border-bottom: 1px solid var(--border); color: var(--text-2); vertical-align: middle; }
+.ch-tabela td {
+  padding: 14px 20px; border-bottom: 1px solid var(--ch-line);
+  color: var(--text-2); vertical-align: middle;
+}
 .ch-tabela tbody tr:last-child td { border-bottom: none; }
 .ch-tabela tbody tr:hover td { background: var(--surface2); }
-.ch-tabela a { color: var(--blue); text-decoration: none; font-weight: 600; }
-.ch-tabela a:hover { text-decoration: underline; }
+.ch-tabela a { color: var(--text); text-decoration: none; font-weight: 600; }
+.ch-tabela a:hover { color: var(--blue); }
 .ch-num { font-variant-numeric: tabular-nums; text-align: right; }
 
 /* ── Vazio ───────────────────────────────────────────────────────────────── */
-.ch-vazio { padding: 40px 20px; text-align: center; color: var(--text-3); font-size: 13px; }
-.ch-vazio svg { width: 40px; height: 40px; opacity: .35; margin-bottom: 12px; }
-.ch-vazio strong { display: block; color: var(--text-2); font-size: 14px; margin-bottom: 6px; }
+.ch-vazio { padding: 56px 24px; text-align: center; color: var(--ch-mut); font-size: 14px; line-height: 1.55; }
+.ch-vazio svg { width: 40px; height: 40px; opacity: .3; margin-bottom: 14px; }
+.ch-vazio strong {
+  display: block; color: var(--text); font-size: 16px; font-weight: 600;
+  margin-bottom: 6px; letter-spacing: -.01em;
+}
 
 /* ── Avisos ──────────────────────────────────────────────────────────────── */
 .ch-aviso {
-  display: flex; gap: 11px; align-items: flex-start;
-  padding: 13px 15px; border-radius: 10px;
-  font-size: 13px; line-height: 1.55; margin-bottom: 16px;
-  border: 1px solid transparent;
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 14px 16px; border-radius: var(--ch-r);
+  font-size: 14px; line-height: 1.55; margin-bottom: 16px;
+  border: 1px solid transparent; color: var(--text-2);
 }
-.ch-aviso svg { width: 18px; height: 18px; flex: none; margin-top: 1px; }
-.ch-aviso strong { display: block; margin-bottom: 3px; }
+.ch-aviso svg { width: 18px; height: 18px; flex: none; margin-top: 2px; }
+.ch-aviso strong { color: var(--text); font-weight: 600; }
+/* Só o título vira bloco, e ele é marcado no HTML. Não dá para descobrir pelo
+   CSS: :first-child ignora nó de texto, então um negrito no meio da frase
+   também casava e partia a frase em três linhas. */
+.ch-aviso-tit { display: block; margin-bottom: 4px; }
 .ch-aviso code {
-  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px;
-  background: rgba(127,127,127,.16); padding: 1px 5px; border-radius: 4px;
+  font-family: var(--font-mono, ui-monospace, Menlo, Consolas, monospace); font-size: 13px;
+  background: rgba(127,127,127,.14); padding: 1px 5px; border-radius: 4px;
   word-break: break-all;
 }
-.ch-aviso--info  { background: color-mix(in srgb, var(--info) 10%, transparent);    border-color: color-mix(in srgb, var(--info) 30%, transparent);    color: var(--text); }
-.ch-aviso--aviso { background: color-mix(in srgb, var(--warning) 12%, transparent); border-color: color-mix(in srgb, var(--warning) 34%, transparent); color: var(--text); }
-.ch-aviso--erro  { background: color-mix(in srgb, var(--danger) 10%, transparent);  border-color: color-mix(in srgb, var(--danger) 32%, transparent);  color: var(--text); }
-.ch-aviso--ok    { background: color-mix(in srgb, var(--success) 10%, transparent); border-color: color-mix(in srgb, var(--success) 30%, transparent); color: var(--text); }
+.ch-aviso--info  { background: color-mix(in srgb, var(--info) 7%, transparent);    border-color: color-mix(in srgb, var(--info) 22%, transparent); }
+.ch-aviso--aviso { background: color-mix(in srgb, var(--warning) 9%, transparent); border-color: color-mix(in srgb, var(--warning) 26%, transparent); }
+.ch-aviso--erro  { background: color-mix(in srgb, var(--danger) 7%, transparent);  border-color: color-mix(in srgb, var(--danger) 24%, transparent); }
+.ch-aviso--ok    { background: color-mix(in srgb, var(--success) 7%, transparent); border-color: color-mix(in srgb, var(--success) 22%, transparent); }
 
-/* ── Filtros ─────────────────────────────────────────────────────────────── */
+/* ── Barra de filtros ────────────────────────────────────────────────────── */
+/* Sem caixa em volta: na referência os controles ficam soltos sobre o fundo,
+   o que tira uma borda da tela e faz a lista respirar. */
 .ch-filtros {
-  display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;
-  padding: 14px 16px; background: var(--surface);
-  border: 1px solid var(--border); border-radius: var(--ch-raio); margin-bottom: 16px;
+  display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;
+  margin-bottom: 20px;
 }
-.ch-filtros .ch-campo { margin-bottom: 0; min-width: 150px; flex: 1 1 150px; }
+.ch-filtros .ch-campo { margin-bottom: 0; min-width: 160px; flex: 1 1 160px; }
+.ch-filtros .ch-label { font-size: 13px; }
 
 /* ── Abas ────────────────────────────────────────────────────────────────── */
-.ch-abas { display: flex; gap: 3px; border-bottom: 1px solid var(--border); margin-bottom: 18px; overflow-x: auto; }
+.ch-abas {
+  display: flex; gap: 4px; border-bottom: 1px solid var(--ch-line);
+  margin-bottom: 24px; overflow-x: auto;
+}
 .ch-aba {
-  padding: 9px 15px; font-size: 13px; font-weight: 600; color: var(--text-3);
-  border: none; background: none; cursor: pointer; white-space: nowrap;
-  border-bottom: 2px solid transparent; margin-bottom: -1px;
-  display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+  padding: 11px 4px; margin-right: 20px; font-size: 14px; font-weight: 500;
+  color: var(--ch-mut); border: none; background: none; cursor: pointer;
+  white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  display: inline-flex; align-items: center; gap: 8px; text-decoration: none;
+  transition: color .14s ease;
 }
-.ch-aba:hover { color: var(--text-2); }
-.ch-aba.ativa { color: var(--blue); border-bottom-color: var(--blue); }
+.ch-aba:hover { color: var(--text); }
+.ch-aba.ativa { color: var(--text); font-weight: 600; border-bottom-color: var(--blue); }
 .ch-aba-n {
-  font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 10px;
-  background: var(--surface2); color: var(--text-3);
+  font-size: 12px; font-weight: 600; padding: 1px 7px; border-radius: 6px;
+  background: var(--ch-chip); color: var(--ch-mut);
 }
-.ch-aba.ativa .ch-aba-n { background: var(--blue); color: #fff; }
+.ch-aba.ativa .ch-aba-n { background: color-mix(in srgb, var(--blue) 12%, transparent); color: var(--blue); }
 
 /* =============================================================================
    INBOX — 3 colunas
@@ -218,15 +346,22 @@ html[data-theme="dark"] .ch {
 .ch-lista-busca .ch-input { padding-left: 32px; }
 .ch-lista-busca svg {
   position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
-  width: 15px; height: 15px; color: var(--text-3); pointer-events: none;
+  width: 15px; height: 15px; color: var(--ch-mut); pointer-events: none;
 }
-.ch-lista-filtros { display: flex; gap: 5px; flex-wrap: wrap; }
+.ch-lista-filtros { display: flex; gap: 6px; flex-wrap: wrap; }
+/* Na coluna de 330px do atendimento a pílula de 32px empurrava os filtros para
+   quatro linhas e comia a lista. Aqui ela é compacta; na página de automações,
+   onde há largura sobrando, continua no tamanho cheio. */
+.ch-inbox .ch-lista-filtros .ch-pill { height: 28px; padding: 0 10px; font-size: 12px; gap: 5px; }
+.ch-inbox .ch-lista-filtros .ch-aba-n { font-size: 11px; padding: 0 5px; }
 .ch-pill {
-  padding: 4px 10px; font-size: 11.5px; font-weight: 600; border-radius: 20px;
-  border: 1px solid var(--border); background: var(--bg); color: var(--text-3);
-  cursor: pointer; white-space: nowrap;
+  height: 32px; padding: 0 12px; font-size: 13px; font-weight: 500;
+  border-radius: var(--ch-r); border: 1px solid var(--ch-line2);
+  background: var(--surface); color: var(--text-2);
+  display: inline-flex; align-items: center; gap: 6px;
+  cursor: pointer; white-space: nowrap; transition: border-color .14s ease;
 }
-.ch-pill:hover  { border-color: var(--border2); color: var(--text-2); }
+.ch-pill:hover  { border-color: var(--ch-mut); color: var(--text); }
 .ch-pill.ativa  { background: var(--blue); border-color: var(--blue); color: #fff; }
 
 .ch-lista { overflow-y: auto; flex: 1; }
@@ -264,9 +399,9 @@ html[data-theme="dark"] .ch {
   font-size: 13.5px; font-weight: 600; color: var(--text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.ch-conv-hora { font-size: 11px; color: var(--text-3); flex: none; }
+.ch-conv-hora { font-size: 12px; color: var(--ch-mut); flex: none; }
 .ch-conv-prev {
-  font-size: 12.5px; color: var(--text-3); margin-top: 2px;
+  font-size: 12.5px; color: var(--ch-mut); margin-top: 2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   display: flex; align-items: center; gap: 4px;
 }
@@ -286,18 +421,23 @@ html[data-theme="dark"] .ch {
   border-bottom: 1px solid var(--border); flex: none; flex-wrap: wrap;
 }
 .ch-thread-id { flex: 1; min-width: 130px; }
-.ch-thread-nome { font-size: 14px; font-weight: 700; color: var(--text); }
-.ch-thread-sub { font-size: 11.5px; color: var(--text-3); margin-top: 2px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ch-thread-nome { font-size: 15px; font-weight: 600; color: var(--text); letter-spacing: -.01em; }
+.ch-thread-sub { font-size: 13px; color: var(--ch-mut); margin-top: 3px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ch-thread-acoes { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 
 .ch-msgs {
-  flex: 1; overflow-y: auto; padding: 18px 16px;
+  flex: 1;
+  /* min-height:0 é o que faz este item ENCOLHER em vez de crescer com o
+     conteúdo. Sem ele, uma foto alta empurra o compositor para fora da tela e
+     o botão de enviar parece ter sumido. */
+  min-height: 0;
+  overflow-y: auto; padding: 18px 16px;
   display: flex; flex-direction: column; gap: 3px;
   background: var(--bg);
 }
 .ch-dia {
   align-self: center; margin: 12px 0 8px; padding: 3px 12px;
-  font-size: 11px; font-weight: 600; color: var(--text-3);
+  font-size: 11px; font-weight: 600; color: var(--ch-mut);
   background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
 }
 .ch-msg { display: flex; max-width: 76%; }
@@ -324,15 +464,28 @@ html[data-theme="dark"] .ch-msg--out .ch-bolha { color: #e6fff2; }
 .ch-tique--lido { color: #34b7f1; opacity: 1; }
 .ch-bolha-autor { font-size: 10.5px; font-weight: 700; opacity: .75; margin-bottom: 2px; }
 .ch-bolha img, .ch-bolha video {
-  max-width: 100%; border-radius: 7px; display: block; margin-bottom: 5px; cursor: pointer;
+  max-width: 100%; max-height: 320px; border-radius: 8px;
+  display: block; margin-bottom: 6px; cursor: pointer;
+  object-fit: contain; background: rgba(127,127,127,.1);
 }
-.ch-bolha audio { max-width: 240px; display: block; }
+.ch-bolha audio { width: 260px; max-width: 100%; display: block; margin-bottom: 4px; }
+.ch-bolha-arq {
+  font-size: 12px; color: var(--ch-mut); margin-bottom: 4px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .ch-bolha-doc {
-  display: flex; align-items: center; gap: 9px; padding: 8px;
-  background: rgba(127,127,127,.14); border-radius: 7px;
+  display: flex; align-items: center; gap: 10px; padding: 10px;
+  background: rgba(127,127,127,.14); border-radius: 8px;
   text-decoration: none; color: inherit; margin-bottom: 4px;
 }
-.ch-bolha-doc svg { width: 22px; height: 22px; flex: none; opacity: .8; }
+.ch-bolha-doc:hover { background: rgba(127,127,127,.22); }
+.ch-bolha-doc svg { width: 24px; height: 24px; flex: none; opacity: .75; }
+.ch-bolha-doc-id { min-width: 0; }
+.ch-bolha-doc-nome {
+  font-size: 13px; font-weight: 500; display: block;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ch-bolha-doc-tam { font-size: 12px; opacity: .7; }
 .ch-bolha-botoes { margin-top: 7px; border-top: 1px solid rgba(127,127,127,.25); padding-top: 6px; }
 .ch-bolha-botao {
   display: block; text-align: center; padding: 6px; margin-top: 4px;
@@ -340,13 +493,39 @@ html[data-theme="dark"] .ch-msg--out .ch-bolha { color: #e6fff2; }
   font-size: 12.5px; font-weight: 600; color: var(--blue);
 }
 .ch-msg-sistema {
-  align-self: center; font-size: 11.5px; color: var(--text-3);
+  align-self: center; font-size: 11.5px; color: var(--ch-mut);
   background: var(--surface); border: 1px solid var(--border);
   padding: 4px 12px; border-radius: 20px; margin: 6px 0; max-width: 90%; text-align: center;
 }
 
 /* Compositor */
-.ch-comp { padding: 11px 14px; border-top: 1px solid var(--border); flex: none; }
+.ch-comp { padding: 11px 14px; border-top: 1px solid var(--ch-line); flex: none; }
+
+/* Anexo escolhido: aparece ANTES de enviar. O comportamento anterior subia o
+   arquivo no instante em que era escolhido — sem chance de conferir, escrever
+   legenda ou desistir. */
+.ch-comp-anexo {
+  display: none; align-items: center; gap: 10px; margin-bottom: 10px;
+  padding: 10px 12px; border: 1px solid var(--ch-line2); border-radius: var(--ch-r);
+  background: var(--surface2);
+}
+.ch-comp-anexo.ativo { display: flex; }
+.ch-comp-anexo-mini {
+  width: 40px; height: 40px; border-radius: 6px; flex: none;
+  object-fit: cover; background: rgba(127,127,127,.16);
+  display: grid; place-items: center; font-size: 17px;
+}
+.ch-comp-anexo-id { flex: 1; min-width: 0; }
+.ch-comp-anexo-nome {
+  font-size: 13px; font-weight: 500; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ch-comp-anexo-meta { font-size: 12px; color: var(--ch-mut); margin-top: 2px; }
+.ch-comp-anexo-x {
+  border: none; background: none; cursor: pointer; color: var(--ch-mut);
+  font-size: 19px; line-height: 1; padding: 0 4px; flex: none;
+}
+.ch-comp-anexo-x:hover { color: var(--danger); }
 .ch-comp-linha { display: flex; gap: 8px; align-items: flex-end; }
 .ch-comp textarea {
   flex: 1; min-height: 40px; max-height: 150px; resize: none;
@@ -377,76 +556,235 @@ html[data-theme="dark"] .ch-msg--out .ch-bolha { color: #e6fff2; }
 .ch-painel { overflow-y: auto; }
 .ch-painel-sec { padding: 14px; border-bottom: 1px solid var(--border); }
 .ch-painel-tit {
-  font-size: 11px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .5px; color: var(--text-3); margin-bottom: 10px;
+  font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 12px;
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
 .ch-painel-topo { text-align: center; padding: 20px 14px; }
 .ch-painel-topo .ch-avatar { width: 62px; height: 62px; font-size: 22px; margin: 0 auto 10px; }
-.ch-painel-nome { font-size: 15px; font-weight: 700; color: var(--text); }
-.ch-painel-tel { font-size: 12.5px; color: var(--text-3); margin-top: 3px; }
+.ch-painel-nome { font-size: 16px; font-weight: 600; color: var(--text); letter-spacing: -.01em; }
+.ch-painel-tel { font-size: 13px; color: var(--ch-mut); margin-top: 4px; }
 .ch-dado { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; font-size: 12.5px; }
-.ch-dado dt { color: var(--text-3); flex: none; }
+.ch-dado dt { color: var(--ch-mut); flex: none; }
 .ch-dado dd { color: var(--text-2); margin: 0; text-align: right; word-break: break-word; font-weight: 600; }
 .ch-tags-linha { display: flex; flex-wrap: wrap; gap: 5px; }
 .ch-nota {
   padding: 9px 11px; background: var(--surface2); border-radius: 8px;
   font-size: 12.5px; color: var(--text-2); margin-bottom: 7px; line-height: 1.5;
 }
-.ch-nota-meta { font-size: 10.5px; color: var(--text-3); margin-top: 5px; }
+.ch-nota-meta { font-size: 10.5px; color: var(--ch-mut); margin-top: 5px; }
 
 /* =============================================================================
    EDITOR DE FLUXO (Drawflow)
+
+   O canvas ocupa a área de conteúdo inteira e todo o resto flutua sobre ele.
+   Fora do editor o painel volta a rolar normalmente — o modo só liga quando
+   .ch-fx-tela está na página.
    ========================================================================== */
-.ch-fx-toolbar {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  padding: 10px 14px; background: var(--surface);
-  border: 1px solid var(--border); border-radius: var(--ch-raio); margin-bottom: 12px;
-}
-.ch-fx-titulo { flex: 1; min-width: 180px; display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 700; }
-.ch-fx-nome-input {
-  font-size: 15px; font-weight: 700; color: var(--text);
-  background: none; border: 1px solid transparent; border-radius: 6px;
-  padding: 4px 8px; min-width: 180px; font-family: inherit;
-}
-.ch-fx-nome-input:hover { border-color: var(--border); }
-.ch-fx-nome-input:focus { outline: none; border-color: var(--blue); background: var(--bg); }
 
-.ch-fx-wrap {
-  display: grid; grid-template-columns: 210px minmax(0, 1fr) 300px;
-  gap: 1px; background: var(--border);
-  border: 1px solid var(--border); border-radius: var(--ch-raio);
-  overflow: hidden; height: calc(100vh - 210px); min-height: 500px;
-}
-.ch-fx-paleta, .ch-fx-canvas, .ch-fx-painel { background: var(--surface); min-width: 0; }
-.ch-fx-paleta { overflow-y: auto; padding: 12px; }
-.ch-fx-painel { overflow-y: auto; display: flex; flex-direction: column; }
-
-.ch-fx-cat {
-  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .5px; color: var(--text-3); margin: 14px 0 7px;
-}
-.ch-fx-cat:first-child { margin-top: 0; }
-.ch-fx-item {
-  display: flex; align-items: center; gap: 8px;
-  padding: 7px 9px; margin-bottom: 4px; border-radius: 7px;
-  background: var(--bg); border: 1px solid var(--border);
-  font-size: 12.5px; font-weight: 600; color: var(--text-2);
-  cursor: grab; user-select: none;
-}
-.ch-fx-item:hover { border-color: var(--blue); color: var(--text); }
-.ch-fx-item:active { cursor: grabbing; }
-.ch-fx-item-ico {
-  width: 22px; height: 22px; border-radius: 5px; flex: none;
-  display: grid; place-items: center; font-size: 12px; color: #fff;
+body.ch-fx-modo, body:has(.ch-fx-tela) { overflow: hidden; }
+body.ch-fx-modo .admin-content,
+body:has(.ch-fx-tela) .admin-content {
+  padding: 0;
+  height: calc(100vh - var(--topbar-h, 60px));
+  overflow: hidden;
+  animation: none;   /* o fadeSlideUp do painel arrastava o canvas na entrada */
 }
 
-/* Canvas */
-.ch-fx-canvas { position: relative; background:
-  radial-gradient(circle, color-mix(in srgb, var(--text-3) 26%, transparent) 1px, transparent 1px) 0 0 / 22px 22px,
-  var(--bg);
+/* O .ch entre o <main> e a tela é estático e sem altura: sem esta linha o
+   height:100% da tela resolvia para zero e o canvas sumia. */
+body.ch-fx-modo .admin-content > .ch,
+body:has(.ch-fx-tela) .admin-content > .ch { height: 100%; }
+
+.ch-fx-tela { position: relative; width: 100%; height: 100%; overflow: hidden; }
+
+/* ── Canvas: o fundo de tudo ─────────────────────────────────────────────── */
+.ch-fx-canvas {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(circle, color-mix(in srgb, var(--text-3) 30%, transparent) 1px, transparent 1px) 0 0 / 22px 22px,
+    var(--bg);
 }
 .ch-fx-canvas .drawflow { width: 100%; height: 100%; }
+
+/* ── Peças flutuantes ────────────────────────────────────────────────────── */
+/* Sombra única para tudo que flutua: duas camadas curtas, sem borrão gigante */
+.ch-fx-flut {
+  background: var(--surface);
+  border: 1px solid var(--ch-line);
+  border-radius: var(--ch-raio);
+  box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px -8px rgba(16,24,40,.16);
+}
+html[data-theme="dark"] .ch-fx-flut {
+  box-shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -8px rgba(0,0,0,.55);
+}
+
+/* Barra superior — some do fluxo do documento, mas continua acima do canvas */
+.ch-fx-barra {
+  position: absolute; top: 16px; left: 16px; right: 16px; z-index: 6;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; pointer-events: none;
+}
+.ch-fx-barra > * { pointer-events: auto; }
+.ch-fx-grupo {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px; max-width: 100%;
+}
+.ch-fx-grupo--tit { gap: 8px; padding: 6px 10px 6px 6px; min-width: 0; }
+.ch-fx-sep { width: 1px; height: 22px; background: var(--ch-line); flex: none; margin: 0 2px; }
+
+.ch-fx-nome-input {
+  font-size: 15px; font-weight: 600; color: var(--text); letter-spacing: -.01em;
+  background: none; border: 1px solid transparent; border-radius: var(--ch-r);
+  padding: 6px 8px; min-width: 120px; max-width: 260px; font-family: inherit;
+}
+.ch-fx-nome-input:hover { border-color: var(--ch-line); }
+.ch-fx-nome-input:focus { outline: none; border-color: var(--blue); background: var(--bg); }
+
+/* Estado de salvamento: ocupa o lugar do antigo aviso empurrando a tela */
+.ch-fx-estado {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--ch-mut); white-space: nowrap; padding-right: 4px;
+}
+.ch-fx-estado svg { width: 14px; height: 14px; }
+.ch-fx-estado--sujo { color: var(--warning); }
+.ch-fx-estado--erro { color: var(--danger); }
+
+/* ── Botão + e paleta ────────────────────────────────────────────────────── */
+.ch-fx-fab {
+  position: absolute; top: 76px; right: 16px; z-index: 7;
+  width: 48px; height: 48px; border-radius: 50%;
+  border: none; background: var(--blue); color: #fff;
+  display: grid; place-items: center; cursor: pointer;
+  box-shadow: 0 2px 6px rgba(16,24,40,.14), 0 10px 22px -8px color-mix(in srgb, var(--blue) 60%, transparent);
+  transition: background .14s ease, transform .14s ease;
+}
+.ch-fx-fab svg { width: 22px; height: 22px; transition: transform .18s ease; }
+.ch-fx-fab:hover { background: color-mix(in srgb, var(--blue) 88%, #000); }
+.ch-fx-fab.aberto svg { transform: rotate(45deg); }   /* + vira × */
+
+/* O + e o painel ficavam no mesmo canto — o botão cobria o × de fechar.
+   Com o painel aberto, + e paleta saem para a esquerda dele. */
+.ch-fx-tela:has(.ch-fx-painel.aberto) .ch-fx-fab    { right: 372px; }
+.ch-fx-tela:has(.ch-fx-painel.aberto) .ch-fx-paleta { right: 432px; }
+.ch-fx-fab { transition: background .14s ease, right .18s ease; }
+
+.ch-fx-paleta {
+  position: absolute; top: 76px; right: 76px; z-index: 7;
+  width: 340px; max-height: calc(100% - 100px);
+  display: none; flex-direction: column; overflow: hidden;
+}
+.ch-fx-paleta.aberta { display: flex; }
+.ch-fx-pal-cab {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 14px 16px; border-bottom: 1px solid var(--ch-line); flex: none;
+}
+.ch-fx-pal-cab strong { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+.ch-fx-pal-corpo { padding: 16px; overflow-y: auto; flex: 1; }
+
+.ch-fx-cat {
+  font-size: 13px; font-weight: 600; color: var(--text); margin: 20px 0 10px;
+}
+.ch-fx-cat:first-child { margin-top: 0; }
+
+/* Grade de 2 colunas com borda tracejada: o cartão da referência */
+.ch-fx-grade { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ch-fx-item {
+  display: flex; align-items: center; gap: 9px; text-align: left;
+  padding: 12px; border-radius: 10px; min-height: 56px;
+  background: none; border: 1px dashed var(--ch-line2);
+  font-size: 13px; font-weight: 500; color: var(--text); font-family: inherit;
+  line-height: 1.35; cursor: grab; user-select: none;
+  transition: border-color .14s ease, background .14s ease;
+}
+.ch-fx-item:hover {
+  border-style: solid; border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 5%, transparent);
+}
+.ch-fx-item:active { cursor: grabbing; }
+.ch-fx-item-ico {
+  width: 26px; height: 26px; border-radius: 7px; flex: none;
+  display: grid; place-items: center; font-size: 13px; color: #fff;
+}
+/* Bloco que ocupa a linha inteira quando a categoria só tem um */
+.ch-fx-item--largo { grid-column: 1 / -1; }
+
+/* ── Zoom ────────────────────────────────────────────────────────────────── */
+/* Canto inferior esquerdo, não à direita como na referência: à direita fica
+   embaixo do painel de configuração, que é bem mais alto que a barra dela. */
+.ch-fx-zoom {
+  position: absolute; left: 16px; bottom: 16px; z-index: 6;
+  display: flex; align-items: center; gap: 2px; padding: 4px;
+}
+.ch-fx-zoom-btn {
+  width: 32px; height: 32px; border-radius: var(--ch-r); border: none;
+  background: none; color: var(--text-2); cursor: pointer;
+  display: grid; place-items: center; font-size: 15px; font-family: inherit;
+}
+.ch-fx-zoom-btn:hover:not(:disabled) { background: var(--surface2); color: var(--text); }
+.ch-fx-zoom-btn:disabled { opacity: .35; cursor: default; }
+.ch-fx-zoom-btn svg { width: 16px; height: 16px; }
+.ch-fx-zoom-pct {
+  font-size: 13px; font-weight: 500; color: var(--ch-mut);
+  min-width: 46px; text-align: center; font-variant-numeric: tabular-nums;
+}
+
+/* ── Painel do bloco ─────────────────────────────────────────────────────── */
+/* Só existe quando há bloco selecionado. Antes ele ficava ali dizendo
+   "nenhum bloco selecionado", ocupando 300px para não informar nada. */
+.ch-fx-painel {
+  position: absolute; top: 76px; right: 16px; bottom: 16px; z-index: 6;
+  width: 340px; max-width: calc(100% - 32px);
+  display: none; flex-direction: column; overflow: hidden;
+}
+.ch-fx-painel.aberto { display: flex; animation: chFxEntra .16s ease both; }
+@keyframes chFxEntra { from { opacity: 0; transform: translateX(10px); } }
+
+.ch-fx-painel-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+  padding: 14px 16px; border-bottom: 1px solid var(--ch-line); flex: none;
+}
+.ch-fx-painel-tit { font-size: 15px; font-weight: 600; color: var(--text); letter-spacing: -.01em; }
+.ch-fx-painel-chave {
+  font-size: 12px; color: var(--ch-mut); margin-top: 3px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.ch-fx-painel-campos { padding: 16px; flex: 1; overflow-y: auto; }
+.ch-fx-painel-pe { padding: 12px 16px; border-top: 1px solid var(--ch-line); flex: none; }
+
+/* ── Avisos ──────────────────────────────────────────────────────────────── */
+/* Flutuam no rodapé: erro de publicação não pode empurrar o canvas. */
+.ch-fx-msg {
+  position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
+  z-index: 8; width: min(560px, calc(100% - 32px));
+}
+.ch-fx-msg .ch-aviso { margin: 0; box-shadow: 0 8px 24px -8px rgba(16,24,40,.2); }
+.ch-fx-msg .ch-aviso ul { margin: 6px 0 0; padding-left: 18px; }
+
+/* ── Caixa de regras ─────────────────────────────────────────────────────── */
+.ch-fx-regras {
+  position: absolute; top: 76px; left: 16px; z-index: 7;
+  width: 380px; max-width: calc(100% - 32px); display: none; padding: 16px;
+}
+.ch-fx-regras.aberta { display: block; }
+
+/* ── Dica de uso ─────────────────────────────────────────────────────────── */
+.ch-fx-dica {
+  position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
+  z-index: 5; font-size: 13px; color: var(--ch-mut);
+  padding: 7px 14px; border-radius: 20px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid var(--ch-line); backdrop-filter: blur(6px);
+  white-space: nowrap; pointer-events: none;
+}
+/* Com painel ou paleta aberta a dica fica descentralizada e atrás deles */
+.ch-fx-tela:has(.ch-fx-painel.aberto) .ch-fx-dica,
+.ch-fx-tela:has(.ch-fx-paleta.aberta) .ch-fx-dica { display: none; }
+
+@media (max-width: 900px) {
+  .ch-fx-paleta, .ch-fx-painel { width: calc(100% - 32px); right: 16px; }
+  .ch-fx-paleta { top: auto; bottom: 16px; max-height: 60%; }
+  .ch-fx-dica { display: none; }
+}
 
 /* Nó */
 .ch-fx-no {
@@ -465,10 +803,10 @@ html[data-theme="dark"] .ch-msg--out .ch-bolha { color: #e6fff2; }
   word-break: break-word;
 }
 .ch-fx-no-corpo:empty { display: none; }
-.ch-fx-no-vazio { color: var(--text-3); font-style: italic; }
+.ch-fx-no-vazio { color: var(--ch-mut); font-style: italic; }
 .ch-fx-no-stat {
   padding: 4px 10px; font-size: 10.5px; font-weight: 700;
-  background: var(--surface2); color: var(--text-3);
+  background: var(--surface2); color: var(--ch-mut);
   border-top: 1px solid var(--border);
   display: flex; gap: 8px; flex-wrap: wrap;
 }
@@ -503,14 +841,13 @@ html[data-theme="dark"] .ch-msg--out .ch-bolha { color: #e6fff2; }
 /* Rótulo de porta */
 .ch-fx-porta {
   position: absolute; right: calc(100% + 7px); white-space: nowrap;
-  font-size: 9.5px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .3px; color: var(--text-3); pointer-events: none;
+  font-size: 10px; font-weight: 600; color: var(--ch-mut); pointer-events: none;
 }
 
 /* Painel de configuração do nó */
 .ch-fx-painel-head { padding: 13px 14px; border-bottom: 1px solid var(--border); flex: none; }
-.ch-fx-painel-tit { font-size: 13.5px; font-weight: 700; color: var(--text); }
-.ch-fx-painel-chave { font-size: 11px; color: var(--text-3); margin-top: 2px; font-family: ui-monospace, monospace; }
+.ch-fx-painel-tit { font-size: 15px; font-weight: 600; color: var(--text); letter-spacing: -.01em; }
+.ch-fx-painel-chave { font-size: 11px; color: var(--ch-mut); margin-top: 2px; font-family: ui-monospace, monospace; }
 .ch-fx-painel-campos { padding: 14px; flex: 1; overflow-y: auto; }
 .ch-fx-painel-pe { padding: 12px 14px; border-top: 1px solid var(--border); flex: none; }
 
@@ -555,9 +892,10 @@ html[data-theme="dark"] .ch-msg--out .ch-bolha { color: #e6fff2; }
 /* ── Paginação ───────────────────────────────────────────────────────────── */
 .ch-pag { display: flex; gap: 5px; align-items: center; justify-content: center; padding: 16px; flex-wrap: wrap; }
 .ch-pag a, .ch-pag span {
-  min-width: 33px; padding: 6px 10px; border-radius: 7px; text-align: center;
-  font-size: 12.5px; font-weight: 600; text-decoration: none;
-  border: 1px solid var(--border); background: var(--surface); color: var(--text-2);
+  min-width: 36px; height: 36px; padding: 0 10px; border-radius: var(--ch-r);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 500; text-decoration: none;
+  border: 1px solid var(--ch-line2); background: var(--surface); color: var(--text-2);
 }
 .ch-pag a:hover { background: var(--surface2); }
 .ch-pag .atual { background: var(--blue); border-color: var(--blue); color: #fff; }
@@ -571,22 +909,22 @@ html[data-theme="dark"] .ch-msg--out .ch-bolha { color: #e6fff2; }
 .ch-modal.aberto { display: flex; }
 .ch-modal-cx {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: 14px; width: 100%; max-width: 540px;
+  border-radius: var(--ch-raio); width: 100%; max-width: 540px;
   max-height: 88vh; display: flex; flex-direction: column;
   box-shadow: var(--shadow-lg, 0 20px 50px rgba(0,0,0,.35));
 }
 .ch-modal-head {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 15px 18px; border-bottom: 1px solid var(--border); flex: none;
+  padding: 16px 20px; border-bottom: 1px solid var(--ch-line); flex: none;
 }
-.ch-modal-head h3 { font-size: 15px; font-weight: 700; margin: 0; color: var(--text); }
-.ch-modal-body { padding: 18px; overflow-y: auto; flex: 1; }
+.ch-modal-head h3 { font-size: 16px; font-weight: 600; margin: 0; color: var(--text); letter-spacing: -.01em; }
+.ch-modal-body { padding: 20px; overflow-y: auto; flex: 1; }
 .ch-modal-pe {
   display: flex; justify-content: flex-end; gap: 8px;
-  padding: 13px 18px; border-top: 1px solid var(--border); flex: none;
+  padding: 14px 20px; border-top: 1px solid var(--ch-line); flex: none;
 }
 .ch-modal-x {
-  background: none; border: none; cursor: pointer; color: var(--text-3);
+  background: none; border: none; cursor: pointer; color: var(--ch-mut);
   font-size: 22px; line-height: 1; padding: 0 4px;
 }
 .ch-modal-x:hover { color: var(--text); }
@@ -594,19 +932,18 @@ html[data-theme="dark"] .ch-msg--out .ch-bolha { color: #e6fff2; }
 /* ── Utilitários ─────────────────────────────────────────────────────────── */
 .ch-flex   { display: flex; align-items: center; gap: 8px; }
 .ch-flex-sb{ display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.ch-mono   { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
-.ch-mut    { color: var(--text-3); }
-.ch-sm     { font-size: 12px; }
-.ch-b      { font-weight: 700; }
+.ch-mono   { font-family: var(--font-mono, ui-monospace, Menlo, Consolas, monospace); font-size: 13px; }
+.ch-mut    { color: var(--ch-mut); }
+.ch-sm     { font-size: 13px; }
+.ch-b      { font-weight: 600; }
 .ch-mt     { margin-top: 16px; }
-.ch-carregando { padding: 30px; text-align: center; color: var(--text-3); font-size: 13px; }
+.ch-carregando { padding: 40px; text-align: center; color: var(--ch-mut); font-size: 14px; }
 
 /* ── Responsivo ──────────────────────────────────────────────────────────── */
 @media (max-width: 1200px) {
   .ch-inbox   { grid-template-columns: 290px minmax(0, 1fr); }
   .ch-inbox .ch-painel { display: none; }
   .ch-inbox.ver-painel .ch-painel { display: flex; }
-  .ch-fx-wrap { grid-template-columns: 180px minmax(0, 1fr) 270px; }
 }
 @media (max-width: 900px) {
   .ch-inbox { grid-template-columns: minmax(0, 1fr); height: calc(100vh - 130px); }
@@ -614,10 +951,6 @@ html[data-theme="dark"] .ch-msg--out .ch-bolha { color: #e6fff2; }
   .ch-inbox .ch-thread-col { display: none; }
   .ch-inbox.ver-thread .ch-lista-col  { display: none; }
   .ch-inbox.ver-thread .ch-thread-col { display: flex; }
-  .ch-fx-wrap { grid-template-columns: minmax(0, 1fr); height: auto; }
-  .ch-fx-paleta { max-height: 200px; }
-  .ch-fx-canvas { height: 460px; }
-  .ch-fx-painel { max-height: 380px; }
   .ch-msg { max-width: 88%; }
 }
 
@@ -625,64 +958,126 @@ html[data-theme="dark"] .ch-msg--out .ch-bolha { color: #e6fff2; }
    AUTOMAÇÕES DO INSTAGRAM — listagem, pastas, editor e insights
    ========================================================================== */
 
-/* ── Pastas ──────────────────────────────────────────────────────────────── */
-.ch-pastas { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
-.ch-pasta {
-  display: inline-flex; align-items: center; gap: 8px; position: relative;
-  padding: 9px 14px; border-radius: 9px; text-decoration: none;
-  border: 1px solid var(--border); background: var(--surface);
-  color: var(--text-2); font-size: 13px; font-weight: 600;
+/* ── Barra de topo (editor de automação e insights) ──────────────────────── */
+/* O editor de FLUXO não usa mais isto — lá a barra flutua sobre o canvas. */
+.ch-fx-toolbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 12px; background: var(--surface);
+  border: 1px solid var(--ch-line); border-radius: var(--ch-raio); margin-bottom: 16px;
 }
-.ch-pasta:hover { border-color: var(--border2); color: var(--text); }
+.ch-fx-titulo {
+  flex: 1; min-width: 180px; display: flex; align-items: center; gap: 10px;
+  font-size: 15px; font-weight: 600; letter-spacing: -.01em;
+}
+
+/* ── Pastas ──────────────────────────────────────────────────────────────── */
+/* Caixas largas, não pílulas: na referência a pasta é um alvo grande, com o
+   mesmo peso visual de um cartão pequeno. */
+.ch-pastas {
+  display: grid; gap: 12px; margin-bottom: 28px;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+}
+.ch-pasta {
+  display: inline-flex; align-items: center; gap: 10px; position: relative;
+  min-height: 52px; padding: 0 16px; border-radius: var(--ch-r);
+  text-decoration: none; border: 1px solid var(--ch-line2);
+  background: var(--surface); color: var(--text);
+  font-size: 14px; font-weight: 500;
+  transition: border-color .14s ease, background .14s ease;
+}
+.ch-pasta:hover { border-color: var(--ch-mut); }
 .ch-pasta.ativa {
   border-color: var(--blue); color: var(--blue);
-  background: color-mix(in srgb, var(--blue) 8%, transparent);
+  background: color-mix(in srgb, var(--blue) 6%, transparent);
 }
-.ch-pasta-ico { width: 13px; height: 11px; border-radius: 2px 3px 3px 3px; flex: none; }
+.ch-pasta-ico { width: 16px; height: 13px; border-radius: 2px 4px 4px 4px; flex: none; }
 .ch-pasta--nova {
-  border-style: dashed; cursor: pointer; color: var(--blue);
-  font-family: inherit; background: none;
+  border-style: dashed; border-color: color-mix(in srgb, var(--blue) 45%, transparent);
+  cursor: pointer; color: var(--blue); font-family: inherit; background: none;
+  justify-content: center; font-weight: 600;
 }
 .ch-pasta--nova:hover {
   border-color: var(--blue);
-  background: color-mix(in srgb, var(--blue) 6%, transparent);
+  background: color-mix(in srgb, var(--blue) 5%, transparent);
 }
 .ch-pasta-x {
-  border: none; background: none; cursor: pointer; color: var(--text-3);
-  font-size: 16px; line-height: 1; padding: 0 0 0 4px; opacity: 0;
+  border: none; background: none; cursor: pointer; color: var(--ch-mut);
+  font-size: 17px; line-height: 1; padding: 0 0 0 6px; margin-left: auto; opacity: 0;
+  transition: opacity .14s ease;
 }
 .ch-pasta:hover .ch-pasta-x { opacity: 1; }
 .ch-pasta-x:hover { color: var(--danger); }
 
-/* ── Cartão de automação ─────────────────────────────────────────────────── */
-.ch-aut-lista { display: flex; flex-direction: column; gap: 10px; }
-.ch-aut {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--ch-raio); padding: 14px 16px; transition: border-color .15s;
+/* ── Lista de automações ─────────────────────────────────────────────────── */
+/* Cabeçalho de colunas fora dos cartões, alinhado com eles. As larguras aqui e
+   no .ch-aut-nums são o MESMO valor: se mudar uma, mude a outra. */
+.ch-aut-lista { display: flex; flex-direction: column; gap: 12px; }
+.ch-aut-cab {
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 20px 10px; font-size: 13px; color: var(--ch-mut);
 }
-.ch-aut:hover { border-color: var(--border2); }
-.ch-aut-topo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ch-aut-cab-nome { flex: 1; min-width: 0; }
+.ch-aut-cab-nums { display: flex; gap: 16px; flex: none; }
+.ch-aut-cab-nums span { width: 64px; text-align: right; }
+.ch-aut-cab-nums span:last-child { width: 96px; }
+
+.ch-aut {
+  background: var(--surface); border: 1px solid var(--ch-line);
+  border-radius: var(--ch-raio); padding: 18px 20px;
+  transition: border-color .14s ease;
+}
+.ch-aut:hover { border-color: var(--ch-line2); }
+/* Rascunho e parada ficam recuadas — a referência esmaece o que não está no ar */
+.ch-aut--inativa .ch-aut-nome,
+.ch-aut--inativa .ch-aut-nums { opacity: .62; }
+
+.ch-aut-topo { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; position: relative; }
 .ch-aut-nome {
-  font-size: 14.5px; font-weight: 700; color: var(--text);
-  text-decoration: none; flex: 1; min-width: 160px;
+  font-size: 15px; font-weight: 600; color: var(--text);
+  text-decoration: none; flex: 1; min-width: 180px; letter-spacing: -.01em;
 }
 .ch-aut-nome:hover { color: var(--blue); }
 .ch-aut-nums {
-  display: flex; gap: 18px; align-items: center; flex: none;
-  font-size: 13px; font-weight: 600; color: var(--text-2);
+  display: flex; gap: 16px; align-items: center; flex: none;
+  font-size: 14px; font-weight: 500; color: var(--text-2);
   font-variant-numeric: tabular-nums;
 }
-.ch-aut-nums span { min-width: 42px; text-align: right; }
-.ch-aut-acoes { display: flex; gap: 6px; align-items: center; flex: none; }
-.ch-aut-sub {
-  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--border);
-  font-size: 12.5px; color: var(--text-3);
+.ch-aut-nums span { width: 64px; text-align: right; }
+.ch-aut-nums span:last-child { width: 96px; color: var(--ch-mut); }
+/* Os botões cobrem os números ao passar o mouse, em vez de dividir a linha com
+   eles. É o que deixa o cartão com a calma da referência sem esconder ação
+   nenhuma: aparecem no hover e também no foco por teclado. Em toque e telas
+   estreitas voltam para o fluxo, porque lá não existe hover. */
+.ch-aut-acoes {
+  position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+  display: flex; gap: 8px; align-items: center; flex: none;
+  padding-left: 20px; background: var(--surface);
+  box-shadow: -18px 0 14px -8px var(--surface);
+  opacity: 0; pointer-events: none; transition: opacity .12s ease;
 }
-.ch-aut-gat { font-size: 14px; }
+.ch-aut:hover .ch-aut-acoes,
+.ch-aut:focus-within .ch-aut-acoes { opacity: 1; pointer-events: auto; }
+
+@media (hover: none), (max-width: 900px) {
+  .ch-aut-acoes {
+    position: static; transform: none; opacity: 1; pointer-events: auto;
+    box-shadow: none; padding-left: 0; margin-top: 12px; width: 100%;
+  }
+}
+
+/* Segunda linha: sem régua separando. Só um degrau de tamanho e de cor —
+   é assim que a referência mostra o gatilho sem partir o cartão em dois. */
+.ch-aut-sub {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 10px; font-size: 13px; color: var(--ch-mut); line-height: 1.5;
+}
+.ch-aut-sub strong { font-weight: 500; color: var(--text-2); }
+.ch-aut-gat {
+  width: 20px; height: 20px; flex: none; display: grid; place-items: center;
+  font-size: 13px; border-radius: 6px; background: var(--ch-chip);
+}
 .ch-aut-dono {
-  margin-left: auto; padding: 2px 9px; border-radius: 20px;
-  background: var(--surface2); font-size: 11.5px; font-weight: 600; color: var(--text-2);
+  font-size: 13px; font-weight: 500; color: var(--ch-mut);
 }
 
 /* ── Menu de contexto ────────────────────────────────────────────────────── */
@@ -696,7 +1091,7 @@ html[data-theme="dark"] .ch-msg--out .ch-bolha { color: #e6fff2; }
 .ch-menu button {
   display: block; width: 100%; text-align: left; padding: 8px 11px;
   border: none; background: none; cursor: pointer; border-radius: 7px;
-  font-size: 13px; font-family: inherit; color: var(--text-2);
+  font-size: 14px; font-family: inherit; color: var(--text-2);
 }
 .ch-menu button:hover { background: var(--surface2); color: var(--text); }
 .ch-menu button.perigo { color: var(--danger); }
@@ -709,20 +1104,28 @@ html[data-theme="dark"] .ch-msg--out .ch-bolha { color: #e6fff2; }
 }
 .ch-receita {
   display: flex; flex-direction: column; gap: 10px; text-align: left;
-  padding: 18px; border-radius: 12px; cursor: pointer;
-  border: 1px solid var(--border); background: var(--surface);
-  font-family: inherit; transition: border-color .15s, transform .1s;
+  padding: 18px; border-radius: 12px; cursor: pointer; position: relative;
+  border: 1px solid var(--ch-line); background: var(--surface);
+  font-family: inherit; transition: border-color .14s ease, background .14s ease;
 }
-.ch-receita:hover { border-color: var(--blue); transform: translateY(-2px); }
+.ch-receita:hover { border-color: var(--blue); background: color-mix(in srgb, var(--blue) 4%, transparent); }
 .ch-receita-ico {
   width: 44px; height: 44px; border-radius: 11px; flex: none;
   display: grid; place-items: center; font-size: 21px;
 }
-.ch-receita-nome { font-size: 14.5px; font-weight: 700; color: var(--text); line-height: 1.35; }
-.ch-receita-resumo { font-size: 12.5px; color: var(--text-3); line-height: 1.5; flex: 1; }
+.ch-receita-nome { font-size: 15px; font-weight: 600; color: var(--text); line-height: 1.35; letter-spacing: -.01em; }
+.ch-receita-resumo { font-size: 13px; color: var(--ch-mut); line-height: 1.55; flex: 1; }
+/* Selo do canto — o "PRO"/"AI" da referência, aqui marcando a receita que
+   abre o construtor visual em vez da régua fixa. */
+.ch-receita-selo {
+  position: absolute; top: 12px; right: 12px;
+  font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  padding: 3px 7px; border-radius: 5px;
+  background: var(--blue); color: #fff;
+}
 .ch-receita-gat {
-  font-size: 11px; font-weight: 700; color: var(--text-2);
-  background: var(--surface2); padding: 3px 9px; border-radius: 20px; align-self: flex-start;
+  font-size: 12px; font-weight: 500; color: var(--ch-mut);
+  background: var(--ch-chip); padding: 3px 9px; border-radius: 6px; align-self: flex-start;
 }
 
 /* ── Editor em passos ────────────────────────────────────────────────────── */
@@ -741,7 +1144,7 @@ html[data-theme="dark"] .ch-msg--out .ch-bolha { color: #e6fff2; }
   display: grid; place-items: center; font-size: 11.5px; font-weight: 800;
   background: var(--blue); color: #fff;
 }
-.ch-ed-passo-tit { font-size: 13.5px; font-weight: 700; color: var(--text); }
+.ch-ed-passo-tit { font-size: 15px; font-weight: 600; color: var(--text); letter-spacing: -.01em; }
 .ch-ed-passo-body { padding: 15px; }
 
 .ch-ed-opcao {
@@ -837,8 +1240,8 @@ html[data-theme="dark"] .ch-msg--out .ch-bolha { color: #e6fff2; }
   width: 52px; height: 52px; border-radius: 11px; flex: none;
   display: grid; place-items: center; font-size: 25px;
 }
-.ch-ins-passo-tit { font-size: 13.5px; font-weight: 700; color: var(--text); margin-bottom: 3px; }
-.ch-ins-passo-txt { font-size: 12.5px; color: var(--text-3); line-height: 1.5; }
+.ch-ins-passo-tit { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 4px; letter-spacing: -.01em; }
+.ch-ins-passo-txt { font-size: 13px; color: var(--ch-mut); line-height: 1.55; }
 
 .ch-ins-resumo {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -846,9 +1249,9 @@ html[data-theme="dark"] .ch-msg--out .ch-bolha { color: #e6fff2; }
   border-radius: var(--ch-raio); overflow: hidden;
 }
 .ch-ins-resumo > div { background: var(--surface); padding: 18px 20px; }
-.ch-ins-rot { font-size: 12px; font-weight: 600; color: var(--text-3); margin-bottom: 7px; }
+.ch-ins-rot { font-size: 13px; font-weight: 500; color: var(--ch-mut); margin-bottom: 8px; }
 .ch-ins-val {
-  font-size: 30px; font-weight: 700; color: var(--text);
+  font-size: 30px; font-weight: 700; color: var(--text); letter-spacing: -.02em;
   line-height: 1; font-variant-numeric: tabular-nums;
 }
 
@@ -863,7 +1266,7 @@ html[data-theme="dark"] .ch-msg--out .ch-bolha { color: #e6fff2; }
 .ch-top-item:hover { background: var(--surface2); }
 
 .ch-top-exp {
-  border: none; background: none; cursor: pointer; color: var(--text-3);
+  border: none; background: none; cursor: pointer; color: var(--ch-mut);
   font-size: 17px; line-height: 1; padding: 0; transition: transform .15s;
 }
 .ch-top-exp.aberto { transform: rotate(90deg); }
@@ -884,24 +1287,24 @@ html[data-theme="dark"] .ch-msg--out .ch-bolha { color: #e6fff2; }
 .ch-top-id { min-width: 0; }
 .ch-top-nome {
   display: flex; align-items: center; gap: 6px;
-  font-size: 14px; font-weight: 700; color: var(--text);
+  font-size: 14px; font-weight: 600; color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.ch-top-user { display: block; font-size: 12.5px; color: var(--text-3); margin-top: 1px; }
+.ch-top-user { display: block; font-size: 13px; color: var(--ch-mut); margin-top: 2px; }
 .ch-top-link {
   font-size: 12px; text-decoration: none; opacity: .55; flex: none;
 }
 .ch-top-link:hover { opacity: 1; }
 
 .ch-top-pontos {
-  font-size: 17px; font-weight: 700; color: var(--text);
+  font-size: 17px; font-weight: 600; color: var(--text); letter-spacing: -.01em;
   font-variant-numeric: tabular-nums; text-align: right; min-width: 40px;
 }
 
 /* Detalhe: ocupa a linha inteira sob o item, sem quebrar a grade */
 .ch-top-det {
   grid-column: 2 / -1; display: none;
-  font-size: 12px; color: var(--text-3); padding-top: 4px;
+  font-size: 12px; color: var(--ch-mut); padding-top: 4px;
 }
 .ch-top-det.aberto { display: block; }
 

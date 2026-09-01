@@ -128,7 +128,10 @@ class ChatIgAutomacaoController extends Controller
             'pastas'    => $this->svc->pastas(),
             'contas'    => $this->ig->contas(true),
             'midias'    => $this->ig->midias(null, 60),
-            'fluxos'    => (new ChatFluxoAdminService())->listarPublicados(),
+            // Todos, não só os publicados: o fluxo criado junto com a automação
+            // nasce rascunho, e com a lista filtrada ele não aparecia no select —
+            // salvar a automação apagaria o vínculo recém-criado.
+            'fluxos'    => (new ChatFluxoAdminService())->listar(),
             'tags'      => (new ChatContatoService())->listarTags(),
             'ehGestor'  => $this->svc->ehGestor(),
         ], 'admin');

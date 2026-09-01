@@ -217,6 +217,7 @@ AdminRouter::get ('/pedidos/checkout/imprimir',         'AdminSeparacaoControlle
 AdminRouter::get ('/pedidos/checkout/estacao',           'AdminSeparacaoController@estacao');
 AdminRouter::post('/pedidos/checkout/estacao/buscar',    'AdminSeparacaoController@estacaoBuscar');
 AdminRouter::post('/pedidos/checkout/bipar',            'AdminSeparacaoController@bipar');
+AdminRouter::get ('/pedidos/checkout/{id:\d+}/nf',      'AdminSeparacaoController@imprimirNf');
 AdminRouter::get ('/pedidos/checkout/{id:\d+}',         'AdminSeparacaoController@conferir');
 AdminRouter::post('/pedidos/checkout/{id:\d+}/etiqueta','AdminSeparacaoController@gerarEtiqueta');
 AdminRouter::get ('/pedidos/{id:\d+}',                 'AdminPedidoController@show');

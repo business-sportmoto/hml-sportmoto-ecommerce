@@ -169,7 +169,8 @@ class IconLibrary
             $viewBox = preg_match('/viewBox="([^"]*)"/i', $m[1], $vb) ? $vb[1] : '0 -960 960 960';
 
             $simbolos[] = '<symbol id="' . self::idDe($key, $prefix)
-                . '" viewBox="' . htmlspecialchars($viewBox, ENT_QUOTES, 'UTF-8') . '">'
+                . '" viewBox="' . htmlspecialchars($viewBox, ENT_QUOTES, 'UTF-8') . '"'
+                . self::pintura($m[1]) . '>'
                 . $m[2] . '</symbol>';
         }
 
@@ -190,6 +191,28 @@ class IconLibrary
     {
         return '<svg class="' . htmlspecialchars($class, ENT_QUOTES, 'UTF-8') . '" aria-hidden="true" focusable="false">'
             . '<use href="#' . self::idDe($key, $prefix) . '"></use></svg>';
+    }
+
+    /**
+     * Copia os atributos de pintura do <svg> de origem para o <symbol>.
+     *
+     * Os Material Symbols trazem fill="currentColor" no <svg> externo, nao nos
+     * paths. Ao montar o simbolo so com o conteudo interno, esse atributo se
+     * perdia e o icone caia no preto padrao — igual no tema claro e no escuro,
+     * porque nao havia mais nada dizendo de onde tirar a cor.
+     *
+     * Copiar o que estava no original tambem preserva as marcas que pintam com
+     * cor propria (Pix, boleto): elas nao viram currentColor por acidente.
+     */
+    private static function pintura(string $atributosSvg): string
+    {
+        $out = '';
+        foreach (['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'] as $attr) {
+            if (preg_match('/(?:^|\s)' . preg_quote($attr, '/') . '="([^"]*)"/i', $atributosSvg, $m)) {
+                $out .= ' ' . $attr . '="' . htmlspecialchars($m[1], ENT_QUOTES, 'UTF-8') . '"';
+            }
+        }
+        return $out;
     }
 
     private static function idDe(string $key, string $prefix): string

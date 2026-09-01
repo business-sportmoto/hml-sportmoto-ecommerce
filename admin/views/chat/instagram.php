@@ -29,7 +29,7 @@ $pronto = $d['token_valido'] && empty($d['faltando']) && $d['contas'] > 0;
   <?php if (!$pronto): ?>
     <div class="ch-aviso ch-aviso--<?= empty($d['faltando']) && $d['token_valido'] ? 'aviso' : 'erro' ?>">
       <div>
-        <strong>O canal ainda não está pronto</strong>
+        <strong class="ch-aviso-tit">O canal ainda não está pronto</strong>
 
         <?php if (!$d['token_definido']): ?>
           Falta <code>META_ACCESS_TOKEN</code> no <code>.env</code>.
@@ -65,7 +65,7 @@ $pronto = $d['token_valido'] && empty($d['faltando']) && $d['contas'] > 0;
     </div>
   <?php else: ?>
     <div class="ch-aviso ch-aviso--ok">
-      <div><strong>Canal pronto</strong> <?= $d['contas'] ?> conta(s) conectada(s) e permissões completas.</div>
+      <div><strong class="ch-aviso-tit">Canal pronto</strong> <?= $d['contas'] ?> conta(s) conectada(s) e permissões completas.</div>
     </div>
   <?php endif; ?>
 
@@ -73,7 +73,7 @@ $pronto = $d['token_valido'] && empty($d['faltando']) && $d['contas'] > 0;
   <?php if (!empty($d['recomendados'])): ?>
     <div class="ch-aviso ch-aviso--info">
       <div>
-        <strong>Permissões opcionais ausentes</strong>
+        <strong class="ch-aviso-tit">Permissões opcionais ausentes</strong>
         O canal funciona sem elas, com um contorno:
         <ul style="margin:6px 0 0;padding-left:20px;">
           <?php foreach ($d['recomendados'] as $escopo => $paraQue): ?>

@@ -114,7 +114,7 @@ $grafico = function (array $dados, array $series, int $altura = 190) use ($h) {
   <?php if (!$saude['meta_ok']): ?>
     <div class="ch-aviso ch-aviso--erro">
       <div>
-        <strong>WhatsApp não conectado</strong>
+        <strong class="ch-aviso-tit">WhatsApp não conectado</strong>
         <?= $h($saude['meta_detalhe'] ?: 'Verifique META_PHONE_NUMBER_ID e META_CLOUD_API_TOKEN no .env.') ?>
         <a href="<?= $base ?>/admin/chat/config">Abrir configuração</a>
       </div>
@@ -124,7 +124,7 @@ $grafico = function (array $dados, array $series, int $altura = 190) use ($h) {
   <?php if (!$saude['app_secret']): ?>
     <div class="ch-aviso ch-aviso--aviso">
       <div>
-        <strong>Webhook bloqueado: falta o segredo do app</strong>
+        <strong class="ch-aviso-tit">Webhook bloqueado: falta o segredo do app</strong>
         Sem <code>META_APP_SECRET</code> no <code>.env</code>, a assinatura das mensagens recebidas
         não pode ser conferida e o webhook recusa tudo — o bot não vai responder ninguém.
         <a href="<?= $base ?>/admin/chat/config">Ver como resolver</a>
@@ -135,7 +135,7 @@ $grafico = function (array $dados, array $series, int $altura = 190) use ($h) {
   <?php if (!$saude['bot_ativo']): ?>
     <div class="ch-aviso ch-aviso--info">
       <div>
-        <strong>Automação desligada</strong>
+        <strong class="ch-aviso-tit">Automação desligada</strong>
         As mensagens continuam chegando no atendimento, mas nenhum fluxo ou gatilho dispara.
       </div>
     </div>
@@ -252,7 +252,7 @@ $grafico = function (array $dados, array $series, int $altura = 190) use ($h) {
       <?php if ((int)$ig['regras_ativas'] === 0): ?>
         <div class="ch-aviso ch-aviso--aviso" style="margin:0 16px 16px;">
           <div>
-            <strong>Nenhuma regra de comentário ativa</strong>
+            <strong class="ch-aviso-tit">Nenhuma regra de comentário ativa</strong>
             Os comentários chegam e ficam registrados, mas ninguém é respondido.
             <a href="<?= $base ?>/admin/chat/instagram/regras">Criar a primeira regra</a>
           </div>
@@ -260,7 +260,7 @@ $grafico = function (array $dados, array $series, int $altura = 190) use ($h) {
       <?php elseif ((int)$ig['sem_regra'] > 0 && (int)$ig['comentarios'] > 0): ?>
         <div class="ch-aviso ch-aviso--info" style="margin:0 16px 16px;">
           <div>
-            <strong><?= $n($ig['sem_regra']) ?> comentário(s) não casaram com nenhuma regra</strong>
+            <strong class="ch-aviso-tit"><?= $n($ig['sem_regra']) ?> comentário(s) não casaram com nenhuma regra</strong>
             Vale olhar o que as pessoas escrevem e ampliar as palavras-chave.
             <a href="<?= $base ?>/admin/chat/instagram/comentarios">Ver comentários</a>
           </div>

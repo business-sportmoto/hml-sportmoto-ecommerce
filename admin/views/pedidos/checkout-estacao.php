@@ -53,6 +53,40 @@ $ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int
           <p>Aguardando leitura.</p>
         </div>
         <div id="estPedido" hidden></div>
+
+        <!-- Leitura dos produtos: só aparece com um pedido carregado. O foco
+             vem para cá sozinho, para o operador seguir bipando sem tocar em
+             mouse nem teclado. -->
+        <div id="estProdutoBox" hidden>
+          <div class="est_sep"></div>
+          <label for="estProduto" class="sep_bipar_label">Bipe os produtos da caixa</label>
+          <input type="text" id="estProduto" class="form-control est_input est_input--produto"
+                 placeholder="EAN ou SKU do produto" autocomplete="off">
+          <div class="est_progresso">
+            <div class="est_progresso_barra"><div class="est_progresso_fill" id="estFill"></div></div>
+            <div class="est_progresso_txt">
+              <strong id="estConferidas">0</strong> de <strong id="estTotalPecas">0</strong> peça(s)
+            </div>
+          </div>
+          <div class="est_status_prod" id="estStatusProd"></div>
+        </div>
+
+        <!-- Conferência fechada: só então libera a impressão. O botão recebe
+             foco, então Enter conclui sem precisar de mouse. -->
+        <div id="estImprimirBox" hidden>
+          <div class="est_sep"></div>
+          <div class="est_pronto">
+            <?= $ico('check-circle', 20) ?>
+            <div>
+              <strong>Conferência completa</strong>
+              <div class="est_pronto_sub">Imprima e feche a caixa.</div>
+            </div>
+          </div>
+          <button type="button" class="btn btn-primary est_btn_imprimir" id="estImprimir">
+            <?= $ico('printer', 16) ?> Imprimir NF simplificada + etiqueta
+          </button>
+          <div class="est_pronto_nota" id="estNotaEtiqueta"></div>
+        </div>
       </div>
     </div>
 

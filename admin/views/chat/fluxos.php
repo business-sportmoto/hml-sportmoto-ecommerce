@@ -122,7 +122,7 @@ $badge = [
     <?php if ($orfaos): ?>
       <div class="ch-aviso ch-aviso--aviso ch-mt">
         <div>
-          <strong><?= count($orfaos) ?> fluxo(s) publicado(s) sem nenhum gatilho</strong>
+          <strong class="ch-aviso-tit"><?= count($orfaos) ?> fluxo(s) publicado(s) sem nenhum gatilho</strong>
           Eles estão no ar mas nada os dispara — só vão rodar se você iniciar manualmente
           pelo atendimento ou por uma campanha.
           <a href="<?= $base ?>/admin/chat/gatilhos">Criar um gatilho</a>

@@ -1,0 +1,167 @@
+/* ===========================================================================
+   Tema da loja — claro / escuro / sistema.
+
+   A loja nasceu só clara. Esta camada acrescenta o escuro por cima, sem tocar
+   em nenhuma regra existente: só redeclara os tokens de :root do main.css.
+
+   Três estados, e a diferença entre eles importa:
+     data-theme="light"  → claro, mesmo que o sistema esteja escuro
+     data-theme="dark"   → escuro, mesmo que o sistema esteja claro
+     sem atributo        → segue o sistema (@media prefers-color-scheme)
+
+   O :not([data-theme="light"]) na media query é o que faz a escolha explícita
+   vencer a preferência do sistema. Sem ele, quem está com o SO no escuro
+   receberia escuro mesmo tendo pedido claro.
+   =========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Paleta escura.
+
+   Atenção ao --c-dark: apesar do nome, ele é o token de TEXTO FORTE (53 usos
+   só no customer.css). No escuro ele precisa clarear, não escurecer — inverter
+   o significado aqui é o erro que deixaria os títulos invisíveis.
+   -------------------------------------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --c-primary:     #5aa6f0;
+    --c-primary-d:   #398de6;
+    --c-primary-t:   #1e3a5f;
+    --c-primary-l:   #172033;
+    --c-primary-w:   #ffffff;
+
+    --c-dark:        #f1f5f9;   /* texto forte */
+    --c-text:        #dde3ea;
+    --c-text-muted:  #94a3b8;
+    --c-arrow:       #7c8aa0;
+
+    --c-border:      #2a3441;
+    --c-bg:          #0d1117;
+    --c-surface:     #161b26;
+
+    --c-success:     #34d399;
+    --c-gree:        #22c55e;
+    --c-warning:     #fbbf24;
+    --c-info:        #60a5fa;
+    --c-favorited:   #f87171;
+    --c-favorited-l: #4c1d24;
+
+    --shadow-sm: 0 1px 4px rgba(0,0,0,.40);
+    --shadow-md: 0 4px 16px rgba(0,0,0,.46);
+    --shadow-lg: 0 8px 32px rgba(0,0,0,.54);
+  }
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  --c-primary:     #5aa6f0;
+  --c-primary-d:   #398de6;
+  --c-primary-t:   #1e3a5f;
+  --c-primary-l:   #172033;
+  --c-primary-w:   #ffffff;
+
+  --c-dark:        #f1f5f9;
+  --c-text:        #dde3ea;
+  --c-text-muted:  #94a3b8;
+  --c-arrow:       #7c8aa0;
+
+  --c-border:      #2a3441;
+  --c-bg:          #0d1117;
+  --c-surface:     #161b26;
+
+  --c-success:     #34d399;
+  --c-gree:        #22c55e;
+  --c-warning:     #fbbf24;
+  --c-info:        #60a5fa;
+  --c-favorited:   #f87171;
+  --c-favorited-l: #4c1d24;
+
+  --shadow-sm: 0 1px 4px rgba(0,0,0,.40);
+  --shadow-md: 0 4px 16px rgba(0,0,0,.46);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,.54);
+}
+
+/* O body precisa pintar explicitamente: sem isto o fundo do documento fica
+   branco atrás do conteúdo, e a página escura aparece emoldurada de branco. */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) body { background: var(--c-bg); color: var(--c-text); }
+}
+html[data-theme="dark"] body { background: var(--c-bg); color: var(--c-text); }
+
+/* ===========================================================================
+   Controle de tema (segmented button — MD3, escolha única entre 3)
+   =========================================================================== */
+
+.tema-bloco {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.tema-txt strong {
+  display: block;
+  font-size: 15px;
+  color: var(--c-dark);
+}
+.tema-txt span {
+  display: block;
+  font-size: 13px;
+  color: var(--c-text-muted);
+  margin-top: 2px;
+}
+
+/* Um único container com borda, dividido internamente — é o que distingue o
+   segmented button de três botões soltos: a escolha é uma só. */
+.tema-seg {
+  display: inline-flex;
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  padding: 3px;
+  gap: 2px;
+  background: var(--c-bg);
+}
+
+.tema-opt {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  /* 40px de altura + o padding do container fecha os 48dp de alvo do MD3 */
+  min-height: 40px;
+  padding: 0 15px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--c-text-muted);
+  white-space: nowrap;
+  transition: background .2s cubic-bezier(0.2, 0, 0, 1), color .2s cubic-bezier(0.2, 0, 0, 1);
+}
+.tema-opt:hover { background: var(--c-primary-l); color: var(--c-dark); }
+
+.tema-opt[aria-checked="true"] {
+  background: var(--c-primary);
+  color: var(--c-primary-w);
+}
+
+.tema-opt:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-primary) 40%, transparent);
+}
+
+.tema-opt svg { width: 17px; height: 17px; fill: currentColor; flex: none; }
+
+@media (max-width: 520px) {
+  .tema-bloco { flex-direction: column; align-items: stretch; }
+  .tema-seg { justify-content: space-between; }
+  .tema-opt { flex: 1; justify-content: center; padding: 0 10px; }
+  /* O rótulo sai antes do ícone: no celular o ícone sozinho ainda identifica. */
+  .tema-opt span { display: none; }
+}

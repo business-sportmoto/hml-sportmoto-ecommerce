@@ -36,7 +36,7 @@ $temPadrao     = (bool)array_filter($gatilhos, fn($g) => $g['tipo'] === 'padrao'
   <?php if (!$temBoasVindas || !$temPadrao): ?>
     <div class="ch-aviso ch-aviso--aviso">
       <div>
-        <strong>Faltam gatilhos importantes</strong>
+        <strong class="ch-aviso-tit">Faltam gatilhos importantes</strong>
         <?php if (!$temBoasVindas): ?>
           Sem um gatilho de <strong>primeira mensagem</strong>, quem escreve pela primeira vez
           não recebe boas-vindas.

@@ -123,6 +123,31 @@ class ChatIgReceitaService
             ],
         ],
 
+        // ── Livre, respondido por fluxo ─────────────────────────────────────
+        // A automação cuida só do GATILHO; quem conduz a conversa é o fluxo.
+        // É o que destrava tudo que a régua fixa não faz: pergunta e espera
+        // resposta, ramifica por condição, dorme, chama API, passa para humano.
+        'zero_fluxo' => [
+            'nome'      => 'Começar do zero por fluxo',
+            'resumo'    => 'Monte a resposta no editor visual, com todos os blocos',
+            'descricao' => 'A automação decide QUANDO dispara — quem comentou, em qual publicação, '
+                         . 'com qual palavra. O que acontece depois é um fluxo inteiro: perguntas '
+                         . 'com botões, condições, espera, tag, integração e transferência para um '
+                         . 'atendente. O fluxo é criado junto e já vem com o primeiro bloco.',
+            'icone'     => '🧩',
+            'cor'       => '#2563eb',
+            'gatilho'   => 'comentario',
+            'campos'    => ['palavras', 'resposta_publica', 'exigir_seguidor',
+                            'mensagem_nao_seguidor', 'tag', 'fluxo'],
+            'padrao'    => [
+                'responder_publico'  => 1,
+                'resposta_publica'   => 'Te chamei no direct! 💬',
+                'enviar_dm'          => 0,     // quem fala no direct é o fluxo
+                'uma_vez_por_pessoa' => 1,
+            ],
+            'cria_fluxo' => true,
+        ],
+
         // ── Livre ───────────────────────────────────────────────────────────
         'zero' => [
             'nome'      => 'Começar do zero',

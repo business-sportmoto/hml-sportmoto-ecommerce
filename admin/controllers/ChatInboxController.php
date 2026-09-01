@@ -183,6 +183,7 @@ class ChatInboxController extends Controller
             'midia_url'   => $m['midia_url'],
             'midia_mime'  => $m['midia_mime'],
             'midia_nome'  => $m['midia_nome'],
+            'midia_tamanho' => $m['midia_tamanho'] ?? null,
             'payload'     => $m['payload'],
             'status'      => $m['status'],
             'erro'        => $m['erro_detalhe'],
@@ -326,9 +327,6 @@ class ChatInboxController extends Controller
         if (!$f || ($f['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
             $this->json(['ok' => false, 'erro' => 'Falha no upload.']); return;
         }
-        if (($f['size'] ?? 0) > 16 * 1024 * 1024) {
-            $this->json(['ok' => false, 'erro' => 'Arquivo maior que 16 MB.']); return;
-        }
         if (!is_uploaded_file($f['tmp_name'])) {
             $this->json(['ok' => false, 'erro' => 'Upload inválido.']); return;
         }
@@ -338,24 +336,19 @@ class ChatInboxController extends Controller
             ? (mime_content_type($f['tmp_name']) ?: '')
             : (string)($f['type'] ?? '');
 
-        $permitidos = [
-            'image/jpeg' => ['image', '.jpg'], 'image/png'  => ['image', '.png'],
-            'image/webp' => ['image', '.webp'],
-            'video/mp4'  => ['video', '.mp4'], 'video/3gpp' => ['video', '.3gp'],
-            'audio/mpeg' => ['audio', '.mp3'], 'audio/ogg'  => ['audio', '.ogg'],
-            'audio/mp4'  => ['audio', '.m4a'], 'audio/aac'  => ['audio', '.aac'],
-            'application/pdf' => ['document', '.pdf'],
-            'application/msword' => ['document', '.doc'],
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => ['document', '.docx'],
-            'application/vnd.ms-excel' => ['document', '.xls'],
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => ['document', '.xlsx'],
-            'text/plain' => ['document', '.txt'],
-        ];
         $mimeBase = strtolower(trim(explode(';', $mime)[0]));
-        if (!isset($permitidos[$mimeBase])) {
+        [$tipoWa, $ext, $limiteMb] = self::classificarAnexo($mimeBase);
+
+        if ($tipoWa === null) {
             $this->json(['ok' => false, 'erro' => "Tipo de arquivo não permitido ($mimeBase)."]); return;
         }
-        [$tipoWa, $ext] = $permitidos[$mimeBase];
+        // Limite por tipo, não um teto único: a Meta recusa imagem acima de 5 MB
+        // e aceita documento até 100 MB. Barrar aqui dá mensagem clara; deixar
+        // passar dá erro genérico da API depois do upload.
+        if (($f['size'] ?? 0) > $limiteMb * 1024 * 1024) {
+            $rotulo = ['image' => 'Imagem', 'video' => 'Vídeo', 'audio' => 'Áudio'][$tipoWa] ?? 'Documento';
+            $this->json(['ok' => false, 'erro' => "{$rotulo} pode ter no máximo {$limiteMb} MB."]); return;
+        }
 
         $rel = 'uploads/chat/' . date('Y/m');
         $dir = (defined('ROOT_PATH') ? ROOT_PATH : dirname(__DIR__, 2)) . '/' . $rel;
@@ -376,7 +369,12 @@ class ChatInboxController extends Controller
             'autor_usuario_id' => AuthHelper::usuarioId(),
             'pausar_bot'       => true,
             'legenda'          => trim((string)($_POST['legenda'] ?? '')) ?: null,
-            'nome_arquivo'     => $tipoWa === 'document' ? (string)$f['name'] : null,
+            // Sempre, não só em documento: o ChatMetaClient já ignora o nome
+            // fora de documento, e sem ele o histórico mostra um áudio anônimo
+            // em vez de "entrevista-cliente.mp3".
+            'nome_arquivo'     => (string)$f['name'],
+            'mime'             => $mimeBase,
+            'tamanho'          => (int)($f['size'] ?? 0),
         ]);
 
         if (!$r['ok']) {
@@ -387,6 +385,58 @@ class ChatInboxController extends Controller
 
         $msg = $r['mensagem_id'] ? $this->mensagens->obter((int)$r['mensagem_id']) : null;
         $this->json(['ok' => true, 'mensagem' => $msg ? $this->resumoMensagem($msg) : null]);
+    }
+
+    /**
+     * MIME → [tipo da Meta, extensão, limite em MB]. `null` no tipo = recusado.
+     *
+     * A regra que organiza a tabela: o que a Meta NÃO reproduz como mídia vai
+     * como **documento** em vez de ser recusado. .mov, .gif e .webp chegam ao
+     * cliente como arquivo para baixar — melhor que "tipo não permitido" para
+     * quem só quer mandar o vídeo que gravou no iPhone.
+     *
+     * Limites: imagem 5 MB · vídeo e áudio 16 MB · documento 100 MB.
+     */
+    private static function classificarAnexo(string $mime): array
+    {
+        static $mapa = [
+            // Reproduzem inline no WhatsApp e no Instagram
+            'image/jpeg' => ['image', '.jpg',  5],
+            'image/png'  => ['image', '.png',  5],
+            'video/mp4'  => ['video', '.mp4', 16],
+            'video/3gpp' => ['video', '.3gp', 16],
+            'audio/mpeg' => ['audio', '.mp3', 16],
+            'audio/ogg'  => ['audio', '.ogg', 16],
+            'audio/mp4'  => ['audio', '.m4a', 16],
+            'audio/aac'  => ['audio', '.aac', 16],
+            'audio/amr'  => ['audio', '.amr', 16],
+
+            // A Meta não aceita como mídia — seguem como documento
+            'image/webp'      => ['document', '.webp', 100],
+            'image/gif'       => ['document', '.gif',  100],
+            'video/quicktime' => ['document', '.mov',  100],
+            'video/x-msvideo' => ['document', '.avi',  100],
+            'audio/wav'       => ['document', '.wav',  100],
+            'audio/x-wav'     => ['document', '.wav',  100],
+            'audio/webm'      => ['document', '.weba', 100],
+            'audio/flac'      => ['document', '.flac', 100],
+
+            // Documentos
+            'application/pdf'  => ['document', '.pdf',  100],
+            'application/zip'  => ['document', '.zip',  100],
+            'text/plain'       => ['document', '.txt',  100],
+            'text/csv'         => ['document', '.csv',  100],
+            'application/msword'      => ['document', '.doc',  100],
+            'application/vnd.ms-excel'=> ['document', '.xls',  100],
+            'application/vnd.ms-powerpoint' => ['document', '.ppt', 100],
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'   => ['document', '.docx', 100],
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'         => ['document', '.xlsx', 100],
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation' => ['document', '.pptx', 100],
+            'application/vnd.oasis.opendocument.text'        => ['document', '.odt', 100],
+            'application/vnd.oasis.opendocument.spreadsheet' => ['document', '.ods', 100],
+        ];
+
+        return $mapa[$mime] ?? [null, '', 0];
     }
 
     // =========================================================================

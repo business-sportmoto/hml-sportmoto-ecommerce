@@ -328,4 +328,10 @@
     $(document).on('keydown', function (e) { if (e.key === 'Escape') $('.ch-modal').removeClass('aberto'); });
   })();
 
+  // Filtro sem botão: escolher já aplica. O <noscript> da view cobre quem
+  // chega aqui sem JS, e a busca continua indo no Enter.
+  $(document).on('change', '.ch-filtros [data-auto]', function () {
+    var f = this.form; if (f) f.submit();
+  });
+
 })(jQuery);

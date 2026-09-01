@@ -59,10 +59,12 @@ function adminIsActive(string $path): string {
 </head>
 <body class="admin-body">
 
-<?php if (trim(adminIsActive('/admin/logistica')) === 'active') {
-    // Sprite de icones do modulo; precisa vir antes do conteudo que o referencia.
-    include __DIR__ . '/../logistica/_sprite.php';
-} ?>
+<?php
+// Sprite de icones do painel: sem condicao, porque qualquer tela pode usar o
+// helper $ico(). Quando ele so saia em /admin/logistica, o checkout ficou sem
+// icone nenhum — e isso nao aparece em log, so na tela.
+include __DIR__ . '/../partials/_sprite.php';
+?>
 
 <!-- ── Sidebar ──────────────────────────────────────────── -->
 <aside class="admin-sidebar" id="adminSidebar">

@@ -503,16 +503,59 @@
       var tipos = Object.keys(UI).filter(function (t) { return UI[t].cat === cat && CFG.catalogo[t]; });
       if (!tipos.length) return;
 
-      html += '<div class="ch-fx-cat">' + esc(CATS[cat].label) + '</div>';
+      html += '<div class="ch-fx-cat">' + esc(CATS[cat].label) + '</div><div class="ch-fx-grade">';
       tipos.forEach(function (t) {
-        html += '<div class="ch-fx-item" draggable="true" data-tipo="' + t + '" title="' + esc(UI[t].desc || '') + '">' +
+        // <button> e não <div>: o cartão é clicável, então precisa ser alcançável
+        // pelo teclado. O draggable continua valendo para quem prefere arrastar.
+        html += '<button type="button" class="ch-fx-item" draggable="true" data-tipo="' + t + '" ' +
+                        'title="' + esc(UI[t].desc || '') + '">' +
                   '<span class="ch-fx-item-ico" style="background:' + CATS[cat].cor + '">' + UI[t].ico + '</span>' +
                   '<span>' + esc(UI[t].label) + '</span>' +
-                '</div>';
+                '</button>';
       });
+      html += '</div>';
     });
-    $('#ch-fx-paleta').html(html);
+    $('#ch-fx-pal-corpo').html(html);
   }
+
+  // ── Paleta flutuante: abrir, fechar, clicar para adicionar ──────────────
+  var Paleta = {
+    aberta: function () { return $('#ch-fx-paleta').hasClass('aberta'); },
+    abrir: function () {
+      $('#ch-fx-paleta').addClass('aberta');
+      $('#ch-fx-fab').addClass('aberto').attr('aria-expanded', 'true');
+    },
+    fechar: function () {
+      $('#ch-fx-paleta').removeClass('aberta');
+      $('#ch-fx-fab').removeClass('aberto').attr('aria-expanded', 'false');
+    },
+    alternar: function () { this.aberta() ? this.fechar() : this.abrir(); }
+  };
+
+  $('#ch-fx-fab').on('click', function (e) { e.stopPropagation(); Paleta.alternar(); });
+  $('#ch-fx-pal-fechar').on('click', function () { Paleta.fechar(); });
+  $('#ch-fx-paleta').on('click', function (e) { e.stopPropagation(); });
+  $(document).on('click', function () { Paleta.fechar(); });
+
+  /** Cai no meio do que está visível, com um degrau para não empilhar. */
+  var degrau = 0;
+  function centroVisivel() {
+    var r = $canvas[0].getBoundingClientRect();
+    var z = editor.zoom || 1;
+    degrau = (degrau + 1) % 6;
+    return {
+      x: (r.width / 2 - editor.canvas_x) / z - 90 + degrau * 26,
+      y: (r.height / 2 - editor.canvas_y) / z - 40 + degrau * 22
+    };
+  }
+
+  $('#ch-fx-paleta').on('click', '.ch-fx-item', function () {
+    var tipo = $(this).data('tipo');
+    if (!tipo || !UI[tipo]) return;
+    var c = centroVisivel();
+    adicionarNo(tipo, c.x, c.y);
+    Hist.snap();
+  });
 
   $(document).on('dragstart', '.ch-fx-item', function (e) {
     e.originalEvent.dataTransfer.setData('tipo', $(this).data('tipo'));
@@ -549,12 +592,17 @@
     if (String(noSelecionado) === String(id)) { noSelecionado = null; fecharPainel(); }
   });
 
+  // O painel não existe quando não há bloco: antes ele ficava ocupando 300px
+  // de coluna só para dizer "nenhum bloco selecionado".
   function fecharPainel() {
-    $('#ch-fx-p-titulo').text('Nenhum bloco selecionado');
-    $('#ch-fx-p-chave').text('');
-    $('#ch-fx-p-campos').html('<div class="ch-vazio" style="padding:24px 6px;">Clique num bloco para configurar.</div>');
-    $('#ch-fx-p-pe').hide();
+    $('#ch-fx-painel').removeClass('aberto');
+    $('#ch-fx-p-campos').empty();
   }
+  $('#ch-fx-p-fechar').on('click', function () {
+    if (noSelecionado !== null) { try { editor.unselectNode(); } catch (e) {} }
+    noSelecionado = null;
+    fecharPainel();
+  });
 
   function abrirPainel(id) {
     var no = editor.getNodeFromId(id);
@@ -566,7 +614,8 @@
 
     $('#ch-fx-p-titulo').text(meta.label);
     $('#ch-fx-p-chave').text(no.data.chave + ' · ' + tipo);
-    $('#ch-fx-p-pe').show();
+    $('#ch-fx-painel').addClass('aberto');
+    Paleta.fechar();   // as duas disputam o mesmo canto
 
     var html = meta.desc ? '<p class="ch-sm ch-mut" style="margin:0 0 14px;">' + esc(meta.desc) + '</p>' : '';
 
@@ -826,7 +875,10 @@
   }
 
   $(document).on('change blur', '#ch-fx-p-campos .ch-fx-c, #ch-fx-p-campos .ch-fx-tempo, ' +
-                 '#ch-fx-botoes input, #ch-fx-opcoes input', salvarPainel);
+                 '#ch-fx-botoes input, #ch-fx-opcoes input', function () {
+    salvarPainel();
+    Hist.snap();
+  });
 
   $(document).on('click', '.ch-fx-dia', function () { $(this).toggleClass('ativa'); salvarPainel(); });
 
@@ -852,12 +904,39 @@
   });
 
   // ── Zoom ────────────────────────────────────────────────────────────────
-  $('#ch-fx-zoom-in').on('click',    function () { editor.zoom_in(); });
-  $('#ch-fx-zoom-out').on('click',   function () { editor.zoom_out(); });
-  $('#ch-fx-zoom-reset').on('click', function () { editor.zoom_reset(); });
+  function mostrarZoom() {
+    $('#ch-fx-zoom-pct').text(Math.round((editor.zoom || 1) * 100) + '%');
+  }
+  $('#ch-fx-zoom-in').on('click',  function () { editor.zoom_in();  mostrarZoom(); });
+  $('#ch-fx-zoom-out').on('click', function () { editor.zoom_out(); mostrarZoom(); });
+  editor.on('zoom', mostrarZoom);
+
+  /** Enquadrar: volta a 100% e traz o bloco mais ao noroeste para a vista. */
+  $('#ch-fx-zoom-reset').on('click', function () {
+    editor.zoom_reset();
+    try {
+      var dados = editor.drawflow.drawflow[editor.module].data;
+      var ids = Object.keys(dados);
+      if (ids.length) {
+        var minX = Math.min.apply(null, ids.map(function (i) { return dados[i].pos_x; }));
+        var minY = Math.min.apply(null, ids.map(function (i) { return dados[i].pos_y; }));
+        // 100px de folga no topo: 60 deixaria o primeiro bloco embaixo da barra
+        editor.canvas_x = 60 - minX;
+        editor.canvas_y = 100 - minY;
+        editor.precanvas.style.transform =
+          'translate(' + editor.canvas_x + 'px, ' + editor.canvas_y + 'px) scale(' + editor.zoom + ')';
+      }
+    } catch (e) { /* estrutura interna do Drawflow mudou — o reset já valeu */ }
+    mostrarZoom();
+  });
 
   // ── Regras ──────────────────────────────────────────────────────────────
-  $('#ch-fx-cfg').on('click', function () { $('#ch-fx-cfg-box').toggle(); });
+  $('#ch-fx-cfg').on('click', function (e) {
+    e.stopPropagation();
+    $('#ch-fx-cfg-box').toggleClass('aberta');
+  });
+  $('#ch-fx-cfg-box').on('click', function (e) { e.stopPropagation(); });
+  $(document).on('click', function () { $('#ch-fx-cfg-box').removeClass('aberta'); });
 
   // ── Salvar / publicar ───────────────────────────────────────────────────
   function grafoAtual() {
@@ -865,15 +944,21 @@
     return Conv.paraBackend(editor.export());
   }
 
+  // Flutua no rodapé e some no clique. Aviso de publicação não pode empurrar
+  // o canvas para baixo no meio da edição.
   function msg(html, tipo) {
     $('#ch-fx-msg').html(
-      '<div class="ch-aviso ch-aviso--' + (tipo || 'info') + '"><div>' + html + '</div></div>'
+      '<div class="ch-aviso ch-aviso--' + (tipo || 'info') + '" title="Clique para fechar">' +
+      '<div>' + html + '</div></div>'
     );
-    if (tipo === 'ok') setTimeout(function () { $('#ch-fx-msg').empty(); }, 3500);
+    $('#ch-fx-dica').hide();
+    if (tipo === 'ok') setTimeout(limparMsg, 3500);
   }
+  function limparMsg() { $('#ch-fx-msg').empty(); $('#ch-fx-dica').show(); }
+  $(document).on('click', '#ch-fx-msg', limparMsg);
 
   function listaErros(erros) {
-    return '<strong>Corrija antes de publicar</strong><ul>' +
+    return '<strong class="ch-aviso-tit">Corrija antes de publicar</strong><ul>' +
            erros.map(function (e) { return '<li>' + esc(e) + '</li>'; }).join('') + '</ul>';
   }
 
@@ -886,9 +971,10 @@
       config_json: JSON.stringify({ reentrada: $('#ch-fx-reentrada').val() })
     }, function (r) {
       if (r.ok) {
+        Hist.marcarSalvo();
         msg(r.erros && r.erros.length
-              ? '<strong>Rascunho salvo</strong> Ainda há pendências: ' + esc(r.erros.join(' · '))
-              : '<strong>Rascunho salvo.</strong>',
+              ? '<strong class="ch-aviso-tit">Rascunho salvo</strong> Ainda há pendências: ' + esc(r.erros.join(' · '))
+              : '<strong class="ch-aviso-tit">Rascunho salvo.</strong>',
             r.erros && r.erros.length ? 'aviso' : 'ok');
       } else {
         msg(listaErros(r.erros || ['Falha ao salvar.']), 'erro');
@@ -896,7 +982,7 @@
     }, 'json').fail(function () {
       msg('Erro de rede ao salvar.', 'erro');
     }).always(function () {
-      $b.prop('disabled', false).text('Salvar rascunho');
+      $b.prop('disabled', false).text('Salvar');
     });
   });
 
@@ -973,11 +1059,15 @@
     }, 'json');
   }
 
-  // ── Carga inicial ───────────────────────────────────────────────────────
   montarPaleta();
 
-  (function carregarGrafo() {
-    var g = CFG.grafo || { nos: [], conexoes: [] };
+  /**
+   * Reconstrói o canvas a partir do formato do backend.
+   * É a mesma rotina da carga inicial e do desfazer — refazer o grafo do zero
+   * é mais confiável que tentar reverter cada operação do Drawflow na mão.
+   */
+  function aplicarGrafo(g, aoTerminar) {
+    g = g || { nos: [], conexoes: [] };
 
     (g.nos || []).forEach(function (n) {
       var pos = n.pos || [0, 0];
@@ -1005,7 +1095,106 @@
       });
 
       carregarStats();
+      if (aoTerminar) aoTerminar();
     }, 120);
-  })();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 4. HISTÓRICO (desfazer / refazer)
+  //
+  // O Drawflow não tem histórico. Em vez de reverter operação por operação —
+  // que exigiria conhecer o inverso de cada uma — guardamos o grafo inteiro em
+  // JSON a cada mudança e reconstruímos. Um fluxo tem dezenas de nós, não
+  // milhares: o custo de serializar é irrelevante perto do risco de reverter
+  // errado e corromper as ligações.
+  // ═══════════════════════════════════════════════════════════════════════════
+  var Hist = {
+    pilha: [], pos: -1, mudo: false, salvo: null,
+
+    serial: function () {
+      try { return JSON.stringify(Conv.paraBackend(editor.export())); }
+      catch (e) { return null; }
+    },
+
+    snap: function () {
+      if (this.mudo) return;
+      var g = this.serial();
+      if (g === null || this.pilha[this.pos] === g) return;   // nada mudou
+
+      this.pilha = this.pilha.slice(0, this.pos + 1);          // ramo novo mata o futuro
+      this.pilha.push(g);
+      if (this.pilha.length > 60) this.pilha.shift();
+      this.pos = this.pilha.length - 1;
+      this.ui();
+    },
+
+    restaurar: function (g) {
+      this.mudo = true;
+      noSelecionado = null;
+      fecharPainel();
+      try { editor.clear(); } catch (e) {}
+      mapaChaveParaDf = {};
+      aplicarGrafo(JSON.parse(g), function () { Hist.mudo = false; Hist.ui(); });
+    },
+
+    desfazer: function () {
+      if (this.pos <= 0) return;
+      this.pos--;
+      this.restaurar(this.pilha[this.pos]);
+    },
+    refazer: function () {
+      if (this.pos >= this.pilha.length - 1) return;
+      this.pos++;
+      this.restaurar(this.pilha[this.pos]);
+    },
+
+    /** Marca o ponto em que o grafo bateu com o servidor. */
+    marcarSalvo: function () { this.salvo = this.pilha[this.pos] || this.serial(); this.ui(); },
+
+    ui: function () {
+      $('#ch-fx-desfazer').prop('disabled', this.pos <= 0);
+      $('#ch-fx-refazer').prop('disabled', this.pos >= this.pilha.length - 1);
+
+      var atual = this.pilha[this.pos];
+      var $e = $('#ch-fx-estado').removeClass('ch-fx-estado--sujo');
+      if (this.salvo === null)      $e.text('');
+      else if (atual === this.salvo) $e.html('&#10003; Salvo');
+      else                           $e.addClass('ch-fx-estado--sujo').text('Não salvo');
+    }
+  };
+
+  $('#ch-fx-desfazer').on('click', function () { Hist.desfazer(); });
+  $('#ch-fx-refazer').on('click',  function () { Hist.refazer(); });
+
+  // Qualquer mexida no grafo entra no histórico. O nodeMoved dispara no fim do
+  // arraste, então não precisa de debounce.
+  ['nodeCreated', 'nodeRemoved', 'nodeMoved', 'connectionCreated', 'connectionRemoved']
+    .forEach(function (ev) { editor.on(ev, function () { Hist.snap(); }); });
+
+  $(document).on('keydown', function (e) {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    var k = (e.key || '').toLowerCase();
+    if (k === 'z' && !e.shiftKey) { e.preventDefault(); Hist.desfazer(); }
+    else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); Hist.refazer(); }
+  });
+
+  // Esc fecha o que estiver aberto, de cima para baixo
+  $(document).on('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (Paleta.aberta()) { Paleta.fechar(); return; }
+    if ($('#ch-fx-cfg-box').hasClass('aberta')) { $('#ch-fx-cfg-box').removeClass('aberta'); return; }
+    if ($('#ch-fx-painel').hasClass('aberto')) { $('#ch-fx-p-fechar').trigger('click'); }
+  });
+
+  // ── Carga inicial ───────────────────────────────────────────────────────
+  // Mudo durante a montagem: cada nó dispara nodeCreated, e sem isso o
+  // histórico nascia com um passo por bloco — o desfazer desmontaria o fluxo.
+  Hist.mudo = true;
+  aplicarGrafo(CFG.grafo, function () {
+    Hist.mudo = false;
+    Hist.snap();          // estado zero: é para cá que o desfazer volta
+    Hist.marcarSalvo();
+    mostrarZoom();
+  });
 
 })(jQuery);

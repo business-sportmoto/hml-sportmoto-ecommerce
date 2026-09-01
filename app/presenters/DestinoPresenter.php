@@ -54,6 +54,10 @@ final class DestinoPresenter
                 'devolucoes' => ['tipo' => 'devolucoes', 'params' => []],
                 'favoritos'  => ['tipo' => 'favoritos',  'params' => []],
                 'garagem'    => ['tipo' => 'garagem',    'params' => []],
+                // /minha-conta sem mais nada é a área do cliente. Sem este
+                // caso ela caía em WebView: a conta abria no navegador, com o
+                // cliente logado no app e deslogado na página.
+                null         => ['tipo' => 'conta',      'params' => []],
                 default      => null,
             };
 

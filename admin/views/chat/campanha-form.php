@@ -57,7 +57,7 @@ $segExcluir = array_map('intval', (array)($seg['tags_excluir'] ?? []));
               <?php if (!$templates): ?>
                 <div class="ch-aviso ch-aviso--erro">
                   <div>
-                    <strong>Nenhum template aprovado</strong>
+                    <strong class="ch-aviso-tit">Nenhum template aprovado</strong>
                     <a href="<?= $base ?>/admin/chat/templates">Sincronize os templates</a>
                     ou crie um no Gerenciador do WhatsApp.
                   </div>

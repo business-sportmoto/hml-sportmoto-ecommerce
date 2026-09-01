@@ -36,12 +36,12 @@ $tagsDoContato = array_column($contato['tags'], 'id');
 
   <?php if ((int)$contato['bloqueado']): ?>
     <div class="ch-aviso ch-aviso--erro">
-      <div><strong>Contato bloqueado</strong> Nenhuma mensagem será enviada para este número.</div>
+      <div><strong class="ch-aviso-tit">Contato bloqueado</strong> Nenhuma mensagem será enviada para este número.</div>
     </div>
   <?php elseif (!(int)$contato['optin']): ?>
     <div class="ch-aviso ch-aviso--aviso">
       <div>
-        <strong>Fez opt-out</strong>
+        <strong class="ch-aviso-tit">Fez opt-out</strong>
         <?= $contato['optout_em'] ? 'Em ' . date('d/m/Y H:i', strtotime((string)$contato['optout_em'])) . '. ' : '' ?>
         <?= $h($contato['optout_motivo'] ?: '') ?>
         Só mensagens transacionais podem ser enviadas.

@@ -18,7 +18,7 @@ $h    = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
   <?php if (!$envioOk): ?>
     <div class="ch-aviso ch-aviso--erro">
       <div>
-        <strong>WhatsApp não configurado — só dá para ler</strong>
+        <strong class="ch-aviso-tit">WhatsApp não configurado — só dá para ler</strong>
         <?= $h($envioErro ?: 'Verifique as credenciais da Meta.') ?>
         <a href="<?= $base ?>/admin/chat/config">Abrir configuração</a>
       </div>
@@ -108,14 +108,30 @@ $h    = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 
         <div class="ch-comp" id="ch-comp">
           <div id="ch-comp-livre">
+            <?php // Anexo escolhido, antes de enviar: dá para conferir, escrever
+                  // legenda no campo de baixo, ou desistir. ?>
+            <div class="ch-comp-anexo" id="ch-comp-anexo">
+              <div class="ch-comp-anexo-mini" id="ch-anexo-mini"></div>
+              <div class="ch-comp-anexo-id">
+                <div class="ch-comp-anexo-nome" id="ch-anexo-nome"></div>
+                <div class="ch-comp-anexo-meta" id="ch-anexo-meta"></div>
+              </div>
+              <button type="button" class="ch-comp-anexo-x" id="ch-anexo-x" title="Remover anexo">&times;</button>
+            </div>
+
             <div class="ch-comp-linha">
               <button type="button" class="ch-comp-btn" id="ch-anexar" title="Anexar arquivo">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M21.4 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.2-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
                 </svg>
               </button>
+              <?php // O que a Meta recusa como mídia (gif, webp, mov, wav) o
+                    // servidor manda como documento — por isso entram aqui. ?>
               <input type="file" id="ch-arquivo" style="display:none"
-                     accept="image/*,video/mp4,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt">
+                     accept="image/jpeg,image/png,image/gif,image/webp,
+                             video/mp4,video/3gpp,video/quicktime,
+                             audio/mpeg,audio/ogg,audio/mp4,audio/aac,audio/amr,audio/wav,audio/flac,
+                             .pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.txt,.csv,.zip">
               <textarea id="ch-texto" rows="1" placeholder="Escreva uma mensagem... (Enter envia, Shift+Enter quebra linha)"></textarea>
               <button type="button" class="ch-comp-btn ch-comp-btn--enviar" id="ch-enviar" title="Enviar">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -162,7 +178,7 @@ $h    = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
       <?php if (!$templates): ?>
         <div class="ch-aviso ch-aviso--aviso" style="margin:0;">
           <div>
-            <strong>Nenhum template aprovado</strong>
+            <strong class="ch-aviso-tit">Nenhum template aprovado</strong>
             Sincronize em <a href="<?= $base ?>/admin/chat/templates">Templates</a>
             ou crie um no Gerenciador do WhatsApp.
           </div>
@@ -214,7 +230,7 @@ $h    = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
       <?php if (!$fluxos): ?>
         <div class="ch-aviso ch-aviso--aviso" style="margin:0;">
           <div>
-            <strong>Nenhum fluxo publicado</strong>
+            <strong class="ch-aviso-tit">Nenhum fluxo publicado</strong>
             <a href="<?= $base ?>/admin/chat/fluxos">Crie e publique um fluxo</a> para poder
             dispará-lo daqui.
           </div>
