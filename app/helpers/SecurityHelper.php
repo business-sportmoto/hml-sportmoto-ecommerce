@@ -230,6 +230,21 @@ class SecurityHelper {
      * Define cabeçalhos de segurança recomendados.
      * Chamar no bootstrap (index.php) antes de qualquer output.
      */
+    /**
+     * A requisição atual é do painel?
+     *
+     * O prefixo sai do ADMIN_URL, não de "/admin" fixo: se o projeto for
+     * publicado em subpasta, o caminho muda junto.
+     */
+    private static function ehPainel(): bool {
+        $uri = (string)parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH);
+        $pre = defined('ADMIN_URL')
+            ? (string)parse_url(ADMIN_URL, PHP_URL_PATH)
+            : '/admin';
+        $pre = '/' . trim($pre, '/');
+        return $pre !== '/' && ($uri === $pre || str_starts_with($uri, $pre . '/'));
+    }
+
     public static function setSecurityHeaders(): void {
         // Previne clickjacking
         header('X-Frame-Options: SAMEORIGIN');
@@ -243,8 +258,16 @@ class SecurityHelper {
         // Controla referrer nas navegações
         header('Referrer-Policy: strict-origin-when-cross-origin');
 
-        // Permissões do browser (desativa APIs desnecessárias)
-        header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+        // Permissões do browser (desativa APIs desnecessárias).
+        //
+        // "microphone=()" é lista VAZIA: nem a própria origem entra, e o
+        // getUserMedia é recusado pelo documento antes de perguntar ao usuário.
+        // O atendimento grava áudio de voz, então o painel precisa de (self).
+        // A loja continua sem nenhuma das três.
+        //
+        // Espelha o que os .htaccess fazem — onde mod_headers existe, ele vence;
+        // isto cobre servidor sem mod_headers.
+        header('Permissions-Policy: camera=(), microphone=(' . (self::ehPainel() ? 'self' : '') . '), geolocation=()');
 
         // Content Security Policy (ajuste conforme as fontes usadas)
         if (!APP_DEBUG) {

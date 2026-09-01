@@ -69,6 +69,14 @@ Header always set X-Content-Type-Options "nosniff"
 Header always set Referrer-Policy "strict-origin-when-cross-origin"
 Header always set X-XSS-Protection "1; mode=block"
 
+# O .htaccess da raiz manda "microphone=()" — lista vazia, ou seja, nem a
+# própria origem. Com isso o getUserMedia é recusado pelo DOCUMENTO, antes de
+# perguntar ao usuário ("Permissions policy violation: microphone is not
+# allowed in this document"), e a gravação de voz do atendimento não abre.
+# Aqui liberamos só para a própria origem, e só dentro do painel — a loja
+# continua com tudo negado.
+Header always set Permissions-Policy "camera=(), microphone=(self), geolocation=()"
+
 # Cache assets
 <FilesMatch "\.(css|js|jpg|jpeg|png|gif|svg|webp|ico|woff|woff2)$">
 Header set Cache-Control "public, max-age=2592000"

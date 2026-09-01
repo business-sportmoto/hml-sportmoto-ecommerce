@@ -182,7 +182,12 @@ AppRouter::delete($v . '/conta/cartoes/{id:\d+}',   'AppCheckoutController@remov
 AppRouter::get   ($v . '/cep',            'AppCepController@ativo');
 // Consulta pura, para preencher o formulário de endereço. Não confundir com o
 // POST abaixo, que GRAVA o CEP do dispositivo e muda o frete da vitrine.
-AppRouter::get   ($v . '/cep/{cep:[\d-]{8,9}}', 'AppCepController@consultar');
+//
+// `[\d-]+` sem quantificador de propósito: patternToRegex() recorta o regex do
+// parâmetro com `[^}]+`, que para na PRIMEIRA chave — um `{8,9}` aqui produz um
+// padrão quebrado que nunca casa, sem erro nenhum, só 404. O tamanho é
+// conferido no controller, que responde 422 explicando.
+AppRouter::get   ($v . '/cep/{cep:[\d-]+}', 'AppCepController@consultar');
 AppRouter::post  ($v . '/cep',            'AppCepController@salvar');
 AppRouter::delete($v . '/cep',            'AppCepController@remover');
 AppRouter::get   ($v . '/frete/produto',  'AppCepController@produto');
