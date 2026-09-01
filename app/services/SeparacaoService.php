@@ -158,6 +158,7 @@ class SeparacaoService
                     e.bairro, e.cidade, e.estado, e.cep,
                     nf.numero AS nfe_numero, nf.serie AS nfe_serie,
                     nf.chaveAcesso AS nfe_chave, nf.linkDanfe AS nfe_danfe,
+                    nf.linkPDF AS nfe_pdf,
                     nf.dataEmissao AS nfe_data
                FROM pedidos p
           LEFT JOIN clientes c    ON c.id = p.cliente_id
@@ -191,18 +192,51 @@ class SeparacaoService
         $codigo = trim($codigo);
         if ($codigo === '') return ['ok' => false, 'msg' => 'Código vazio.'];
 
+        $candidatos = [];
+        $primeiro   = null;
+
         foreach ($this->itensDoPedido($pedidoId) as $item) {
-            $ean = (string) ($item['ean'] ?? '');
-            $sku = (string) ($item['sku_real'] ?? '');
-            if (($ean !== '' && $ean === $codigo)
-             || ($sku !== '' && strcasecmp($sku, $codigo) === 0)) {
-                return ['ok' => true, 'item_id' => (int) $item['id'], 'item' => $item];
-            }
+            if (!$this->itemCasaCodigo($item, $codigo)) continue;
+            $candidatos[] = (int) $item['id'];
+            $primeiro ??= $item;
         }
 
-        return ['ok' => false, 'msg' => 'Código não pertence a este pedido.'];
+        if (!$candidatos) {
+            return ['ok' => false, 'msg' => 'Código não pertence a este pedido.'];
+        }
+
+        // sku_legado e do PRODUTO, nao da variacao: um pedido com duas variacoes
+        // do mesmo produto casa nas duas com o mesmo bipe. Quem escolhe qual
+        // contar e a tela, que sabe o que ja foi conferido — aqui vao todas.
+        return [
+            'ok'       => true,
+            'item_id'  => (int) $primeiro['id'],
+            'item_ids' => $candidatos,
+            'item'     => $primeiro,
+        ];
     }
 
+
+    /**
+     * O item responde por este codigo?
+     *
+     * Tres codigos, em ordem de especificidade:
+     *   ean         — da variacao, o ideal
+     *   sku         — da variacao, quando nao ha codigo de barras impresso
+     *   sku_legado  — do PRODUTO, o codigo que a loja usa para sincronizar
+     *
+     * O sku_legado entrou porque metade dos itens da fila nao tem EAN e quase
+     * nenhum deles tem sku de variacao: sem ele, esses itens simplesmente nao
+     * eram conferiveis por leitura, so na unha.
+     */
+    private function itemCasaCodigo(array $item, string $codigo): bool
+    {
+        foreach (['ean', 'sku_real', 'sku_legado'] as $campo) {
+            $v = trim((string) ($item[$campo] ?? ''));
+            if ($v !== '' && strcasecmp($v, $codigo) === 0) return true;
+        }
+        return false;
+    }
 
     /* =================================================================
        ESTACAO DE BIPAGEM
@@ -316,6 +350,7 @@ class SeparacaoService
                 'variacao'  => (string) ($i['variacao_texto'] ?? ''),
                 'sku'       => (string) ($i['sku_real'] ?? ''),
                 'ean'       => (string) ($i['ean'] ?? ''),
+                'sku_legado'=> (string) ($i['sku_legado'] ?? ''),
                 'quantidade'=> (int) $i['quantidade'],
                 'preco'     => (float) $i['preco_unitario'],
                 'imagem'    => $i['imagem_snapshot'] ? (string) $i['imagem_snapshot'] : null,
@@ -336,6 +371,8 @@ class SeparacaoService
             'pecas'           => array_sum(array_column($itens, 'quantidade')),
             'nfe_ok'          => (bool) $p['nfe_ok'],
             'nfe_numero'      => (string) ($p['nfe_numero'] ?? ''),
+            // Um dos dois serve; o Bling nem sempre preenche os dois.
+            'nfe_danfe'       => (string) ($p['nfe_danfe'] ?: ($p['nfe_pdf'] ?? '')),
             'etiqueta'        => $p['etiqueta'] ? [
                 'codigo_rastreio' => (string) ($p['etiqueta']['codigo_rastreio'] ?? ''),
                 'url_pdf'         => (string) ($p['etiqueta']['url_pdf'] ?? ''),
@@ -423,6 +460,7 @@ class SeparacaoService
                     pi.opcoes_selecionadas, pi.is_brinde,
                     COALESCE(pi.nome_produto, pr.nome) AS nome,
                     pi.imagem_snapshot,
+                    pr.sku_legado     AS sku_legado,
                     ps.sku            AS sku_real,
                     ps.ean            AS ean,
                     ps.variacao_legado AS variacao

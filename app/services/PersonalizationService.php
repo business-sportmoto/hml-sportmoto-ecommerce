@@ -330,7 +330,11 @@ class PersonalizationService {
 
     private function sectionPorCategorias(array $catIds): array {
         return [
-           'badge'       => 'Por categorias',
+            // Esta era a única seção sem `id`. Sem ele o app não consegue pedir
+            // a próxima página dela — e a home não tinha como distinguir uma
+            // seção da outra no cache.
+            'id'          => 'por_categorias',
+            'badge'       => 'Por categorias',
             'titulo'      => 'Das categorias que você visitou',
             'subtitulo'   => 'Separei uns itens das categorias que você visitou, vem ver!',
             'tipo'        => 'personalized',
@@ -422,6 +426,147 @@ class PersonalizationService {
                 ], self::LIMITE)
             ),
         ];
+    }
+
+    // ════════════════════════════════════════════════════
+    // PAGINAÇÃO DAS SEÇÕES
+    // ════════════════════════════════════════════════════
+    //
+    // buildHomeSections() monta as seções COM os produtos da primeira página.
+    // Para o carrossel continuar carregando enquanto a pessoa arrasta para o
+    // lado, o servidor precisa saber remontar a MESMA consulta com outro
+    // deslocamento — e é só isso que estes métodos fazem.
+    //
+    // A consulta é derivada do `id` da seção, e não recebida do cliente. O
+    // motivo é direto: `order` entra na SQL por interpolação
+    // (`ORDER BY {$order}` em Product::getList), então aceitar filtros vindos
+    // do aparelho seria abrir injeção. O id é um rótulo de um catálogo fechado.
+
+    /**
+     * Uma página de produtos de uma seção.
+     *
+     * @param  string $id     id da seção, como aparece em buildHomeSections()
+     * @param  int    $limite quantos produtos
+     * @param  int    $offset a partir de qual
+     * @return array<int,array>
+     */
+    public function produtosDaSecao(string $id, int $limite, int $offset = 0): array
+    {
+        $consulta = $this->consultaDaSecao($id);
+        if ($consulta === null) {
+            return [];
+        }
+
+        return $this->product->parseClips(
+            $this->product->getByFilters($consulta, $limite, $offset)
+        );
+    }
+
+    /**
+     * Os filtros que definem uma seção — os mesmos que o builder dela usa.
+     *
+     * Devolve null para seção desconhecida, e para as personalizadas cujos
+     * sinais sumiram (o cliente esvaziou os favoritos entre uma página e
+     * outra, por exemplo). Nesse caso o carrossel simplesmente para de
+     * crescer, que é melhor do que devolver produtos de outro critério.
+     */
+    private function consultaDaSecao(string $id): ?array
+    {
+        switch ($id) {
+            case 'novidades':
+                return ['order' => 'p.criado_em DESC'];
+
+            case 'produtos_promocao':
+                return ['promocao' => 1, 'order' => 'p.preco_promo ASC'];
+
+            case 'mais_vendidos':
+                // getBestSellers() é getList(['order' => 'vendidos DESC']).
+                return ['order' => 'vendidos DESC'];
+
+            case 'seus_favoritos':
+                $ids = $this->getFavoritosIds();
+                return $ids ? ['ids' => $ids] : null;
+
+            case 'por_favoritos':
+                $cats = $this->getCategoriasDosFavoritos();
+                if (!$cats) return null;
+                return $this->comFallbackDeExclusao($cats, $this->getFavoritosIds());
+
+            case 'por_historico':
+                $hist = $this->getHistoricoIds('produto');
+                $cats = $this->categoriasDosProdutos($hist);
+                if (!$cats) return null;
+                return $this->comFallbackDeExclusao($cats, $hist);
+
+            case 'por_categorias':
+                $cats = $this->getHistoricoIds('categoria');
+                return $cats ? ['categorias' => $cats, 'order' => 'p.criado_em DESC'] : null;
+
+            case 'por_clips':
+                $cats = $this->getCategoriasDeClips();
+                return $cats ? ['categorias' => $cats, 'order' => 'p.criado_em DESC'] : null;
+
+            case 'por_carrinho':
+                $cats = $this->getCarrinhoCategorias();
+                return $cats ? ['categorias' => $cats, 'order' => 'p.criado_em DESC'] : null;
+
+            case 'por_marcas':
+                $marcas = $this->getHistoricoIds('marca');
+                return $marcas ? ['marcas' => $marcas, 'order' => 'p.criado_em DESC'] : null;
+
+            case 'por_buscas':
+                return $this->consultaDaBusca();
+
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Duas seções escondem produtos que o cliente já conhece — e caem para a
+     * versão sem exclusão quando isso zera o resultado.
+     *
+     * A escolha precisa ser a MESMA em todas as páginas. Se a página 1 veio da
+     * variante com exclusão e a 2 viesse da sem, produtos já mostrados
+     * reapareceriam no meio do carrossel. A sonda de uma linha decide isso uma
+     * vez, e sempre igual.
+     */
+    private function comFallbackDeExclusao(array $cats, array $excluir): array
+    {
+        $comExclusao = [
+            'categorias'  => $cats,
+            'excluir_ids' => $excluir,
+            'order'       => 'p.criado_em DESC',
+        ];
+
+        if ($excluir === [] || $this->product->getByFilters($comExclusao, 1) !== []) {
+            return $comExclusao;
+        }
+
+        return ['categorias' => $cats, 'order' => 'p.criado_em DESC'];
+    }
+
+    /**
+     * A seção de buscas usa o PRIMEIRO termo do histórico que devolve produto.
+     * Como o builder itera na mesma ordem, sondar aqui reencontra o mesmo
+     * termo — e o carrossel continua de onde parou em vez de trocar de assunto
+     * na segunda página.
+     */
+    private function consultaDaBusca(): ?array
+    {
+        foreach ($this->getBuscas() as $termo) {
+            $termo = trim((string)$termo);
+            if (strlen($termo) < 2) {
+                continue;
+            }
+
+            $consulta = ['busca' => $termo, 'order' => 'p.criado_em DESC'];
+            if ($this->product->getByFilters($consulta, 1) !== []) {
+                return $consulta;
+            }
+        }
+
+        return null;
     }
 
     // ════════════════════════════════════════════════════

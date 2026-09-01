@@ -39,6 +39,52 @@ class AppProdutoController extends AppApiController
 
 
     /**
+     * GET /api/app/v1/produtos/{id}/relacionados?page=&per_page=
+     *
+     * Mais produtos da mesma categoria — a continuação do carrossel "Você
+     * também pode gostar". A primeira página vem dentro de /produtos/{slug}.
+     */
+    public function relacionados(string $id = '0'): void
+    {
+        $this->bootOpcional();
+        $this->liberarSessao();
+
+        $produtoId = (int)$id;
+        if ($produtoId <= 0) {
+            $this->falha(422, 'produto_invalido', 'Produto inválido.');
+        }
+
+        $modelo  = new Product();
+        $produto = $modelo->find($produtoId);
+
+        if (!$produto) {
+            $this->falha(404, 'nao_encontrado', 'Produto não encontrado.');
+        }
+
+        // Offset explícito: a primeira página já veio em /produtos/{slug},
+        // com uma quantidade diferente da que se pede aqui.
+        $limite = max(1, min(24, (int)$this->query('per_page', 12)));
+        $offset = max(0, (int)$this->query('offset', 0));
+
+        $itens = $modelo->getRelated(
+            $produtoId,
+            (int)($produto['categoria_id'] ?? 0),
+            $limite,
+            $offset
+        );
+
+        $this->ok(
+            ['produtos' => ProductCardPresenter::colecao($itens, $this->contexto())],
+            200,
+            [
+                'offset'     => $offset,
+                'por_pagina' => $limite,
+                'tem_mais'   => count($itens) >= $limite,
+            ]
+        );
+    }
+
+    /**
      * GET /api/app/v1/produtos/{id}/clips
      */
     public function clips(string $id = '0'): void

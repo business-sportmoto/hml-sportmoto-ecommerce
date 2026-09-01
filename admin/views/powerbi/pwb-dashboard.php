@@ -35,6 +35,20 @@ if (!function_exists('pwb_badge_class')) {
             return 'pwb_badge_danger';
         }
 
+        // Status vindos do BI. Sem estas regras tudo caía em
+        // 'default' e "Prejuízo" ficava com a mesma cor de "Saudável" —
+        // a cor é justamente o que faz a linha ruim saltar aos olhos.
+        foreach ([
+            'pwb_badge_success' => ['saudável', 'concluído', 'campeo', 'fiei'],
+            'pwb_badge_danger'  => ['prejuízo', 'zerado', 'perdido', 'em risco', 'devolvido'],
+            'pwb_badge_warning' => ['sem custo', 'margem baixa', 'atencao', 'atenção', 'hibernando'],
+            'pwb_badge_info'    => ['novo', 'potenciai', 'primeira compra', 'recorrente'],
+        ] as $classe => $termos) {
+            foreach ($termos as $t) {
+                if (str_contains($normalized, $t)) return $classe;
+            }
+        }
+
         return 'pwb_badge_default';
     }
 }
@@ -124,6 +138,8 @@ $pwb_metrics = $pwb_dashboard_data['metrics'] ?? [];
 $pwb_meta = $pwb_dashboard_data['meta'] ?? [];
 ?>
 
+<link rel="stylesheet" href="<?= BASE_URL ?>/admin/assets/css/powerbi.css">
+
 <div class="pwb_dashboard" data-pwb-api-url="<?= pwb_e($pwb_dashboard_config['api_url']) ?>">
     <script type="application/json" id="pwb_dashboard_payload"><?= json_encode($pwb_dashboard_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?></script>
 
@@ -139,8 +155,9 @@ $pwb_meta = $pwb_dashboard_data['meta'] ?? [];
             <button class="pwb_nav_item" type="button" data-pwb-view="orders"><?= pwb_icon('cart') ?><span class="pwb_nav_label">Pedidos</span></button>
             <button class="pwb_nav_item" type="button" data-pwb-view="products"><?= pwb_icon('box') ?><span class="pwb_nav_label">Produtos</span></button>
             <button class="pwb_nav_item" type="button" data-pwb-view="customers"><?= pwb_icon('users') ?><span class="pwb_nav_label">Clientes</span></button>
-            <button class="pwb_nav_item" type="button" data-pwb-view="access"><?= pwb_icon('access') ?><span class="pwb_nav_label">Acessos</span></button>
-            <button class="pwb_nav_item" type="button" data-pwb-view="ai"><?= pwb_icon('ai') ?><span class="pwb_nav_label">Uso de IA</span></button>
+            <button class="pwb_nav_item" type="button" data-pwb-view="geo"><?= pwb_icon('access') ?><span class="pwb_nav_label">Geografia</span></button>
+            <button class="pwb_nav_item" type="button" data-pwb-view="access"><?= pwb_icon('access') ?><span class="pwb_nav_label">Funil</span></button>
+            <button class="pwb_nav_item" type="button" data-pwb-view="ai"><?= pwb_icon('ai') ?><span class="pwb_nav_label">Saúde do dado</span></button>
             <button class="pwb_nav_item" type="button" data-pwb-view="faq"><?= pwb_icon('faq') ?><span class="pwb_nav_label">Perguntas</span></button>
             <button class="pwb_nav_item" type="button" data-pwb-view="stock"><?= pwb_icon('stock') ?><span class="pwb_nav_label">Estoque</span></button>
         </nav>
@@ -209,7 +226,7 @@ $pwb_meta = $pwb_dashboard_data['meta'] ?? [];
                 </div>
                 <div class="pwb_table_wrap">
                     <table class="pwb_table" data-pwb-table>
-                        <thead class="pwb_thead"><tr class="pwb_tr"><th class="pwb_th">Produto</th><th class="pwb_th">SKU</th><th class="pwb_th">Vendas</th><th class="pwb_th">Receita</th><th class="pwb_th">Estoque</th><th class="pwb_th">Status</th></tr></thead>
+                        <thead class="pwb_thead"><tr class="pwb_tr"><th class="pwb_th">Produto</th><th class="pwb_th">ID</th><th class="pwb_th">Qtd vendida</th><th class="pwb_th">Receita</th><th class="pwb_th">Custo conhecido</th><th class="pwb_th">Margem</th></tr></thead>
                         <tbody class="pwb_tbody">
                         <?php foreach (($pwb_tables['top_products'] ?? []) as $row): ?>
                             <tr class="pwb_tr">
@@ -228,7 +245,7 @@ $pwb_meta = $pwb_dashboard_data['meta'] ?? [];
                 <?php foreach (array_slice($pwb_kpis, 0, 4) as $item): ?><?php pwb_render_kpi($item); ?><?php endforeach; ?>
             </div>
             <div class="pwb_chart_grid">
-                <article class="pwb_panel"><h2 class="pwb_panel_title">Pedidos por Mês</h2><div class="pwb_chart_box"><canvas class="pwb_chart_canvas" id="pwb_chart_orders_by_month"></canvas></div></article>
+                <article class="pwb_panel"><h2 class="pwb_panel_title">Pedidos por mês</h2><div class="pwb_chart_box"><canvas class="pwb_chart_canvas" id="pwb_chart_orders_by_month"></canvas></div></article>
                 <article class="pwb_panel"><h2 class="pwb_panel_title">Métodos de Pagamento</h2><div class="pwb_chart_box"><canvas class="pwb_chart_canvas" id="pwb_chart_payment_methods"></canvas></div><div class="pwb_legend" data-pwb-legend="payment_methods"></div></article>
             </div>
             <article class="pwb_panel">
@@ -245,7 +262,7 @@ $pwb_meta = $pwb_dashboard_data['meta'] ?? [];
             </div>
             <article class="pwb_panel">
                 <div class="pwb_panel_header"><h2 class="pwb_panel_title">Catálogo de Produtos</h2><span class="pwb_panel_hint">Vendas, receita e estoque</span></div>
-                <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table><thead class="pwb_thead"><tr class="pwb_tr"><th class="pwb_th">Produto</th><th class="pwb_th">SKU</th><th class="pwb_th">Vendas</th><th class="pwb_th">Receita</th><th class="pwb_th">Estoque</th><th class="pwb_th">Status</th></tr></thead><tbody class="pwb_tbody">
+                <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table><thead class="pwb_thead"><tr class="pwb_tr"><th class="pwb_th">Produto</th><th class="pwb_th">ID</th><th class="pwb_th">Qtd vendida</th><th class="pwb_th">Receita</th><th class="pwb_th">Custo conhecido</th><th class="pwb_th">Margem</th></tr></thead><tbody class="pwb_tbody">
                     <?php foreach (($pwb_tables['top_products'] ?? []) as $row): ?><tr class="pwb_tr"><td class="pwb_td"><?= pwb_e($row['name']) ?></td><td class="pwb_td"><?= pwb_e($row['sku']) ?></td><td class="pwb_td"><?= pwb_e($row['sales']) ?></td><td class="pwb_td"><?= pwb_e($row['revenue']) ?></td><td class="pwb_td"><span class="pwb_stock_bar"><span class="pwb_stock_fill" style="width: <?= max(2, min(100, (int)$row['stock'])) ?>%"></span></span><?= pwb_e($row['stock']) ?></td><td class="pwb_td"><span class="pwb_badge <?= pwb_e(pwb_badge_class($row['status'])) ?>"><?= pwb_e($row['status']) ?></span></td></tr><?php endforeach; ?>
                 </tbody></table></div>
             </article>
@@ -253,25 +270,161 @@ $pwb_meta = $pwb_dashboard_data['meta'] ?? [];
 
         <section class="pwb_view" data-pwb-panel="customers">
             <div class="pwb_chart_grid">
-                <article class="pwb_panel"><h2 class="pwb_panel_title">Segmentação de Clientes</h2><div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table><thead class="pwb_thead"><tr class="pwb_tr"><th class="pwb_th">Segmento</th><th class="pwb_th">Clientes</th><th class="pwb_th">Ticket Médio</th><th class="pwb_th">Retenção</th></tr></thead><tbody class="pwb_tbody">
+                <article class="pwb_panel"><h2 class="pwb_panel_title">Segmentação de Clientes</h2><div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table><thead class="pwb_thead"><tr class="pwb_tr"><th class="pwb_th">Segmento</th><th class="pwb_th">Clientes</th><th class="pwb_th">Ticket médio</th><th class="pwb_th">Receita</th></tr></thead><tbody class="pwb_tbody">
                     <?php foreach (($pwb_tables['customers'] ?? []) as $row): ?><tr class="pwb_tr"><td class="pwb_td"><span class="pwb_badge <?= pwb_e(pwb_badge_class($row['segment'])) ?>"><?= pwb_e($row['segment']) ?></span></td><td class="pwb_td"><?= pwb_e($row['customers']) ?></td><td class="pwb_td"><?= pwb_e($row['ticket']) ?></td><td class="pwb_td"><?= pwb_e($row['retention']) ?></td></tr><?php endforeach; ?>
                 </tbody></table></div></article>
-                <article class="pwb_panel"><h2 class="pwb_panel_title">Fontes de Tráfego</h2><div class="pwb_chart_box"><canvas class="pwb_chart_canvas" id="pwb_chart_traffic_sources"></canvas></div><div class="pwb_legend" data-pwb-legend="traffic_sources"></div></article>
+                <article class="pwb_panel"><h2 class="pwb_panel_title">Receita por canal</h2><div class="pwb_chart_box"><canvas class="pwb_chart_canvas" id="pwb_chart_traffic_sources"></canvas></div><div class="pwb_legend" data-pwb-legend="traffic_sources"></div></article>
             </div>
+
+            <!-- RFM: quintis sobre a própria base, não faixa fixa -->
+            <article class="pwb_panel">
+                <div class="pwb_panel_header">
+                    <h2 class="pwb_panel_title">Segmentação RFM</h2>
+                    <span class="pwb_panel_hint">Recência · Frequência · Monetário, por quintil da base</span>
+                </div>
+                <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                    <thead class="pwb_thead"><tr class="pwb_tr">
+                        <th class="pwb_th">Segmento</th><th class="pwb_th">Clientes</th>
+                        <th class="pwb_th">Receita</th><th class="pwb_th">Ticket</th>
+                        <th class="pwb_th">Dias sem comprar</th>
+                    </tr></thead>
+                    <tbody class="pwb_tbody">
+                    <?php foreach (($pwb_tables['rfm'] ?? []) as $row): ?>
+                        <tr class="pwb_tr">
+                            <td class="pwb_td"><span class="pwb_badge <?= pwb_e(pwb_badge_class($row['segment'])) ?>"><?= pwb_e($row['segment']) ?></span></td>
+                            <td class="pwb_td"><?= pwb_e($row['customers']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($row['revenue']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($row['ticket']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($row['recency']) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table></div>
+            </article>
+
+            <div class="pwb_chart_grid">
+                <article class="pwb_panel">
+                    <h2 class="pwb_panel_title">Recompra</h2>
+                    <div class="pwb_metric_grid" style="margin-bottom:12px;">
+                        <?php foreach (($pwb_metrics['recompra'] ?? []) as $item): ?><?php pwb_render_metric_card($item); ?><?php endforeach; ?>
+                    </div>
+                    <div class="pwb_chart_box"><canvas class="pwb_chart_canvas" id="pwb_chart_recompra"></canvas></div>
+                </article>
+
+                <article class="pwb_panel">
+                    <div class="pwb_panel_header">
+                        <h2 class="pwb_panel_title">Clientes em risco</h2>
+                        <span class="pwb_panel_hint">Passaram do próprio intervalo médio</span>
+                    </div>
+                    <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                        <thead class="pwb_thead"><tr class="pwb_tr">
+                            <th class="pwb_th">Cliente</th><th class="pwb_th">Compras</th>
+                            <th class="pwb_th">Receita</th><th class="pwb_th">Sem comprar há</th>
+                            <th class="pwb_th">Atraso</th>
+                        </tr></thead>
+                        <tbody class="pwb_tbody">
+                        <?php if (empty($pwb_tables['risco'])): ?>
+                            <tr class="pwb_tr"><td class="pwb_td" colspan="5">Nenhum cliente em risco no momento.</td></tr>
+                        <?php else: foreach ($pwb_tables['risco'] as $row): ?>
+                            <tr class="pwb_tr">
+                                <td class="pwb_td"><?= pwb_e($row['name']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($row['orders']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($row['revenue']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($row['days']) ?></td>
+                                <td class="pwb_td"><span class="pwb_badge pwb_badge_danger"><?= pwb_e($row['overdue']) ?></span></td>
+                            </tr>
+                        <?php endforeach; endif; ?>
+                        </tbody>
+                    </table></div>
+                </article>
+            </div>
+
+            <!-- Coorte: cada linha é um mês de aquisição; as colunas são
+                 os meses seguintes. A média esconde coorte boa e ruim. -->
+            <article class="pwb_panel">
+                <div class="pwb_panel_header">
+                    <h2 class="pwb_panel_title">Retenção por coorte</h2>
+                    <span class="pwb_panel_hint">% da coorte que voltou a comprar</span>
+                </div>
+                <div class="pwb_table_wrap" id="pwb_coorte"></div>
+            </article>
+        </section>
+
+        <section class="pwb_view" data-pwb-panel="geo">
+            <div class="pwb_chart_grid">
+                <article class="pwb_panel">
+                    <div class="pwb_panel_header">
+                        <h2 class="pwb_panel_title">Por estado</h2>
+                        <span class="pwb_panel_hint">Confiabilidade = % com geografia congelada no pedido</span>
+                    </div>
+                    <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                        <thead class="pwb_thead"><tr class="pwb_tr">
+                            <th class="pwb_th">UF</th><th class="pwb_th">Pedidos</th>
+                            <th class="pwb_th">Clientes</th><th class="pwb_th">Receita</th>
+                            <th class="pwb_th">Ticket</th><th class="pwb_th">Frete médio</th>
+                            <th class="pwb_th">Confiabilidade</th>
+                        </tr></thead>
+                        <tbody class="pwb_tbody">
+                        <?php foreach (($pwb_tables['geo_uf'] ?? []) as $row): ?>
+                            <tr class="pwb_tr">
+                                <td class="pwb_td"><?= pwb_e($row['local']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($row['orders']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($row['customers']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($row['revenue']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($row['ticket']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($row['freight']) ?></td>
+                                <td class="pwb_td"><span class="pwb_badge <?= pwb_e(pwb_badge_class($row['trust_level'])) ?>"><?= pwb_e($row['trust']) ?></span></td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table></div>
+                </article>
+
+                <article class="pwb_panel">
+                    <h2 class="pwb_panel_title">Receita por estado</h2>
+                    <div class="pwb_chart_box"><canvas class="pwb_chart_canvas" id="pwb_chart_geo_uf"></canvas></div>
+                </article>
+            </div>
+
+            <article class="pwb_panel">
+                <div class="pwb_panel_header">
+                    <h2 class="pwb_panel_title">Top cidades</h2>
+                    <span class="pwb_panel_hint">Por receita no período</span>
+                </div>
+                <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                    <thead class="pwb_thead"><tr class="pwb_tr">
+                        <th class="pwb_th">Cidade</th><th class="pwb_th">Pedidos</th>
+                        <th class="pwb_th">Clientes</th><th class="pwb_th">Receita</th>
+                        <th class="pwb_th">Ticket</th><th class="pwb_th">Frete médio</th>
+                    </tr></thead>
+                    <tbody class="pwb_tbody">
+                    <?php foreach (($pwb_tables['geo_cidade'] ?? []) as $row): ?>
+                        <tr class="pwb_tr">
+                            <td class="pwb_td"><?= pwb_e($row['local']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($row['orders']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($row['customers']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($row['revenue']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($row['ticket']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($row['freight']) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table></div>
+            </article>
         </section>
 
         <section class="pwb_view" data-pwb-panel="access">
             <div class="pwb_metric_grid">
                 <?php foreach (($pwb_metrics['access'] ?? []) as $item): ?><?php pwb_render_metric_card($item); ?><?php endforeach; ?>
             </div>
-            <article class="pwb_panel"><h2 class="pwb_panel_title">Origem dos Acessos</h2><div class="pwb_chart_box pwb_chart_tall"><canvas class="pwb_chart_canvas" id="pwb_chart_traffic_sources_bar"></canvas></div></article>
+            <article class="pwb_panel"><h2 class="pwb_panel_title">Marcas por receita</h2><div class="pwb_chart_box pwb_chart_tall"><canvas class="pwb_chart_canvas" id="pwb_chart_traffic_sources_bar"></canvas></div></article>
         </section>
 
         <section class="pwb_view" data-pwb-panel="ai">
             <div class="pwb_metric_grid">
                 <?php foreach (($pwb_metrics['ai'] ?? []) as $item): ?><?php pwb_render_metric_card($item); ?><?php endforeach; ?>
             </div>
-            <article class="pwb_panel"><h2 class="pwb_panel_title">Uso de IA por Dia</h2><div class="pwb_chart_box pwb_chart_tall"><canvas class="pwb_chart_canvas" id="pwb_chart_ai_usage"></canvas></div></article>
+            <article class="pwb_panel"><h2 class="pwb_panel_title">Faturamento por dia</h2><div class="pwb_chart_box pwb_chart_tall"><canvas class="pwb_chart_canvas" id="pwb_chart_ai_usage"></canvas></div></article>
         </section>
 
         <section class="pwb_view" data-pwb-panel="faq">
@@ -296,3 +449,218 @@ $pwb_meta = $pwb_dashboard_data['meta'] ?? [];
         </section>
     </main>
 </div>
+
+<script>
+(function () {
+  var raiz = document.querySelector('.pwb_dashboard');
+  if (!raiz) return;
+
+  // ── Navegacao entre paineis ───────────────────────────
+  // O markup ja trazia data-pwb-view / data-pwb-panel, mas nao havia
+  // JS: so o painel "overview" aparecia e os outros 7 botoes eram
+  // decorativos.
+  raiz.addEventListener('click', function (ev) {
+    var btn = ev.target.closest('[data-pwb-view]');
+    if (!btn) return;
+
+    var alvo = btn.getAttribute('data-pwb-view');
+    raiz.querySelectorAll('[data-pwb-view]').forEach(function (b) {
+      b.classList.toggle('pwb_nav_active', b === btn);
+    });
+    raiz.querySelectorAll('[data-pwb-panel]').forEach(function (p) {
+      p.classList.toggle('pwb_view_active', p.getAttribute('data-pwb-panel') === alvo);
+    });
+  });
+
+  // ── Busca nas tabelas visiveis ────────────────────────
+  var busca = raiz.querySelector('[data-pwb-search]');
+  if (busca) {
+    busca.addEventListener('input', function () {
+      var termo = this.value.toLowerCase().trim();
+      raiz.querySelectorAll('[data-pwb-panel].pwb_view_active [data-pwb-table] tbody tr')
+        .forEach(function (tr) {
+          tr.style.display = (!termo || tr.textContent.toLowerCase().indexOf(termo) > -1) ? '' : 'none';
+        });
+    });
+  }
+
+  // ── Periodo ───────────────────────────────────────────
+  // Recarrega a pagina com ?periodo=. Poderia consumir o endpoint
+  // JSON (data-pwb-api-url) sem reload, mas isso exigiria reconstruir
+  // todo o HTML no cliente — e ai a formatacao passaria a existir em
+  // dois lugares, PHP e JS, que divergem com o tempo. O servidor
+  // continua sendo o unico que formata.
+  var periodo = raiz.querySelector('[data-pwb-period]');
+  if (periodo) {
+    periodo.addEventListener('change', function () {
+      var u = new URL(window.location.href);
+      u.searchParams.set('periodo', this.value);
+      window.location.href = u.toString();
+    });
+  }
+
+
+  // ── Graficos em SVG puro ──────────────────────────────
+  // O markup traz <canvas> mas o projeto nao carrega Chart.js, e a
+  // CSP/offline do admin nao garante CDN. Em vez de deixar retangulos
+  // vazios (ou puxar uma biblioteca de 200KB para tres graficos de
+  // barra), desenha-se SVG inline a partir do payload que o servidor
+  // ja publica.
+  var payloadEl = document.getElementById('pwb_dashboard_payload');
+  var dados = {};
+  try { dados = JSON.parse(payloadEl ? payloadEl.textContent : '{}') || {}; } catch (e) { dados = {}; }
+  var charts = dados.charts || {};
+
+  function brl(v) {
+    return 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  }
+
+  function esc(t) {
+    return String(t == null ? '' : t).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
+  /** Barras horizontais: legivel com rotulo longo, que e o caso aqui. */
+  function barras(canvasId, itens, corHex) {
+    var canvas = document.getElementById(canvasId);
+    if (!canvas || !itens || !itens.length) return;
+
+    var max = Math.max.apply(null, itens.map(function (i) { return Number(i.valor) || 0; })) || 1;
+    var linhas = itens.map(function (i) {
+      var pct = Math.max(1, (Number(i.valor) || 0) / max * 100);
+      return '<div class="pwb_bar_row">' +
+               '<span class="pwb_bar_label" title="' + esc(i.rotulo) + '">' + esc(i.rotulo) + '</span>' +
+               '<span class="pwb_bar_track"><span class="pwb_bar_fill" style="width:' + pct + '%;background:' + corHex + '"></span></span>' +
+               '<span class="pwb_bar_value">' + esc(i.texto) + '</span>' +
+             '</div>';
+    }).join('');
+
+    var box = document.createElement('div');
+    box.className = 'pwb_bars';
+    box.innerHTML = linhas;
+    canvas.replaceWith(box);
+  }
+
+  /** Linha simples para a serie diaria. */
+  function linha(canvasId, serie) {
+    var canvas = document.getElementById(canvasId);
+    if (!canvas || !serie || serie.length < 2) return;
+
+    var vals = serie.map(function (p) { return Number(p.faturamento) || 0; });
+    var max = Math.max.apply(null, vals) || 1;
+    var w = 600, h = 170, pad = 6;
+    var passo = (w - pad * 2) / (vals.length - 1);
+
+    var pontos = vals.map(function (v, i) {
+      return (pad + i * passo).toFixed(1) + ',' + (h - pad - (v / max) * (h - pad * 2)).toFixed(1);
+    });
+
+    var area = 'M' + pad + ',' + (h - pad) + ' L' + pontos.join(' L') +
+               ' L' + (w - pad) + ',' + (h - pad) + ' Z';
+
+    var svg = '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" class="pwb_svg_line">' +
+      '<path d="' + area + '" fill="rgba(37,99,235,.10)"/>' +
+      '<polyline points="' + pontos.join(' ') + '" fill="none" stroke="#2563eb" stroke-width="2" ' +
+      'stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>' +
+      '<div class="pwb_line_legend"><span>' + esc(serie[0].data) + '</span>' +
+      '<span>pico ' + brl(max) + '</span>' +
+      '<span>' + esc(serie[serie.length - 1].data) + '</span></div>';
+
+    var box = document.createElement('div');
+    box.className = 'pwb_linebox';
+    box.innerHTML = svg;
+    canvas.replaceWith(box);
+  }
+
+  barras('pwb_chart_monthly_revenue', (charts.monthly || []).map(function (m) {
+    return { rotulo: m.ano_mes, valor: m.faturamento, texto: brl(m.faturamento) };
+  }), '#2563eb');
+
+  barras('pwb_chart_orders_by_month', (charts.monthly || []).map(function (m) {
+    return { rotulo: m.ano_mes, valor: m.pedidos, texto: m.pedidos };
+  }), '#0ea472');
+
+  barras('pwb_chart_order_status', (charts.by_status || []).map(function (r) {
+    return { rotulo: r.status_pedido, valor: r.pedidos, texto: r.pedidos };
+  }), '#7c3aed');
+
+  barras('pwb_chart_payment_methods', (charts.by_payment || []).map(function (r) {
+    return { rotulo: r.forma, valor: r.receita, texto: brl(r.receita) };
+  }), '#7c3aed');
+
+  barras('pwb_chart_traffic_sources', (charts.by_channel || []).map(function (r) {
+    return { rotulo: r.nome, valor: r.receita, texto: brl(r.receita) };
+  }), '#0ea472');
+
+  barras('pwb_chart_traffic_sources_bar', (charts.top_brands || []).map(function (r) {
+    return { rotulo: r.nome, valor: r.receita, texto: brl(r.receita) };
+  }), '#2563eb');
+
+  barras('pwb_chart_stock_flow', (charts.top_categories || []).map(function (r) {
+    return { rotulo: r.nome, valor: r.receita, texto: brl(r.receita) };
+  }), '#d97706');
+
+  barras('pwb_chart_recompra', (charts.recompra || []).map(function (r) {
+    return { rotulo: r.faixa, valor: r.clientes, texto: r.clientes + ' cli.' };
+  }), '#0ea472');
+
+  barras('pwb_chart_geo_uf', (charts.geo_uf || []).map(function (r) {
+    return { rotulo: r.local, valor: r.receita, texto: brl(r.receita) };
+  }), '#2563eb');
+
+  linha('pwb_chart_ai_usage', charts.daily || []);
+
+  // ── Matriz de coorte ──────────────────────────────────
+  // Uma linha por mês de aquisição, uma coluna por mês seguinte. A
+  // intensidade da cor mostra a retenção — ler 60 numeros soltos numa
+  // tabela nao revela o padrao que a matriz revela de imediato.
+  (function () {
+    var alvo = document.getElementById('pwb_coorte');
+    var dados = charts.coorte || [];
+    if (!alvo) return;
+    if (!dados.length) { alvo.innerHTML = '<p class="pwb_chart_vazio">Sem dados de coorte no período</p>'; return; }
+
+    var coortes = [], maxOffset = 0, mapa = {};
+    dados.forEach(function (d) {
+      if (coortes.indexOf(d.coorte) === -1) coortes.push(d.coorte);
+      maxOffset = Math.max(maxOffset, Number(d.mes_offset));
+      mapa[d.coorte + '|' + d.mes_offset] = d;
+    });
+
+    var html = '<table class="pwb_table pwb_coorte_tabela"><thead class="pwb_thead"><tr class="pwb_tr">' +
+               '<th class="pwb_th">Coorte</th><th class="pwb_th">Clientes</th>';
+    for (var o = 0; o <= maxOffset; o++) html += '<th class="pwb_th">M+' + o + '</th>';
+    html += '</tr></thead><tbody class="pwb_tbody">';
+
+    coortes.forEach(function (c) {
+      var base = mapa[c + '|0'];
+      html += '<tr class="pwb_tr"><td class="pwb_td"><strong>' + esc(c) + '</strong></td>' +
+              '<td class="pwb_td">' + esc(base ? base.tamanho_coorte : '—') + '</td>';
+      for (var o = 0; o <= maxOffset; o++) {
+        var cel = mapa[c + '|' + o];
+        if (!cel) { html += '<td class="pwb_td"></td>'; continue; }
+        var pct = Number(cel.retencao_pct) || 0;
+        // Opacidade proporcional: 100% fica solido, 5% quase branco.
+        var alpha = Math.max(0.06, Math.min(1, pct / 100));
+        html += '<td class="pwb_td pwb_coorte_cel" style="background:rgba(37,99,235,' + alpha.toFixed(2) + ');' +
+                (pct > 55 ? 'color:#fff;' : '') + '">' + pct + '%</td>';
+      }
+      html += '</tr>';
+    });
+
+    alvo.innerHTML = html + '</tbody></table>';
+  })();
+
+  // Painel de grafico que continuou sem dado nao fica um retangulo
+  // mudo: diz que nao ha dado, que e informacao diferente de zero.
+  raiz.querySelectorAll('.pwb_chart_box').forEach(function (box) {
+    if (box.querySelector('canvas')) {
+      box.innerHTML = '<p class="pwb_chart_vazio">Sem dados no período</p>';
+    }
+  });
+
+  var refresh = raiz.querySelector('[data-pwb-refresh]');
+  if (refresh) refresh.addEventListener('click', function () { window.location.reload(); });
+})();
+</script>

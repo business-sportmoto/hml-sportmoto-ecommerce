@@ -25,6 +25,76 @@
         alert(msg);
     }
 
+    /* ── impressao direta ───────────────────────────────────────────────
+       Nenhuma pagina web escolhe a impressora nem pula a caixa de dialogo:
+       nao existe API para isso, e nao ha truque que contorne. O que existe e
+       o Chrome aberto com --kiosk-printing — ali window.print() imprime direto
+       na impressora padrao, sem dialogo.
+
+       O codigo abaixo e o mesmo nos dois casos. A flag na maquina da expedicao
+       decide se aparece dialogo; nada aqui muda.
+
+       Cada documento vai num iframe oculto, e a fila espera um terminar antes
+       de comecar o proximo: dois print() simultaneos se atropelam e um dos
+       jobs some sem aviso nenhum.
+       ------------------------------------------------------------------ */
+    var Impressao = (function () {
+
+        function documento(url) {
+            return new Promise(function (resolve) {
+                var $if = $('<iframe>', { 'aria-hidden': 'true' }).css({
+                    position: 'fixed', left: '-10000px', top: 0,
+                    width: '1px', height: '1px', border: 0
+                }).appendTo('body');
+
+                var feito = false;
+
+                function encerrar() {
+                    // O iframe so sai depois: removido antes de o spool aceitar,
+                    // o job e cancelado no meio e nao sai papel.
+                    setTimeout(function () { $if.remove(); }, 10000);
+                    resolve();
+                }
+
+                $if.on('load', function () {
+                    if (feito) return;
+                    feito = true;
+                    // O visualizador de PDF do Chrome precisa de um instante
+                    // depois do load antes de aceitar print().
+                    setTimeout(function () {
+                        try {
+                            $if[0].contentWindow.focus();
+                            $if[0].contentWindow.print();
+                        } catch (e) {
+                            window.open(url, '_blank', 'noopener');   // outra origem
+                        }
+                        encerrar();
+                    }, 400);
+                });
+
+                // Documento que nao carrega nao pode travar a fila.
+                setTimeout(function () {
+                    if (feito) return;
+                    feito = true;
+                    $if.remove();
+                    aviso('Nao foi possivel carregar um documento para impressao.', 'warning');
+                    resolve();
+                }, 20000);
+
+                $if.attr('src', url);
+            });
+        }
+
+        return {
+            /** Imprime na ordem recebida, um esperando o outro. */
+            fila: function (urls) {
+                return (urls || []).filter(Boolean).reduce(function (p, u) {
+                    return p.then(function () { return documento(u); });
+                }, Promise.resolve());
+            }
+        };
+    })();
+
     /* ═══════════════════════════════════════════════════════
        TELA: fila de separação
        ═══════════════════════════════════════════════════════ */
@@ -137,9 +207,23 @@
                     aviso((r && r.msg) || 'Código não reconhecido.', 'error');
                     return;
                 }
-                var $linha = $conf.find('.sep_item[data-item="' + r.item_id + '"]');
-                if (!$linha.length) { aviso('Item não está nesta tela.', 'error'); return; }
-                marcar($linha);
+                // Um codigo de produto (sku_legado) pode casar com mais de uma
+                // variacao do mesmo pedido. O servidor manda todas; aqui vale a
+                // que ainda tem peca faltando, senao a primeira sempre estouraria.
+                var ids = (r.item_ids && r.item_ids.length) ? r.item_ids : [r.item_id];
+                var $alvo = null, $primeira = null;
+
+                ids.forEach(function (id) {
+                    var $l = $conf.find('.sep_item[data-item="' + id + '"]');
+                    if (!$l.length) return;
+                    if (!$primeira) $primeira = $l;
+                    if (!$alvo && (parseInt($l.find('.sep_c').text(), 10) || 0)
+                                < (parseInt($l.data('qtd'), 10) || 0)) $alvo = $l;
+                });
+
+                $alvo = $alvo || $primeira;
+                if (!$alvo) { aviso('Item não está nesta tela.', 'error'); return; }
+                marcar($alvo);
             }).fail(function () {
                 aviso('Falha ao consultar o código.', 'error');
             });
@@ -265,8 +349,11 @@
             var meta = [];
             if (i.variacao) meta.push(esc(i.variacao));
             if (i.sku)      meta.push('SKU ' + esc(i.sku));
-            if (i.ean)      meta.push('EAN ' + esc(i.ean));
-            else            meta.push('<b>sem EAN</b>');
+            // Sem EAN o operador precisa ver QUAL codigo serve, senao fica
+            // sabendo apenas que nao da para bipar — que era o caso antes.
+            if (i.ean)             meta.push('EAN ' + esc(i.ean));
+            else if (i.sku_legado) meta.push('REF ' + esc(i.sku_legado));
+            else                   meta.push('<b>sem código</b>');
 
             return '<div class="est_item" data-item="' + (i.id | 0) + '" data-qtd="' + (i.quantidade | 0) + '">' +
                    img +
@@ -352,9 +439,11 @@
         function acharItem(codigo) {
             if (!atual) return null;
             var alvo = String(codigo).trim();
+            var igual = function (v) { return v && String(v).toLowerCase() === alvo.toLowerCase(); };
+            // sku_legado e do produto, nao da variacao — casa com todas as
+            // variacoes dele que estiverem no pedido. O desempate abaixo resolve.
             var achados = (atual.itens || []).filter(function (i) {
-                return (i.ean && i.ean === alvo) ||
-                       (i.sku && i.sku.toLowerCase() === alvo.toLowerCase());
+                return (i.ean && i.ean === alvo) || igual(i.sku) || igual(i.sku_legado);
             });
             if (!achados.length) return null;
             // Havendo mais de um com o mesmo codigo, prefere o que ainda falta.
@@ -405,9 +494,10 @@
 
             $('#estProdutoBox').prop('hidden', false);
             $('#estImprimirBox').prop('hidden', true);
+            $('#estImprimirDanfe').prop('disabled', !p.nfe_danfe);
             $('#estNotaEtiqueta').text(
                 p.etiqueta && p.etiqueta.url_pdf
-                    ? 'A etiqueta já emitida abre junto.'
+                    ? 'Saem dois trabalhos: NF simplificada e etiqueta.'
                     : 'Sem etiqueta emitida: sai só a NF simplificada.'
             );
             pintarProgresso();
@@ -456,18 +546,27 @@
         }
 
         /* ── impressão ─────────────────────────────────── */
-        function imprimir() {
+        function urlNf()       { return window.SEP_BASE + '/' + atual.id + '/nf'; }
+        function urlEtiqueta() { return (atual.etiqueta && atual.etiqueta.url_pdf) || ''; }
+
+        // Imprime e libera a estacao para o proximo pedido.
+        //
+        // So o botao principal conclui. Os outros dois imprimem e deixam o
+        // pedido na tela: quem pediu so a DANFE ainda vai precisar da etiqueta,
+        // e limpar ali obrigaria a bipar o pedido de novo.
+        function concluir(urls) {
             if (!atual) return;
-
-            // NF simplificada sempre; a etiqueta só existe depois de emitida.
-            window.open(window.SEP_BASE + '/' + atual.id + '/nf', '_blank', 'noopener');
-            if (atual.etiqueta && atual.etiqueta.url_pdf) {
-                window.open(atual.etiqueta.url_pdf, '_blank', 'noopener');
-            }
-
-            status($status, 'Pedido #' + atual.id + ' concluído. Próximo.', 'ok');
+            var id = atual.id;
+            Impressao.fila(urls);      // segue em background; a fila espera sozinha
+            status($status, 'Pedido #' + id + ' concluído. Próximo.', 'ok');
             limparPedido();
             foco($campo);              // pronto para o proximo, sem mouse
+        }
+
+        function imprimir() {
+            if (!atual) return;
+            // NF simplificada sempre; a etiqueta so existe depois de emitida.
+            concluir([urlNf(), urlEtiqueta()]);
         }
 
         /* ── eventos ───────────────────────────────────── */
@@ -493,6 +592,25 @@
         });
 
         $('#estImprimir').on('click', imprimir);
+
+        $('#estImprimirNf').on('click', function () {
+            if (!atual) return;
+            Impressao.fila([urlNf()]);
+            status($statusP, 'NF simplificada enviada para a impressora.', 'ok');
+        });
+
+        // A DANFE completa vem do Bling: outro dominio, e atras de uma
+        // validacao por JavaScript ("Validacao de Acesso"). Nao carrega em
+        // iframe nem pode ser buscada pelo servidor — abre em aba, e a
+        // impressao ali e manual.
+        $('#estImprimirDanfe').on('click', function () {
+            if (!atual) return;
+            if (!atual.nfe_danfe) {
+                status($statusP, 'Este pedido ainda nao tem DANFE no Bling.', 'aviso');
+                return;
+            }
+            window.open(atual.nfe_danfe, '_blank', 'noopener');
+        });
 
         $('#estLimpar').on('click', function () {
             sessao = [];

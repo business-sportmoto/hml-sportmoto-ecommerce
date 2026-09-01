@@ -307,6 +307,12 @@ AdminRouter::post('/configuracoes/status-pedidos/salvar',       'AdminStatusPedi
 AdminRouter::post('/configuracoes/status-pedidos/excluir',      'AdminStatusPedidoController@excluir');
 AdminRouter::post('/configuracoes/status-pedidos/reordenar',    'AdminStatusPedidoController@reordenar');
 
+// ── BI: metas comerciais ────────────────────────────────────────────
+// super+gerente: meta e decisao comercial, mesmo nivel de cupom/promocao.
+AdminRouter::get ('/bi/metas',          'BiMetaController@index');
+AdminRouter::post('/bi/metas/salvar',   'BiMetaController@salvar');
+AdminRouter::post('/bi/metas/excluir',  'BiMetaController@excluir');
+
 // ── Configuração de pagamentos ──────────────────────────────────────
 // Formas: super+gerente (impacto financeiro). Adquirentes: super (credenciais).
 // A permissão real é aplicada no controller, método a método.
@@ -469,7 +475,9 @@ AdminRouter::post('/perguntas/responder', 'PerguntasController@responder');
 AdminRouter::post('/perguntas/rejeitar',  'PerguntasController@rejeitar');
 
 //Power BI
-AdminRouter::post('/power-bi', 'PowerBIController@index');
+// Era POST — o que tornava a pagina inalcancavel por link normal.
+AdminRouter::get ('/power-bi',       'PowerBIController@index');
+AdminRouter::get ('/power-bi/dados', 'PowerBIController@dados');
 
 AdminRouter::get ('/cupons',              'AdminCouponController@index');
 AdminRouter::get ('/cupons/form',         'AdminCouponController@form');

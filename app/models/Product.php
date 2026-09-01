@@ -215,7 +215,12 @@ class Product extends Model {
     //     return $stmt->fetchAll();
     // }
 
-    private function getList(array $opts = [], int $limit = 8): array {
+    /**
+     * @param int $offset Deslocamento. Zero por padrão — todas as chamadas da
+     *                    web continuam valendo sem mudar nada. O app usa isto
+     *                    para carregar mais produtos no mesmo carrossel.
+     */
+    private function getList(array $opts = [], int $limit = 8, int $offset = 0): array {
         $where  = "p.ativo = 1 AND p.deleted_at IS NULL";
         $params = [];
         $order  = $opts['order'] ?? 'p.criado_em DESC';
@@ -287,6 +292,19 @@ class Product extends Model {
         $clienteId = Session::isClienteLogado()
                 ? (int)Session::get('cliente_id')
                 : 0;
+
+        // Critério de desempate OBRIGATÓRIO quando há OFFSET.
+        //
+        // `criado_em DESC` e `vendidos DESC` empatam com facilidade (produtos
+        // cadastrados no mesmo lote, produtos com zero venda), e o MySQL não
+        // garante a mesma ordem entre os empatados em duas consultas
+        // diferentes. Numa lista inteira isso nunca apareceu — a consulta era
+        // uma só. Paginando, a página 2 pula ou repete exatamente os produtos
+        // que empataram na fronteira: uma seção de 12 entregava 11.
+        //
+        // `p.id` é único, então fecha qualquer empate. Fora quando a ordem já
+        // é por id — o caso de `ids`, que usa FIELD().
+        $desempate = str_contains($order, 'p.id') ? '' : ', p.id DESC';
     
         $stmt = $this->db->prepare(
             "SELECT p.*,
@@ -319,19 +337,20 @@ class Product extends Model {
             LEFT JOIN categorias c       ON c.id = p.categoria_id
             LEFT JOIN marcas m           ON m.id = p.marca_id
             WHERE {$where}
-            ORDER BY {$order}
-            LIMIT ?"
+            ORDER BY {$order}{$desempate}
+            LIMIT ? OFFSET ?"
         );
     
         array_unshift($params, $clienteId, $clienteId);
         $params[] = $limit;
+        $params[] = max(0, $offset);
     
         $stmt->execute($params);
         return $stmt->fetchAll();
     }
 
-    public function getByFilters(array $opts = [], int $limit = 8): array {
-        return $this->getList($opts, $limit);
+    public function getByFilters(array $opts = [], int $limit = 8, int $offset = 0): array {
+        return $this->getList($opts, $limit, $offset);
     }
 
 
@@ -549,7 +568,7 @@ class Product extends Model {
     /**
      * Produtos relacionados: mesma categoria, excluindo o atual.
      */
-    public function getRelated(int $productId, int $categoryId, int $limit = 6): array {
+    public function getRelated(int $productId, int $categoryId, int $limit = 6, int $offset = 0): array {
         $stmt = $this->db->prepare(
             "SELECT p.*,
                     pi.arquivo AS imagem_principal,
@@ -563,10 +582,10 @@ class Product extends Model {
                AND p.deleted_at IS NULL
                AND p.categoria_id = ?
                AND p.id != ?
-             ORDER BY p.vendidos DESC, p.visualizacoes DESC
-             LIMIT ?"
+             ORDER BY p.vendidos DESC, p.visualizacoes DESC, p.id DESC
+             LIMIT ? OFFSET ?"
         );
-        $stmt->execute([$categoryId, $productId, $limit]);
+        $stmt->execute([$categoryId, $productId, $limit, max(0, $offset)]);
         return $stmt->fetchAll();
     }
 
@@ -974,7 +993,11 @@ class Product extends Model {
             default          => "p.destaque DESC, p.vendidos DESC, p.criado_em DESC",
         };
 
-        return "{$temEstoque}, {$relevanciaBusca}{$resto}";
+        // `p.id DESC` fecha os empates. O catálogo já paginava sem isto e
+        // sofria do mesmo problema em silêncio: com a ordem padrão
+        // (destaque, vendidos, criado_em), todo produto sem venda empata com
+        // os outros sem venda, e rolar a lista podia pular itens.
+        return "{$temEstoque}, {$relevanciaBusca}{$resto}, p.id DESC";
     }
 
     /**

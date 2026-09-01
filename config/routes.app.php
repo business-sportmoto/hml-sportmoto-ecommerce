@@ -43,6 +43,9 @@ AppRouter::post($v . '/auth/logout',           'AppAuthController@logout');
 
 // ── Home e banners ──────────────────────────────────────────────────────────
 AppRouter::get ($v . '/home',                  'AppHomeController@index');
+// Mais produtos de uma seção: é o que faz o carrossel continuar carregando
+// enquanto a pessoa arrasta para o lado. Literal antes de /home, sem conflito.
+AppRouter::get ($v . '/home/secoes/{id}',      'AppHomeController@secao');
 AppRouter::post($v . '/banners/impressao',     'AppHomeController@impressao');   // literal antes de {id}
 AppRouter::post($v . '/banners/{id:\d+}/clique','AppHomeController@clique');
 AppRouter::get ($v . '/banners/{zona}',        'AppHomeController@banner');
@@ -68,6 +71,7 @@ AppRouter::post($v . '/produtos/{id:\d+}/avaliacoes',     'AppAvaliacoesControll
 AppRouter::get ($v . '/produtos/{id:\d+}/perguntas',      'AppPerguntasController@index');
 AppRouter::post($v . '/produtos/{id:\d+}/perguntas',      'AppPerguntasController@criar');
 AppRouter::get ($v . '/produtos/{id:\d+}/clips',          'AppProdutoController@clips');
+AppRouter::get ($v . '/produtos/{id:\d+}/relacionados',   'AppProdutoController@relacionados');
 AppRouter::post($v . '/produtos/{id:\d+}/avisar-estoque', 'AppProdutoController@avisarEstoque');
 AppRouter::get ($v . '/produtos/{slug}',                  'AppProdutoController@detalhe');
 

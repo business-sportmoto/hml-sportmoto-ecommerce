@@ -53,6 +53,64 @@ class AppHomeController extends AppApiController
     }
 
     /**
+     * GET /api/app/v1/home/secoes/{id}?page=&per_page=
+     *
+     * Mais produtos de UMA seção da home — o que alimenta o carrossel enquanto
+     * a pessoa arrasta para o lado.
+     *
+     * Só produtos: título, badge e "ver todos" já vieram em /home e não mudam.
+     * Mandá-los de novo a cada página seria repetir o cabeçalho a cada arrasto.
+     *
+     * Sem `total` de propósito. Contar exigiria um COUNT(*) sobre a mesma
+     * consulta a cada página, e o carrossel não usa esse número para nada: ele
+     * para quando uma página volta com menos itens do que pediu. Uma requisição
+     * a mais no fim de cada seção sai mais barato do que um COUNT em todas.
+     */
+    public function secao(string $id = ''): void
+    {
+        $this->bootOpcional();
+
+        $id = preg_replace('/[^a-z0-9_]/i', '', $id) ?? '';
+        if ($id === '') {
+            $this->falha(422, 'secao_invalida', 'Informe a seção.');
+        }
+
+        // `offset` explícito, e não número de página: a PRIMEIRA página vem
+        // dentro de /home com 18 produtos, e as seguintes pedem 12. Calcular o
+        // deslocamento por (pagina-1)*por_pagina devolveria produtos que o
+        // carrossel já mostrou. Quem sabe quantos já tem é o aparelho.
+        $limite = max(1, min(24, (int)$this->query('per_page', 12)));
+        $offset = max(0, (int)$this->query('offset', 0));
+
+        $ctx = $this->contexto();
+
+        // O serviço lê sinais da sessão (favoritos, histórico, carrinho), então
+        // a sessão só é liberada depois de montar a consulta.
+        $servico = new PersonalizationService($this->clienteId, $ctx->sessaoKey);
+
+        try {
+            $produtos = $servico->produtosDaSecao($id, $limite, $offset);
+        } catch (\Throwable $e) {
+            AppLog::exception($e, ['acao' => 'secao_home', 'secao' => $id]);
+            $this->falha(500, 'falha_secao', 'Não foi possível carregar mais produtos.');
+        }
+
+        $this->liberarSessao();
+
+        $this->ok(
+            ['produtos' => ProductCardPresenter::colecao($produtos, $ctx)],
+            200,
+            [
+                'offset'     => $offset,
+                'por_pagina' => $limite,
+                // Página cheia é a única pista de que PODE haver mais. Página
+                // curta (ou vazia) é o fim da categoria.
+                'tem_mais'   => count($produtos) >= $limite,
+            ]
+        );
+    }
+
+    /**
      * GET /api/app/v1/banners/{zona}
      * Zona avulsa — para telas que não são a home.
      */

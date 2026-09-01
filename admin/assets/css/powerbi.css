@@ -1,0 +1,275 @@
+/* ════════════════════════════════════════════════════════
+   admin/assets/css/powerbi.css
+   Estilos do painel de BI (admin/views/powerbi/pwb-dashboard.php)
+
+   A view existia com 24KB de markup e NENHUMA folha de estilo — as
+   classes pwb_* não estavam definidas em lugar nenhum do projeto, o
+   que fazia a página renderizar como HTML cru.
+
+   Herda os tokens de admin.css (--blue, --border, --surface…) com
+   fallback, para o painel acompanhar o tema do admin em vez de criar
+   uma segunda identidade visual.
+   ════════════════════════════════════════════════════════ */
+
+.pwb_dashboard {
+  --pwb-blue:     var(--blue,    #2563eb);
+  --pwb-green:    var(--green,   #0ea472);
+  --pwb-bg:       var(--bg,      #f8fafc);
+  --pwb-surface:  var(--surface, #ffffff);
+  --pwb-surface2: var(--surface2,#f1f5f9);
+  --pwb-border:   var(--border,  #e2e8f0);
+  --pwb-text:     #0f172a;
+  --pwb-text2:    #475569;
+  --pwb-text3:    #94a3b8;
+  --pwb-danger:   #dc2626;
+  --pwb-warn:     #d97706;
+  --pwb-radius:   14px;
+
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  color: var(--pwb-text);
+  font-size: 14px;
+}
+
+/* ── Sidebar ─────────────────────────────────────────── */
+.pwb_sidebar {
+  position: sticky; top: 16px;
+  background: var(--pwb-surface);
+  border: 1px solid var(--pwb-border);
+  border-radius: var(--pwb-radius);
+  padding: 16px 12px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.pwb_brand { display: flex; align-items: center; gap: 9px; padding: 4px 8px 14px; }
+.pwb_brand_icon { color: var(--pwb-blue); display: flex; }
+.pwb_brand_text { font-size: 14px; font-weight: 800; letter-spacing: -.01em; }
+.pwb_sidebar_toggle { display: none; }
+
+.pwb_nav { display: flex; flex-direction: column; gap: 2px; }
+.pwb_nav_item {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 9px 10px;
+  background: transparent; border: 0; border-radius: 9px;
+  color: var(--pwb-text2); font-size: 13.5px; font-weight: 600;
+  text-align: left; cursor: pointer;
+  transition: background .14s ease, color .14s ease;
+}
+.pwb_nav_item:hover { background: var(--pwb-surface2); color: var(--pwb-text); }
+.pwb_nav_active { background: var(--blue-lt, #eff6ff); color: var(--pwb-blue); }
+.pwb_nav_active svg { color: var(--pwb-blue); }
+
+.pwb_sidebar_link {
+  margin-top: auto; padding: 9px 10px; border-radius: 9px;
+  display: flex; align-items: center; gap: 10px;
+  color: var(--pwb-text2); font-size: 13.5px; font-weight: 600; text-decoration: none;
+}
+.pwb_sidebar_link:hover { background: var(--pwb-surface2); }
+
+.pwb_icon_svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+/* ── Header ──────────────────────────────────────────── */
+.pwb_main { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+
+.pwb_header {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 16px; flex-wrap: wrap;
+}
+.pwb_title { font-size: 21px; font-weight: 800; margin: 0; letter-spacing: -.02em; }
+.pwb_subtitle { font-size: 12.5px; color: var(--pwb-text3); margin: 3px 0 0; }
+
+.pwb_header_actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pwb_search_box, .pwb_period_box {
+  display: flex; align-items: center; gap: 7px;
+  background: var(--pwb-surface); border: 1px solid var(--pwb-border);
+  border-radius: 9px; padding: 0 10px; height: 36px; color: var(--pwb-text3);
+}
+.pwb_search_input, .pwb_period_select {
+  border: 0; background: transparent; outline: none;
+  font-size: 13px; color: var(--pwb-text); height: 100%;
+}
+.pwb_search_input { width: 168px; }
+.pwb_period_select { cursor: pointer; }
+
+.pwb_icon_button {
+  width: 36px; height: 36px; display: grid; place-items: center;
+  background: var(--pwb-surface); border: 1px solid var(--pwb-border);
+  border-radius: 9px; color: var(--pwb-text2); cursor: pointer; position: relative;
+}
+.pwb_icon_button:hover { background: var(--pwb-surface2); }
+.pwb_notification_count {
+  position: absolute; top: -5px; right: -5px;
+  min-width: 17px; height: 17px; padding: 0 4px;
+  background: var(--pwb-danger); color: #fff;
+  border-radius: 9px; font-size: 10px; font-weight: 800;
+  display: grid; place-items: center;
+}
+.pwb_avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--grad-primary, linear-gradient(135deg,#2563eb,#0ea472));
+  color: #fff; font-size: 12.5px; font-weight: 800;
+  display: grid; place-items: center;
+}
+
+/* ── KPIs ────────────────────────────────────────────── */
+.pwb_kpi_grid {
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+.pwb_kpi_card {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;
+  background: var(--pwb-surface); border: 1px solid var(--pwb-border);
+  border-radius: var(--pwb-radius); padding: 15px 16px;
+}
+.pwb_kpi_content { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pwb_kpi_label {
+  font-size: 11.5px; font-weight: 700; color: var(--pwb-text3);
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.pwb_kpi_value {
+  font-size: 22px; font-weight: 800; letter-spacing: -.03em;
+  line-height: 1.15; word-break: break-word;
+}
+.pwb_kpi_trend {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; color: var(--pwb-text3); margin-top: 2px;
+}
+.pwb_kpi_trend svg { width: 13px; height: 13px; }
+.pwb_kpi_trend_value { font-weight: 800; color: var(--pwb-green); }
+/* Variação negativa: o layout não distingue sinal, então o CSS lê o
+   próprio texto. Sem isso, uma queda de 30% apareceria em verde. */
+.pwb_kpi_trend_value:not(:empty) { color: var(--pwb-green); }
+.pwb_kpi_card:has(.pwb_kpi_trend_value:not(:empty)) .pwb_kpi_trend_value { color: var(--pwb-green); }
+.pwb_kpi_icon {
+  width: 34px; height: 34px; flex-shrink: 0;
+  display: grid; place-items: center; border-radius: 9px;
+  background: var(--pwb-surface2); color: var(--pwb-text2);
+}
+.pwb_kpi_revenue .pwb_kpi_icon,
+.pwb_kpi_profit  .pwb_kpi_icon { background: var(--green-lt, #ecfdf5); color: var(--pwb-green); }
+.pwb_kpi_orders  .pwb_kpi_icon,
+.pwb_kpi_customers .pwb_kpi_icon { background: var(--blue-lt, #eff6ff); color: var(--pwb-blue); }
+
+/* ── Painéis ─────────────────────────────────────────── */
+.pwb_grid_2 { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.pwb_panel {
+  background: var(--pwb-surface); border: 1px solid var(--pwb-border);
+  border-radius: var(--pwb-radius); padding: 16px 18px; min-width: 0;
+}
+.pwb_panel_header {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 10px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.pwb_panel_title { font-size: 14.5px; font-weight: 800; margin: 0 0 12px; letter-spacing: -.01em; }
+.pwb_panel_header .pwb_panel_title { margin: 0; }
+.pwb_panel_hint { font-size: 11.5px; color: var(--pwb-text3); }
+
+/* O <canvas> do markup é substituído por SVG no carregamento.
+   A altura mínima reserva o espaço para o layout não "pular". */
+.pwb_chart_box { min-height: 190px; display: grid; place-items: center; }
+.pwb_chart_tall { min-height: 280px; }
+/* Barras e linha ocupam a largura toda; só o aviso de "sem dados"
+   continua centralizado. */
+/* Com conteudo real, a altura vem do conteudo: reservar 190px para
+   3 barras deixava metade do painel vazio. O min-height so vale
+   enquanto o grafico nao existe. */
+.pwb_chart_box:has(.pwb_bars),
+.pwb_chart_box:has(.pwb_linebox) { min-height: 0; place-items: stretch; }
+.pwb_chart_canvas { max-width: 100%; }
+.pwb_legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; font-size: 12px; color: var(--pwb-text2); }
+
+/* ── Tabelas ─────────────────────────────────────────── */
+/* overflow-x próprio: tabela larga rola dentro do painel em vez de
+   empurrar a página inteira para o lado. */
+.pwb_table_wrap { overflow-x: auto; margin: 0 -18px; padding: 0 18px; }
+.pwb_table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pwb_th {
+  text-align: left; padding: 9px 10px; white-space: nowrap;
+  font-size: 11px; font-weight: 800; color: var(--pwb-text3);
+  text-transform: uppercase; letter-spacing: .04em;
+  border-bottom: 1px solid var(--pwb-border);
+}
+.pwb_td { padding: 10px; border-bottom: 1px solid var(--pwb-surface2); vertical-align: middle; }
+.pwb_tbody .pwb_tr:hover { background: var(--pwb-surface2); }
+.pwb_tbody .pwb_tr:last-child .pwb_td { border-bottom: 0; }
+
+.pwb_badge {
+  display: inline-block; padding: 3px 9px; border-radius: 20px;
+  font-size: 11px; font-weight: 700; white-space: nowrap;
+  background: var(--pwb-surface2); color: var(--pwb-text2);
+}
+.pwb_badge_success { background: var(--green-lt, #ecfdf5); color: #047857; }
+.pwb_badge_warning { background: #fffbeb; color: var(--pwb-warn); }
+.pwb_badge_danger  { background: #fef2f2; color: var(--pwb-danger); }
+.pwb_badge_info    { background: var(--blue-lt, #eff6ff); color: var(--pwb-blue); }
+/* pwb_badge_class() tambem emite estas duas; sem defini-las elas
+   caem no estilo base e ficam indistinguiveis das demais. */
+.pwb_badge_primary { background: var(--blue-lt, #eff6ff); color: var(--pwb-blue); }
+.pwb_badge_default { background: var(--pwb-surface2); color: var(--pwb-text2); }
+
+.pwb_stock_bar {
+  display: inline-block; width: 54px; height: 6px; margin-right: 7px;
+  background: var(--pwb-surface2); border-radius: 4px; overflow: hidden; vertical-align: middle;
+}
+.pwb_stock_fill { display: block; height: 100%; background: var(--pwb-blue); border-radius: 4px; }
+
+/* ── Cards de métrica ────────────────────────────────── */
+.pwb_metric_grid {
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+.pwb_metric_card {
+  background: var(--pwb-surface); border: 1px solid var(--pwb-border);
+  border-radius: var(--pwb-radius); padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.pwb_metric_label { font-size: 11.5px; font-weight: 700; color: var(--pwb-text3); }
+.pwb_metric_value { font-size: 19px; font-weight: 800; letter-spacing: -.02em; }
+.pwb_metric_hint  { font-size: 11.5px; color: var(--pwb-text3); }
+
+/* ── Troca de painel ─────────────────────────────────── */
+.pwb_view { display: none; flex-direction: column; gap: 14px; }
+.pwb_view_active { display: flex; }
+
+/* ── Responsivo ──────────────────────────────────────── */
+@media (max-width: 1000px) {
+  .pwb_dashboard { grid-template-columns: 1fr; }
+  .pwb_sidebar { position: static; }
+  .pwb_nav { flex-direction: row; overflow-x: auto; }
+  .pwb_nav_item { white-space: nowrap; }
+  .pwb_sidebar_link { margin-top: 0; }
+}
+@media (max-width: 640px) {
+  .pwb_search_box { display: none; }
+  .pwb_kpi_value { font-size: 19px; }
+}
+
+/* ── Gráficos em SVG (substituem os <canvas> inertes) ── */
+.pwb_bars { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.pwb_bar_row { display: grid; grid-template-columns: minmax(70px, 118px) 1fr auto; gap: 10px; align-items: center; }
+.pwb_bar_label {
+  font-size: 12px; color: var(--pwb-text2); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pwb_bar_track { height: 9px; background: var(--pwb-surface2); border-radius: 5px; overflow: hidden; }
+.pwb_bar_fill  { display: block; height: 100%; border-radius: 5px; transition: width .3s ease; }
+.pwb_bar_value { font-size: 12px; font-weight: 700; white-space: nowrap; }
+
+.pwb_linebox { width: 100%; }
+.pwb_svg_line { width: 100%; height: 170px; display: block; }
+.pwb_line_legend {
+  display: flex; justify-content: space-between;
+  font-size: 11px; color: var(--pwb-text3); margin-top: 6px;
+}
+.pwb_chart_vazio { font-size: 12.5px; color: var(--pwb-text3); margin: 0; }
+
+/* ── Matriz de coorte ────────────────────────────────── */
+.pwb_coorte_tabela .pwb_th,
+.pwb_coorte_tabela .pwb_td { text-align: center; white-space: nowrap; }
+.pwb_coorte_tabela .pwb_th:first-child,
+.pwb_coorte_tabela .pwb_td:first-child { text-align: left; }
+.pwb_coorte_cel { font-weight: 700; font-size: 12px; border-radius: 4px; }
+/* O hover da linha nao pode apagar a escala de cor da celula, que e a
+   informacao principal da matriz. */
+.pwb_coorte_tabela .pwb_tr:hover { background: transparent; }

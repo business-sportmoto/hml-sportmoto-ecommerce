@@ -73,15 +73,17 @@ foreach ($p['itens'] as $i) { $pecas += (int)$i['quantidade']; }
                   <?php if (!empty($i['variacao_texto'])): ?>
                     <div class="sep_meta"><?= $e($i['variacao_texto']) ?></div>
                   <?php endif; ?>
-                  <?php if (empty($i['ean'])): ?>
+                  <?php if (empty($i['ean']) && empty($i['sku_real']) && empty($i['sku_legado'])): ?>
                     <button type="button" class="btn btn-secondary btn-sm js-conferir-manual">
-                      Sem EAN — conferir manualmente
+                      Sem código — conferir manualmente
                     </button>
                   <?php endif; ?>
                 </td>
                 <td class="sep_mono">
                   <?= $i['sku_real'] ? $e($i['sku_real']) : '<span class="sep_meta">—</span>' ?><br>
-                  <?= $i['ean'] ? $e($i['ean']) : '<span class="sep_meta">sem EAN</span>' ?>
+                  <?php if ($i['ean']): ?><?= $e($i['ean']) ?>
+                  <?php elseif (!empty($i['sku_legado'])): ?>REF <?= $e($i['sku_legado']) ?>
+                  <?php else: ?><span class="sep_meta">sem código</span><?php endif; ?>
                 </td>
                 <td class="sep_qtd"><?= (int)$i['quantidade'] ?></td>
                 <td><?= $brl($i['preco_unitario']) ?></td>
