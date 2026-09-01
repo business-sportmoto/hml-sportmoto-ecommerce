@@ -105,12 +105,23 @@ class BiMeta {
             return ['ok'=>false,'msg'=>'A meta precisa ser maior que zero.'];
         }
 
-        // dimensao=loja não tem alvo; qualquer outra exige um.
-        $dimId = $dimensao === 'loja'
-               ? null
-               : (!empty($d['dimensao_id']) ? (int)$d['dimensao_id'] : null);
-        if ($dimensao !== 'loja' && $dimId === null) {
-            return ['ok'=>false,'msg'=>'Escolha o alvo da meta (' . self::DIMENSOES[$dimensao] . ').'];
+        // O alvo vai em coluna diferente conforme a dimensão: canal é
+        // string ('site','app'), as outras têm id numérico. 'loja' não
+        // tem alvo nenhum.
+        $dimId  = null;
+        $dimVal = null;
+
+        if ($dimensao === 'canal') {
+            $dimVal = trim((string)($d['dimensao_id'] ?? ''));
+            if ($dimVal === '') {
+                return ['ok'=>false,'msg'=>'Escolha o canal da meta.'];
+            }
+            $dimVal = mb_substr($dimVal, 0, 60);
+        } elseif ($dimensao !== 'loja') {
+            $dimId = !empty($d['dimensao_id']) ? (int)$d['dimensao_id'] : null;
+            if ($dimId === null) {
+                return ['ok'=>false,'msg'=>'Escolha o alvo da meta (' . self::DIMENSOES[$dimensao] . ').'];
+            }
         }
 
         $obs = isset($d['observacao']) && $d['observacao'] !== ''
