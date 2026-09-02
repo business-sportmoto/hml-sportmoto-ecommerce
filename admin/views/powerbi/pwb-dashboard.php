@@ -172,6 +172,8 @@ $pwb_charts = $pwb_dashboard_data['charts'] ?? [];
             <button class="pwb_nav_item pwb_nav_active" type="button" data-pwb-view="overview"><?= pwb_icon('dashboard') ?><span class="pwb_nav_label">Visão Geral</span></button>
             <button class="pwb_nav_item" type="button" data-pwb-view="orders"><?= pwb_icon('cart') ?><span class="pwb_nav_label">Pedidos</span></button>
             <button class="pwb_nav_item" type="button" data-pwb-view="products"><?= pwb_icon('box') ?><span class="pwb_nav_label">Produtos</span></button>
+            <button class="pwb_nav_item" type="button" data-pwb-view="marcas"><?= pwb_icon('percent') ?><span class="pwb_nav_label">Marcas</span></button>
+            <button class="pwb_nav_item" type="button" data-pwb-view="categorias"><?= pwb_icon('faq') ?><span class="pwb_nav_label">Categorias</span></button>
             <button class="pwb_nav_item" type="button" data-pwb-view="customers"><?= pwb_icon('users') ?><span class="pwb_nav_label">Clientes</span></button>
             <button class="pwb_nav_item" type="button" data-pwb-view="geo"><?= pwb_icon('access') ?><span class="pwb_nav_label">Geografia</span></button>
             <button class="pwb_nav_item" type="button" data-pwb-view="pagamentos"><?= pwb_icon('currency') ?><span class="pwb_nav_label">Pagamentos</span></button>
@@ -292,6 +294,68 @@ $pwb_charts = $pwb_dashboard_data['charts'] ?? [];
                 </tbody></table></div>
             </article>
         </section>
+
+        <?php
+        // Marcas e Categorias compartilham a MESMA tabela: as duas
+        // respondem as mesmas perguntas sobre o mesmo grão (item), e
+        // duplicar o markup faria as duas divergirem na primeira
+        // coluna que alguém acrescentasse só num lado.
+        $pwb_render_dimensao = function (string $painel, string $titulo, string $dica,
+                                         array $linhas, string $canvasId): void {
+        ?>
+        <section class="pwb_view" data-pwb-panel="<?= pwb_e($painel) ?>">
+            <article class="pwb_panel">
+                <div class="pwb_panel_header">
+                    <h2 class="pwb_panel_title"><?= pwb_e($titulo) ?></h2>
+                    <span class="pwb_panel_hint"><?= pwb_e($dica) ?></span>
+                </div>
+                <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                    <thead class="pwb_thead"><tr class="pwb_tr">
+                        <th class="pwb_th"><?= $painel === 'marcas' ? 'Marca' : 'Categoria' ?></th>
+                        <th class="pwb_th">Receita</th>
+                        <th class="pwb_th">Participação</th>
+                        <th class="pwb_th">Crescimento</th>
+                        <th class="pwb_th">Qtd</th>
+                        <th class="pwb_th">Pedidos</th>
+                        <th class="pwb_th">Clientes</th>
+                        <th class="pwb_th">Produtos</th>
+                        <th class="pwb_th">Ticket</th>
+                        <th class="pwb_th">Margem</th>
+                    </tr></thead>
+                    <tbody class="pwb_tbody">
+                    <?php if (empty($linhas)): ?>
+                        <tr class="pwb_tr"><td class="pwb_td" colspan="10">Nenhuma venda no período.</td></tr>
+                    <?php else: foreach ($linhas as $r): ?>
+                        <tr class="pwb_tr">
+                            <td class="pwb_td"><?= pwb_e($r['name']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['revenue']) ?></td>
+                            <td class="pwb_td"><strong><?= pwb_e($r['share']) ?></strong></td>
+                            <td class="pwb_td"><span class="pwb_badge <?= pwb_e(pwb_badge_class($r['growth_level'])) ?>"><?= pwb_e($r['growth']) ?></span></td>
+                            <td class="pwb_td"><?= pwb_e($r['qty']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['orders']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['clients']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['products']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['ticket']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['margin']) ?></td>
+                        </tr>
+                    <?php endforeach; endif; ?>
+                    </tbody>
+                </table></div>
+            </article>
+            <article class="pwb_panel">
+                <h2 class="pwb_panel_title">Participação no faturamento</h2>
+                <div class="pwb_chart_box"><canvas class="pwb_chart_canvas" id="<?= pwb_e($canvasId) ?>"></canvas></div>
+            </article>
+        </section>
+        <?php }; ?>
+
+        <?php $pwb_render_dimensao('marcas', 'Vendas por marca',
+              'Participação = fatia do faturamento do período',
+              $pwb_tables['marcas'] ?? [], 'pwb_chart_marcas'); ?>
+
+        <?php $pwb_render_dimensao('categorias', 'Vendas por categoria',
+              'Mesma leitura da página de marcas, no grão de categoria',
+              $pwb_tables['categorias'] ?? [], 'pwb_chart_categorias'); ?>
 
         <section class="pwb_view" data-pwb-panel="customers">
             <div class="pwb_chart_grid">
@@ -1058,6 +1122,14 @@ $pwb_charts = $pwb_dashboard_data['charts'] ?? [];
 
   barras('pwb_chart_geo_uf', (charts.geo_uf || []).map(function (r) {
     return { rotulo: r.local, valor: r.receita, texto: brl(r.receita) };
+  }), '--pwb-g-ciano');
+
+  barras('pwb_chart_marcas', (charts.marcas_share || []).map(function (r) {
+    return { rotulo: r.nome, valor: r.receita, texto: r.participacao_pct + '%' };
+  }), '--pwb-g-rosa');
+
+  barras('pwb_chart_categorias', (charts.top_categories || []).map(function (r) {
+    return { rotulo: r.nome, valor: r.receita, texto: brl(r.receita) };
   }), '--pwb-g-ciano');
 
   barras('pwb_chart_parcelas', (charts.parcelas || []).map(function (r) {
