@@ -405,7 +405,51 @@ final class PwbDashboardAnalyticsService
             ];
         }
 
+        $clips = [];
+        foreach ($this->bi->clips($p, 30) as $r) {
+            $clips[] = [
+                'title'    => $r['titulo'],
+                'author'   => $r['autor_nome'] ?? '—',
+                'product'  => $r['produto'] ?? '—',
+                'products' => $this->num((float)$r['produtos_vinculados']),
+                'views'    => $this->num((float)$r['views_unicas']),
+                'likes'    => $this->num((float)$r['likes']),
+                'comments' => $this->num((float)$r['comentarios']),
+                // Sem view não existe taxa — 0% ali sugeriria rejeição.
+                'rate'     => $r['taxa_like'] === null
+                            ? '—' : number_format((float)$r['taxa_like'], 1, ',', '.') . '%',
+                'revenue'  => $this->brl((float)$r['receita_produto']),
+                'status'   => $r['ativo'] ? ucfirst((string)$r['status']) : 'Inativo',
+            ];
+        }
+
+        $sharers = [];
+        foreach ($this->bi->compartilhadores($p, 25) as $r) {
+            $sharers[] = [
+                'name'     => $r['compartilhador'],
+                'origin'   => ucfirst((string)$r['origem']),
+                'shares'   => $this->num((float)$r['compartilhamentos']),
+                'items'    => $this->num((float)$r['itens']),
+                'value'    => $this->brl((float)$r['valor_compartilhado']),
+                'views'    => $this->num((float)$r['visualizacoes']),
+                'carts'    => $this->num((float)$r['carrinhos_criados']),
+                'conv'     => $this->num((float)$r['conversoes']),
+                // Separadas de propósito: `conversoes` é o evento, que
+                // funciona; `pedidos_identificados` depende do
+                // uso.pedido_id, que hoje é sempre NULL.
+                'orders'   => (int)$r['pedidos_identificados'] > 0
+                            ? $this->num((float)$r['pedidos_identificados'])
+                            : '— (sem vínculo)',
+                'rate'     => $r['taxa_conversao'] === null
+                            ? '—' : number_format((float)$r['taxa_conversao'], 1, ',', '.') . '%',
+                'level'    => (float)$r['taxa_conversao'] >= 20 ? 'Saudável'
+                            : ((float)$r['taxa_conversao'] > 0 ? 'Atenção' : 'Crítico'),
+            ];
+        }
+
         return [
+            'clips'         => $clips,
+            'compartilhadores' => $sharers,
             'marcas'        => $this->dimensaoTabela($p, 'marca'),
             'categorias'    => $this->dimensaoTabela($p, 'categoria'),
             'frete_tipo'    => $freteTipo,
@@ -530,7 +574,35 @@ final class PwbDashboardAnalyticsService
              'hint'  => $par['pct_itens'] . '% dos produtos fazem 80% da receita'],
         ];
 
+        $rc = $this->bi->clipsResumo($p);
+        $clipKpi = [
+            ['label' => 'Views no período', 'value' => $this->num((float)$rc['views']),
+             'hint'  => $rc['sessoes'] . ' sessões distintas'],
+            ['label' => 'Clips publicados', 'value' => $this->num((float)$rc['clips']),
+             'hint'  => $rc['ativos'] . ' ativos'],
+            ['label' => 'Curtidas',    'value' => $this->num((float)$rc['likes']),     'hint' => 'no acervo todo'],
+            ['label' => 'Comentários', 'value' => $this->num((float)$rc['comentarios']),'hint' => 'no acervo todo'],
+        ];
+
+        $cs = $this->bi->compartilhamentos($p);
+        $shareKpi = [
+            ['label' => 'Compartilhamentos', 'value' => $this->num((float)$cs['kpi']['compartilhamentos']),
+             'hint'  => $this->brl((float)$cs['kpi']['valor_compartilhado']) . ' em carrinhos'],
+            ['label' => 'Visualizações', 'value' => $this->num((float)$cs['kpi']['visualizacoes']),
+             'hint'  => 'sessões distintas'],
+            ['label' => 'Conversões', 'value' => $this->num((float)$cs['kpi']['conversoes']),
+             'hint'  => 'eventos de pedido finalizado'],
+            ['label' => 'Receita atribuída',
+             // Zero aqui não é "não vendeu": é "não dá para saber".
+             'value' => (float)$cs['kpi']['receita'] > 0
+                      ? $this->brl((float)$cs['kpi']['receita']) : '—',
+             'hint'  => (float)$cs['kpi']['receita'] > 0
+                      ? (int)$cs['kpi']['pedidos_identificados'] . ' pedidos'
+                      : 'uso.pedido_id nunca é gravado — ver 04-bugs'],
+        ];
+
         return ['access' => $funil, 'ai' => $saude,
+                'clips' => $clipKpi, 'share' => $shareKpi,
                 'recompra' => $recompra, 'carrinho' => $car,
                 'projecao' => $proj, 'concentracao' => $conc];
     }
@@ -606,6 +678,9 @@ final class PwbDashboardAnalyticsService
             'by_status'      => $this->bi->porStatus($p),
             'top_brands'     => $this->bi->ranking($p, 'marca', 8),
             'marcas_share'   => array_slice($this->bi->porMarca($p, 'marca', 10), 0, 10),
+            'clips_serie'    => $this->bi->clipsSerie($p),
+            'clips_top'      => $this->bi->clips($p, 8),
+            'share_funil'    => $this->bi->compartilhamentos($p)['funil'],
             'top_categories' => $this->bi->ranking($p, 'categoria', 8),
             'by_channel'     => $this->bi->ranking($p, 'canal', 8),
             'by_payment'     => $this->bi->porPagamento($p),

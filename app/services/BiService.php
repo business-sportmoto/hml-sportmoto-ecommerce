@@ -1439,6 +1439,171 @@ final class BiService
         return 'R$ ' . number_format($v, 2, ',', '.');
     }
 
+    // ════════════════════════════════════════════════════
+    // CLIPS
+    // ════════════════════════════════════════════════════
+
+    /**
+     * Engajamento por clip, com a receita do produto que ele divulga.
+     *
+     * A pergunta que essa tabela responde não é "qual clip teve mais
+     * view" — é "clip vende?". Por isso a receita do produto no
+     * período viaja na mesma linha.
+     *
+     * ⚠ Correlação, não causalidade: não há como saber se a venda veio
+     * do clip. Não existe atribuição de clip → pedido no schema. A
+     * coluna serve para achar o padrão, não para creditar receita.
+     */
+    public function clips(array $p, int $limite = 30): array
+    {
+        return $this->todos(
+            "SELECT c.clip_id, c.titulo, c.status, c.ativo, c.destaque,
+                    c.autor_nome, c.produto_id, c.produto, c.marca_nome,
+                    c.duracao_segundos, c.data,
+                    c.views, c.views_unicas, c.likes, c.comentarios,
+                    c.comentarios_aprovados, c.produtos_vinculados,
+                    -- Taxas sobre view ÚNICA: sobre a bruta, um replay
+                    -- do mesmo visitante derrubaria a taxa sem que o
+                    -- engajamento tivesse mudado.
+                    ROUND(100 * c.likes       / NULLIF(c.views_unicas,0), 1) AS taxa_like,
+                    ROUND(100 * c.comentarios / NULLIF(c.views_unicas,0), 1) AS taxa_comentario,
+                    ROUND(COALESCE(v.receita,0),2) AS receita_produto,
+                    COALESCE(v.qtd,0)              AS qtd_produto
+               FROM bi_fato_clip c
+               LEFT JOIN (
+                    -- Soma TODOS os produtos do clip, nao so o principal:
+                    -- um clip divulga varios, e olhar so o primeiro
+                    -- subestima o alcance comercial dele.
+                    SELECT cp.clip_id,
+                           SUM(i.receita)    AS receita,
+                           SUM(i.quantidade) AS qtd
+                      FROM bi_fato_clip_produto cp
+                      JOIN bi_fato_item i ON i.produto_id = cp.produto_id
+                     WHERE i.venda_valida = 1 AND i.data BETWEEN ? AND ?
+                     GROUP BY cp.clip_id
+               ) v ON v.clip_id = c.clip_id
+              ORDER BY c.views_unicas DESC, c.likes DESC
+              LIMIT " . (int)$limite,
+            [$p['ini'], $p['fim']]
+        );
+    }
+
+    /** KPIs de clips no período (pelas datas dos EVENTOS de view). */
+    public function clipsResumo(array $p): array
+    {
+        $ev = $this->um(
+            "SELECT COUNT(*) AS views,
+                    COUNT(DISTINCT session_key) AS sessoes,
+                    COUNT(DISTINCT clip_id)     AS clips_vistos
+               FROM bi_fato_clip_view WHERE data BETWEEN ? AND ?",
+            [$p['ini'], $p['fim']]
+        );
+        $cat = $this->um(
+            "SELECT COUNT(*) AS clips,
+                    COALESCE(SUM(ativo = 1),0)   AS ativos,
+                    COALESCE(SUM(likes),0)       AS likes,
+                    COALESCE(SUM(comentarios),0) AS comentarios,
+                    COALESCE(SUM(views_unicas),0) AS views_unicas_total
+               FROM bi_fato_clip"
+        );
+        return array_merge($ev, $cat);
+    }
+
+    /** Views de clip por dia, com o calendário como espinha. */
+    public function clipsSerie(array $p): array
+    {
+        return $this->todos(
+            "SELECT d.data,
+                    COUNT(v.id)                   AS views,
+                    COUNT(DISTINCT v.session_key) AS sessoes
+               FROM bi_dim_data d
+               LEFT JOIN bi_fato_clip_view v ON v.data = d.data
+              WHERE d.data BETWEEN ? AND ?
+              GROUP BY d.data ORDER BY d.data",
+            [$p['ini'], $p['fim']]
+        );
+    }
+
+    // ════════════════════════════════════════════════════
+    // CARRINHO COMPARTILHADO
+    // ════════════════════════════════════════════════════
+
+    /**
+     * Ranking de quem compartilha — cliente ou vendedor.
+     *
+     * `conversoes` conta o EVENTO 'finalizou_pedido';
+     * `pedidos_identificados` conta o pedido de fato amarrado.
+     *
+     * As duas existem separadas porque `uso.pedido_id` hoje é sempre
+     * NULL: colapsar tudo numa coluna só faria a conversão real
+     * desaparecer da tela junto com a receita que não dá para medir.
+     */
+    public function compartilhadores(array $p, int $limite = 25): array
+    {
+        return $this->todos(
+            "SELECT compartilhador, origem,
+                    COUNT(*)                              AS compartilhamentos,
+                    COALESCE(SUM(itens),0)                AS itens,
+                    ROUND(COALESCE(SUM(total),0),2)       AS valor_compartilhado,
+                    ROUND(COALESCE(AVG(total),0),2)       AS ticket_compartilhado,
+                    COALESCE(SUM(visualizacoes_unicas),0) AS visualizacoes,
+                    COALESCE(SUM(carrinhos_criados),0)    AS carrinhos_criados,
+                    COALESCE(SUM(conversoes),0)           AS conversoes,
+                    COALESCE(SUM(pedidos_identificados),0) AS pedidos_identificados,
+                    ROUND(COALESCE(SUM(receita_identificada),0),2) AS receita,
+                    ROUND(100 * COALESCE(SUM(conversoes),0)
+                        / NULLIF(SUM(visualizacoes_unicas),0), 1)  AS taxa_conversao
+               FROM bi_fato_compartilhamento
+              WHERE data BETWEEN ? AND ?
+              GROUP BY compartilhador, origem
+              ORDER BY conversoes DESC, visualizacoes DESC, valor_compartilhado DESC
+              LIMIT " . (int)$limite,
+            [$p['ini'], $p['fim']]
+        );
+    }
+
+    /** Funil e KPIs do compartilhamento no período. */
+    public function compartilhamentos(array $p): array
+    {
+        $k = $this->um(
+            "SELECT COUNT(*)                               AS compartilhamentos,
+                    ROUND(COALESCE(SUM(total),0),2)        AS valor_compartilhado,
+                    ROUND(COALESCE(AVG(total),0),2)        AS ticket,
+                    COALESCE(SUM(visualizacoes_unicas),0)  AS visualizacoes,
+                    COALESCE(SUM(carrinhos_criados),0)     AS carrinhos_criados,
+                    COALESCE(SUM(conversoes),0)            AS conversoes,
+                    COALESCE(SUM(pedidos_identificados),0) AS pedidos_identificados,
+                    ROUND(COALESCE(SUM(receita_identificada),0),2) AS receita,
+                    COALESCE(SUM(expirado = 1),0)          AS expirados
+               FROM bi_fato_compartilhamento
+              WHERE data BETWEEN ? AND ?",
+            [$p['ini'], $p['fim']]
+        );
+
+        // As etapas NÃO são estritamente encadeadas: existe conversão
+        // registrada sem que 'criou_carrinho' tenha sido gravado antes.
+        // Encadear daria "0% e depois 1 pedido", que é aritmética certa
+        // e leitura errada.
+        //
+        // Visualizar é o único pré-requisito real, então carrinho e
+        // pedido convertem contra VISUALIZADOS.
+        $vis = (int)$k['visualizacoes'];
+        $etapas = [
+            ['etapa' => 'Compartilhados',   'valor' => (int)$k['compartilhamentos'], 'base' => null],
+            ['etapa' => 'Visualizados',     'valor' => $vis,                          'base' => 'dos compartilhados'],
+            ['etapa' => 'Viraram carrinho', 'valor' => (int)$k['carrinhos_criados'],  'base' => 'dos visualizados'],
+            ['etapa' => 'Viraram pedido',   'valor' => (int)$k['conversoes'],         'base' => 'dos visualizados'],
+        ];
+        $comp = max(1, (int)$k['compartilhamentos']);
+        foreach ($etapas as $i => &$e) {
+            if ($i === 0)      { $e['conversao'] = null; }
+            elseif ($i === 1)  { $e['conversao'] = round(100 * $e['valor'] / $comp, 1); }
+            else               { $e['conversao'] = $vis > 0 ? round(100 * $e['valor'] / $vis, 1) : null; }
+        }
+
+        return ['kpi' => $k, 'funil' => $etapas];
+    }
+
     /**
      * Saúde do dado. Toda tela que dependa de um fato com cobertura
      * baixa deve exibir isto junto do número.

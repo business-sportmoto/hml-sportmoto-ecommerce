@@ -1443,18 +1443,37 @@ select.form-control { cursor: pointer; }
   min-height: 100vh; align-items: center;
 }
 
-/* ── Topbar ───────────────────────────────────────────── */
+/* ── Topbar do editor ─────────────────────────────────────
+   Barra flutuante: acompanha a rolagem descolada do topo, com as quatro
+   quinas arredondadas e sombra.
+
+   Dois detalhes que não são estéticos:
+
+   `top` desconta a altura da topbar do painel, que também é sticky em 0. Com
+   as duas em top:0 elas disputavam o mesmo lugar — e como esta vem depois no
+   DOM, passava por cima da busca e do menu do painel. O z-index menor mantém
+   a hierarquia mesmo se a ordem do DOM mudar.
+
+   `align-self: stretch` porque o .pe-main é flex com align-items:center: sem
+   isso a barra encolhe até o tamanho do conteúdo (medi 384px numa coluna de
+   804) e o justify-content:space-between não separa nada. */
 .pe-topbar {
-  position: sticky; top: 0; z-index: 100;
+  position: sticky;
+  top: calc(var(--topbar-h) + 12px);
+  z-index: 90;
+  align-self: stretch;
   background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: 12px;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 28px; gap: 16px;
-  border-bottom-left-radius: 9px;
-  border-bottom-right-radius: 9px;
+  padding: 12px 20px; gap: 16px;
+  margin: 12px 14px 6px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow .2s cubic-bezier(0.2, 0, 0, 1);
 }
+/* Sombra mais forte só quando há conteúdo passando por baixo. */
 .pe-topbar.scrolled {
-  box-shadow: 0 2px 12px rgba(0,0,0,.06);
+  box-shadow: var(--shadow-md);
 }
 .pe-breadcrumb {
   display: flex; align-items: center; gap: 7px;
@@ -1467,7 +1486,7 @@ select.form-control { cursor: pointer; }
 /* ── Sections ─────────────────────────────────────────── */
 .pe-sections { padding: 28px 28px 80px; max-width: 900px; }
 
-.pe-section { margin-bottom: 48px; scroll-margin-top: 80px; }
+.pe-section { margin-bottom: 48px; scroll-margin-top: calc(var(--topbar-h) + 92px); }
 
 .pe-section-head {
   margin-bottom: 16px;
@@ -1707,6 +1726,41 @@ select.form-control { cursor: pointer; }
   font-size: 10px; font-weight: 800; padding: 2px 8px;
   border-radius: 99px; white-space: nowrap;
 }
+/* ── Galeria: ordenacao por arrasto ───────────────────────
+   A primeira posicao e a capa. Ver a nota no
+   ProdutosController::reordenarImagens sobre por que as duas coisas sao
+   uma decisao so. */
+.pe-gallery-dica {
+  font-size: 12.5px;
+  color: var(--text-3);
+  margin: 10px 0 2px;
+}
+.pe-gallery-dica strong { color: var(--text-2); }
+
+/* Numero da posicao: sem ele o "primeiro e a capa" fica implicito, e numa
+   grade que quebra em varias linhas nem sempre e obvio qual e o primeiro. */
+.pe-gallery-pos {
+  position: absolute; top: 6px; left: 6px; z-index: 2;
+  min-width: 20px; height: 20px; padding: 0 5px;
+  border-radius: 99px;
+  background: rgba(15, 23, 42, .72);
+  color: #fff;
+  font-size: 11px; font-weight: 800; line-height: 20px;
+  text-align: center;
+  pointer-events: none;
+}
+.pe-gallery-item.is-principal .pe-gallery-pos { background: var(--blue); }
+
+.pe-gallery-item:active { cursor: grabbing; }
+.pe-gallery-item.is-dragging {
+  opacity: .45;
+  border-style: dashed;
+  border-color: var(--blue);
+}
+/* O arrasto acontece com o mouse em cima da imagem; sem isso o navegador
+   inicia o drag nativo da <img> e o item inteiro nao acompanha. */
+.pe-gallery-item img { -webkit-user-drag: none; user-select: none; }
+
 .pe-gallery-item.uploading { opacity: .6; }
 .pe-gallery-skeleton {
   aspect-ratio: 1; border-radius: var(--r-lg);

@@ -3706,8 +3706,10 @@ $(document).on('change', '#pe-categoria', function () {
       const div = document.createElement('div');
       div.className = 'pe-gallery-item' + (data.principal ? ' is-principal' : '');
       div.dataset.id = data.id;
+      div.draggable = true;
       div.innerHTML = `
-        <img src="${data.url}" alt="" loading="lazy">
+        <img src="${data.url}" alt="" loading="lazy" draggable="false">
+        <span class="pe-gallery-pos"></span>
         <div class="pe-gallery-overlay">
           ${!data.principal ? `<button type="button" class="pe-gallery-btn pe-set-principal"
                   data-id="${data.id}" title="Definir como principal">
@@ -3724,30 +3726,202 @@ $(document).on('change', '#pe-categoria', function () {
             </svg>
           </button>
         </div>
-        ${data.principal ? '<span class="pe-gallery-badge">Principal</span>' : ''}`;
+        ${data.principal ? '<span class="pe-gallery-badge">Capa</span>' : ''}`;
       gallery?.appendChild(div);
+      renumerarGaleria();
     }
 
-    // Definir principal
+    // ── Ordem da galeria ─────────────────────────────────
+    //
+    // Arrastar define a ordem E a capa: a primeira posicao e sempre a
+    // principal. Antes eram duas decisoes independentes, e como a loja ordena
+    // por `principal DESC, ordem ASC`, a capa saltava para a frente e a
+    // sequencia montada aqui nao era a exibida la.
+    //
+    // Sem biblioteca: HTML5 drag-and-drop nativo, igual ao reordenador de
+    // beneficios que ja existe neste arquivo.
+
+    function renumerarGaleria() {
+      if (!gallery) return;
+      gallery.querySelectorAll('.pe-gallery-item').forEach((el, i) => {
+        const pos = el.querySelector('.pe-gallery-pos');
+        if (pos) pos.textContent = String(i + 1);
+
+        const eCapa = i === 0;
+        el.classList.toggle('is-principal', eCapa);
+        el.querySelector('.pe-gallery-badge')?.remove();
+        if (eCapa) {
+          el.insertAdjacentHTML('beforeend', '<span class="pe-gallery-badge">Capa</span>');
+          el.querySelector('.pe-set-principal')?.remove();
+        } else if (!el.querySelector('.pe-set-principal')) {
+          el.querySelector('.pe-gallery-overlay')?.insertAdjacentHTML('afterbegin', `
+            <button type="button" class="pe-gallery-btn pe-set-principal"
+                    data-id="${el.dataset.id}" title="Mover para o inicio (vira a capa)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2.5" stroke-linecap="round">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+              </svg>
+            </button>`);
+        }
+      });
+    }
+
+    function salvarOrdemGaleria() {
+      if (!gallery) return;
+      const ids = [...gallery.querySelectorAll('.pe-gallery-item')].map(el => el.dataset.id);
+      if (!ids.length) return;
+
+      renumerarGaleria();
+
+      $.post(BASE_URL + '/admin/produtos/reordenar-imagens', {
+        produto_id: produtoId(), ordens: ids, _csrf_token: CSRF_TOKEN,
+      }, function (res) {
+        showToast(res && res.ok ? 'Ordem salva.' : ((res && res.msg) || 'Falha ao salvar a ordem.'),
+                  res && res.ok ? 'success' : 'error');
+      }, 'json');
+    }
+
+    if (gallery) {
+      let arrastando = null;
+
+      gallery.addEventListener('dragstart', e => {
+        const item = e.target.closest('.pe-gallery-item');
+        if (!item) return;
+        arrastando = item;
+        item.classList.add('is-dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        // O Firefox so inicia o arrasto se houver algo no dataTransfer.
+        e.dataTransfer.setData('text/plain', item.dataset.id || '');
+      });
+
+      gallery.addEventListener('dragend', () => {
+        if (!arrastando) return;
+        arrastando.classList.remove('is-dragging');
+        arrastando = null;
+        salvarOrdemGaleria();
+      });
+
+      // Grade com quebra de linha: o alvo e o item de centro mais proximo do
+      // ponteiro, e o lado (antes/depois) sai da comparacao horizontal. Medir
+      // so o eixo Y erraria a coluna dentro da mesma linha.
+      gallery.addEventListener('dragover', e => {
+        if (!arrastando) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+
+        let alvo = null, menor = Infinity, antes = true;
+        gallery.querySelectorAll('.pe-gallery-item:not(.is-dragging)').forEach(el => {
+          const r = el.getBoundingClientRect();
+          const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+          const d = Math.hypot(e.clientX - cx, e.clientY - cy);
+          if (d < menor) { menor = d; alvo = el; antes = e.clientX < cx; }
+        });
+
+        if (alvo) gallery.insertBefore(arrastando, antes ? alvo : alvo.nextSibling);
+      });
+
+      gallery.addEventListener('drop', e => e.preventDefault());
+
+      // Na carga, traz a capa gravada no banco para a frente ANTES de numerar.
+      // O painel lista por `ordem`, a loja por `principal DESC, ordem ASC`: em
+      // produtos antigos, com a principal no meio da sequencia, as duas telas
+      // mostravam primeiras imagens diferentes. Reconciliar aqui faz o painel
+      // exibir exatamente o que o site exibe — e a primeira gravacao alinha o
+      // banco.
+      const capa = gallery.querySelector('.pe-gallery-item.is-principal');
+      if (capa && capa !== gallery.firstElementChild) {
+        gallery.insertBefore(capa, gallery.firstElementChild);
+      }
+      renumerarGaleria();
+    }
+
+    // Estrela: leva a imagem para a primeira posicao, que e o mesmo que
+    // torna-la capa. Um caminho so para a mesma decisao.
     $(document).on('click', '.pe-set-principal', function () {
       const imgId = $(this).data('id');
-      $.post(BASE_URL + '/admin/produtos/set-principal', {
-        imagem_id: imgId, produto_id: produtoId(), _csrf_token: CSRF_TOKEN,
-      }, function (res) {
-        if (!res.ok) return;
-        document.querySelectorAll('.pe-gallery-item').forEach(el => {
-          el.classList.remove('is-principal');
-          el.querySelector('.pe-gallery-badge')?.remove();
-        });
-        const item = document.querySelector(`.pe-gallery-item[data-id="${imgId}"]`);
-        if (item) {
-          item.classList.add('is-principal');
-          item.insertAdjacentHTML('beforeend', '<span class="pe-gallery-badge">Principal</span>');
-          item.querySelector('.pe-set-principal')?.remove();
-        }
-        showToast('Imagem principal definida!', 'success');
-      }, 'json');
+      const item  = document.querySelector(`.pe-gallery-item[data-id="${imgId}"]`);
+      if (!item || !gallery) return;
+
+      gallery.insertBefore(item, gallery.firstElementChild);
+      salvarOrdemGaleria();
     });
+
+    // ── Clips vinculados ao produto ──────────────────────
+    //
+    // Mesmo componente do formulario de clips, pelo lado oposto da relacao.
+    // A busca e em memoria: sao poucos clips, e assim nao ha um endpoint de
+    // busca novo para proteger.
+    (function () {
+      const $tags     = $('#pe-clips-tags');
+      const $busca    = $('#pe-clip-search');
+      const $drop     = $('#pe-clip-dropdown');
+      if (!$tags.length || !$busca.length) return;
+
+      const lista = Array.isArray(window.PE_CLIPS) ? window.PE_CLIPS : [];
+      const escolhidos = new Set(
+        $tags.find('.clip-produto-tag').map(function () { return parseInt($(this).data('id'), 10); }).get()
+      );
+
+      const esc = t => $('<div>').text(t == null ? '' : String(t)).html();
+
+      let debounce;
+      $busca.on('input', function () {
+        clearTimeout(debounce);
+        debounce = setTimeout(() => {
+          const q = String($busca.val() || '').toLowerCase().trim();
+          if (!q) { $drop.removeClass('is-open').empty(); return; }
+
+          const achados = lista
+            .filter(c => String(c.titulo).toLowerCase().includes(q) && !escolhidos.has(c.id))
+            .slice(0, 10);
+
+          if (!achados.length) {
+            $drop.addClass('is-open').html(
+              '<div class="clip-produto-option" style="color:var(--text-3)">Nenhum clip encontrado</div>');
+            return;
+          }
+
+          $drop.addClass('is-open').html(achados.map(c => `
+            <div class="clip-produto-option" data-id="${c.id}" data-titulo="${esc(c.titulo)}">
+              ${esc(c.titulo)}${c.ativo ? '' : ' <span style="color:var(--text-3)">(inativo)</span>'}
+            </div>`).join(''));
+        }, 180);
+      });
+
+      $drop.on('click', '.clip-produto-option', function () {
+        const id = parseInt($(this).data('id'), 10);
+        if (!id || escolhidos.has(id)) return;
+
+        escolhidos.add(id);
+        $tags.append(`
+          <span class="clip-produto-tag" data-id="${id}">
+            ${esc($(this).data('titulo'))}
+            <button type="button" class="clip-produto-tag-remove" data-id="${id}">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="3" stroke-linecap="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </span>
+          <input type="hidden" name="clip_ids[]" value="${id}">`);
+
+        $busca.val('').trigger('focus');
+        $drop.removeClass('is-open').empty();
+      });
+
+      $tags.on('click', '.clip-produto-tag-remove', function () {
+        const id = parseInt($(this).data('id'), 10);
+        escolhidos.delete(id);
+        $tags.find(`.clip-produto-tag[data-id="${id}"]`).remove();
+        $tags.find(`input[name="clip_ids[]"][value="${id}"]`).remove();
+      });
+
+      $(document).on('click', function (e) {
+        if (!$(e.target).closest('.clip-produto-search-wrap').length) {
+          $drop.removeClass('is-open').empty();
+        }
+      });
+    })();
 
     // Remover imagem
     $(document).on('click', '.pe-del-img', function () {

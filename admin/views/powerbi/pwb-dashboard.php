@@ -178,6 +178,8 @@ $pwb_charts = $pwb_dashboard_data['charts'] ?? [];
             <button class="pwb_nav_item" type="button" data-pwb-view="geo"><?= pwb_icon('access') ?><span class="pwb_nav_label">Geografia</span></button>
             <button class="pwb_nav_item" type="button" data-pwb-view="pagamentos"><?= pwb_icon('currency') ?><span class="pwb_nav_label">Pagamentos</span></button>
             <button class="pwb_nav_item" type="button" data-pwb-view="cupons"><?= pwb_icon('percent') ?><span class="pwb_nav_label">Cupons</span></button>
+            <button class="pwb_nav_item" type="button" data-pwb-view="clips"><?= pwb_icon('eye') ?><span class="pwb_nav_label">Clips</span></button>
+            <button class="pwb_nav_item" type="button" data-pwb-view="compartilhados"><?= pwb_icon('users') ?><span class="pwb_nav_label">Compartilhados</span></button>
             <button class="pwb_nav_item" type="button" data-pwb-view="posvenda"><?= pwb_icon('alert') ?><span class="pwb_nav_label">Pós-venda</span></button>
             <button class="pwb_nav_item" type="button" data-pwb-view="logistica"><?= pwb_icon('box') ?><span class="pwb_nav_label">Logística</span></button>
             <button class="pwb_nav_item" type="button" data-pwb-view="rentabilidade"><?= pwb_icon('currency') ?><span class="pwb_nav_label">Rentabilidade</span></button>
@@ -570,6 +572,106 @@ $pwb_charts = $pwb_dashboard_data['charts'] ?? [];
                     <span class="pwb_panel_hint">O desconto aumentou o ticket ou só entregou margem?</span>
                 </div>
                 <div class="pwb_chart_box"><canvas class="pwb_chart_canvas" id="pwb_chart_desconto"></canvas></div>
+            </article>
+        </section>
+
+        <section class="pwb_view" data-pwb-panel="clips">
+            <div class="pwb_metric_grid">
+                <?php foreach (($pwb_metrics['clips'] ?? []) as $item): ?><?php pwb_render_metric_card($item); ?><?php endforeach; ?>
+            </div>
+            <article class="pwb_panel">
+                <div class="pwb_panel_header">
+                    <h2 class="pwb_panel_title">Engajamento por clip</h2>
+                    <span class="pwb_panel_hint">Receita = produtos que o clip divulga · correlação, não atribuição</span>
+                </div>
+                <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                    <thead class="pwb_thead"><tr class="pwb_tr">
+                        <th class="pwb_th">Clip</th><th class="pwb_th">Autor</th>
+                        <th class="pwb_th">Views únicas</th><th class="pwb_th">Curtidas</th>
+                        <th class="pwb_th">Comentários</th><th class="pwb_th">Taxa de curtida</th>
+                        <th class="pwb_th">Produtos</th><th class="pwb_th">Receita dos produtos</th>
+                        <th class="pwb_th">Status</th>
+                    </tr></thead>
+                    <tbody class="pwb_tbody">
+                    <?php if (empty($pwb_tables['clips'])): ?>
+                        <tr class="pwb_tr"><td class="pwb_td" colspan="9">Nenhum clip publicado.</td></tr>
+                    <?php else: foreach ($pwb_tables['clips'] as $r): ?>
+                        <tr class="pwb_tr">
+                            <td class="pwb_td"><?= pwb_e($r['title']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['author']) ?></td>
+                            <td class="pwb_td"><strong><?= pwb_e($r['views']) ?></strong></td>
+                            <td class="pwb_td"><?= pwb_e($r['likes']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['comments']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['rate']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['products']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['revenue']) ?></td>
+                            <td class="pwb_td"><span class="pwb_badge <?= pwb_e(pwb_badge_class($r['status'])) ?>"><?= pwb_e($r['status']) ?></span></td>
+                        </tr>
+                    <?php endforeach; endif; ?>
+                    </tbody>
+                </table></div>
+            </article>
+            <div class="pwb_chart_grid">
+                <article class="pwb_panel"><h2 class="pwb_panel_title">Views por dia</h2>
+                    <div class="pwb_chart_box"><canvas class="pwb_chart_canvas" id="pwb_chart_clips_serie"></canvas></div></article>
+                <article class="pwb_panel"><h2 class="pwb_panel_title">Clips mais vistos</h2>
+                    <div class="pwb_chart_box"><canvas class="pwb_chart_canvas" id="pwb_chart_clips_top"></canvas></div></article>
+            </div>
+        </section>
+
+        <section class="pwb_view" data-pwb-panel="compartilhados">
+            <div class="pwb_metric_grid">
+                <?php foreach (($pwb_metrics['share'] ?? []) as $item): ?><?php pwb_render_metric_card($item); ?><?php endforeach; ?>
+            </div>
+
+            <div class="form-alert form-alert--warning" style="font-size:13px;">
+                <strong>Conversão é medida; receita não.</strong>
+                O evento <code>finalizou_pedido</code> é gravado, mas
+                <code>uso.pedido_id</code> vem NULL — então dá para contar quantos
+                compartilhamentos viraram pedido, e <em>não</em> quanto renderam.
+                A mesma lacuna afeta <code>/minha-conta/carrinhos-compartilhados</code>.
+            </div>
+
+            <article class="pwb_panel">
+                <div class="pwb_panel_header">
+                    <h2 class="pwb_panel_title">Quem mais compartilha</h2>
+                    <span class="pwb_panel_hint">Contagem por sessão, a mesma regra de /minha-conta</span>
+                </div>
+                <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                    <thead class="pwb_thead"><tr class="pwb_tr">
+                        <th class="pwb_th">Quem</th><th class="pwb_th">Origem</th>
+                        <th class="pwb_th">Compartilhou</th><th class="pwb_th">Itens</th>
+                        <th class="pwb_th">Valor nos carrinhos</th><th class="pwb_th">Views</th>
+                        <th class="pwb_th">Viraram carrinho</th><th class="pwb_th">Conversões</th>
+                        <th class="pwb_th">Pedidos</th><th class="pwb_th">Taxa</th>
+                    </tr></thead>
+                    <tbody class="pwb_tbody">
+                    <?php if (empty($pwb_tables['compartilhadores'])): ?>
+                        <tr class="pwb_tr"><td class="pwb_td" colspan="10">Nenhum compartilhamento no período.</td></tr>
+                    <?php else: foreach ($pwb_tables['compartilhadores'] as $r): ?>
+                        <tr class="pwb_tr">
+                            <td class="pwb_td"><?= pwb_e($r['name']) ?></td>
+                            <td class="pwb_td"><span class="pwb_badge <?= pwb_e(pwb_badge_class($r['origin'])) ?>"><?= pwb_e($r['origin']) ?></span></td>
+                            <td class="pwb_td"><?= pwb_e($r['shares']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['items']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['value']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['views']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['carts']) ?></td>
+                            <td class="pwb_td"><strong><?= pwb_e($r['conv']) ?></strong></td>
+                            <td class="pwb_td"><?= pwb_e($r['orders']) ?></td>
+                            <td class="pwb_td"><span class="pwb_badge <?= pwb_e(pwb_badge_class($r['level'])) ?>"><?= pwb_e($r['rate']) ?></span></td>
+                        </tr>
+                    <?php endforeach; endif; ?>
+                    </tbody>
+                </table></div>
+            </article>
+
+            <article class="pwb_panel">
+                <div class="pwb_panel_header">
+                    <h2 class="pwb_panel_title">Funil do compartilhamento</h2>
+                    <span class="pwb_panel_hint">Carrinho e pedido convertem sobre VISUALIZADOS — não são etapas encadeadas</span>
+                </div>
+                <div class="pwb_chart_box"><canvas class="pwb_chart_canvas" id="pwb_chart_share_funil"></canvas></div>
             </article>
         </section>
 
@@ -1123,6 +1225,20 @@ $pwb_charts = $pwb_dashboard_data['charts'] ?? [];
   barras('pwb_chart_geo_uf', (charts.geo_uf || []).map(function (r) {
     return { rotulo: r.local, valor: r.receita, texto: brl(r.receita) };
   }), '--pwb-g-ciano');
+
+  barras('pwb_chart_clips_top', (charts.clips_top || []).map(function (r) {
+    return { rotulo: r.titulo, valor: r.views_unicas, texto: r.views_unicas + ' views' };
+  }), '--pwb-g-rosa');
+
+  barras('pwb_chart_share_funil', (charts.share_funil || []).map(function (r) {
+    return { rotulo: r.etapa, valor: r.valor,
+             texto: r.valor + (r.conversao === null ? '' : '  (' + r.conversao + '%)') };
+  }), '--pwb-g-ciano');
+
+  // linha() espera a chave `faturamento`; aqui o eixo e views.
+  linha('pwb_chart_clips_serie', (charts.clips_serie || []).map(function (r) {
+    return { data: r.data, faturamento: r.views };
+  }));
 
   barras('pwb_chart_marcas', (charts.marcas_share || []).map(function (r) {
     return { rotulo: r.nome, valor: r.receita, texto: r.participacao_pct + '%' };

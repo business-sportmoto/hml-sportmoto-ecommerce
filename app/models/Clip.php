@@ -195,6 +195,75 @@ class Clip extends Model {
         }
     }
 
+    /**
+     * Clips para o seletor do formulário de produto.
+     *
+     * Traz todos, inclusive os inativos, marcados como tais: um clip
+     * despublicado continua vinculável, e esconder da lista faria parecer que
+     * o vínculo sumiu quando na verdade foi o clip que saiu do ar.
+     */
+    public function getParaSelecao(int $limite = 500): array {
+        // Sem filtro de exclusão: a tabela `clips` não tem deleted_at — o
+        // módulo apaga de verdade em vez de marcar.
+        $stmt = $this->db->prepare(
+            "SELECT id, titulo, ativo FROM clips
+           ORDER BY criado_em DESC
+              LIMIT ?"
+        );
+        $stmt->bindValue(1, $limite, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll();
+    }
+
+    // ── Clips vinculados a um produto (lado inverso) ─────
+    public function getClipsDoProduto(int $produtoId): array {
+        $stmt = $this->db->prepare(
+            "SELECT c.id, c.titulo, c.ativo
+               FROM clip_produtos cp
+               JOIN clips c ON c.id = cp.clip_id
+              WHERE cp.produto_id = ?
+           ORDER BY c.criado_em DESC"
+        );
+        $stmt->execute([$produtoId]);
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Sincroniza os clips de UM produto.
+     *
+     * Espelho de sincronizarProdutos(), com duas diferenças que importam:
+     *
+     * 1. Remove só os pares deste produto. Apagar por clip_id, como faz o
+     *    outro lado, derrubaria os vínculos daquele clip com produtos que nem
+     *    estão nesta tela.
+     *
+     * 2. O par novo entra no FIM da lista daquele clip (ordem = max + 1). A
+     *    coluna `ordem` ordena os produtos DENTRO do clip; gravar 0 aqui
+     *    jogaria o produto novo para a frente dos que o clip já tinha.
+     */
+    public function sincronizarClipsDoProduto(int $produtoId, array $clipIds): void {
+        $clipIds = array_values(array_unique(array_filter(array_map('intval', $clipIds))));
+
+        $st = $this->db->prepare("SELECT clip_id FROM clip_produtos WHERE produto_id = ?");
+        $st->execute([$produtoId]);
+        $atuais = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN) ?: []);
+
+        foreach (array_diff($atuais, $clipIds) as $remover) {
+            $this->db->prepare("DELETE FROM clip_produtos WHERE produto_id = ? AND clip_id = ?")
+                     ->execute([$produtoId, $remover]);
+        }
+
+        $ins = $this->db->prepare(
+            "INSERT IGNORE INTO clip_produtos (clip_id, produto_id, ordem)
+             VALUES (:clip, :produto,
+                     COALESCE((SELECT MAX(x.ordem) + 1 FROM (SELECT ordem FROM clip_produtos
+                               WHERE clip_id = :clip2) AS x), 0))"
+        );
+        foreach (array_diff($clipIds, $atuais) as $novo) {
+            $ins->execute([':clip' => $novo, ':produto' => $produtoId, ':clip2' => $novo]);
+        }
+    }
+
     // ── Produtos vinculados a um clip ────────────────────
     public function getProdutosDoClip(int $clipId): array {
         $stmt = $this->db->prepare(

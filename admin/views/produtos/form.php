@@ -408,17 +408,23 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
             </div>
 
             <!-- Galeria -->
+            <p class="pe-gallery-dica">
+              Arraste as imagens para ordenar. A <strong>primeira</strong> é a capa —
+              a que aparece na listagem e no compartilhamento.
+            </p>
+
             <div class="pe-gallery" id="pe-gallery">
-              <?php foreach ($imagens as $img): ?>
+              <?php foreach ($imagens as $i => $img): ?>
               <div class="pe-gallery-item <?= $img['principal'] ? 'is-principal' : '' ?>"
-                   data-id="<?= $img['id'] ?>">
+                   data-id="<?= $img['id'] ?>" draggable="true">
                 <img src="<?= $imgUrl($img['arquivo']) ?>"
-                     alt="" loading="lazy">
+                     alt="" loading="lazy" draggable="false">
+                <span class="pe-gallery-pos"><?= (int)$i + 1 ?></span>
                 <div class="pe-gallery-overlay">
                   <?php if (!$img['principal']): ?>
                   <button type="button" class="pe-gallery-btn pe-set-principal"
                           data-id="<?= $img['id'] ?>"
-                          title="Definir como principal">
+                          title="Mover para o início (vira a capa)">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
                          stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                       <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
@@ -436,11 +442,78 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
                   </button>
                 </div>
                 <?php if ($img['principal']): ?>
-                <span class="pe-gallery-badge">Principal</span>
+                <span class="pe-gallery-badge">Capa</span>
                 <?php endif; ?>
               </div>
               <?php endforeach; ?>
             </div>
+
+            <?php endif; ?>
+          </div>
+        </section>
+
+        <!-- ── Clips vinculados ──────────────────────────── -->
+        <section class="pe-section" id="pe-clips">
+          <div class="pe-section-head">
+            <h2>Clips</h2>
+            <p>Vídeos que mostram este produto</p>
+          </div>
+
+          <div class="pe-card">
+            <?php if (!$isEdit): ?>
+              <div class="pe-midia-alert">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="12" y1="8" x2="12" y2="12"/>
+                  <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                Salve o produto primeiro para vincular clips.
+              </div>
+            <?php else: ?>
+
+            <!-- Mesmo componente do formulário de clips, pelo lado oposto da
+                 relação: lá um clip escolhe produtos, aqui um produto escolhe
+                 clips. A tabela clip_produtos é a mesma. -->
+            <div class="clip-produtos-tags" id="pe-clips-tags">
+              <?php foreach (($clipsVinculados ?? []) as $cv): ?>
+                <span class="clip-produto-tag" data-id="<?= (int)$cv['id'] ?>">
+                  <?= View::e($cv['titulo']) ?><?= empty($cv['ativo']) ? ' (inativo)' : '' ?>
+                  <button type="button" class="clip-produto-tag-remove" data-id="<?= (int)$cv['id'] ?>">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="3" stroke-linecap="round">
+                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                </span>
+                <input type="hidden" name="clip_ids[]" value="<?= (int)$cv['id'] ?>">
+              <?php endforeach; ?>
+            </div>
+
+            <!-- Sempre presente, mesmo sem nenhum clip vinculado: sem ele o POST
+                 nao traz clip_ids e o servidor nao consegue distinguir "removi
+                 todos" de "esta tela nao mexe nisso". -->
+            <input type="hidden" name="clip_ids[]" value="" id="pe-clips-sentinela">
+
+            <div class="clip-produto-search-wrap">
+              <input type="text" class="clip-produto-search-input"
+                     id="pe-clip-search"
+                     placeholder="Buscar clip para vincular…"
+                     autocomplete="off">
+              <div class="clip-produto-dropdown" id="pe-clip-dropdown"></div>
+            </div>
+
+            <small class="form-help" style="margin-top:8px;display:block;">
+              O clip aparece na página do produto e o produto vira card de compra
+              dentro do clip. Vale para os dois lados.
+            </small>
+
+            <?php if (empty($clips)): ?>
+              <small class="form-help" style="margin-top:10px;display:block;color:var(--warning)">
+                Nenhum clip cadastrado ainda.
+                <a href="<?= BASE_URL ?>/admin/clips/form" target="_blank" rel="noopener">Criar o primeiro</a>.
+              </small>
+            <?php endif; ?>
 
             <?php endif; ?>
           </div>
@@ -1703,6 +1776,7 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
         'geral'      => ['icon' => 'info',     'label' => 'Informações gerais'],
         'categorias' => ['icon' => 'categorias',   'label' => 'Categorias'],
         'midia'      => ['icon' => 'midia',    'label' => 'Mídia'],
+        'clips'      => ['icon' => 'clips',    'label' => 'Clips'],
         'caracteristicas' => ['icon' => 'caracteristicas',     'label' => 'Características'],
         'compatibilidade' => ['icon' => 'motos',    'label' => 'Compatibilidade'],
         'preco'      => ['icon' => 'price',   'label' => 'Preço & estoque'],
@@ -1715,6 +1789,7 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
         'info'          => IconLibrary::render('info', 'icon icon--md'),
         'categorias'    => IconLibrary::render('category', 'icon icon--md'),
         'midia'      => IconLibrary::render('gallery', 'icon icon--md'),
+        'clips'      => IconLibrary::render('videocam', 'icon icon--md'),
         'caracteristicas' => IconLibrary::render('format-list-bulleted', 'icon icon--md'),
         'motos'   => IconLibrary::render('motorcycle', 'icon icon--md'),
         'price'    => IconLibrary::render('payments', 'icon icon--md'),
@@ -2073,4 +2148,14 @@ adminSeoIA({
       .fail(function () { CK.btnLoading($btn, false); adminToast('Erro de rede.', 'error'); });
   });
 })();
+</script>
+
+<script>
+  /* Clips disponiveis para vincular. Vao inteiros para o navegador porque sao
+     poucos (o seletor busca em memoria, igual ao formulario de clips faz com
+     os produtos) e porque assim nao ha um endpoint de busca a proteger. */
+  window.PE_CLIPS = <?= json_encode(array_map(
+      fn($c) => ['id' => (int)$c['id'], 'titulo' => (string)$c['titulo'], 'ativo' => (int)$c['ativo']],
+      $clips ?? []
+  ), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 </script>

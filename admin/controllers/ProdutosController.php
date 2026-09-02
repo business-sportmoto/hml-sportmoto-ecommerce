@@ -282,6 +282,8 @@ class ProdutosController extends Controller {
             'titulo'  => 'Novo produto',
             'imagens' => [],
             'skus'    => [],
+            'clips'            => (new Clip())->getParaSelecao(),
+            'clipsVinculados'  => [],
             'atributos_tipos' => $this->getAtributosTipos(),
         ]), 'admin');
     }
@@ -407,6 +409,8 @@ class ProdutosController extends Controller {
             'titulo'            => 'Editar: ' . $produto['nome'],
             'imagens'           => $imagens,
             'skus'              => $skus,
+            'clips'             => (new Clip())->getParaSelecao(),
+            'clipsVinculados'   => (new Clip())->getClipsDoProduto($id),
             'agrupadores'       => $agrupadores,
             'atributos_tipos'   => $this->getAtributosTipos(),
             'mapaCategorias'    => $mapaCategorias,
@@ -771,6 +775,16 @@ class ProdutosController extends Controller {
                 }
             }
 
+            // ── Clips vinculados ──────────────────────────────
+            // Dentro da transacao: se o vinculo falhar, o produto nao fica
+            // salvo com uma lista de clips pela metade.
+            //
+            // isset e nao !empty: lista vazia significa "desvinculei todos", e
+            // com !empty essa acao seria silenciosamente ignorada.
+            if (isset($_POST['clip_ids'])) {
+                (new Clip())->sincronizarClipsDoProduto($id, (array)$_POST['clip_ids']);
+            }
+
             $db->commit();
 
             $this->json([
@@ -1028,17 +1042,49 @@ class ProdutosController extends Controller {
     }
 
     // ── Reordenar imagens ─────────────────────────────────
+    /**
+     * Grava a ordem da galeria e promove a primeira imagem a principal.
+     *
+     * As duas coisas juntas porque `getImages()` ordena por
+     * `principal DESC, ordem ASC`: se a principal fosse escolhida por fora da
+     * ordem, ela saltaria para a frente na loja e a sequência montada no painel
+     * não seria a exibida. Com a primeira posição sendo sempre a principal, "a
+     * ordem escolhida" e "a capa" viram a mesma decisão.
+     *
+     * O produto_id vem do POST e cada UPDATE o exige: sem isso, um id de imagem
+     * de outro produto reordenaria a galeria alheia.
+     */
     public function reordenarImagens(): void {
         $this->verifyCsrf();
-        $ordens = $_POST['ordens'] ?? [];
-        if (empty($ordens)) $this->json(['ok' => false]);
 
-        $db   = Database::getInstance()->getConnection();
-        $stmt = $db->prepare("UPDATE produto_imagens SET ordem = ? WHERE id = ?");
-        foreach ($ordens as $ordem => $imgId) {
-            $stmt->execute([$ordem, (int)$imgId]);
+        $produtoId = SecurityHelper::sanitizeInt($_POST['produto_id'] ?? 0);
+        $ordens    = array_values(array_filter(
+            array_map('intval', (array)($_POST['ordens'] ?? []))
+        ));
+
+        if (!$produtoId || !$ordens) $this->json(['ok' => false, 'msg' => 'Nada para reordenar.']);
+
+        $db = Database::getInstance()->getConnection();
+
+        try {
+            $db->beginTransaction();
+
+            $stmt = $db->prepare(
+                "UPDATE produto_imagens SET ordem = ?, principal = ?
+                  WHERE id = ? AND produto_id = ?"
+            );
+            foreach ($ordens as $pos => $imgId) {
+                $stmt->execute([$pos, $pos === 0 ? 1 : 0, $imgId, $produtoId]);
+            }
+
+            $db->commit();
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            LogService::exception($e, 'error', 'app', ['onde' => 'reordenarImagens', 'produto' => $produtoId]);
+            $this->json(['ok' => false, 'msg' => 'Falha ao salvar a ordem.']);
         }
-        $this->json(['ok' => true]);
+
+        $this->json(['ok' => true, 'principal_id' => $ordens[0]]);
     }
 
     // ── Excluir produto ───────────────────────────────────
