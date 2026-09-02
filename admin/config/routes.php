@@ -418,8 +418,9 @@ AdminRouter::post('/familias/desvincular','FamiliasController@desvincular');
 AdminRouter::get('/estoque/saldo',      'Estoquecontroller@saldo');
 AdminRouter::post('/estoque/ajustar',     'Estoquecontroller@ajustar');
 AdminRouter::get( '/estoque/historico',   'Estoquecontroller@historico');
-AdminRouter::post('/estoque/recalcular',  'Estoquecontroller@recalcular');
-AdminRouter::post('/estoque/sincronizar', 'Estoquecontroller@sincronizar');
+// recalcular/sincronizar removidos: derivavam saldo do log local, que
+// deixou de ser fonte de verdade quando o Bling virou dono do estoque.
+AdminRouter::post('/estoque/ressincronizar', 'Estoquecontroller@ressincronizar');
 AdminRouter::post('/estoque/ajustar-sku', 'Estoquecontroller@ajustarSku');
 
 // ─── Admin ───────────────────────────────────────────────────

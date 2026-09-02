@@ -4944,40 +4944,39 @@ $(document).on('change', '#pe-categoria', function () {
       });
     });
 
-    // Recalcular
-    $(document).on('click', '#btn-recalcular-estoque', async function () {
-      const produtoId = $(this).data('produto-id');
-      $(this).prop('disabled', true);
+    // Puxar saldo do Bling
+    //
+    // Substitui o antigo "Recalcular", que somava o estoque_log local. Com
+    // o Bling dono do estoque, esse log não contém as baixas — a soma dava
+    // um número inventado e o botão oferecia gravá-lo. Agora perguntamos o
+    // saldo ao Bling e gravamos a resposta.
+    $(document).on('click', '#btn-ressincronizar-estoque', async function () {
+      const $btn      = $(this);
+      const produtoId = $btn.data('produto-id');
+      $btn.prop('disabled', true);
 
-      const res = await fetch(BASE_URL + '/admin/estoque/recalcular', {
-        method : 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body   : `produto_id=${produtoId}&_csrf_token=${CSRF_TOKEN}`,
-      }).then(r => r.json());
-
-      $(this).prop('disabled', false);
-
-      if (!res.ok) { showToast('Erro ao recalcular.', 'error'); return; }
-
-      if (res.divergencia) {
-        const ok = await adminConfirm({
-          titulo   : 'Divergência encontrada!',
-          mensagem : `Saldo atual: ${res.saldo_atual} | Log calculado: ${res.saldo_calculado}. Deseja corrigir?`,
-          tipo     : 'warning',
-          confirmar: 'Corrigir divergência',
-        });
-        if (ok) {
-          await fetch(BASE_URL + '/admin/estoque/sincronizar', {
-            method : 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body   : `produto_id=${produtoId}&_csrf_token=${CSRF_TOKEN}`,
-          });
-          showToast('Divergência corrigida!', 'success');
-          setTimeout(() => window.location.reload(), 800);
-        }
-      } else {
-        showToast('Estoque consistente. Nenhuma divergência encontrada.', 'success');
+      let res;
+      try {
+        res = await fetch(BASE_URL + '/admin/estoque/ressincronizar', {
+          method : 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body   : `produto_id=${produtoId}&_csrf_token=${CSRF_TOKEN}`,
+        }).then(r => r.json());
+      } catch (e) {
+        $btn.prop('disabled', false);
+        showToast('Falha de rede ao consultar o Bling.', 'error');
+        return;
       }
+
+      $btn.prop('disabled', false);
+
+      if (!res.ok) { showToast(res.msg || 'Erro ao consultar o Bling.', 'error'); return; }
+
+      // Sem vínculo não é sucesso silencioso: o produto não recebe saldo
+      // nem dá baixa, então o aviso precisa ficar na tela.
+      const temAviso = Array.isArray(res.sem_vinculo) && res.sem_vinculo.length > 0;
+      showToast(res.msg, temAviso ? 'warning' : 'success');
+      if (res.atualizados > 0) setTimeout(() => window.location.reload(), 1200);
     });
 
   // })();

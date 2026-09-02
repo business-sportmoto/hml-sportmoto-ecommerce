@@ -912,15 +912,17 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
                   </svg>
                   <?= !empty($p['tem_variacao']) ? 'Histórico geral' : 'Ver histórico' ?>
                 </button>
+<?php // O saldo é espelho do Bling: o botão puxa de lá, não recalcula localmente. ?>
                 <button type="button" class="btn btn-sm btn-ghost"
-                        id="btn-recalcular-estoque"
-                        data-produto-id="<?= (int)$p['id'] ?>">
+                        id="btn-ressincronizar-estoque"
+                        data-produto-id="<?= (int)$p['id'] ?>"
+                        title="Puxa o saldo atual do Bling e grava no site">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
                       stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                     <polyline points="23 4 23 10 17 10"/>
                     <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
                   </svg>
-                  Recalcular
+                  Puxar do Bling
                 </button>
               </div>
 

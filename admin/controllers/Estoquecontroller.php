@@ -204,38 +204,28 @@ class EstoqueController extends Controller {
         ]);
     }
 
-    // ── Recalcular saldo a partir do log ──────────────────
-    public function recalcular(): void {
+    // ── Ressincronizar com o Bling ────────────────────────
+    //
+    // Substitui os antigos recalcular() + sincronizar(), que derivavam o
+    // saldo do estoque_log local. Com o Bling dono do estoque, as baixas
+    // acontecem lá e o ledger local só guarda os espelhamentos — o número
+    // recalculado pelo log era ficção, e o botão gravava essa ficção.
+    //
+    // A pergunta certa passou a ser "qual o saldo no Bling agora?".
+    public function ressincronizar(): void {
         $this->verifyCsrf();
 
         $produtoId = SecurityHelper::sanitizeInt($_POST['produto_id'] ?? 0);
-        $skuId     = SecurityHelper::sanitizeInt($_POST['sku_id']     ?? 0) ?: null;
-
         if (!$produtoId) {
             $this->json(['ok' => false, 'msg' => 'Produto inválido.']);
         }
 
-        $estoque   = new EstoqueService();
-        $resultado = $estoque->recalcular($produtoId, $skuId);
-
-        $this->json(array_merge(['ok' => true], $resultado));
-    }
-
-    // ── Sincronizar divergência ───────────────────────────
-    public function sincronizar(): void {
-        $this->verifyCsrf();
-
-        $produtoId = SecurityHelper::sanitizeInt($_POST['produto_id'] ?? 0);
-        $skuId     = SecurityHelper::sanitizeInt($_POST['sku_id']     ?? 0) ?: null;
-
-        if (!$produtoId) {
-            $this->json(['ok' => false, 'msg' => 'Produto inválido.']);
+        try {
+            $this->json((new BlingEstoqueService())->sincronizarProduto($produtoId));
+        } catch (\Throwable $e) {
+            LogService::exception($e, 'error', 'bling', ['produto_id' => $produtoId]);
+            $this->json(['ok' => false, 'msg' => 'Falha ao consultar o Bling: ' . $e->getMessage()]);
         }
-
-        $estoque   = new EstoqueService();
-        $resultado = $estoque->sincronizarDivergencia($produtoId, $skuId);
-
-        $this->json($resultado);
     }
 
     // ── Listagem geral de estoque (visão admin) ───────────

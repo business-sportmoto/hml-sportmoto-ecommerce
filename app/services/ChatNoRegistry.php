@@ -1275,6 +1275,7 @@ class ChatNoIaResponder extends ChatNo
             'tom'       => (string)($config['tom'] ?? ''),
             'contato_id'=> (int)($ctx->contato['id'] ?? 0),
             'fluxo_id'  => (int)($sessao['fluxo_id'] ?? 0),
+            'limite_dia'=> (int)($config['limite_dia'] ?? 0),
         ]);
 
         if (!$r['ok']) return 'nao_sabe';
@@ -1316,6 +1317,94 @@ class ChatNoIaResponder extends ChatNo
                 catch (Throwable $x) {}
             }
         }
+    }
+}
+
+
+/**
+ * Oferece um cupom JÁ EXISTENTE que sirva no produto, com botão.
+ *
+ * config: {"produto_id":482,"texto":"...","rotulo_botao":"Buscar cupom"}
+ * portas: pegou | recusou | sem_cupom
+ *
+ * DIFERENTE do `acao_cupom`: aquele CRIA um cupom nominal e exige cliente
+ * cadastrado — quem comentou num reel é um IGSID sem cliente_id, e cairia
+ * sempre em `sem_cliente`. Este procura um cupom que a loja já cadastrou e
+ * marcou como divulgável.
+ *
+ * O botão não é enfeite: pedir para a pessoa AGIR antes de receber o código
+ * separa quem tem interesse real de quem só passou. E o código só sai depois
+ * do toque, então não fica exposto para quem nunca pediu.
+ */
+class ChatNoAcaoCupomProduto extends ChatNo
+{
+    public function portas(): array { return ['pegou', 'recusou', 'sem_cupom']; }
+    public function ehPergunta(): bool { return true; }
+    public function categoria(): string { return 'acao'; }
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        // ── 2ª passada: a pessoa respondeu ──
+        if ($resposta = $this->respostaRecebida($sessao)) {
+            $this->limparMarca($sessao, 'env');
+            $c = $this->ctx($sessao);
+            unset($c['_resposta_' . $this->chave($sessao)]);
+            $sessao['contexto'] = $c;
+
+            if (($resposta['id'] ?? '') !== 'btn_1') return 'recusou';
+            return $this->entregar($sessao, $config, $ctx);
+        }
+
+        // ── 1ª passada: procura e oferece ──
+        $produtoId = (int)($config['produto_id'] ?? 0);
+        if ($produtoId < 1) return 'sem_cupom';
+
+        $cupom = (new ChatCupomCarrinhoService($ctx->db))->cupomParaProduto($produtoId);
+        if (!$cupom) return 'sem_cupom';
+
+        if (!$this->jaEnviou($sessao)) {
+            // Guarda o cupom no contexto: entre oferecer e a pessoa tocar podem
+            // passar horas, e reconsultar poderia trazer OUTRO cupom — ou
+            // nenhum, se o primeiro esgotou. Prometer e não entregar é pior.
+            $c = $this->ctx($sessao);
+            $c['_cupom_oferecido'] = $cupom;
+            $sessao['contexto'] = $c;
+
+            $r = $ctx->envio->botoes(
+                (int)$sessao['contato_id'],
+                $this->texto($config, 'texto', $ctx, 'Tenho um cupom para este produto 👀'),
+                [['id' => 'btn_1', 'titulo' => mb_substr(
+                    $this->texto($config, 'rotulo_botao', $ctx, 'Buscar cupom'), 0, 20)]],
+                $this->opts($sessao)
+            );
+            if (!$r['ok']) return $this->tratarEnvio($r, $sessao);
+            $this->marcarEnviado($sessao);
+        }
+
+        $sessao['aguardando_ate'] = date('Y-m-d H:i:s', time() + $this->segundosDe((array)($config['timeout'] ?? []), 86400));
+        return self::AGUARDAR;
+    }
+
+    /** Manda o código com as regras — prazo e mínimo são o que gera reclamação. */
+    private function entregar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        $c = $this->ctx($sessao);
+        $cupom = is_array($c['_cupom_oferecido'] ?? null) ? $c['_cupom_oferecido'] : null;
+        if (!$cupom) return 'sem_cupom';
+
+        $svc = new ChatCupomCarrinhoService($ctx->db);
+
+        $texto = "Seu cupom: *{$cupom['codigo']}*\n\n"
+               . ucfirst($svc->descreverCupom($cupom)) . ".\n\n"
+               . 'É só aplicar no carrinho antes de finalizar.';
+
+        $ctx->envio->texto((int)$sessao['contato_id'], $texto, $this->opts($sessao));
+
+        $c['cupom_codigo'] = $cupom['codigo'];
+        unset($c['_cupom_oferecido']);
+        $sessao['contexto'] = $c;
+
+        return 'pegou';
     }
 }
 
@@ -1369,6 +1458,7 @@ class ChatNoRegistry
         'acao_ig_responder_comentario'=> ChatNoAcaoIgResponderComentario::class,
         // ia
         'ia_responder'                => ChatNoIaResponder::class,
+        'acao_cupom_produto'          => ChatNoAcaoCupomProduto::class,
     ];
 
     /** @var array<string,ChatNo> instâncias stateless reutilizáveis */

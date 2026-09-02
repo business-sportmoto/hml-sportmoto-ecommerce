@@ -360,11 +360,29 @@
         { k: 'responder_publico', label: 'Responder também no comentário', tipo: 'checkbox', def: true,
           ajuda: 'A resposta pública varia a cada comentário e nunca traz valores — ela chama para o direct.' },
         { k: 'tom', label: 'Tom da marca (opcional)', tipo: 'textarea', def: '',
-          ajuda: 'Ex.: informal, direto, sem gíria. Não muda o que ele pode dizer.' }
+          ajuda: 'Ex.: informal, direto, sem gíria. Não muda o que ele pode dizer.' },
+        { k: 'limite_dia', label: 'Respostas por dia neste fluxo', tipo: 'number', def: '',
+          ajuda: 'Vazio ou 0 usa só o teto do módulo. Um reel viral pode consumir sozinho a cota do dia inteiro.' }
       ],
       resumo: function (c) {
         return (c.produto_id ? 'produto #' + c.produto_id : 'sem produto')
              + (c.responder_publico ? ' · responde no post' : ' · só direct');
+      }
+    },
+    acao_cupom_produto: {
+      cat: 'acao', label: 'Oferecer cupom', ico: '🏷️',
+      desc: 'Procura um cupom divulgável que sirva no produto e oferece com botão.',
+      campos: [
+        { k: 'produto_id', label: 'Produto', tipo: 'number', def: '',
+          ajuda: 'O cupom precisa alcançar este produto pelo escopo dele — categoria, marca ou lista.' },
+        { k: 'texto', label: 'Mensagem da oferta', tipo: 'textarea',
+          def: 'Tenho um cupom para este produto 👀' },
+        { k: 'rotulo_botao', label: 'Texto do botão', tipo: 'text', def: 'Buscar cupom',
+          ajuda: 'Até 20 caracteres — limite da Meta.' },
+        { k: 'timeout', label: 'Esperar o toque por', tipo: 'tempo', def: { horas: 24 } }
+      ],
+      resumo: function (c) {
+        return (c.produto_id ? 'produto #' + c.produto_id : 'sem produto') + ' · com botão';
       }
     },
     acao_ig_responder_comentario: {
@@ -384,7 +402,9 @@
     timeout: 'sem resposta', resposta: 'respondeu', invalido: 'inválido',
     sucesso: 'ok', erro: 'erro', sem_cliente: 'não é cliente',
     btn_1: 'botão 1', btn_2: 'botão 2', btn_3: 'botão 3',
-    whatsapp: 'WhatsApp', instagram: 'Instagram'
+    whatsapp: 'WhatsApp', instagram: 'Instagram',
+    respondeu: 'respondeu', nao_sabe: 'não soube responder',
+    pegou: 'pegou o cupom', recusou: 'ignorou', sem_cupom: 'sem cupom'
   };
   for (var i = 1; i <= 10; i++) PORTAS['op_' + i] = 'opção ' + i;
 

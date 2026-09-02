@@ -267,6 +267,14 @@ class ChatIaAgenteService
 
         if (!$this->dentroDoTeto()) return $this->naoSei('teto diário de IA atingido');
 
+        // Teto do fluxo, quando o bloco define um. Existe porque o teto do
+        // módulo é comum a todos: um reel viral consumiria sozinho a cota que
+        // os outros fluxos usariam no mesmo dia.
+        $tetoFluxo = (int)($opts['limite_dia'] ?? 0);
+        if ($tetoFluxo > 0 && !$this->dentroDoTetoFluxo((int)($opts['fluxo_id'] ?? 0), $tetoFluxo)) {
+            return $this->naoSei('teto diário deste fluxo atingido');
+        }
+
         // O direct é a resposta que importa; o público é o convite.
         $direct = $this->gerar($pergunta, $ctxProduto, false, $opts);
         if ($direct === null) return $this->naoSei('modelo não respondeu');
@@ -352,6 +360,36 @@ class ChatIaAgenteService
         // Avisa uma vez por hora — quem opera precisa saber que o agente calou
         $this->avisarTeto($hoje, $teto);
         return false;
+    }
+
+    /**
+     * Teto do fluxo. Conta pelo `fluxo_id` que o próprio service gravou no
+     * `contexto` da geração — a janela de um dia já reduz o conjunto a poucas
+     * linhas antes de olhar o JSON.
+     *
+     * Conta só o `ig_direct`, ao contrário do teto do módulo. Lá a pergunta
+     * é quanto se gastou, e aí todo token conta. Aqui a pergunta é quantas
+     * vezes este reel respondeu hoje — e o direct sempre existe, enquanto o
+     * comentário público depende de uma caixa marcada em outro lugar. Contando
+     * os dois, o mesmo número configurado valeria metade num fluxo e inteiro
+     * no outro.
+     */
+    private function dentroDoTetoFluxo(int $fluxoId, int $teto): bool
+    {
+        if ($fluxoId < 1) return true;
+
+        try {
+            $st = $this->db->prepare(
+                "SELECT COUNT(*) FROM ia_geracoes
+                 WHERE formato = 'ig_direct'
+                   AND criado_em >= CURDATE()
+                   AND CAST(JSON_EXTRACT(contexto, '$.fluxo_id') AS UNSIGNED) = :f"
+            );
+            $st->execute([':f' => $fluxoId]);
+            return (int)$st->fetchColumn() < $teto;
+        } catch (Throwable $e) {
+            return true;
+        }
     }
 
     private function avisarTeto(int $usadas, int $teto): void

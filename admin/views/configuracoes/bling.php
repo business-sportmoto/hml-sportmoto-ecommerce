@@ -182,6 +182,104 @@
 
     <!-- ── Aside: informações ───────────────────────── -->
     <aside>
+
+      <!-- Saúde da integração -->
+      <?php
+        $cobOk   = !empty($cobertura['ok']);
+        $temFila = !empty($pedidosFalha);
+        $corTopo = ($cobOk && !$temFila) ? 'var(--success)' : 'var(--danger)';
+      ?>
+      <div class="admin-card" style="margin-bottom:14px;border-top:3px solid <?= $corTopo ?>;">
+        <h3 class="ap-card-title">Saúde da integração</h3>
+        <div style="padding:14px 20px 18px;">
+
+          <p style="margin:0 0 14px;font-size:12.5px;color:var(--c-text-muted);line-height:1.6;">
+            O Bling é o dono do estoque. Produto sem vínculo não recebe saldo
+            <strong>nem dá baixa</strong> — ele vai ao Bling como texto livre e
+            segue à venda em todos os canais com um número que não existe mais.
+          </p>
+
+          <!-- Cobertura de vínculo -->
+          <div style="display:flex;gap:10px;margin-bottom:12px;">
+            <div style="flex:1;text-align:center;padding:10px 6px;border:1px solid var(--c-border);border-radius:8px;
+                        <?= (int)$cobertura['produtos_sem'] > 0 ? 'background:#fef2f2;border-color:#fecaca;' : '' ?>">
+              <div style="font-size:20px;font-weight:900;color:<?= (int)$cobertura['produtos_sem'] > 0 ? 'var(--danger)' : 'var(--success)' ?>;">
+                <?= (int)$cobertura['produtos_sem'] ?>
+              </div>
+              <div style="font-size:11.5px;color:var(--c-text-muted);line-height:1.4;">
+                produtos ativos<br>sem vínculo
+              </div>
+              <div style="font-size:10.5px;color:var(--c-text-muted);margin-top:3px;">
+                de <?= (int)$cobertura['produtos_total'] ?>
+              </div>
+            </div>
+            <div style="flex:1;text-align:center;padding:10px 6px;border:1px solid var(--c-border);border-radius:8px;
+                        <?= (int)$cobertura['skus_sem'] > 0 ? 'background:#fef2f2;border-color:#fecaca;' : '' ?>">
+              <div style="font-size:20px;font-weight:900;color:<?= (int)$cobertura['skus_sem'] > 0 ? 'var(--danger)' : 'var(--success)' ?>;">
+                <?= (int)$cobertura['skus_sem'] ?>
+              </div>
+              <div style="font-size:11.5px;color:var(--c-text-muted);line-height:1.4;">
+                SKUs ativos<br>sem vínculo
+              </div>
+              <div style="font-size:10.5px;color:var(--c-text-muted);margin-top:3px;">
+                de <?= (int)$cobertura['skus_total'] ?>
+              </div>
+            </div>
+          </div>
+
+          <?php if (!$cobOk): ?>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+            <?php if ((int)$cobertura['produtos_sem'] > 0): ?>
+            <a href="<?= ADMIN_URL ?>/produtos?bling_sync=pai_nao_sync" class="btn btn-outline btn-sm">
+              Ver produtos sem vínculo
+            </a>
+            <?php endif; ?>
+            <?php if ((int)$cobertura['skus_sem'] > 0): ?>
+            <a href="<?= ADMIN_URL ?>/produtos?bling_sync=sku_nao_sync" class="btn btn-outline btn-sm">
+              Ver SKUs sem vínculo
+            </a>
+            <?php endif; ?>
+          </div>
+          <?php else: ?>
+          <div style="font-size:12.5px;color:var(--success);font-weight:700;margin-bottom:14px;">
+            ✓ Catálogo vendável 100% vinculado
+          </div>
+          <?php endif; ?>
+
+          <!-- Fila de pedidos -->
+          <div style="border-top:1px solid var(--c-border);padding-top:12px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;font-size:13px;margin-bottom:8px;">
+              <span style="color:var(--c-text-muted);">Pedidos na fila</span>
+              <strong><?= (int)$filaPendente ?></strong>
+            </div>
+
+            <?php if ($temFila): ?>
+            <div style="font-size:12.5px;color:var(--danger);font-weight:700;margin-bottom:8px;">
+              <?= count($pedidosFalha) ?> pedido(s) falharam — não baixaram estoque
+            </div>
+            <div style="max-height:190px;overflow:auto;">
+              <?php foreach ($pedidosFalha as $pf): ?>
+              <div style="padding:8px 10px;border:1px solid #fecaca;background:#fef2f2;border-radius:7px;margin-bottom:6px;">
+                <a href="<?= ADMIN_URL ?>/pedidos/<?= (int)$pf['id'] ?>"
+                   style="font-weight:800;font-size:12.5px;">#<?= View::e($pf['codigo']) ?></a>
+                <span style="font-size:11px;color:var(--c-text-muted);">
+                  · <?= (int)$pf['bling_sync_tentativas'] ?> tentativas
+                </span>
+                <div style="font-size:11px;color:var(--c-text-muted);margin-top:3px;word-break:break-word;">
+                  <?= View::e(mb_substr((string)$pf['bling_sync_erro'], 0, 160)) ?>
+                </div>
+              </div>
+              <?php endforeach; ?>
+            </div>
+            <?php else: ?>
+            <div style="font-size:12.5px;color:var(--success);font-weight:700;">
+              ✓ Nenhum pedido travado
+            </div>
+            <?php endif; ?>
+          </div>
+        </div>
+      </div>
+
       <div class="admin-card" style="margin-bottom:14px;">
         <h3 class="ap-card-title">O que está integrado</h3>
         <div style="padding:14px 20px;">

@@ -138,73 +138,21 @@ class EstoqueService {
         return $this->mover($produtoId, $quantidade, 'saida', $tipo, $origem, $opcoes);
     }
 
-    /**
-     * Recalcula o saldo a partir do log (auditoria).
-     * Não altera o saldo atual — apenas retorna o valor calculado.
-     */
-    public function recalcular(int $produtoId, ?int $skuId = null): array {
-        $stmt = $this->db->prepare(
-            "SELECT
-                SUM(CASE
-                    WHEN tipo IN ('entrada_manual','entrada_nf','entrada_devolucao','correcao')
-                         AND quantidade > 0 THEN quantidade
-                    WHEN tipo IN ('saida_venda','saida_manual','saida_ajuste','correcao')
-                         AND quantidade < 0 THEN quantidade
-                    WHEN tipo IN ('entrada_manual','entrada_nf','entrada_devolucao')
-                         THEN quantidade
-                    WHEN tipo IN ('saida_venda','saida_manual','saida_ajuste')
-                         THEN -quantidade
-                    ELSE 0
-                END) AS saldo_calculado
-             FROM estoque_log
-             WHERE produto_id = ?
-               AND (sku_id = ? OR (sku_id IS NULL AND ? IS NULL))
-               AND tipo NOT IN ('reserva','reserva_cancelada')"
-        );
-        $stmt->execute([$produtoId, $skuId, $skuId]);
-        $saldoCalculado = (int)$stmt->fetchColumn();
-
-        $saldoAtual = $this->getSaldo($produtoId, $skuId);
-        $divergencia = $saldoCalculado !== $saldoAtual;
-
-        return [
-            'produto_id'      => $produtoId,
-            'sku_id'          => $skuId,
-            'saldo_atual'     => $saldoAtual,
-            'saldo_calculado' => $saldoCalculado,
-            'divergencia'     => $divergencia,
-            'diferenca'       => $saldoCalculado - $saldoAtual,
-        ];
-    }
-
-    /**
-     * Corrige divergências encontradas no recalculo.
-     */
-    public function sincronizarDivergencia(int $produtoId, ?int $skuId = null): array {
-        $recalculo = $this->recalcular($produtoId, $skuId);
-
-        if (!$recalculo['divergencia']) {
-            return ['ok' => true, 'msg' => 'Sem divergência.'];
-        }
-
-        // Gera log de tipo 'recalculo' sem alterar o saldo em cascata
-        $this->db->prepare(
-            "UPDATE estoque_saldo SET saldo = ?
-             WHERE produto_id = ? AND (sku_id = ? OR (sku_id IS NULL AND ? IS NULL))"
-        )->execute([
-            $recalculo['saldo_calculado'],
-            $produtoId, $skuId, $skuId,
-        ]);
-
-        LogService::warning("Divergência de estoque corrigida: produto {$produtoId}, SKU {$skuId}: "
-            . "{$recalculo['saldo_atual']} → {$recalculo['saldo_calculado']}");
-
-        return [
-            'ok'         => true,
-            'corrigido'  => true,
-            'saldo_novo' => $recalculo['saldo_calculado'],
-        ];
-    }
+    // ── recalcular() e sincronizarDivergencia() REMOVIDOS ──
+    //
+    // Derivavam o saldo somando o estoque_log local. Isso valia enquanto o
+    // site era dono do estoque; com o Bling dono, as baixas acontecem lá e
+    // o ledger local só registra os espelhamentos — a soma dava um número
+    // que nunca existiu, e o sincronizarDivergencia() GRAVAVA esse número
+    // em estoque_saldo.
+    //
+    // O CASE ainda tinha dois defeitos próprios: 'correcao' caía sempre no
+    // ramo positivo (quantidade é gravada em valor absoluto, então correção
+    // para baixo era contada como entrada) e 'entrada_int'/'saida_int' — os
+    // movimentos vindos do Bling — não apareciam em ramo nenhum.
+    //
+    // Substituídos por BlingEstoqueService::sincronizarProduto(), que
+    // pergunta o saldo ao Bling em vez de inventá-lo.
 
     // ────────────────────────────────────────────────────────
     // CONSULTAS

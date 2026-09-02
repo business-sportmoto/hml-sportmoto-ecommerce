@@ -476,6 +476,99 @@ class BlingEstoqueService
         return ['ok' => true, 'bling_id' => $blingId, 'msg' => "Estoque sincronizado: {$saldo} unidade(s)."];
     }
     
+    /**
+     * Ressincroniza UM produto com o Bling — com ou sem variação.
+     *
+     * Substitui o antigo EstoqueService::recalcular(), que derivava saldo
+     * do estoque_log local. Isso deixou de fazer sentido quando o Bling
+     * virou dono do estoque: as baixas acontecem LÁ, e o ledger local só
+     * tem os espelhamentos. Recalcular pelo log local devolvia um número
+     * inventado — e o botão gravava esse número.
+     *
+     * Aqui a pergunta certa é "qual é o saldo no Bling AGORA?".
+     *
+     * Uma chamada em lote cobre todos os SKUs do produto.
+     *
+     * @return array{ok:bool, msg:string, atualizados?:int, sem_vinculo?:array}
+     */
+    public function sincronizarProduto(int $produtoId): array
+    {
+        $idDeposito = $this->getDepositoPadrao();
+        if (!$idDeposito) {
+            return ['ok' => false, 'msg' => 'Nenhum depósito Bling configurado. Sincronize os depósitos primeiro.'];
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT id, nome, bling_id, sku_legado, tem_variacao
+             FROM produtos WHERE id = ? AND deleted_at IS NULL LIMIT 1"
+        );
+        $stmt->execute([$produtoId]);
+        $prod = $stmt->fetch();
+        if (!$prod) return ['ok' => false, 'msg' => 'Produto não encontrado.'];
+
+        // Monta o mapa bling_id => sku_id (NULL = nível produto), igual ao
+        // cron, mas escopado a este produto.
+        $mapa = [];
+        $semVinculo = [];
+
+        $stmtSkus = $this->db->prepare(
+            "SELECT id, sku, bling_id FROM produto_skus
+             WHERE produto_id = ? AND ativo = 1"
+        );
+        $stmtSkus->execute([$produtoId]);
+        $skus = $stmtSkus->fetchAll();
+
+        if ($skus) {
+            foreach ($skus as $s) {
+                if (!empty($s['bling_id'])) {
+                    $mapa[(string)$s['bling_id']] = (int)$s['id'];
+                } else {
+                    $semVinculo[] = (string)$s['sku'];
+                }
+            }
+        } else {
+            // Produto sem variação: o saldo vive no nível do produto
+            if (!empty($prod['bling_id'])) {
+                $mapa[(string)$prod['bling_id']] = null;
+            } else {
+                $semVinculo[] = (string)($prod['sku_legado'] ?? $prod['nome']);
+            }
+        }
+
+        if (!$mapa) {
+            return ['ok' => false,
+                    'sem_vinculo' => $semVinculo,
+                    'msg' => 'Nenhum vínculo com o Bling. Use "Vincular produtos" nas configurações '
+                           . 'da integração — sem vínculo este produto nunca recebe saldo nem dá baixa.'];
+        }
+
+        $blingIds = array_keys($mapa);
+        $atualizados = 0;
+
+        foreach (array_chunk($blingIds, self::BATCH_SIZE) as $batch) {
+            $itens = $this->api->getComArray(
+                "/estoques/saldos/{$idDeposito}",
+                ['idsProdutos' => $batch]
+            );
+            foreach ($itens as $e) {
+                $bid = (string)($e['produto']['id'] ?? $e['produtoId'] ?? '');
+                if (!array_key_exists($bid, $mapa)) continue;
+                $saldo = (float)($e['saldoFisicoTotal'] ?? $e['saldoFisico'] ?? 0);
+                $this->corrigirSaldoAbsoluto($mapa[$bid], $produtoId, $saldo);
+                $atualizados++;
+            }
+        }
+
+        $msg = "{$atualizados} saldo(s) atualizado(s) a partir do Bling.";
+        if ($semVinculo) {
+            $msg .= ' Atenção: ' . count($semVinculo) . ' sem vínculo ficaram de fora ('
+                  . implode(', ', array_slice($semVinculo, 0, 5)) . ').';
+        }
+
+        return ['ok' => true, 'atualizados' => $atualizados,
+                'sem_vinculo' => $semVinculo, 'msg' => $msg];
+    }
+
     /** ID do depósito padrão (o sync usa este). Null se não sincronizou. */
     private function getDepositoPadrao(): ?int
     {

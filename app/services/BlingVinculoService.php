@@ -133,6 +133,56 @@ final class BlingVinculoService
         ];
     }
 
+    /**
+     * Cobertura do vínculo — o número que decide se o espelho de estoque
+     * cobre o catálogo ou só um pedaço dele.
+     *
+     * POR QUE IMPORTA: produto sem bling_id não entra no mapa do
+     * sincronizarEstoque() (que só monta a partir de bling_id NOT NULL)
+     * e o webhook de estoque dele é descartado como 'ignorado'. Ou seja,
+     * ele fica congelado no saldo que veio da importação e vende para
+     * sempre. E, na outra ponta, o item dele vai ao Bling como texto
+     * livre — o pedido entra, mas não baixa estoque em canal nenhum.
+     *
+     * Só conta o que é VENDÁVEL: produto inativo sem vínculo é irrelevante.
+     *
+     * @return array{produtos_total:int, produtos_sem:int,
+     *               skus_total:int, skus_sem:int, ok:bool}
+     */
+    public function cobertura(): array
+    {
+        $produtosTotal = (int)$this->db->query(
+            "SELECT COUNT(*) FROM produtos
+             WHERE ativo = 1 AND deleted_at IS NULL"
+        )->fetchColumn();
+
+        $produtosSem = (int)$this->db->query(
+            "SELECT COUNT(*) FROM produtos
+             WHERE ativo = 1 AND deleted_at IS NULL AND bling_id IS NULL"
+        )->fetchColumn();
+
+        $skusTotal = (int)$this->db->query(
+            "SELECT COUNT(*) FROM produto_skus ps
+             JOIN produtos p ON p.id = ps.produto_id
+             WHERE ps.ativo = 1 AND p.ativo = 1 AND p.deleted_at IS NULL"
+        )->fetchColumn();
+
+        $skusSem = (int)$this->db->query(
+            "SELECT COUNT(*) FROM produto_skus ps
+             JOIN produtos p ON p.id = ps.produto_id
+             WHERE ps.ativo = 1 AND p.ativo = 1 AND p.deleted_at IS NULL
+               AND ps.bling_id IS NULL"
+        )->fetchColumn();
+
+        return [
+            'produtos_total' => $produtosTotal,
+            'produtos_sem'   => $produtosSem,
+            'skus_total'     => $skusTotal,
+            'skus_sem'       => $skusSem,
+            'ok'             => ($produtosSem === 0 && $skusSem === 0),
+        ];
+    }
+
     private function casarProdutos(array $idx): int
     {
         if (!$idx) return 0;

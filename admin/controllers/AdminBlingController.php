@@ -34,8 +34,22 @@ class AdminBlingController extends Controller
              ORDER BY padrao DESC, descricao ASC"
         )->fetchAll();
  
+        // Saúde da integração — os dois pontos cegos do modelo em que o
+        // Bling é dono do estoque:
+        //   cobertura     → produto vendável sem vínculo nunca recebe saldo
+        //                   e nunca baixa (item vai ao Bling como texto livre)
+        //   pedidosFalha  → pedido que esgotou a fila não baixou estoque
+        //                   em canal nenhum
+        $cobertura    = (new BlingVinculoService())->cobertura();
+        $pedidosFalha = (new BlingOrderService())->pedidosComFalha(10);
+
+        $filaPendente = (int)$db->query(
+            "SELECT COUNT(*) FROM pedidos WHERE bling_sync_status = 'pendente'"
+        )->fetchColumn();
+
         $this->render('configuracoes/bling', compact(
-            'conectado', 'tokenInfo', 'logs', 'ultimaSync', 'depositos'
+            'conectado', 'tokenInfo', 'logs', 'ultimaSync', 'depositos',
+            'cobertura', 'pedidosFalha', 'filaPendente'
         ),'admin');
     }
 
