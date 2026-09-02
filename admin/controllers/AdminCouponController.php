@@ -373,6 +373,9 @@ class AdminCouponController extends Controller {
             'apenas_primeira_compra' => (int)($_POST['apenas_primeira_compra'] ?? 0),
             'permite_produto_promo'  => (int)($_POST['permite_produto_promo']  ?? 1),
             'acumula_desconto'       => (int)($_POST['acumula_desconto']        ?? 0),
+            // Ausente do POST = 0: checkbox desmarcado não é postado, e o
+            // padrão precisa ser "não divulga" em qualquer caminho.
+            'divulgavel'             => (int)($_POST['divulgavel']              ?? 0),
             'escopo_produtos'        => $this->parseIds($_POST['escopo_produtos']   ?? ''),
             'escopo_categorias'      => $this->parseIds($_POST['escopo_categorias'] ?? ''),
             'escopo_marcas'          => $this->parseIds($_POST['escopo_marcas']     ?? ''),

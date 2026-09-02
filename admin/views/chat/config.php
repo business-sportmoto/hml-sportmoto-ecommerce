@@ -407,6 +407,31 @@ $on   = fn(string $k, bool $d = false) => in_array(strtolower((string)($config[$
       </div>
     </div>
 
+    <div class="ch-card" style="margin-bottom:16px;">
+      <div class="ch-card-head"><h2>7. Agente de IA</h2></div>
+      <div class="ch-card-body">
+        <div class="ch-aviso ch-aviso--info">
+          <div>
+            Vale para o bloco <strong>Etapa de IA</strong> dos fluxos. Comentário sem
+            pergunta — “top”, “😍”, uma marcação — nem chega ao modelo: num reel viral
+            isso é a maior parte do volume, e responder emoji com IA é o jeito mais
+            rápido de queimar a cota do dia.
+          </div>
+        </div>
+
+        <div class="ch-campo" style="margin-bottom:0;max-width:280px;">
+          <label class="ch-label">Respostas de IA por dia</label>
+          <input type="number" class="ch-input" name="ia_limite_dia" min="0" max="100000"
+                 value="<?= (int)$cfg('ia_limite_dia', 500) ?>">
+          <div class="ch-ajuda">
+            Atingido o teto, o agente devolve as conversas para a régua fixa até o dia
+            seguinte, e os gestores recebem um aviso no sino. <strong>0</strong> = sem teto.
+            O limite de gasto por provedor continua valendo por cima deste.
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="ch-flex" style="justify-content:flex-end;gap:8px;margin-bottom:20px;">
       <span id="ch-cfg-msg" class="ch-sm"></span>
       <button type="submit" class="ch-btn ch-btn--pri">Salvar configuração</button>

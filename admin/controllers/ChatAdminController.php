@@ -97,7 +97,8 @@ class ChatAdminController extends Controller
                       'notif_conversa_nova', 'notif_mensagem', 'notif_atribuicao',
                       'notif_campanha'];
         $inteiros  = ['quiet_hours_inicio', 'quiet_hours_fim', 'pausa_bot_minutos', 'janela_horas',
-                      'notif_silencio_min', 'notif_sem_resposta_min', 'notif_falhas_min'];
+                      'notif_silencio_min', 'notif_sem_resposta_min', 'notif_falhas_min',
+                      'ia_limite_dia'];
 
         $pares = [];
         foreach ($booleanos as $c) $pares[$c] = !empty($_POST[$c]) ? '1' : '0';
@@ -114,6 +115,9 @@ class ChatAdminController extends Controller
                 'notif_sem_resposta_min'                => max(0, min(1440, $v)),
                 'notif_silencio_min'                    => max(0, min(1440, $v)),
                 'notif_falhas_min'                      => max(0, min(1000, $v)),
+                // 0 = sem teto. O teto por PROVEDOR do IACustoService continua
+                // valendo por cima deste — são camadas diferentes.
+                'ia_limite_dia'                         => max(0, min(100000, $v)),
                 default                                 => $v,
             };
             $pares[$c] = (string)$v;

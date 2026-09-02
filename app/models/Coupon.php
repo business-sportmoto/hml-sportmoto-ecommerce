@@ -164,9 +164,10 @@ class Coupon {
              (codigo, nome, descricao, tipo, valor, valor_maximo, valor_minimo_pedido,
               ativo, data_inicio, data_fim, limite_total, limite_por_cliente,
               apenas_primeira_compra, permite_produto_promo, acumula_desconto,
+              divulgavel,
               escopo_produtos, escopo_categorias, escopo_marcas, escopo_clientes,
               regras_progressivas, campanha_id, campanha_nome, criado_por)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
         )->execute([
             $data['codigo'],
             $data['nome'],
@@ -183,6 +184,8 @@ class Coupon {
             $data['apenas_primeira_compra'] ?? 0,
             $data['permite_produto_promo']  ?? 1,
             $data['acumula_desconto']       ?? 0,
+            // Opt-in: cupom novo NUNCA nasce podendo ser distribuído sozinho
+            $data['divulgavel']             ?? 0,
             isset($data['escopo_produtos'])   ? json_encode($data['escopo_produtos'])   : null,
             isset($data['escopo_categorias']) ? json_encode($data['escopo_categorias']) : null,
             isset($data['escopo_marcas'])      ? json_encode($data['escopo_marcas'])     : null,
@@ -202,7 +205,7 @@ class Coupon {
              codigo=?, nome=?, descricao=?, tipo=?, valor=?, valor_maximo=?,
              valor_minimo_pedido=?, ativo=?, data_inicio=?, data_fim=?,
              limite_total=?, limite_por_cliente=?, apenas_primeira_compra=?,
-             permite_produto_promo=?, acumula_desconto=?,
+             permite_produto_promo=?, acumula_desconto=?, divulgavel=?,
              escopo_produtos=?, escopo_categorias=?, escopo_marcas=?,
              escopo_clientes=?, regras_progressivas=?,
              campanha_id=?, campanha_nome=?, atualizado_por=?
@@ -223,6 +226,7 @@ class Coupon {
             $data['apenas_primeira_compra'] ?? 0,
             $data['permite_produto_promo']  ?? 1,
             $data['acumula_desconto']       ?? 0,
+            $data['divulgavel']             ?? 0,
             isset($data['escopo_produtos'])   ? json_encode($data['escopo_produtos'])   : null,
             isset($data['escopo_categorias']) ? json_encode($data['escopo_categorias']) : null,
             isset($data['escopo_marcas'])      ? json_encode($data['escopo_marcas'])     : null,

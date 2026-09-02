@@ -259,6 +259,14 @@ class ChatIaAgenteService
         $pergunta = trim(mb_substr($pergunta, 0, 500));
         if ($pergunta === '') return $this->naoSei('pergunta vazia');
 
+        // Filtro barato ANTES do modelo. Num reel viral a maioria dos
+        // comentários é "top", "😍", "quero" — nenhum deles é pergunta, e
+        // pagar modelo para responder emoji é o jeito mais rápido de queimar
+        // a cota do dia. Isso cai na porta nao_sabe, onde a régua fixa resolve.
+        if (!self::mereceModelo($pergunta)) return $this->naoSei('comentário sem pergunta');
+
+        if (!$this->dentroDoTeto()) return $this->naoSei('teto diário de IA atingido');
+
         // O direct é a resposta que importa; o público é o convite.
         $direct = $this->gerar($pergunta, $ctxProduto, false, $opts);
         if ($direct === null) return $this->naoSei('modelo não respondeu');
@@ -285,6 +293,79 @@ class ChatIaAgenteService
         }
 
         return ['ok' => true, 'direct' => trim($direct), 'publico' => $publico, 'motivo' => ''];
+    }
+
+    /**
+     * Vale a pena gastar uma chamada de modelo com este comentário?
+     *
+     * Heurística de graça, aplicada antes de qualquer custo. Vale quando há
+     * sinal de PERGUNTA — interrogação ou palavra interrogativa —, ou quando o
+     * texto é longo o bastante para provavelmente ser uma. "top", "😍", "quero"
+     * não são perguntas, e num reel viral eles são a maior parte do volume.
+     */
+    public static function mereceModelo(string $t): bool
+    {
+        // Menção sozinha é marcação de amigo, não pergunta para a loja
+        $limpo = trim(preg_replace('/@[\w.]+/u', '', $t) ?? '');
+        if ($limpo === '') return false;
+
+        if (str_contains($limpo, '?')) return true;
+
+        $baixo = mb_strtolower($limpo);
+        foreach (['quanto', 'qual', 'quais', 'quando', 'onde', 'como', 'porque', 'por que',
+                  'tem ', 'temos', 'serve', 'cabe', 'funciona', 'entrega', 'envia',
+                  'preco', 'preço', 'valor', 'medida', 'tamanho', 'peso', 'cor ',
+                  'disponivel', 'disponível', 'parcel', 'frete'] as $p) {
+            if (str_contains($baixo, $p)) return true;
+        }
+
+        // Sem sinal de pergunta, só entra se for texto de verdade. Conta LETRAS:
+        // emoji e pontuação não dizem nada e inflariam qualquer contagem bruta.
+        $letras = preg_replace('/[^\p{L}]/u', '', $limpo) ?? '';
+        return mb_strlen($letras) >= 12;
+    }
+
+    /**
+     * Teto diário do módulo de chat.
+     *
+     * O IACustoService já limita gasto POR PROVEDOR, mas esse teto é global: um
+     * reel descontrolado consumiria a cota que o resto da loja usa para gerar
+     * conteúdo. Este conta só as respostas do atendimento.
+     */
+    private function dentroDoTeto(): bool
+    {
+        $teto = class_exists('ChatConfig') ? ChatConfig::int('ia_limite_dia', 500) : 500;
+        if ($teto <= 0) return true;   // 0 = sem teto
+
+        try {
+            $hoje = (int)$this->db->query(
+                "SELECT COUNT(*) FROM ia_geracoes
+                 WHERE formato IN ('ig_comentario','ig_direct')
+                   AND criado_em >= CURDATE()"
+            )->fetchColumn();
+        } catch (Throwable $e) {
+            return true;   // sem conseguir contar, não trava o atendimento
+        }
+
+        if ($hoje < $teto) return true;
+
+        // Avisa uma vez por hora — quem opera precisa saber que o agente calou
+        $this->avisarTeto($hoje, $teto);
+        return false;
+    }
+
+    private function avisarTeto(int $usadas, int $teto): void
+    {
+        if (!class_exists('ChatNotificacaoService')) return;
+        try {
+            (new ChatNotificacaoService($this->db))->avisoDeSistema(
+                'chat_ia_teto',
+                'Agente de IA atingiu o teto do dia',
+                "$usadas de $teto respostas usadas. Até amanhã o agente devolve "
+                . 'as conversas para a régua fixa.',
+                (defined('BASE_URL') ? BASE_URL : '') . '/admin/chat/config'
+            );
+        } catch (Throwable $e) {}
     }
 
     private function naoSei(string $motivo): array
@@ -337,14 +418,20 @@ class ChatIaAgenteService
         $pergunta = (string)($opts['pergunta'] ?? '');
 
         try {
+            // usuario_id e tipo_conteudo_id são NOT NULL com FK. A resposta é
+            // automática e não tem admin por trás, então cai no dono do fluxo —
+            // e, se ele sumiu, num super ativo, para a linha de custo nunca
+            // ficar órfã.
             $st = $this->db->prepare(
                 "INSERT INTO ia_geracoes
-                    (uuid, produto_id, capacidade, formato, prompt_final, contexto,
-                     status, criado_em)
-                 VALUES (:u, :p, 'texto', :f, :pf, :ctx, 'processando', NOW())"
+                    (uuid, usuario_id, tipo_conteudo_id, produto_id, capacidade,
+                     formato, prompt_final, contexto, status, criado_em)
+                 VALUES (:u, :uid, :tc, :p, 'texto', :f, :pf, :ctx, 'processando', NOW())"
             );
             $st->execute([
                 ':u'   => $this->uuid(),
+                ':uid' => $this->usuarioResponsavel($opts),
+                ':tc'  => $this->tipoConteudoId(),
                 ':p'   => (int)($opts['produto_id'] ?? 0) ?: null,
                 ':f'   => $publico ? 'ig_comentario' : 'ig_direct',
                 ':pf'  => $prompt,
@@ -392,6 +479,51 @@ class ChatIaAgenteService
             $this->logar('ia: falha ao gerar resposta', ['erro' => $e->getMessage()]);
             return null;
         }
+    }
+
+    /** id do tipo `resposta_atendimento`, memoizado por request. */
+    private function tipoConteudoId(): int
+    {
+        static $id = null;
+        if ($id !== null) return $id;
+
+        $v = $this->db->query(
+            "SELECT id FROM ia_tipos_conteudo WHERE codigo = 'resposta_atendimento' LIMIT 1"
+        )->fetchColumn();
+
+        // Sem o tipo próprio (migration não rodou), cai no FAQ de produto, que
+        // é o mais próximo — melhor um relatório misturado que o agente mudo.
+        if ($v === false) {
+            $v = $this->db->query(
+                "SELECT id FROM ia_tipos_conteudo WHERE capacidade = 'texto' ORDER BY id LIMIT 1"
+            )->fetchColumn();
+        }
+        return $id = (int)$v;
+    }
+
+    /**
+     * A quem a geração é atribuída. Não existe admin pedindo — é automático —
+     * mas a coluna é NOT NULL com FK para `usuarios`.
+     */
+    private function usuarioResponsavel(array $opts): ?int
+    {
+        $fluxoId = (int)($opts['fluxo_id'] ?? 0);
+        if ($fluxoId > 0) {
+            $st = $this->db->prepare("SELECT criado_por FROM chat_fluxos WHERE id = :f LIMIT 1");
+            $st->execute([':f' => $fluxoId]);
+            $u = (int)$st->fetchColumn();
+            if ($u > 0) return $u;
+        }
+
+        static $fallback = null;
+        if ($fallback === null) {
+            $fallback = (int)$this->db->query(
+                "SELECT u.id FROM admins a JOIN usuarios u ON u.id = a.usuario_id
+                 WHERE a.nivel = 'super' AND u.ativo = 1 AND u.deleted_at IS NULL
+                 ORDER BY u.id LIMIT 1"
+            )->fetchColumn();
+        }
+        return $fallback ?: null;
     }
 
     private function uuid(): string

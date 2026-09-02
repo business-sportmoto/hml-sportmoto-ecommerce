@@ -211,6 +211,24 @@ $progressivas = json_decode($c['regras_progressivas'] ?? 'null', true) ?? [];
             <span><?= $label ?></span>
           </label>
           <?php endforeach; ?>
+
+          <?php // Separado dos outros de propósito: os de cima mudam COMO o
+                // cupom se comporta no checkout; este decide se ele sai sozinho
+                // para gente que a loja não escolheu uma a uma. ?>
+          <label class="toggle-field" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+            <input type="checkbox" name="divulgavel" value="1"
+                   <?= ($c['divulgavel'] ?? 0) ? 'checked' : '' ?>>
+            <span class="toggle-slider"></span>
+            <span>
+              Pode ser oferecido automaticamente pelo agente do Instagram
+              <small style="display:block;color:var(--text-3);font-weight:400;margin-top:2px;">
+                Quem clicou no link do direct, colocou no carrinho e não comprou
+                recebe este cupom. <strong>Deixe desligado</strong> se ele for de
+                campanha fechada, de um cliente, ou se você não quiser que circule
+                fora do seu controle.
+              </small>
+            </span>
+          </label>
         </div>
 
         <!-- Campanha e vendedor -->

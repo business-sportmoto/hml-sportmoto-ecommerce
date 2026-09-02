@@ -253,6 +253,35 @@ class ChatNotificacaoService
         }
     }
 
+    /**
+     * Aviso de sistema para os gestores, com a mesma trava anti-repetição dos
+     * outros. Existe para módulos vizinhos (o teto de IA, por exemplo) não
+     * precisarem alcançar os privados daqui só para mandar um recado.
+     *
+     * @param string $tipo chave do anti-repetição — use uma por assunto
+     */
+    public function avisoDeSistema(string $tipo, string $titulo, string $mensagem,
+                                   ?string $url = null, int $silencioMin = 60): bool
+    {
+        try {
+            if ($this->jaAvisou($tipo, 0, $silencioMin)) return false;
+
+            $alvos = $this->gestores();
+            if (!$alvos) return false;
+
+            $this->enviar($tipo, [
+                'titulo'   => $titulo,
+                'mensagem' => $mensagem,
+                'url'      => $url ?: ($this->base() . '/admin/chat'),
+            ], $alvos, ['conversa_id' => 0]);
+
+            return true;
+        } catch (Throwable $e) {
+            $this->logar('avisoDeSistema', $e);
+            return false;
+        }
+    }
+
     /** Campanha terminou — avisa quem apertou o botão. */
     public function campanhaConcluida(int $campanhaId): void
     {
