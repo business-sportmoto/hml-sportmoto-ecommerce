@@ -64,6 +64,7 @@ class ChatFluxoController extends Controller
             'fluxos'    => $this->outrosFluxos($id),
             'agentes'   => (new ChatConversaService())->agentesDisponiveis(),
             'campos'    => $contatos->chavesDeCampoConhecidas(),
+            'produtos'  => $this->svc->produtosDoGrafo($fluxo['grafo']),
         ], 'admin');
     }
 

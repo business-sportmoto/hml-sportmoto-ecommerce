@@ -824,6 +824,52 @@ html[data-theme="dark"] .ch-fx-flut {
 .ch-fx-painel-campos { padding: 16px; flex: 1; overflow-y: auto; }
 .ch-fx-painel-pe { padding: 12px 16px; border-top: 1px solid var(--ch-line); flex: none; }
 
+/* ── Campo de produto (busca por nome ou SKU) ────────────────────────────── */
+.ch-fx-prod { position: relative; }
+
+.ch-fx-prod-chip {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border: 1px solid var(--ch-line2); border-radius: var(--ch-r);
+  background: var(--ch-chip);
+}
+.ch-fx-prod-txt { flex: 1; min-width: 0; }
+.ch-fx-prod-txt strong {
+  display: block; font-size: 13px; font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ch-fx-prod-txt .ch-sm { font-family: var(--font-mono, ui-monospace, monospace); }
+.ch-fx-prod-x {
+  flex: none; width: 24px; height: 24px; border-radius: 6px; cursor: pointer;
+  border: none; background: none; color: var(--ch-mut); font-size: 13px; line-height: 1;
+}
+.ch-fx-prod-x:hover { background: var(--surface); color: var(--text); }
+
+.ch-fx-prod-alerta {
+  margin-top: 6px; font-size: 12px; line-height: 1.45; color: var(--warning);
+}
+
+/* A lista flutua: dentro do fluxo do painel ela empurraria os campos de baixo
+   a cada tecla digitada. */
+.ch-fx-prod-sug {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 3;
+  max-height: 260px; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--ch-line2);
+  border-radius: var(--ch-r); box-shadow: 0 10px 28px -10px rgba(16,24,40,.28);
+}
+.ch-fx-prod-item {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  padding: 9px 12px; border: none; background: none;
+  border-bottom: 1px solid var(--ch-line);
+}
+.ch-fx-prod-item:last-child { border-bottom: none; }
+.ch-fx-prod-item:hover { background: var(--ch-chip); }
+.ch-fx-prod-item strong {
+  display: block; font-size: 13px; font-weight: 500; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ch-fx-prod-item .ch-sm { display: block; margin-top: 1px; }
+.ch-fx-prod-vazio { padding: 12px; font-size: 13px; color: var(--ch-mut); }
+
 /* ── Avisos ──────────────────────────────────────────────────────────────── */
 /* Flutuam no rodapé: erro de publicação não pode empurrar o canvas. */
 .ch-fx-msg {

@@ -150,6 +150,7 @@ $config = json_decode($fluxo['config_json'] ?? '{}', true) ?: [];
     fluxos:    <?= json_encode($fluxos, JSON_UNESCAPED_UNICODE) ?>,
     agentes:   <?= json_encode($agentes, JSON_UNESCAPED_UNICODE) ?>,
     campos:    <?= json_encode($campos, JSON_UNESCAPED_UNICODE) ?>,
+    produtos:  <?= json_encode((object)($produtos ?? []), JSON_UNESCAPED_UNICODE) ?>,
     publicado: <?= (int)$fluxo['versao_publicada'] ?>
   };
 </script>

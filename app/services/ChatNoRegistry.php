@@ -1263,7 +1263,7 @@ class ChatNoIaResponder extends ChatNo
         if ($produtoId < 1) return 'nao_sabe';
 
         $agente = new ChatIaAgenteService($ctx->db);
-        $campos = $config['campos'] ?? ChatIaAgenteService::CAMPOS;
+        $campos = $this->camposDe($config['campos'] ?? null);
 
         // Produto inativo ou apagado devolve null: melhor calar que falar de
         // algo que saiu do ar.
@@ -1298,6 +1298,23 @@ class ChatNoIaResponder extends ChatNo
         $sessao['contexto'] = $c;
 
         return 'respondeu';
+    }
+
+    /**
+     * O painel guarda um preset ('todos'|'sem_preco'|'so_ficha'); o agente
+     * espera a lista de campos. Sem esta tradução o preset virava `['todos']`,
+     * nenhum campo casava, e o bloco respondia "não sei" a tudo — falha
+     * silenciosa que só aparecia depois de alguém abrir o painel uma vez.
+     */
+    private function camposDe($v): array
+    {
+        if (is_array($v)) return $v ?: ChatIaAgenteService::CAMPOS;
+
+        switch ((string)$v) {
+            case 'sem_preco': return ['nome', 'descricao', 'ficha', 'compatibilidade'];
+            case 'so_ficha':  return ['nome', 'ficha', 'compatibilidade'];
+            default:          return ChatIaAgenteService::CAMPOS;
+        }
     }
 
     private function responderComentario(ChatExecCtx $ctx, string $commentId, string $texto): void

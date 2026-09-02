@@ -102,6 +102,46 @@ class ChatFluxoAdminService
         return ['nos' => $nos, 'conexoes' => $conexoes];
     }
 
+    /**
+     * Nome e SKU dos produtos que os blocos deste grafo apontam.
+     *
+     * O bloco guarda só o ID. Sem este mapa, reabrir o fluxo mostraria
+     * "produto #482" — número que ninguém reconhece, ainda mais meses depois.
+     * Uma query só, e apenas com os IDs que o grafo realmente usa.
+     *
+     * Não filtra por `ativo`: um produto que saiu do ar continua sendo o que
+     * está configurado ali, e é justamente o caso em que o operador mais
+     * precisa ver o nome — o agente para de responder quando o produto some,
+     * e o painel marca isso.
+     */
+    public function produtosDoGrafo(array $grafo): array
+    {
+        $ids = [];
+        foreach ($grafo['nos'] ?? [] as $no) {
+            $id = (int)(((array)($no['config'] ?? []))['produto_id'] ?? 0);
+            if ($id > 0) $ids[$id] = true;
+        }
+        if (!$ids) return [];
+
+        $ids = array_keys($ids);
+        $ph  = implode(',', array_fill(0, count($ids), '?'));
+        $st  = $this->db->prepare(
+            "SELECT id, nome, sku_legado, ativo FROM produtos WHERE id IN ($ph)"
+        );
+        $st->execute($ids);
+
+        $mapa = [];
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $p) {
+            $mapa[(string)(int)$p['id']] = [
+                'id'         => (int)$p['id'],
+                'nome'       => $p['nome'],
+                'sku_legado' => $p['sku_legado'],
+                'ativo'      => (int)$p['ativo'],
+            ];
+        }
+        return $mapa;
+    }
+
     // =========================================================================
     // ESCRITA
     // =========================================================================

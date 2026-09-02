@@ -351,8 +351,8 @@
       cat: 'ia', label: 'Etapa de IA', ico: '✨',
       desc: 'Lê a pergunta e responde a partir dos dados do produto ligado aqui.',
       campos: [
-        { k: 'produto_id', label: 'Produto', tipo: 'number', def: '',
-          ajuda: 'ID do produto. O agente só fala do que estiver no cadastro dele.' },
+        { k: 'produto_id', label: 'Produto', tipo: 'produto', def: 0,
+          ajuda: 'O agente só fala do que estiver no cadastro deste produto.' },
         { k: 'campos', label: 'Pode usar', tipo: 'select', def: 'todos',
           ops: [['todos','Nome, preço, descrição, ficha e compatibilidade'],
                 ['sem_preco','Tudo, menos o preço'],
@@ -365,7 +365,7 @@
           ajuda: 'Vazio ou 0 usa só o teto do módulo. Um reel viral pode consumir sozinho a cota do dia inteiro.' }
       ],
       resumo: function (c) {
-        return (c.produto_id ? 'produto #' + c.produto_id : 'sem produto')
+        return nomeProduto(c.produto_id)
              + (c.responder_publico ? ' · responde no post' : ' · só direct');
       }
     },
@@ -373,7 +373,7 @@
       cat: 'acao', label: 'Oferecer cupom', ico: '🏷️',
       desc: 'Procura um cupom divulgável que sirva no produto e oferece com botão.',
       campos: [
-        { k: 'produto_id', label: 'Produto', tipo: 'number', def: '',
+        { k: 'produto_id', label: 'Produto', tipo: 'produto', def: 0,
           ajuda: 'O cupom precisa alcançar este produto pelo escopo dele — categoria, marca ou lista.' },
         { k: 'texto', label: 'Mensagem da oferta', tipo: 'textarea',
           def: 'Tenho um cupom para este produto 👀' },
@@ -382,7 +382,7 @@
         { k: 'timeout', label: 'Esperar o toque por', tipo: 'tempo', def: { horas: 24 } }
       ],
       resumo: function (c) {
-        return (c.produto_id ? 'produto #' + c.produto_id : 'sem produto') + ' · com botão';
+        return nomeProduto(c.produto_id) + ' · com botão';
       }
     },
     acao_ig_responder_comentario: {
@@ -395,6 +395,11 @@
       resumo: function (c) { return c.texto || ''; }
     }
   };
+
+  // Produtos que os blocos apontam, resolvidos pelo servidor (id → nome/SKU).
+  // A busca alimenta este mesmo mapa, então o chip continua com nome depois de
+  // escolher, sem esperar um reload.
+  var PRODS = CFG.produtos || {};
 
   // Rótulos amigáveis para as portas
   var PORTAS = {
@@ -412,6 +417,12 @@
   function nomeTag(id) {
     var t = (CFG.tags || []).filter(function (x) { return String(x.id) === String(id); })[0];
     return t ? t.nome : 'nenhuma tag';
+  }
+  function nomeProduto(id) {
+    var pid = parseInt(id, 10) || 0;
+    if (!pid) return 'sem produto';
+    var p = PRODS[String(pid)];
+    return p ? p.nome : 'produto #' + pid;
   }
   function nomeFluxo(id) {
     var f = (CFG.fluxos || []).filter(function (x) { return String(x.id) === String(id); })[0];
@@ -764,6 +775,13 @@
                '<datalist id="' + id + '_lst">' + lista + '</datalist>' +
                '<div class="ch-ajuda">Letras, números e _ apenas. Usável depois como {{' + esc(v || 'campo') + '}}.</div></div>';
 
+      case 'produto':
+        var pid = parseInt(v, 10) || 0;
+        return '<div class="ch-campo">' + lbl +
+               '<input type="hidden" class="ch-fx-c" data-k="' + k + '" data-num="1" value="' + pid + '">' +
+               '<div class="ch-fx-prod">' + (pid ? chipProduto(pid) : buscaProduto()) + '</div>' +
+               ajuda + '</div>';
+
       case 'tempo':
         var t = v || {};
         return '<div class="ch-campo">' + lbl +
@@ -823,6 +841,34 @@
                '<input type="text" class="ch-input ch-fx-c" data-k="' + k + '" value="' + esc(v || '') + '">' +
                ajuda + '</div>';
     }
+  }
+
+  // ── Campo de produto ────────────────────────────────────────────────────
+  function chipProduto(id) {
+    var p = PRODS[String(id)];
+    var nome = p ? p.nome : 'produto #' + id;
+    var meta = [];
+    if (p && p.sku_legado) meta.push(p.sku_legado);
+    meta.push('#' + id);
+
+    // Produto inativo não some do bloco, mas o agente para de responder por
+    // ele — melhor dizer isso aqui do que deixar o fluxo mudo sem explicação.
+    var alerta = (p && p.ativo === 0)
+      ? '<div class="ch-fx-prod-alerta">Produto inativo — o bloco não vai responder por ele.</div>' : '';
+
+    return '<div class="ch-fx-prod-chip">' +
+             '<div class="ch-fx-prod-txt">' +
+               '<strong>' + esc(nome) + '</strong>' +
+               '<div class="ch-sm ch-mut">' + esc(meta.join(' · ')) + '</div>' +
+             '</div>' +
+             '<button type="button" class="ch-fx-prod-x" title="Trocar produto">✕</button>' +
+           '</div>' + alerta;
+  }
+
+  function buscaProduto() {
+    return '<input type="text" class="ch-input ch-fx-prod-q" autocomplete="off" ' +
+           'placeholder="Buscar por nome ou SKU…">' +
+           '<div class="ch-fx-prod-sug" hidden></div>';
   }
 
   function numTempo(k, parte, rot, val) {
@@ -919,6 +965,70 @@
                  '#ch-fx-botoes input, #ch-fx-opcoes input', function () {
     salvarPainel();
     Hist.snap();
+  });
+
+  // ── Busca de produto ────────────────────────────────────────────────────
+  // O ID sozinho obriga a sair do editor para descobrir qual produto é. Aqui
+  // a busca é a mesma do resto do painel (/admin/api/buscar-produtos), que já
+  // procura por nome E por sku_legado.
+  var buscaSeq = 0, buscaTimer = null;
+
+  $(document).on('input', '.ch-fx-prod-q', function () {
+    var $q = $(this), $sug = $q.next('.ch-fx-prod-sug');
+    var termo = String($q.val()).trim();
+
+    clearTimeout(buscaTimer);
+    if (termo.length < 2) { $sug.attr('hidden', true).empty(); return; }
+
+    buscaTimer = setTimeout(function () {
+      var meu = ++buscaSeq;   // resposta atrasada não sobrescreve a mais nova
+      $sug.removeAttr('hidden').html('<div class="ch-fx-prod-vazio">Buscando…</div>');
+
+      $.get(BASE + '/admin/api/buscar-produtos', { q: termo, limit: 8 })
+        .done(function (r) {
+          if (meu !== buscaSeq) return;
+          var itens = (r && r.items) || [];
+          if (!itens.length) {
+            $sug.html('<div class="ch-fx-prod-vazio">Nada encontrado para “' + esc(termo) + '”.</div>');
+            return;
+          }
+          $sug.html(itens.map(function (p) {
+            PRODS[String(p.id)] = { id: p.id, nome: p.nome, sku_legado: p.sku_legado, ativo: 1 };
+            return '<button type="button" class="ch-fx-prod-item" data-id="' + p.id + '">' +
+                     '<strong>' + esc(p.nome) + '</strong>' +
+                     '<span class="ch-sm ch-mut">' +
+                       esc([p.sku_legado, p.marca, p.preco_fmt].filter(Boolean).join(' · ')) +
+                     '</span>' +
+                   '</button>';
+          }).join(''));
+        })
+        .fail(function () {
+          if (meu !== buscaSeq) return;
+          $sug.html('<div class="ch-fx-prod-vazio">Não deu para buscar agora.</div>');
+        });
+    }, 250);
+  });
+
+  $(document).on('click', '.ch-fx-prod-item', function () {
+    var id = parseInt($(this).data('id'), 10) || 0;
+    var $campo = $(this).closest('.ch-campo');
+    $campo.find('.ch-fx-prod').html(chipProduto(id));
+    // O hidden é quem o coletor lê; o change dispara o auto-save.
+    $campo.find('.ch-fx-c').val(id).trigger('change');
+  });
+
+  $(document).on('click', '.ch-fx-prod-x', function () {
+    var $campo = $(this).closest('.ch-campo');
+    $campo.find('.ch-fx-prod').html(buscaProduto());
+    $campo.find('.ch-fx-c').val(0).trigger('change');
+    $campo.find('.ch-fx-prod-q').focus();
+  });
+
+  // Clicar fora fecha a lista sem escolher nada
+  $(document).on('click', function (e) {
+    if (!$(e.target).closest('.ch-fx-prod').length) {
+      $('.ch-fx-prod-sug').attr('hidden', true).empty();
+    }
   });
 
   $(document).on('click', '.ch-fx-dia', function () { $(this).toggleClass('ativa'); salvarPainel(); });
