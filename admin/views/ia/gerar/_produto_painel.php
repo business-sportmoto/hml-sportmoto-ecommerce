@@ -29,14 +29,18 @@ $rotuloGrupo = [
 ?>
 <div class="ia_card">
   <div class="ia_produto">
-    <div class="ia_produto_thumb"><i class="bi bi-box-seam">
-      <?= IconLibrary::render('view-in-ar'); ?>
-    </i></div>
+    <div class="ia_produto_thumb">
+      <?php if (!empty($imagem['url'])): ?>
+        <img src="<?= ia_e($imagem['url']) ?>" alt="" loading="lazy">
+      <?php else: ?>
+        <?= IconLibrary::render('view-in-ar', 'ia_ico ia_ico_lg', ['aria-hidden' => 'true']) ?>
+      <?php endif; ?>
+    </div>
     <div class="ia_produto_info">
       <p class="ia_produto_nome"><?= ia_e($ctx['nome']) ?> <span class="ia_celula_sub" style="display:inline">#<?= (int) $ctx['produto_id'] ?></span></p>
       <div class="ia_resultado_meta">
-        <?php if (!empty($ctx['marca'])): ?><span><i class="bi bi-tag"></i> <?= ia_e($ctx['marca']) ?></span><?php endif; ?>
-        <?php if (!empty($ctx['categoria'])): ?><span><i class="bi bi-diagram-3"></i> <?= ia_e($ctx['categoria']) ?></span><?php endif; ?>
+        <?php if (!empty($ctx['marca'])): ?><span><?= IconLibrary::render('label', 'ia_ico', ['aria-hidden' => 'true']) ?> <?= ia_e($ctx['marca']) ?></span><?php endif; ?>
+        <?php if (!empty($ctx['categoria'])): ?><span><?= IconLibrary::render('stacks', 'ia_ico', ['aria-hidden' => 'true']) ?> <?= ia_e($ctx['categoria']) ?></span><?php endif; ?>
         <span class="ia_preco">
           <?php if ($ctx['preco_promo'] !== null): ?>
             <span class="ia_preco_de"><?= ia_e(ia_brl($ctx['preco'])) ?></span><?= ia_e(ia_brl($ctx['preco_promo'])) ?>
@@ -44,19 +48,19 @@ $rotuloGrupo = [
             <?= ia_e(ia_brl($ctx['preco'])) ?>
           <?php endif; ?>
         </span>
-        <span><i class="bi bi-boxes"></i> <?= (int) $ctx['estoque_total'] ?> em estoque</span>
+        <span><?= IconLibrary::render('stacks', 'ia_ico', ['aria-hidden' => 'true']) ?> <?= (int) $ctx['estoque_total'] ?> em estoque</span>
       </div>
       <div class="ia_produto_meta">
-        <?php if (!empty($ctx['lancamento'])): ?><span class="ia_pill ia_pill_azul"><i class="bi bi-rocket-takeoff"></i> Lançamento</span><?php endif; ?>
+        <?php if (!empty($ctx['lancamento'])): ?><span class="ia_pill ia_pill_azul"><?= IconLibrary::render('rocket-launch', 'ia_ico', ['aria-hidden' => 'true']) ?> Lançamento</span><?php endif; ?>
         <?php if ($ctx['preco_promo'] !== null): ?>
-          <span class="ia_pill ia_pill_aviso"><i class="bi bi-lightning"></i> Promoção<?= !empty($ctx['promo_fim']) ? ' até ' . ia_e(date('d/m', strtotime($ctx['promo_fim']))) : '' ?></span>
+          <span class="ia_pill ia_pill_aviso"><?= IconLibrary::render('zap', 'ia_ico', ['aria-hidden' => 'true']) ?> Promoção<?= !empty($ctx['promo_fim']) ? ' até ' . ia_e(date('d/m', strtotime($ctx['promo_fim']))) : '' ?></span>
         <?php endif; ?>
         <?php if (is_array($av) && !empty($av['total'])): ?>
-          <span class="ia_pill ia_pill_ok"><i class="bi bi-star-fill"></i> <?= number_format((float) $av['media'], 1, ',', '') ?> (<?= (int) $av['total'] ?>)</span>
+          <span class="ia_pill ia_pill_ok"><?= IconLibrary::render('star', 'ia_ico', ['aria-hidden' => 'true']) ?> <?= number_format((float) $av['media'], 1, ',', '') ?> (<?= (int) $av['total'] ?>)</span>
         <?php endif; ?>
         <?php if (!empty($ctx['compatibilidade'])): ?>
           <span class="ia_pill ia_pill_off" title="<?= ia_e(implode('; ', $ctx['compatibilidade'])) ?>">
-            <i class="bi bi-check2-circle"></i> <?= count($ctx['compatibilidade']) ?> compatibilidade(s)
+            <?= IconLibrary::render('check-circle', 'ia_ico', ['aria-hidden' => 'true']) ?> <?= count($ctx['compatibilidade']) ?> compatibilidade(s)
           </span>
         <?php endif; ?>
       </div>
@@ -65,10 +69,10 @@ $rotuloGrupo = [
 </div>
 
 <div class="ia_card">
-  <p class="ia_card_titulo"><i class="bi bi-magic"></i> Nova geração</p>
+  <p class="ia_card_titulo"><?= IconLibrary::render('wand-stars', 'ia_ico', ['aria-hidden' => 'true']) ?> Nova geração</p>
 
   <form id="ia_form_gerar" autocomplete="off">
-    <input type="hidden" name="csrf_token" value="<?= ia_e($csrf ?? '') ?>">
+    <?= SecurityHelper::csrfField() ?>
     <input type="hidden" name="produto_id" value="<?= (int) $ctx['produto_id'] ?>">
 
 <?php if (!empty($imagem) && !empty($imagem['url'])): ?>
@@ -78,7 +82,7 @@ $rotuloGrupo = [
         <p class="ia_foto_titulo">Foto principal do produto</p>
         <p class="ia_ajuda">Fonte do recorte (fundo removido) e da geração com referência.</p>
         <button type="button" class="ia_btn" id="ia_btn_recorte">
-          <i class="bi bi-scissors"></i> Remover fundo (recorte)
+          <?= IconLibrary::render('ink-eraser', 'ia_ico', ['aria-hidden' => 'true']) ?> Remover fundo (recorte)
         </button>
       </div>
     </div>
@@ -188,8 +192,8 @@ $rotuloGrupo = [
         </select>
       </div>
       <div style="display:flex;gap:8px">
-        <button type="button" id="ia_btn_preview" class="ia_btn"><i class="bi bi-eye"></i> Montar prompt</button>
-        <button type="submit" class="ia_btn ia_btn_primario"><i class="bi bi-stars"></i> Gerar</button>
+        <button type="button" id="ia_btn_preview" class="ia_btn"><?= IconLibrary::render('zoom-in', 'ia_ico', ['aria-hidden' => 'true']) ?> Montar prompt</button>
+        <button type="submit" class="ia_btn ia_btn_primario"><?= IconLibrary::render('wand-stars', 'ia_ico', ['aria-hidden' => 'true']) ?> Gerar</button>
       </div>
     </div>
   </form>

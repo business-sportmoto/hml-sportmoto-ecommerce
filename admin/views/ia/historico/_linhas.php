@@ -67,7 +67,7 @@ if (empty($linhas)): ?>
     <td class="ia_num ia_mono"><?= !empty($g['tempo_ms']) ? number_format($g['tempo_ms'] / 1000, 1, ',', '') . 's' : '—' ?></td>
     <td>
       <div class="ia_acoes">
-        <button type="button" class="ia_btn ia_btn_icone ia_ac_ver" title="Ver detalhe"><i class="bi bi-eye"></i></button>
+        <button type="button" class="ia_btn ia_btn_icone ia_ac_ver" title="Ver detalhe" aria-label="Ver detalhe da geração"><?= IconLibrary::render('zoom-in', 'ia_ico', ['aria-hidden' => 'true']) ?></button>
       </div>
     </td>
   </tr>

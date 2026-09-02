@@ -18,7 +18,7 @@ if (!function_exists('ia_usd')) {
 
   <header class="ia_head">
     <div>
-      <h1 class="ia_titulo"><i class="bi bi-stars"></i> Central de Marketing IA</h1>
+      <h1 class="ia_titulo"><?= IconLibrary::render('wand-stars', 'ia_ico', ['aria-hidden' => 'true']) ?> Central de Marketing IA</h1>
       <p class="ia_sub">Provedores, modelos e limites de uso</p>
     </div>
     <span class="ia_fase">Fase 0 · Fundação</span>
@@ -45,7 +45,7 @@ if (!function_exists('ia_usd')) {
 
   <section class="ia_card">
     <div class="ia_card_head">
-      <h2 class="ia_card_titulo"><i class="bi bi-plug"></i> Provedores</h2>
+      <h2 class="ia_card_titulo"><?= IconLibrary::render('plug', 'ia_ico', ['aria-hidden' => 'true']) ?> Provedores</h2>
       <span class="ia_hint">Novos provedores entram junto com o adapter correspondente (Fase 1+)</span>
     </div>
     <div class="ia_tabela_scroll">
@@ -70,9 +70,9 @@ if (!function_exists('ia_usd')) {
 
   <section class="ia_card">
     <div class="ia_card_head">
-      <h2 class="ia_card_titulo"><i class="bi bi-cpu"></i> Modelos</h2>
+      <h2 class="ia_card_titulo"><?= IconLibrary::render('automation', 'ia_ico', ['aria-hidden' => 'true']) ?> Modelos</h2>
       <button type="button" class="ia_btn ia_btn_primario" id="ia_btn_novo_modelo">
-        <i class="bi bi-plus-lg"></i> Novo modelo
+        <?= IconLibrary::render('plus', 'ia_ico', ['aria-hidden' => 'true']) ?> Novo modelo
       </button>
     </div>
     <div class="ia_tabela_scroll">
@@ -97,9 +97,9 @@ if (!function_exists('ia_usd')) {
 
   <section class="ia_card">
     <div class="ia_card_head">
-      <h2 class="ia_card_titulo"><i class="bi bi-speedometer2"></i> Limites de uso</h2>
+      <h2 class="ia_card_titulo"><?= IconLibrary::render('bar_chart_4_bars', 'ia_ico', ['aria-hidden' => 'true']) ?> Limites de uso</h2>
       <button type="button" class="ia_btn ia_btn_primario" id="ia_btn_novo_limite">
-        <i class="bi bi-plus-lg"></i> Novo limite
+        <?= IconLibrary::render('plus', 'ia_ico', ['aria-hidden' => 'true']) ?> Novo limite
       </button>
     </div>
     <div class="ia_tabela_scroll">
@@ -131,6 +131,11 @@ if (!function_exists('ia_usd')) {
 
   var IA_CSRF = '<?= ia_e($csrf ?? '') ?>';
 
+  // Ícone do drawer de fallback: montado em JS, então o SVG vem do servidor.
+  var IA_ICO = <?= json_encode([
+      'fechar' => IconLibrary::render('close', 'ia_ico', ['aria-hidden' => 'true']),
+  ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+
   var URLS = {
     provLinhas:  '/admin/ia/config/provedores/linhas',
     provForm:    '/admin/ia/config/provedor/form',
@@ -153,7 +158,7 @@ if (!function_exists('ia_usd')) {
     return $.ajax({ url: url, method: 'GET', data: dados || {}, dataType: 'json' });
   }
   function iaPost(url, dados) {
-    var corpo = $.extend({ csrf_token: IA_CSRF }, dados || {});
+    var corpo = $.extend({ _csrf_token: IA_CSRF }, dados || {});
     return $.ajax({ url: url, method: 'POST', data: corpo, dataType: 'json' });
   }
 
@@ -183,7 +188,7 @@ if (!function_exists('ia_usd')) {
         '<aside class="ia_drawer" id="ia_drawer" role="dialog" aria-modal="true">' +
           '<div class="ia_drawer_head">' +
             '<h3 class="ia_drawer_titulo" id="ia_drawer_titulo"></h3>' +
-            '<button type="button" class="ia_drawer_fechar" aria-label="Fechar"><i class="bi bi-x-lg"></i></button>' +
+            '<button type="button" class="ia_drawer_fechar" aria-label="Fechar">' + IA_ICO.fechar + '</button>' +
           '</div>' +
           '<div class="ia_drawer_corpo" id="ia_drawer_corpo"></div>' +
         '</aside>'

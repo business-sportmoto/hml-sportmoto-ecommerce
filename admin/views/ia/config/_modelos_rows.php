@@ -28,7 +28,7 @@ if (empty($modelos)): ?>
     <td><span class="ia_mono"><?= ia_e(IAModelo::resumoCusto($m['custo_config'])) ?></span></td>
     <td>
       <?php if ((int) $m['ativo'] === 1): ?>
-        <span class="ia_pill ia_pill_ok"><i class="bi bi-check-circle"></i> Ativo</span>
+        <span class="ia_pill ia_pill_ok"><?= IconLibrary::render('check-circle', 'ia_ico', ['aria-hidden' => 'true']) ?> Ativo</span>
       <?php else: ?>
         <span class="ia_pill ia_pill_off">Inativo</span>
       <?php endif; ?>
@@ -36,18 +36,19 @@ if (empty($modelos)): ?>
     <td>
       <div class="ia_acoes">
         <button type="button" class="ia_btn ia_btn_icone ia_ac_mod_editar"
-                data-id="<?= (int) $m['id'] ?>" title="Editar modelo">
-          <i class="bi bi-pencil"><?= IconLibrary::render('edit') ?></i>
+                data-id="<?= (int) $m['id'] ?>" title="Editar modelo" aria-label="Editar modelo">
+          <?= IconLibrary::render('edit', 'ia_ico', ['aria-hidden' => 'true']) ?>
         </button>
         <button type="button" class="ia_btn ia_btn_icone ia_ac_mod_alternar"
                 data-id="<?= (int) $m['id'] ?>"
-                title="<?= ((int) $m['ativo'] === 1) ? 'Desativar' : 'Ativar' ?>">
-          <i class="bi bi-power"><?= IconLibrary::render('radio_button_check') ?></i>
+                title="<?= ((int) $m['ativo'] === 1) ? 'Desativar' : 'Ativar' ?>" aria-label="<?= ((int) $m['ativo'] === 1) ? 'Desativar' : 'Ativar' ?>">
+          <?= IconLibrary::render('radio_button_check', 'ia_ico', ['aria-hidden' => 'true']) ?>
         </button>
         <button type="button" class="ia_btn ia_btn_icone ia_perigo ia_ac_mod_excluir"
                 data-id="<?= (int) $m['id'] ?>"
+                aria-label="Excluir modelo <?= ia_e($m['codigo_modelo']) ?>"
                 <?= $usado ? 'disabled title="Já utilizado em gerações — desative em vez de excluir"' : 'title="Excluir modelo"' ?>>
-          <i class="bi bi-trash"><?= IconLibrary::render('delete') ?></i>
+          <?= IconLibrary::render('delete', 'ia_ico', ['aria-hidden' => 'true']) ?>
         </button>
       </div>
     </td>

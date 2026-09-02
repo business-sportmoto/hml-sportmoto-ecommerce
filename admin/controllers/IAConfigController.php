@@ -29,7 +29,7 @@ class IAConfigController extends Controller
 
     public function index()
     {
-        AuthHelper::requirePermission('marketing_ia_config');
+        $this->exigirPermissao('marketing_ia_config');
 
         $dados = [
             'provedores'   => (new IAProvedor())->listar(),
@@ -49,7 +49,7 @@ class IAConfigController extends Controller
 
     public function provedoresLinhas()
     {
-        AuthHelper::requirePermission('marketing_ia_config');
+        $this->exigirPermissao('marketing_ia_config');
 
         $html = $this->partial('_provedores_rows', ['provedores' => (new IAProvedor())->listar()]);
         $this->json(['ok' => true, 'html' => $html, 'kpis' => $this->montarKpis()]);
@@ -57,7 +57,7 @@ class IAConfigController extends Controller
 
     public function provedorForm()
     {
-        AuthHelper::requirePermission('marketing_ia_config');
+        $this->exigirPermissao('marketing_ia_config');
 
         $id       = (int) ($_GET['id'] ?? 0);
         $provedor = ($id > 0) ? (new IAProvedor())->buscar($id) : null;
@@ -73,7 +73,7 @@ class IAConfigController extends Controller
 
     public function provedorSalvar()
     {
-        AuthHelper::requirePermission('marketing_ia_config');
+        $this->exigirPermissao('marketing_ia_config');
         if (!$this->exigirPost()) {
             return;
         }
@@ -163,7 +163,7 @@ class IAConfigController extends Controller
 
     public function provedorAlternar()
     {
-        AuthHelper::requirePermission('marketing_ia_config');
+        $this->exigirPermissao('marketing_ia_config');
         if (!$this->exigirPost()) {
             return;
         }
@@ -202,7 +202,7 @@ class IAConfigController extends Controller
     /** POST /admin/ia/config/provedor/testar — valida chave e conectividade (Fase 1). */
     public function provedorTestar()
     {
-        AuthHelper::requirePermission('marketing_ia_config');
+        $this->exigirPermissao('marketing_ia_config');
         if (!$this->exigirPost()) {
             return;
         }
@@ -256,7 +256,7 @@ class IAConfigController extends Controller
 
     public function modelosLinhas()
     {
-        AuthHelper::requirePermission('marketing_ia_config');
+        $this->exigirPermissao('marketing_ia_config');
 
         $html = $this->partial('_modelos_rows', [
             'modelos'     => (new IAModelo())->listar(),
@@ -267,7 +267,7 @@ class IAConfigController extends Controller
 
     public function modeloForm()
     {
-        AuthHelper::requirePermission('marketing_ia_config');
+        $this->exigirPermissao('marketing_ia_config');
 
         $id  = (int) ($_GET['id'] ?? 0);
         $mod = null;
@@ -291,7 +291,7 @@ class IAConfigController extends Controller
 
     public function modeloSalvar()
     {
-        AuthHelper::requirePermission('marketing_ia_config');
+        $this->exigirPermissao('marketing_ia_config');
         if (!$this->exigirPost()) {
             return;
         }
@@ -387,7 +387,7 @@ class IAConfigController extends Controller
 
     public function modeloAlternar()
     {
-        AuthHelper::requirePermission('marketing_ia_config');
+        $this->exigirPermissao('marketing_ia_config');
         if (!$this->exigirPost()) {
             return;
         }
@@ -420,7 +420,7 @@ class IAConfigController extends Controller
 
     public function modeloExcluir()
     {
-        AuthHelper::requirePermission('marketing_ia_config');
+        $this->exigirPermissao('marketing_ia_config');
         if (!$this->exigirPost()) {
             return;
         }
@@ -442,7 +442,7 @@ class IAConfigController extends Controller
 
     public function limitesLinhas()
     {
-        AuthHelper::requirePermission('marketing_ia_config');
+        $this->exigirPermissao('marketing_ia_config');
 
         $html = $this->partial('_limites_rows', ['limites' => (new IALimite())->listar()]);
         $this->json(['ok' => true, 'html' => $html, 'kpis' => $this->montarKpis()]);
@@ -450,7 +450,7 @@ class IAConfigController extends Controller
 
     public function limiteForm()
     {
-        AuthHelper::requirePermission('marketing_ia_config');
+        $this->exigirPermissao('marketing_ia_config');
 
         $id  = (int) ($_GET['id'] ?? 0);
         $lim = null;
@@ -469,7 +469,7 @@ class IAConfigController extends Controller
 
     public function limiteSalvar()
     {
-        AuthHelper::requirePermission('marketing_ia_config');
+        $this->exigirPermissao('marketing_ia_config');
         if (!$this->exigirPost()) {
             return;
         }
@@ -537,7 +537,7 @@ class IAConfigController extends Controller
 
     public function limiteExcluir()
     {
-        AuthHelper::requirePermission('marketing_ia_config');
+        $this->exigirPermissao('marketing_ia_config');
         if (!$this->exigirPost()) {
             return;
         }
@@ -594,6 +594,39 @@ class IAConfigController extends Controller
         return (string) ob_get_clean();
     }
 
+    /**
+     * Guard de permissão do módulo.
+     *
+     * Faz o que o AuthHelper::requirePermission() faz, com duas diferenças:
+     * a decisão de acesso passa pelo IAPermissaoService (permissão granular
+     * primeiro, cargo de cobertura depois), e a negação distingue Ajax de
+     * navegação como o requireAdminLevel — a Central é toda Ajax, e um 403
+     * em HTML chegava aos $.post como markup onde o JS esperava JSON: o
+     * usuário via "Falha de comunicação" no lugar do motivo real.
+     *
+     * A resposta de navegação é montada aqui de propósito: no painel a base
+     * de views é admin/views, onde não existem errors/403 nem o layout
+     * minimal que o AuthHelper chama — por lá a negação vira RuntimeException.
+     */
+    private function exigirPermissao(string $permissao): void
+    {
+        AuthHelper::requireAdmin();
+        if ((new IAPermissaoService())->pode($permissao)) {
+            return;
+        }
+
+        http_response_code(403);
+        if (AuthHelper::isAjax()) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => false, 'msg' => 'Sem permissão para esta ação.'], JSON_UNESCAPED_UNICODE);
+        } else {
+            header('Content-Type: text/html; charset=utf-8');
+            echo '<!doctype html><meta charset="utf-8"><title>Sem permissão</title>'
+               . '<p style="font:16px system-ui;padding:2rem">Você não tem permissão para acessar a Central de IA.</p>';
+        }
+        exit;
+    }
+
     /** Garante método POST em endpoints mutáveis. */
     private function exigirPost(): bool
     {
@@ -640,11 +673,11 @@ class IAConfigController extends Controller
     }
 
     /**
-     * Token CSRF para os formulários.
-     * AJUSTE: se o Controller base já expõe um helper próprio, use-o aqui.
+     * Token CSRF para os formulários — o mesmo do resto do painel
+     * (SecurityHelper grava em CSRF_TOKEN_NAME, que é o que verifyCsrf lê).
      */
     private function tokenCsrf(): string
     {
-        return (string) ($_SESSION['csrf_token'] ?? ($_SESSION['csrf'] ?? ''));
+        return SecurityHelper::generateCsrf();
     }
 }

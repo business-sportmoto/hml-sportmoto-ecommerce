@@ -4,8 +4,38 @@ declare(strict_types=1);
 /**
  * app/services/BlingEstoqueService.php
  *
- * Sincroniza saldo de estoque do Bling → site.
- * Executado via cron (a cada 15 minutos) ou sob demanda no painel.
+ * Espelha o saldo de estoque do Bling → site.
+ *
+ * O Bling é o DONO do saldo: ele baixa quando o pedido entra e propaga
+ * para todos os canais. O site apenas reflete. Nada aqui escreve estoque
+ * de volta no Bling.
+ *
+ * Duas entradas:
+ *   webhook 'stock.updated' → sincronizarPorBlingId()  (tempo real)
+ *   cron horário            → sincronizarEstoque()     (reconciliação)
+ *   botão do produto        → sincronizarProduto()     (sob demanda)
+ *
+ * ── MÉTODOS REMOVIDOS, e por quê ──────────────────────────────────
+ *
+ * sincronizarTudo(), resolverVinculos(), resolverVinculoPais(),
+ * sincronizarProdutoSimples(), sincronizarSku(), saldoDoBling(),
+ * resolverBlingId(), resolverBlingIdProduto()
+ *
+ * Todos resolviam vínculo perguntando ao Bling "existe o produto com o
+ * código X?" — UMA chamada de API mais sleep POR ITEM, sem limite. Com
+ * catálogo real isso passa de dez minutos por execução: foi o que
+ * derrubou o cron de estoque em julho/2026 e o que fazia o botão
+ * "Sync estoque agora" morrer no timeout do PHP.
+ *
+ * Substituídos por:
+ *   vincular catálogo → BlingVinculoService::vincularTudo()
+ *                       (lista paginado e casa localmente, ~100x barato)
+ *   saldo em massa    → sincronizarEstoque()   (lotes de 50)
+ *   saldo de 1 produto→ sincronizarProduto()   (1 lote)
+ *
+ * NÃO reintroduza busca por código item-a-item: o teto de 3 req/s é
+ * estático no BlingApiClient e compartilhado com a fila de pedidos e a
+ * de contatos — estourar aqui trava as outras duas.
  */
 class BlingEstoqueService
 {
@@ -225,156 +255,6 @@ class BlingEstoqueService
                     ),
         };
     }
-    // Chama: php artisan bling:sync-estoque
-    // Ou pelo painel admin
-    // ════════════════════════════════════════════════════
-
-    public function sincronizarTudo(): array
-    {
-        $idDeposito = $this->getDepositoPadrao();
-        if (!$idDeposito) {
-            return ['total' => 0, 'atualizados' => 0, 'erros' => 0,
-                    'erro' => 'Nenhum depósito Bling configurado. Sincronize os depósitos primeiro.'];
-        }
-
-        $atualizados = 0;
-        $erros       = 0;
-
-        // ═══ BRAÇO 1 — vínculo do PAI para TODOS os produtos ═══
-        // Preenche produtos.bling_id em todo produto ativo (com ou
-        // sem variação). É rastreabilidade/vínculo — NÃO mexe em
-        // estoque. Produto com variação tem o pai preenchido aqui,
-        // mas o estoque dele continua vindo dos SKUs (Braço 2).
-        $resolvidosPai = $this->resolverVinculoPais();
-
-        // ═══ BRAÇO 2 — estoque de produto COM variação (por SKU) ═══
-        $skus = $this->db->query(
-            "SELECT ps.id AS sku_id, ps.sku, ps.bling_id, ps.produto_id
-             FROM produto_skus ps
-             JOIN produtos p ON p.id = ps.produto_id
-             WHERE ps.ativo = 1"
-        )->fetchAll();
-
-        $total      = count($skus);
-        $comBlingId = array_filter($skus, fn($s) => !empty($s['bling_id']));
-        $semBlingId = array_filter($skus, fn($s) =>  empty($s['bling_id']));
-
-        foreach (array_chunk($comBlingId, self::BATCH_SIZE) as $batch) {
-            try {
-                $blingIds = array_column($batch, 'bling_id');
-                $itens = $this->api->getComArray(
-                    "/estoques/saldos/{$idDeposito}",
-                    ['idsProdutos' => $blingIds]
-                );
-                foreach ($itens as $e) {
-                    $blingProdutoId = (string)($e['produto']['id'] ?? $e['produtoId'] ?? '');
-                    $saldo          = (float)($e['saldoFisicoTotal'] ?? $e['saldoFisico'] ?? 0);
-                    foreach ($batch as $sku) {
-                        if ($sku['bling_id'] === $blingProdutoId) {
-                            $this->corrigirSaldoAbsoluto((int)$sku['sku_id'], (int)$sku['produto_id'], $saldo);
-                            $atualizados++;
-                        }
-                    }
-                }
-            } catch (\Throwable) {
-                $erros++;
-            }
-        }
-
-        foreach ($semBlingId as $sku) {
-            try {
-                $blingId = $this->resolverBlingId($sku['sku'], $sku['produto_id']);
-                if ($blingId) {
-                    $estoque = $this->api->get("/estoques/{$blingId}");
-                    $saldo   = (float)($estoque['saldoVirtualTotal'] ?? $estoque['saldo'] ?? 0);
-                    $this->corrigirSaldoAbsoluto((int)$sku['sku_id'], (int)$sku['produto_id'], $saldo);
-                    $atualizados++;
-                }
-            } catch (\Throwable) {
-                $erros++;
-            }
-        }
-
-        // ═══ BRAÇO 3 — estoque de produto SEM variação (nível produto) ═══
-        // Estes não têm linha em produto_skus. Estoque em
-        // produtos.estoque_total, ledger com sku_id = NULL.
-        $simples = $this->db->query(
-            "SELECT p.id AS produto_id, p.bling_id, p.sku_legado
-             FROM produtos p
-             WHERE p.ativo = 1
-               AND p.deleted_at IS NULL
-               AND NOT EXISTS (SELECT 1 FROM produto_skus ps WHERE ps.produto_id = p.id)"
-        )->fetchAll();
-
-        $total += count($simples);
-
-        foreach ($simples as $prod) {
-            try {
-                // Braço 1 já pode ter preenchido; senão resolve agora
-                $blingId = $prod['bling_id']
-                    ?: $this->resolverBlingIdProduto((string)($prod['sku_legado'] ?? ''), (int)$prod['produto_id']);
-
-                if (!$blingId) { $erros++; continue; }
-
-                // $estoque = $this->api->get("/estoques/{$blingId}");
-                // $saldo   = (float)($estoque['saldoVirtualTotal'] ?? $estoque['saldo'] ?? 0);
-                $saldo = (float)$this->saldoDoBling($blingId, $idDeposito);
-                $this->corrigirSaldoAbsoluto(null, (int)$prod['produto_id'], $saldo);
-                $atualizados++;
-            } catch (\Throwable) {
-                $erros++;
-            }
-        }
-
-        return compact('total', 'atualizados', 'erros') + ['vinculos_pai' => $resolvidosPai];
-    }
-
-    // ════════════════════════════════════════════════════
-    // SYNC DE UM SKU ESPECÍFICO
-    // ════════════════════════════════════════════════════
-
-    public function sincronizarSku(string $skuCode): bool
-    {
-        $stmt = $this->db->prepare(
-            "SELECT ps.id, ps.produto_id, ps.bling_id
-             FROM produto_skus ps WHERE ps.sku = ? LIMIT 1"
-        );
-        $stmt->execute([$skuCode]);
-        $sku = $stmt->fetch();
-        if (!$sku) return false;
-
-        $blingId = $sku['bling_id'] ?: $this->resolverBlingId($skuCode, $sku['produto_id']);
-        if (!$blingId) return false;
-
-        $estoque = $this->api->get("/estoques/{$blingId}");
-        $saldo   = (float)($estoque['saldoVirtualTotal'] ?? $estoque['saldo'] ?? 0);
-        $this->corrigirSaldoAbsoluto((int)$sku['id'], (int)$sku['produto_id'], $saldo);
-
-        return true;
-    }
-
-    // ════════════════════════════════════════════════════
-    // RESOLVE O bling_id DE UM SKU PELO CÓDIGO
-    // ════════════════════════════════════════════════════
-
-    public function resolverBlingId(string $skuCode, int $produtoId): ?string
-    {
-        try {
-            $result = $this->api->get('/produtos', ['codigo' => $skuCode]);
-            if (empty($result[0]['id'])) return null;
-
-            $blingId = (string)$result[0]['id'];
-
-            // Persiste o bling_id para não precisar buscar de novo
-            $this->db->prepare(
-                "UPDATE produto_skus SET bling_id = ? WHERE sku = ? AND produto_id = ?"
-            )->execute([$blingId, $skuCode, $produtoId]);
-
-            return $blingId;
-        } catch (\Throwable) {
-            return null;
-        }
-    }
 
     // ════════════════════════════════════════════════════
     // ATUALIZA O ESTOQUE LOCAL — via EstoqueService (ledger)
@@ -396,85 +276,6 @@ class BlingEstoqueService
         ]);
     }
 
-    /**
-     * Resolve o bling_id de um produto SEM variação e grava em
-     * produtos.bling_id (o resolverBlingId original grava em
-     * produto_skus, que não existe para produto simples).
-     */
-    public function resolverBlingIdProduto(string $codigo, int $produtoId): ?string
-    {
-        if ($codigo === '') return null;
-        try {
-            $result = $this->api->get('/produtos', ['codigo' => $codigo]);
-            if (empty($result[0]['id'])) return null;
-
-            $blingId = (string)$result[0]['id'];
-            $this->db->prepare("UPDATE produtos SET bling_id = ? WHERE id = ?")
-                     ->execute([$blingId, $produtoId]);
-            return $blingId;
-        } catch (\Throwable) {
-            return null;
-        }
-    }
-
-    /**
-     * Preenche produtos.bling_id em TODO produto ativo que ainda
-     * não tem vínculo, buscando por sku_legado (o "SKU / Código"
-     * do produto-pai). Rastreabilidade — NÃO lê nem grava estoque.
-     * Roda para pai com e sem variação.
-     *
-     * @return int quantos vínculos foram resolvidos nesta execução
-     */
-    private function resolverVinculoPais(): int
-    {
-        $pais = $this->db->query(
-            "SELECT p.id, p.sku_legado
-             FROM produtos p
-             WHERE p.ativo = 1
-               AND p.deleted_at IS NULL
-               AND p.bling_id IS NULL
-               AND p.sku_legado IS NOT NULL
-               AND p.sku_legado <> ''"
-        )->fetchAll();
-
-        $resolvidos = 0;
-        foreach ($pais as $p) {
-            $blingId = $this->resolverBlingIdProduto((string)$p['sku_legado'], (int)$p['id']);
-            if ($blingId) { $resolvidos++; }
-            usleep(120000); // respiro anti rate-limit (0,12s)
-        }
-        return $resolvidos;
-    }
-
-    /**
-     * Sincroniza o estoque de UM produto sem variação e devolve o
-     * resultado com o saldo — usado pelo botão individual do admin.
-     */
-    public function sincronizarProdutoSimples(int $produtoId): array
-    {
-        $idDeposito = $this->getDepositoPadrao();
-        if (!$idDeposito) {
-            return ['ok' => false, 'msg' => 'Nenhum depósito Bling configurado. Sincronize os depósitos primeiro.'];
-        }
-
-        $stmt = $this->db->prepare(
-            "SELECT id, bling_id, sku_legado FROM produtos WHERE id = ? LIMIT 1"
-        );
-        $stmt->execute([$produtoId]);
-        $p = $stmt->fetch();
-        if (!$p) return ['ok' => false, 'msg' => 'Produto não encontrado.'];
-
-        $blingId = $p['bling_id']
-            ?: $this->resolverBlingIdProduto((string)($p['sku_legado'] ?? ''), $produtoId);
-        if (!$blingId) {
-            return ['ok' => false, 'msg' => "Sem vínculo no Bling para \"{$p['sku_legado']}\"."];
-        }
-
-        // $estoque = $this->api->get("/estoques/saldos/{$blingId}");
-        $saldo = $this->saldoDoBling($blingId, $idDeposito);
-        $this->corrigirSaldoAbsoluto(null, $produtoId, (float)$saldo);
-        return ['ok' => true, 'bling_id' => $blingId, 'msg' => "Estoque sincronizado: {$saldo} unidade(s)."];
-    }
     
     /**
      * Ressincroniza UM produto com o Bling — com ou sem variação.
@@ -580,26 +381,6 @@ class BlingEstoqueService
     }
 
     /**
-     * Saldo de UM produto no Bling via /estoques/saldos/{idDeposito}.
-     * Lê saldoFisicoTotal (soma de todos os depósitos). Parsing
-     * defensivo — a resposta pode variar de shape.
-     */
-    private function saldoDoBling(string $blingProdutoId, int $idDeposito): int
-    {
-        $itens = $this->api->getComArray(
-            "/estoques/saldos/{$idDeposito}",
-            ['idsProdutos' => [$blingProdutoId]]
-        );
-        foreach ($itens as $e) {
-            $pid = (string)($e['produto']['id'] ?? $e['produtoId'] ?? '');
-            if ($pid === '' || $pid === $blingProdutoId) {
-                return (int)($e['saldoFisicoTotal'] ?? $e['saldoFisico'] ?? 0);
-            }
-        }
-        return 0;
-    }
-
-    /**
      * Estoque dos produtos que JÁ têm bling_id — em LOTE.
      * NÃO resolve vínculo (isso é o cron diário). Roda a cada 15min
      * e faz só chamadas em lote: N produtos = N/BATCH_SIZE calls.
@@ -661,46 +442,4 @@ class BlingEstoqueService
         return compact('total', 'atualizados', 'erros');
     }
 
-    /**
-     * Resolve bling_id de produtos/SKUs que ainda não têm — via
-     * GET por código (caro, 1 call cada). RODA 1x/DIA. O LIMIT é o
-     * airbag do rate limit: nunca passa de $limite×2 calls por dia.
-     */
-    public function resolverVinculos(int $limite = 300): array
-    {
-        $resolvidos = 0; $falhas = 0;
-
-        // Produtos-pai / simples sem vínculo
-        $prods = $this->db->prepare(
-            "SELECT p.id, p.sku_legado
-             FROM produtos p
-             WHERE p.ativo = 1 AND p.deleted_at IS NULL
-               AND p.bling_id IS NULL
-               AND p.sku_legado IS NOT NULL AND p.sku_legado <> ''
-             ORDER BY p.id LIMIT ?"
-        );
-        $prods->execute([$limite]);
-        foreach ($prods->fetchAll() as $p) {
-            $this->resolverBlingIdProduto((string)$p['sku_legado'], (int)$p['id'])
-                ? $resolvidos++ : $falhas++;
-            usleep(150000);
-        }
-
-        // SKUs sem vínculo
-        $skus = $this->db->prepare(
-            "SELECT ps.id, ps.sku, ps.produto_id
-             FROM produto_skus ps
-             WHERE ps.ativo = 1 AND ps.bling_id IS NULL
-               AND ps.sku IS NOT NULL AND ps.sku <> ''
-             ORDER BY ps.id LIMIT ?"
-        );
-        $skus->execute([$limite]);
-        foreach ($skus->fetchAll() as $s) {
-            $this->resolverBlingId((string)$s['sku'], (int)$s['produto_id'])
-                ? $resolvidos++ : $falhas++;
-            usleep(150000);
-        }
-
-        return compact('resolvidos', 'falhas');
-    }
 }

@@ -240,6 +240,25 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
                        value="<?= View::e($p['bling_id'] ?? '') ?>"
                        placeholder="Resolvido automaticamente"
                        style="font-family:var(--font-mono);font-size:13px;">
+
+                <?php if ($isEdit && !empty($p['bling_id'])): ?>
+                <div style="margin-top:10px;">
+                  <button type="button" class="btn btn-outline btn-sm"
+                          id="btn-sync-info-bling"
+                          data-produto-id="<?= (int)$p['id'] ?>">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+                      <polyline points="23 4 23 10 17 10"/>
+                      <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+                    </svg>
+                    Sincronizar informações do Bling
+                  </button>
+                  <div class="pe-field-hint" style="margin-top:6px;">
+                    Compara este produto com o do Bling e mostra o que mudou.
+                    Você escolhe campo a campo o que trazer — nada é sobrescrito sem confirmação.
+                  </div>
+                </div>
+                <?php endif; ?>
               </div>
             </div>
           </div>
@@ -2149,6 +2168,95 @@ adminSeoIA({
       })
       .fail(function () { CK.btnLoading($btn, false); adminToast('Erro de rede.', 'error'); });
   });
+
+  // ── Sincronizar informações do Bling (diff campo a campo) ──
+  // Nunca sobrescreve em bloco: o Bling é a fonte do dado comercial, mas
+  // nome e descrição costumam ser retrabalhados para a vitrine. Aplicar
+  // tudo apagaria esse trabalho sem ninguém perceber.
+  $('#btn-sync-info-bling').on('click', function () {
+    var $btn = $(this), id = $btn.data('produto-id');
+    if (!id) return;
+    CK.btnLoading($btn);
+
+    $.get(BASE_URL + '/admin/bling/produtos/diff', { produto_id: id })
+      .done(function (r) {
+        CK.btnLoading($btn, false);
+        if (!r.ok) { adminToast(r.msg, 'error'); return; }
+
+        if (!r.campos || !r.campos.length) {
+          adminToast('Nenhuma diferença: o produto já está igual ao Bling.', 'success');
+          return;
+        }
+        abrirDrawerDiff(id, r);
+      })
+      .fail(function () { CK.btnLoading($btn, false); adminToast('Erro de rede.', 'error'); });
+  });
+
+  function escDiff(s) { return $('<i>').text(s == null ? '' : s).html(); }
+
+  function abrirDrawerDiff(produtoId, r) {
+    var linhas = r.campos.map(function (c, idx) {
+      return ''
+        + '<label style="display:block;border:1px solid var(--c-border);border-radius:9px;padding:12px 14px;margin-bottom:10px;cursor:pointer;">'
+        +   '<div style="display:flex;align-items:center;gap:9px;margin-bottom:8px;">'
+        +     '<input type="checkbox" class="bd-campo" value="' + escDiff(c.campo) + '" checked>'
+        +     '<strong style="font-size:13px;">' + escDiff(c.rotulo) + '</strong>'
+        +   '</div>'
+        +   '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;">'
+        +     '<div><div style="color:var(--c-text-muted);margin-bottom:3px;">No site (atual)</div>'
+        +       '<div style="padding:7px 9px;background:var(--c-bg-alt);border-radius:6px;word-break:break-word;">' + escDiff(c.atual) + '</div></div>'
+        +     '<div><div style="color:var(--c-text-muted);margin-bottom:3px;">No Bling (novo)</div>'
+        +       '<div style="padding:7px 9px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;word-break:break-word;">' + escDiff(c.novo) + '</div></div>'
+        +   '</div>'
+        + '</label>';
+    }).join('');
+
+    var drawer = adminDrawer({
+      titulo   : 'Sincronizar com o Bling',
+      subtitulo: r.campos.length + ' campo(s) diferem',
+      tamanho  : 'lg',
+      conteudo :
+          '<p style="font-size:13px;color:var(--c-text-muted);line-height:1.6;margin:0 0 14px;">'
+        +   'Marque o que quer trazer do Bling. O que ficar desmarcado permanece como está no site.'
+        + '</p>'
+        + (r.tem_variacao
+            ? '<p style="font-size:12.5px;color:var(--c-text-muted);background:var(--c-bg-alt);padding:9px 12px;border-radius:8px;margin:0 0 14px;line-height:1.6;">'
+              + 'Este produto tem variações: preço e custo de cada uma ficam nos SKUs e '
+              + '<strong>não</strong> são alterados aqui.</p>'
+            : '')
+        + '<div style="display:flex;gap:8px;margin-bottom:12px;">'
+        +   '<button type="button" class="btn btn-ghost btn-sm" id="bd-todos">Marcar todos</button>'
+        +   '<button type="button" class="btn btn-ghost btn-sm" id="bd-nenhum">Desmarcar todos</button>'
+        + '</div>'
+        + linhas
+        + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--c-border);">'
+        +   '<button type="button" class="btn btn-primary" id="bd-aplicar">Aplicar selecionados</button>'
+        + '</div>'
+    });
+
+    drawer.escutar('click', '#bd-todos',  function () { $('.bd-campo').prop('checked', true); });
+    drawer.escutar('click', '#bd-nenhum', function () { $('.bd-campo').prop('checked', false); });
+
+    drawer.escutar('click', '#bd-aplicar', function () {
+      var campos = $('.bd-campo:checked').map(function () { return this.value; }).get();
+      if (!campos.length) { adminToast('Marque ao menos um campo.', 'warning'); return; }
+
+      var $b = $(this);
+      CK.btnLoading($b);
+      $.post(BASE_URL + '/admin/bling/produtos/sincronizar', {
+        _token: CSRF_TOKEN, produto_id: produtoId, campos: campos
+      })
+      .done(function (res) {
+        CK.btnLoading($b, false);
+        adminToast(res.msg, res.ok ? 'success' : 'error');
+        if (res.ok) {
+          drawer.fechar('sincronizado');
+          setTimeout(function () { location.reload(); }, 900);
+        }
+      })
+      .fail(function () { CK.btnLoading($b, false); adminToast('Erro de rede.', 'error'); });
+    });
+  }
 })();
 </script>
 

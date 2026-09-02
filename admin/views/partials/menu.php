@@ -374,9 +374,15 @@
       </a>
       <a href="<?= BASE_URL ?>/admin/importar" class="admin-nav-item<?= adminIsActive('/admin/importar') ?>">
         <span class="admin-nav-icon">
-          <?= IconLibrary::render('cloud-download'); ?> 
+          <?= IconLibrary::render('cloud-download'); ?>
         </span>
         Importações
+      </a>
+      <a href="<?= BASE_URL ?>/admin/bling/produtos" class="admin-nav-item<?= adminIsActive('/admin/bling/produtos') ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('package'); ?>
+        </span>
+        Catálogo Bling
       </a>
       <a href="<?= BASE_URL ?>/admin/logs" class="admin-nav-item<?= adminIsActive('/admin/logs') ?>">
         <span class="admin-nav-icon">

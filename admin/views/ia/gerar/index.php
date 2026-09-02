@@ -11,17 +11,17 @@ if (!function_exists('ia_e')) {
 
   <div class="ia_topo">
     <div>
-      <h1 class="ia_titulo"><i class="bi bi-stars"></i>Central de Marketing IA</h1>
+      <h1 class="ia_titulo"><?= IconLibrary::render('wand-stars', 'ia_ico', ['aria-hidden' => 'true']) ?>Central de Marketing IA</h1>
       <p class="ia_sub">Gere legendas, anúncios, descrições e textos de WhatsApp a partir dos dados reais do produto.</p>
     </div>
     <div class="ia_topo_acoes">
-      <a href="/admin/ia/historico" class="ia_btn"><i class="bi bi-clock-history"></i> Histórico</a>
-      <a href="/admin/ia/config" class="ia_btn"><i class="bi bi-gear"></i> Configurações</a>
+      <a href="/admin/ia/historico" class="ia_btn"><?= IconLibrary::render('history-toggle-off', 'ia_ico', ['aria-hidden' => 'true']) ?> Histórico</a>
+      <a href="/admin/ia/config" class="ia_btn"><?= IconLibrary::render('settings', 'ia_ico', ['aria-hidden' => 'true']) ?> Configurações</a>
     </div>
   </div>
 
   <div class="ia_card">
-    <p class="ia_card_titulo"><i class="bi bi-search"></i> Produto</p>
+    <p class="ia_card_titulo"><?= IconLibrary::render('search', 'ia_ico', ['aria-hidden' => 'true']) ?> Produto</p>
     <div class="ia_busca_wrap">
       <input type="text" id="ia_busca" class="ia_input" autocomplete="off"
              placeholder="Busque por nome ou ID do produto…">
@@ -44,6 +44,20 @@ jQuery(function ($) {
   'use strict';
 
   var IA_CSRF = '<?= ia_e($csrf ?? '') ?>';
+
+  // Ícones para o HTML montado em JS. O IconLibrary só existe no servidor,
+  // então os SVGs vêm prontos daqui — json_encode escapa aspas e barras, o
+  // que um literal de string montado à mão não garantiria.
+  var IA_ICO = <?= json_encode([
+      'ok'       => IconLibrary::render('check-circle', 'ia_ico', ['aria-hidden' => 'true']),
+      'erro'     => IconLibrary::render('x-circle',     'ia_ico', ['aria-hidden' => 'true']),
+      'baixar'   => IconLibrary::render('cloud-download','ia_ico', ['aria-hidden' => 'true']),
+      'aprovar'  => IconLibrary::render('check-circle', 'ia_ico', ['aria-hidden' => 'true']),
+      'reprovar' => IconLibrary::render('x-circle',     'ia_ico', ['aria-hidden' => 'true']),
+      'refazer'  => IconLibrary::render('reload',       'ia_ico', ['aria-hidden' => 'true']),
+      'copiar'   => IconLibrary::render('copy',         'ia_ico', ['aria-hidden' => 'true']),
+  ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+
   var URLS = {
     busca:      '/admin/ia/gerar/produto-busca',
     painel:     '/admin/ia/gerar/produto-painel',
@@ -74,7 +88,7 @@ jQuery(function ($) {
   }
 
   function iaPost(url, dados, cb) {
-    dados = $.extend({ csrf_token: IA_CSRF }, dados || {});
+    dados = $.extend({ _csrf_token: IA_CSRF }, dados || {});
     $.post(url, dados, null, 'json')
       .done(function (r) { cb(r || { ok: false, msg: 'Resposta inválida.' }); })
       .fail(function () { cb({ ok: false, msg: 'Falha de comunicação com o servidor.' }); });
@@ -258,16 +272,16 @@ jQuery(function ($) {
     } else if (g.status === 'processando' || g.status === 'aguardando_provedor') {
       $pill.attr('class', 'ia_pill ia_pill_azul').html('<span class="ia_spin"></span> Gerando…');
     } else if (g.status === 'concluida') {
-      $pill.attr('class', 'ia_pill ia_pill_ok').html('<i class="bi bi-check-circle"></i> Concluída');
+      $pill.attr('class', 'ia_pill ia_pill_ok').html(IA_ICO.ok + ' Concluída');
       if (!$corpo.data('pronto')) {
         if (g.capacidade === 'imagem' && g.arquivo_id) {
           $corpo.data('pronto', 1).html(
             '<div class="ia_resultado_img"><img alt="Imagem gerada" loading="lazy"></div>' +
             '<div class="ia_resultado_acoes">' +
-              '<a class="ia_btn ia_ac_baixar" target="_blank" rel="noopener"><i class="bi bi-download"></i> Baixar</a>' +
-              '<button type="button" class="ia_btn ia_ac_aprovar"><i class="bi bi-hand-thumbs-up"></i> Aprovar</button>' +
-              '<button type="button" class="ia_btn ia_ac_reprovar"><i class="bi bi-hand-thumbs-down"></i> Reprovar</button>' +
-              '<button type="button" class="ia_btn ia_ac_refazer"><i class="bi bi-arrow-repeat"></i> Refazer</button>' +
+              '<a class="ia_btn ia_ac_baixar" target="_blank" rel="noopener">' + IA_ICO.baixar + ' Baixar</a>' +
+              '<button type="button" class="ia_btn ia_ac_aprovar">' + IA_ICO.aprovar + ' Aprovar</button>' +
+              '<button type="button" class="ia_btn ia_ac_reprovar">' + IA_ICO.reprovar + ' Reprovar</button>' +
+              '<button type="button" class="ia_btn ia_ac_refazer">' + IA_ICO.refazer + ' Refazer</button>' +
             '</div>'
           );
           $corpo.find('img').attr('src', '/admin/ia/arquivo?id=' + g.arquivo_id);
@@ -276,10 +290,10 @@ jQuery(function ($) {
           $corpo.data('pronto', 1).html(
             '<div class="ia_resultado_texto"></div>' +
             '<div class="ia_resultado_acoes">' +
-              '<button type="button" class="ia_btn ia_ac_copiar"><i class="bi bi-clipboard"></i> Copiar</button>' +
-              '<button type="button" class="ia_btn ia_ac_aprovar"><i class="bi bi-hand-thumbs-up"></i> Aprovar</button>' +
-              '<button type="button" class="ia_btn ia_ac_reprovar"><i class="bi bi-hand-thumbs-down"></i> Reprovar</button>' +
-              '<button type="button" class="ia_btn ia_ac_refazer"><i class="bi bi-arrow-repeat"></i> Refazer</button>' +
+              '<button type="button" class="ia_btn ia_ac_copiar">' + IA_ICO.copiar + ' Copiar</button>' +
+              '<button type="button" class="ia_btn ia_ac_aprovar">' + IA_ICO.aprovar + ' Aprovar</button>' +
+              '<button type="button" class="ia_btn ia_ac_reprovar">' + IA_ICO.reprovar + ' Reprovar</button>' +
+              '<button type="button" class="ia_btn ia_ac_refazer">' + IA_ICO.refazer + ' Refazer</button>' +
             '</div>'
           );
           $corpo.find('.ia_resultado_texto').text(g.resultado_texto || '');
@@ -287,12 +301,12 @@ jQuery(function ($) {
       }
       removerPendente(g.uuid);
     } else if (g.status === 'falhou' || g.status === 'cancelada') {
-      $pill.attr('class', 'ia_pill ia_pill_erro').html('<i class="bi bi-x-circle"></i> ' + (g.status === 'falhou' ? 'Falhou' : 'Cancelada'));
+      $pill.attr('class', 'ia_pill ia_pill_erro').html(IA_ICO.erro + ' ' + (g.status === 'falhou' ? 'Falhou' : 'Cancelada'));
       if (!$corpo.data('pronto')) {
         $corpo.data('pronto', 1).html(
           '<div class="ia_resultado_erro"></div>' +
           '<div class="ia_resultado_acoes">' +
-            '<button type="button" class="ia_btn ia_ac_refazer"><i class="bi bi-arrow-repeat"></i> Tentar novamente</button>' +
+            '<button type="button" class="ia_btn ia_ac_refazer">' + IA_ICO.refazer + ' Tentar novamente</button>' +
           '</div>'
         );
         $corpo.find('.ia_resultado_erro').text(g.erro || 'Erro não informado.');

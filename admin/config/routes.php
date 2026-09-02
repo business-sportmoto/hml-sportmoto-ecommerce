@@ -344,13 +344,6 @@ AdminRouter::post('/configuracoes/pwa/salvar',            'AdminPwaController@sa
 AdminRouter::post('/configuracoes/pwa/gerar-icones',      'AdminPwaController@gerarIcones');
 AdminRouter::post('/configuracoes/pwa/publicar',          'AdminPwaController@publicar');
 
-// AdminRouter::get ('/configuracoes/bling',                          'AdminBlingController@index');
-// AdminRouter::post('/configuracoes/bling/credenciais',              'AdminBlingController@salvarCredenciais');
-// AdminRouter::get ('/configuracoes/bling/autorizar',                'AdminBlingController@autorizar');
-// AdminRouter::get ('/configuracoes/bling/callback',                 'AdminBlingController@callback');
-// AdminRouter::post('/configuracoes/bling/desconectar',              'AdminBlingController@desconectar');
-// AdminRouter::post('/configuracoes/bling/sync-estoque',             'AdminBlingController@syncEstoque');
-// AdminRouter::post('/configuracoes/bling/enviar-pedido',            'AdminBlingController@enviarPedido');
 
 AdminRouter::get ('/configuracoes/bling',                          'AdminBlingController@index');
 AdminRouter::post('/configuracoes/bling/credenciais',              'AdminBlingController@salvarCredenciais');
@@ -372,6 +365,13 @@ AdminRouter::post('/configuracoes/bling/vincular-contatos', 'AdminBlingControlle
 // processarContatos, que nunca existiu — qualquer POST na URL dava fatal.
 // A fila de contatos é drenada pelo cli/bling-sync.php.
 AdminRouter::post('/configuracoes/bling/deposito-padrao', 'AdminBlingController@setDepositoPadrao');
+
+// ── Catálogo do Bling (importação sob demanda) ────────────
+AdminRouter::get ('/bling/produtos',             'AdminBlingProdutoController@index');
+AdminRouter::get ('/bling/produtos/listar',      'AdminBlingProdutoController@listar');
+AdminRouter::post('/bling/produtos/importar',    'AdminBlingProdutoController@importar');
+AdminRouter::get ('/bling/produtos/diff',        'AdminBlingProdutoController@diff');
+AdminRouter::post('/bling/produtos/sincronizar', 'AdminBlingProdutoController@sincronizar');
 
 AdminRouter::get('/logs',          'AdminLogsController@index');
 AdminRouter::get('/logs/detalhe',  'AdminLogsController@detalhe');

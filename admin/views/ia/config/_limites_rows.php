@@ -23,9 +23,9 @@ if (empty($limites)): ?>
   <tr>
     <td>
       <?php if ($ehGlobal): ?>
-        <span class="ia_pill ia_pill_ok"><i class="bi bi-globe2"></i> Global</span>
+        <span class="ia_pill ia_pill_ok"><?= IconLibrary::render('globe-location', 'ia_ico', ['aria-hidden' => 'true']) ?> Global</span>
       <?php else: ?>
-        <span class="ia_pill ia_pill_off"><i class="bi bi-person"></i> Usuário</span>
+        <span class="ia_pill ia_pill_off"><?= IconLibrary::render('person-circle', 'ia_ico', ['aria-hidden' => 'true']) ?> Usuário</span>
       <?php endif; ?>
     </td>
     <td><?= ia_e($nomeRef) ?></td>
@@ -35,7 +35,7 @@ if (empty($limites)): ?>
     <td class="ia_num"><?= (int) $l['alerta_percentual'] ?>%</td>
     <td>
       <?php if ((int) $l['ativo'] === 1): ?>
-        <span class="ia_pill ia_pill_ok"><i class="bi bi-check-circle"></i> Ativo</span>
+        <span class="ia_pill ia_pill_ok"><?= IconLibrary::render('check-circle', 'ia_ico', ['aria-hidden' => 'true']) ?> Ativo</span>
       <?php else: ?>
         <span class="ia_pill ia_pill_off">Inativo</span>
       <?php endif; ?>
@@ -43,13 +43,13 @@ if (empty($limites)): ?>
     <td>
       <div class="ia_acoes">
         <button type="button" class="ia_btn ia_btn_icone ia_ac_lim_editar"
-                data-id="<?= (int) $l['id'] ?>" title="Editar limite">
-          <i class="bi bi-pencil"></i>
+                data-id="<?= (int) $l['id'] ?>" title="Editar limite" aria-label="Editar limite">
+          <?= IconLibrary::render('pencil', 'ia_ico', ['aria-hidden' => 'true']) ?>
         </button>
         <?php if (!$ehGlobal): ?>
         <button type="button" class="ia_btn ia_btn_icone ia_perigo ia_ac_lim_excluir"
-                data-id="<?= (int) $l['id'] ?>" title="Excluir limite">
-          <i class="bi bi-trash"></i>
+                data-id="<?= (int) $l['id'] ?>" title="Excluir limite" aria-label="Excluir limite">
+          <?= IconLibrary::render('trash', 'ia_ico', ['aria-hidden' => 'true']) ?>
         </button>
         <?php endif; ?>
       </div>

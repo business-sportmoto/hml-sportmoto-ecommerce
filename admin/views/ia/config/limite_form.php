@@ -11,7 +11,7 @@ $dec      = function ($v) {
 };
 ?>
 <form class="ia_form" data-acao="/admin/ia/config/limite/salvar" data-recarregar="lim" autocomplete="off">
-  <input type="hidden" name="csrf_token" value="<?= ia_e($csrf ?? '') ?>">
+  <?= SecurityHelper::csrfField() ?>
 
   <div class="ia_form_grupo">
     <label for="ia_lim_escopo">Escopo</label>
@@ -79,7 +79,7 @@ $dec      = function ($v) {
 
   <div class="ia_form_rodape">
     <button type="submit" class="ia_btn ia_btn_primario">
-      <i class="bi bi-check-lg"></i> <?= $novo ? 'Criar limite' : 'Salvar' ?>
+      <?= IconLibrary::render('check', 'ia_ico', ['aria-hidden' => 'true']) ?> <?= $novo ? 'Criar limite' : 'Salvar' ?>
     </button>
   </div>
 </form>

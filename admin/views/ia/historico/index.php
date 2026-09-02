@@ -14,12 +14,12 @@ $paginas = max(1, (int) ceil(($total ?? 0) / ($por_pagina ?? 25)));
 
   <div class="ia_topo">
     <div>
-      <h1 class="ia_titulo"><i class="bi bi-clock-history"></i>Histórico de gerações</h1>
+      <h1 class="ia_titulo"><?= IconLibrary::render('history-toggle-off', 'ia_ico', ['aria-hidden' => 'true']) ?>Histórico de gerações</h1>
       <p class="ia_sub">Tudo o que a Central de Marketing IA produziu — com custo, modelo usado e curadoria.</p>
     </div>
     <div class="ia_topo_acoes">
-      <a href="/admin/ia/gerar" class="ia_btn ia_btn_primario"><i class="bi bi-stars"></i> Gerar conteúdo</a>
-      <a href="/admin/ia/config" class="ia_btn"><i class="bi bi-gear"></i> Configurações</a>
+      <a href="/admin/ia/gerar" class="ia_btn ia_btn_primario"><?= IconLibrary::render('wand-stars', 'ia_ico', ['aria-hidden' => 'true']) ?> Gerar conteúdo</a>
+      <a href="/admin/ia/config" class="ia_btn"><?= IconLibrary::render('settings', 'ia_ico', ['aria-hidden' => 'true']) ?> Configurações</a>
     </div>
   </div>
 
@@ -48,7 +48,7 @@ $paginas = max(1, (int) ceil(($total ?? 0) / ($por_pagina ?? 25)));
         <?php endif; ?>
       </div>
       <?php if ($pct_diario !== null && (int) $pct_diario >= 70): ?>
-        <div style="margin-top:6px"><span class="ia_pill ia_pill_aviso"><i class="bi bi-exclamation-triangle"></i> Perto do teto diário</span></div>
+        <div style="margin-top:6px"><span class="ia_pill ia_pill_aviso"><?= IconLibrary::render('alert-triangle', 'ia_ico', ['aria-hidden' => 'true']) ?> Perto do teto diário</span></div>
       <?php endif; ?>
     </div>
   </div>
@@ -99,8 +99,8 @@ $paginas = max(1, (int) ceil(($total ?? 0) / ($por_pagina ?? 25)));
         </div>
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button type="button" id="ia_btn_limpar" class="ia_btn"><i class="bi bi-x-lg"></i> Limpar</button>
-        <button type="submit" class="ia_btn ia_btn_primario"><i class="bi bi-funnel"></i> Filtrar</button>
+        <button type="button" id="ia_btn_limpar" class="ia_btn"><?= IconLibrary::render('close', 'ia_ico', ['aria-hidden' => 'true']) ?> Limpar</button>
+        <button type="submit" class="ia_btn ia_btn_primario"><?= IconLibrary::render('funnel', 'ia_ico', ['aria-hidden' => 'true']) ?> Filtrar</button>
       </div>
     </form>
   </div>
@@ -132,8 +132,8 @@ $paginas = max(1, (int) ceil(($total ?? 0) / ($por_pagina ?? 25)));
         <?= (int) $total ?> geração(ões) · página <?= (int) $pagina ?> de <?= $paginas ?>
       </span>
       <div style="display:flex;gap:8px">
-        <button type="button" class="ia_btn ia_btn_icone" id="ia_pag_ant" <?= ($pagina <= 1) ? 'disabled' : '' ?>><i class="bi bi-chevron-left"></i></button>
-        <button type="button" class="ia_btn ia_btn_icone" id="ia_pag_prox" <?= ($pagina >= $paginas) ? 'disabled' : '' ?>><i class="bi bi-chevron-right"></i></button>
+        <button type="button" class="ia_btn ia_btn_icone" id="ia_pag_ant" aria-label="Página anterior" <?= ($pagina <= 1) ? 'disabled' : '' ?>><?= IconLibrary::render('arrow-back', 'ia_ico', ['aria-hidden' => 'true']) ?></button>
+        <button type="button" class="ia_btn ia_btn_icone" id="ia_pag_prox" aria-label="Próxima página" <?= ($pagina >= $paginas) ? 'disabled' : '' ?>><?= IconLibrary::render('arrow-right', 'ia_ico', ['aria-hidden' => 'true']) ?></button>
       </div>
     </div>
   </div>
@@ -144,7 +144,7 @@ $paginas = max(1, (int) ceil(($total ?? 0) / ($por_pagina ?? 25)));
 <div class="ia_drawer" id="ia_drawer">
   <div class="ia_drawer_topo">
     <p class="ia_drawer_titulo" id="ia_drawer_titulo">Detalhe</p>
-    <button type="button" class="ia_btn ia_btn_icone" id="ia_drawer_fechar"><i class="bi bi-x-lg"></i></button>
+    <button type="button" class="ia_btn ia_btn_icone" id="ia_drawer_fechar" aria-label="Fechar"><?= IconLibrary::render('close', 'ia_ico', ['aria-hidden' => 'true']) ?></button>
   </div>
   <div class="ia_drawer_corpo" id="ia_drawer_corpo"></div>
 </div>
@@ -173,7 +173,7 @@ jQuery(function ($) {
   }
 
   function iaPost(url, dados, cb) {
-    dados = $.extend({ csrf_token: IA_CSRF }, dados || {});
+    dados = $.extend({ _csrf_token: IA_CSRF }, dados || {});
     $.post(url, dados, null, 'json')
       .done(function (r) { cb(r || { ok: false, msg: 'Resposta inválida.' }); })
       .fail(function () { cb({ ok: false, msg: 'Falha de comunicação com o servidor.' }); });

@@ -38,23 +38,23 @@ $contexto = json_decode((string) ($g['contexto'] ?? ''), true);
 </div>
 
 <?php if ($g['status'] === 'concluida' && ($g['capacidade'] ?? 'texto') === 'imagem' && !empty($arquivo_id)): ?>
-  <p class="ia_card_titulo" style="margin-top:4px"><i class="bi bi-image"></i> Imagem gerada</p>
+  <p class="ia_card_titulo" style="margin-top:4px"><?= IconLibrary::render('gallery', 'ia_ico', ['aria-hidden' => 'true']) ?> Imagem gerada</p>
   <div class="ia_resultado_img" style="margin-bottom:10px">
     <img src="/admin/ia/arquivo?id=<?= (int) $arquivo_id ?>" alt="Imagem gerada" loading="lazy">
   </div>
   <div class="ia_resultado_acoes" style="margin-bottom:16px">
     <a class="ia_btn" href="/admin/ia/arquivo?id=<?= (int) $arquivo_id ?>&download=1" target="_blank" rel="noopener">
-      <i class="bi bi-download"></i> Baixar
+      <?= IconLibrary::render('cloud-download', 'ia_ico', ['aria-hidden' => 'true']) ?> Baixar
     </a>
   </div>
   <?php if (!empty($g['resultado_texto'])): ?>
     <p class="ia_ajuda" style="margin:-8px 0 16px">Prompt refinado pelo provedor: <?= ia_e(mb_strimwidth((string) $g['resultado_texto'], 0, 220, '…')) ?></p>
   <?php endif; ?>
 <?php elseif ($g['status'] === 'concluida' && $g['resultado_texto'] !== null): ?>
-  <p class="ia_card_titulo" style="margin-top:4px"><i class="bi bi-chat-square-text"></i> Resultado</p>
+  <p class="ia_card_titulo" style="margin-top:4px"><?= IconLibrary::render('chat-info', 'ia_ico', ['aria-hidden' => 'true']) ?> Resultado</p>
   <div class="ia_resultado_texto" id="ia_det_texto" style="margin-bottom:10px"><?= ia_e($g['resultado_texto']) ?></div>
   <div class="ia_resultado_acoes" style="margin-bottom:16px">
-    <button type="button" class="ia_btn ia_ac_copiar_det"><i class="bi bi-clipboard"></i> Copiar</button>
+    <button type="button" class="ia_btn ia_ac_copiar_det"><?= IconLibrary::render('copy', 'ia_ico', ['aria-hidden' => 'true']) ?> Copiar</button>
   </div>
 <?php elseif ($g['status'] === 'falhou'): ?>
   <div class="ia_resultado_erro" style="margin-bottom:16px"><?= ia_e($g['erro'] ?? 'Erro não informado.') ?></div>
@@ -104,10 +104,10 @@ $contexto = json_decode((string) ($g['contexto'] ?? ''), true);
 <?php endif; ?>
 
 <div class="ia_form_rodape">
-  <button type="button" class="ia_btn ia_ac_curar" data-id="<?= (int) $g['id'] ?>" data-acao="reprovado"><i class="bi bi-hand-thumbs-down"></i> Reprovar</button>
-  <button type="button" class="ia_btn ia_ac_curar" data-id="<?= (int) $g['id'] ?>" data-acao="arquivado"><i class="bi bi-archive"></i> Arquivar</button>
+  <button type="button" class="ia_btn ia_ac_curar" data-id="<?= (int) $g['id'] ?>" data-acao="reprovado"><?= IconLibrary::render('x-circle', 'ia_ico', ['aria-hidden' => 'true']) ?> Reprovar</button>
+  <button type="button" class="ia_btn ia_ac_curar" data-id="<?= (int) $g['id'] ?>" data-acao="arquivado"><?= IconLibrary::render('inbox', 'ia_ico', ['aria-hidden' => 'true']) ?> Arquivar</button>
   <?php if ($g['status'] === 'concluida' || $g['status'] === 'falhou'): ?>
-    <button type="button" class="ia_btn ia_ac_refazer_hist" data-id="<?= (int) $g['id'] ?>"><i class="bi bi-arrow-repeat"></i> Refazer</button>
+    <button type="button" class="ia_btn ia_ac_refazer_hist" data-id="<?= (int) $g['id'] ?>"><?= IconLibrary::render('reload', 'ia_ico', ['aria-hidden' => 'true']) ?> Refazer</button>
   <?php endif; ?>
-  <button type="button" class="ia_btn ia_btn_primario ia_ac_curar" data-id="<?= (int) $g['id'] ?>" data-acao="aprovado"><i class="bi bi-hand-thumbs-up"></i> Aprovar</button>
+  <button type="button" class="ia_btn ia_btn_primario ia_ac_curar" data-id="<?= (int) $g['id'] ?>" data-acao="aprovado"><?= IconLibrary::render('check-circle', 'ia_ico', ['aria-hidden' => 'true']) ?> Aprovar</button>
 </div>

@@ -349,7 +349,9 @@ class ChatIaAgenteService
             $hoje = (int)$this->db->query(
                 "SELECT COUNT(*) FROM ia_geracoes
                  WHERE formato IN ('ig_comentario','ig_direct')
-                   AND criado_em >= CURDATE()"
+                   AND criado_em >= CURDATE()
+                   -- Falha antes do provedor não custou nada: nao ocupa cota
+                   AND NOT (status = 'falhou' AND modelo_id IS NULL)"
             )->fetchColumn();
         } catch (Throwable $e) {
             return true;   // sem conseguir contar, não trava o atendimento
@@ -383,6 +385,8 @@ class ChatIaAgenteService
                 "SELECT COUNT(*) FROM ia_geracoes
                  WHERE formato = 'ig_direct'
                    AND criado_em >= CURDATE()
+                   -- Falha antes do provedor não custou nada: nao ocupa cota
+                   AND NOT (status = 'falhou' AND modelo_id IS NULL)
                    AND CAST(JSON_EXTRACT(contexto, '$.fluxo_id') AS UNSIGNED) = :f"
             );
             $st->execute([':f' => $fluxoId]);

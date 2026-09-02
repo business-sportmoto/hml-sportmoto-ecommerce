@@ -24,7 +24,7 @@ if (empty($provedores)): ?>
       <?php if ((int) $p['tem_chave'] === 1): ?>
         <span class="ia_mono" title="Somente os últimos 4 caracteres são armazenados em claro">••••&nbsp;<?= ia_e($p['api_key_last4']) ?></span>
       <?php else: ?>
-        <span class="ia_pill ia_pill_aviso"><i class="bi bi-exclamation-triangle"></i> não configurada</span>
+        <span class="ia_pill ia_pill_aviso"><?= IconLibrary::render('alert-triangle', 'ia_ico', ['aria-hidden' => 'true']) ?> não configurada</span>
       <?php endif; ?>
     </td>
     <td class="ia_num"><?= (int) $p['modelos_ativos'] ?></td>
@@ -32,7 +32,7 @@ if (empty($provedores)): ?>
     <td class="ia_num"><?= (int) $p['timeout_padrao_s'] ?>s</td>
     <td>
       <?php if ((int) $p['ativo'] === 1): ?>
-        <span class="ia_pill ia_pill_ok"><i class="bi bi-check-circle"></i> Ativo</span>
+        <span class="ia_pill ia_pill_ok"><?= IconLibrary::render('check-circle', 'ia_ico', ['aria-hidden' => 'true']) ?> Ativo</span>
       <?php else: ?>
         <span class="ia_pill ia_pill_off">Inativo</span>
       <?php endif; ?>
@@ -41,17 +41,18 @@ if (empty($provedores)): ?>
       <div class="ia_acoes">
         <button type="button" class="ia_btn ia_btn_icone ia_ac_prov_testar"
                 data-id="<?= (int) $p['id'] ?>"
+                aria-label="Testar conexão com <?= ia_e($p['nome']) ?>"
                 <?= ((int) $p['tem_chave'] === 1) ? 'title="Testar conexão"' : 'disabled title="Configure a chave antes de testar"' ?>>
-          <i class="bi bi-lightning-charge"></i>
+          <?= IconLibrary::render('lightning-charge', 'ia_ico', ['aria-hidden' => 'true']) ?>
         </button>
         <button type="button" class="ia_btn ia_btn_icone ia_ac_prov_editar"
-                data-id="<?= (int) $p['id'] ?>" title="Editar provedor">
-          <i class="bi bi-pencil"></i>
+                data-id="<?= (int) $p['id'] ?>" title="Editar provedor" aria-label="Editar provedor">
+          <?= IconLibrary::render('pencil', 'ia_ico', ['aria-hidden' => 'true']) ?>
         </button>
         <button type="button" class="ia_btn ia_btn_icone ia_ac_prov_alternar"
                 data-id="<?= (int) $p['id'] ?>"
-                title="<?= ((int) $p['ativo'] === 1) ? 'Desativar' : 'Ativar' ?>">
-          <i class="bi bi-power"></i>
+                title="<?= ((int) $p['ativo'] === 1) ? 'Desativar' : 'Ativar' ?>" aria-label="<?= ((int) $p['ativo'] === 1) ? 'Desativar' : 'Ativar' ?>">
+          <?= IconLibrary::render('power', 'ia_ico', ['aria-hidden' => 'true']) ?>
         </button>
       </div>
     </td>

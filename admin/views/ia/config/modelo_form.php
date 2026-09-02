@@ -9,7 +9,7 @@ $val  = function (string $campo, $padrao = '') use ($mod) {
 };
 ?>
 <form class="ia_form" data-acao="/admin/ia/config/modelo/salvar" data-recarregar="mod" autocomplete="off">
-  <input type="hidden" name="csrf_token" value="<?= ia_e($csrf ?? '') ?>">
+  <?= SecurityHelper::csrfField() ?>
   <input type="hidden" name="id" value="<?= $novo ? 0 : (int) $mod['id'] ?>">
 
   <div class="ia_form_linha">
@@ -98,7 +98,7 @@ $val  = function (string $campo, $padrao = '') use ($mod) {
 
   <div class="ia_form_rodape">
     <button type="submit" class="ia_btn ia_btn_primario">
-      <i class="bi bi-check-lg"></i> <?= $novo ? 'Criar modelo' : 'Salvar' ?>
+      <?= IconLibrary::render('check', 'ia_ico', ['aria-hidden' => 'true']) ?> <?= $novo ? 'Criar modelo' : 'Salvar' ?>
     </button>
   </div>
 </form>

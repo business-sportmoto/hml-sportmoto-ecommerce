@@ -25,7 +25,7 @@ class IAGeracaoController extends Controller
 
     public function gerar()
     {
-        AuthHelper::requirePermission('marketing_ia');
+        $this->exigirPermissao('marketing_ia');
 
         $produtoId = (int) ($_GET['produto_id'] ?? 0);
 
@@ -38,7 +38,7 @@ class IAGeracaoController extends Controller
     /** Autocomplete de produtos (nome ou id). */
     public function produtoBusca()
     {
-        AuthHelper::requirePermission('marketing_ia');
+        $this->exigirPermissao('marketing_ia');
 
         $q = trim((string) ($_GET['q'] ?? ''));
         if (mb_strlen($q) < 2) {
@@ -70,7 +70,7 @@ class IAGeracaoController extends Controller
     /** Painel do produto + formulário de geração (partial via AJAX). */
     public function produtoPainel()
     {
-        AuthHelper::requirePermission('marketing_ia');
+        $this->exigirPermissao('marketing_ia');
 
         $produtoId = (int) ($_GET['produto_id'] ?? 0);
         $contexto  = ($produtoId > 0) ? (new IAPromptBuilder())->montarContexto($produtoId) : null;
@@ -94,7 +94,7 @@ class IAGeracaoController extends Controller
     /** Remoção de fundo da foto do produto — cache-first (Fase 2B). */
     public function recorteGerar()
     {
-        AuthHelper::requirePermission('marketing_ia');
+        $this->exigirPermissao('marketing_ia');
         $this->verifyCsrf();
 
         $resultado = (new IARecorteService())->obterRecorte(
@@ -109,7 +109,7 @@ class IAGeracaoController extends Controller
     /** Pré-visualização do prompt (para o usuário editar antes de enviar). */
     public function preview()
     {
-        AuthHelper::requirePermission('marketing_ia');
+        $this->exigirPermissao('marketing_ia');
         if (!$this->exigirPost()) {
             return;
         }
@@ -147,7 +147,7 @@ class IAGeracaoController extends Controller
     /** Enfileira 1/3/5 gerações. */
     public function enfileirar()
     {
-        AuthHelper::requirePermission('marketing_ia');
+        $this->exigirPermissao('marketing_ia');
         if (!$this->exigirPost()) {
             return;
         }
@@ -177,7 +177,7 @@ class IAGeracaoController extends Controller
     /** Polling de status em lote. */
     public function status()
     {
-        AuthHelper::requirePermission('marketing_ia');
+        $this->exigirPermissao('marketing_ia');
 
         $uuids = explode(',', (string) ($_GET['uuids'] ?? ''));
         $itens = (new IAGeracaoService())->statusLote($uuids);
@@ -191,7 +191,7 @@ class IAGeracaoController extends Controller
      */
     public function arquivo()
     {
-        AuthHelper::requirePermission('marketing_ia');
+        $this->exigirPermissao('marketing_ia');
 
         $id  = (int) ($_GET['id'] ?? 0);
         $arq = ($id > 0) ? (new IAGeracao())->arquivoPorId($id) : null;
@@ -230,7 +230,7 @@ class IAGeracaoController extends Controller
 
     public function historico()
     {
-        AuthHelper::requirePermission('marketing_ia');
+        $this->exigirPermissao('marketing_ia');
 
         $modelo   = new IAGeracao();
         $filtros  = $this->lerFiltros();
@@ -253,7 +253,7 @@ class IAGeracaoController extends Controller
 
     public function historicoLinhas()
     {
-        AuthHelper::requirePermission('marketing_ia');
+        $this->exigirPermissao('marketing_ia');
 
         $modelo  = new IAGeracao();
         $filtros = $this->lerFiltros();
@@ -273,7 +273,7 @@ class IAGeracaoController extends Controller
 
     public function historicoDetalhe()
     {
-        AuthHelper::requirePermission('marketing_ia');
+        $this->exigirPermissao('marketing_ia');
 
         $id = (int) ($_GET['id'] ?? 0);
         $g  = ($id > 0) ? (new IAGeracao())->buscarPorId($id) : null;
@@ -296,7 +296,7 @@ class IAGeracaoController extends Controller
     /** Curadoria: aprovado | reprovado | arquivado | pendente. */
     public function aprovacao()
     {
-        AuthHelper::requirePermission('marketing_ia_aprovar');
+        $this->exigirPermissao('marketing_ia_aprovar');
         if (!$this->exigirPost()) {
             return;
         }
@@ -322,7 +322,7 @@ class IAGeracaoController extends Controller
     /** Refazer com ajustes (nova geração ligada pela origem). */
     public function refazer()
     {
-        AuthHelper::requirePermission('marketing_ia');
+        $this->exigirPermissao('marketing_ia');
         if (!$this->exigirPost()) {
             return;
         }
@@ -396,6 +396,39 @@ class IAGeracaoController extends Controller
         return (string) ob_get_clean();
     }
 
+    /**
+     * Guard de permissão do módulo.
+     *
+     * Faz o que o AuthHelper::requirePermission() faz, com duas diferenças:
+     * a decisão de acesso passa pelo IAPermissaoService (permissão granular
+     * primeiro, cargo de cobertura depois), e a negação distingue Ajax de
+     * navegação como o requireAdminLevel — a Central é toda Ajax, e um 403
+     * em HTML chegava aos $.post como markup onde o JS esperava JSON: o
+     * usuário via "Falha de comunicação" no lugar do motivo real.
+     *
+     * A resposta de navegação é montada aqui de propósito: no painel a base
+     * de views é admin/views, onde não existem errors/403 nem o layout
+     * minimal que o AuthHelper chama — por lá a negação vira RuntimeException.
+     */
+    private function exigirPermissao(string $permissao): void
+    {
+        AuthHelper::requireAdmin();
+        if ((new IAPermissaoService())->pode($permissao)) {
+            return;
+        }
+
+        http_response_code(403);
+        if (AuthHelper::isAjax()) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => false, 'msg' => 'Sem permissão para esta ação.'], JSON_UNESCAPED_UNICODE);
+        } else {
+            header('Content-Type: text/html; charset=utf-8');
+            echo '<!doctype html><meta charset="utf-8"><title>Sem permissão</title>'
+               . '<p style="font:16px system-ui;padding:2rem">Você não tem permissão para acessar a Central de IA.</p>';
+        }
+        exit;
+    }
+
     private function exigirPost(): bool
     {
         if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
@@ -407,19 +440,23 @@ class IAGeracaoController extends Controller
 
     /**
      * ID do usuário logado para ia_geracoes.usuario_id.
-     * AJUSTE: alinhe com a chave de sessão/AuthHelper do projeto.
+     *
+     * Resolve pelo AuthHelper, nunca pela chave crua da sessão: o login do
+     * admin grava 'admin_user_id', e 'usuario_id' só passa a existir depois
+     * que alguém chama usuarioId(). Lendo a chave direto, a primeira geração
+     * de uma sessão nova caía em "Sessão expirada" sem motivo.
      */
     private function usuarioAtualId(): int
     {
-        return (int) ($_SESSION['usuario_id'] ?? ($_SESSION['user_id'] ?? 0));
+        return AuthHelper::usuarioId();
     }
 
     /**
-     * Token CSRF para os formulários.
-     * AJUSTE: se o Controller base já expõe um helper próprio, use-o aqui.
+     * Token CSRF para os formulários — o mesmo do resto do painel
+     * (SecurityHelper grava em CSRF_TOKEN_NAME, que é o que verifyCsrf lê).
      */
     private function tokenCsrf(): string
     {
-        return (string) ($_SESSION['csrf_token'] ?? ($_SESSION['csrf'] ?? ''));
+        return SecurityHelper::generateCsrf();
     }
 }

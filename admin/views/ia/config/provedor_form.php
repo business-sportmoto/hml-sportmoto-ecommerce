@@ -9,7 +9,7 @@ $limite   = ($prov['limite_diario_usd'] !== null && $prov['limite_diario_usd'] !
     : '';
 ?>
 <form class="ia_form" data-acao="/admin/ia/config/provedor/salvar" data-recarregar="prov" autocomplete="off">
-  <input type="hidden" name="csrf_token" value="<?= ia_e($csrf ?? '') ?>">
+  <?= SecurityHelper::csrfField() ?>
   <input type="hidden" name="id" value="<?= (int) $prov['id'] ?>">
 
   <div class="ia_form_grupo">
@@ -33,7 +33,7 @@ $limite   = ($prov['limite_diario_usd'] !== null && $prov['limite_diario_usd'] !
                ? 'Deixe em branco para manter a atual (•••• ' . ia_e($prov['api_key_last4']) . ')'
                : 'Cole aqui a chave do provedor' ?>">
     <div class="ia_aviso_seguro" style="margin-top:8px">
-      <i class="bi bi-shield-lock"></i>
+      <?= IconLibrary::render('shield-locked', 'ia_ico', ['aria-hidden' => 'true']) ?>
       <span>Cifrada com AES-256-GCM no banco. Nunca é reexibida nem enviada ao navegador — apenas os
       últimos 4 caracteres ficam visíveis. Toda alteração é registrada na auditoria.</span>
     </div>
@@ -65,6 +65,6 @@ $limite   = ($prov['limite_diario_usd'] !== null && $prov['limite_diario_usd'] !
   </div>
 
   <div class="ia_form_rodape">
-    <button type="submit" class="ia_btn ia_btn_primario"><i class="bi bi-check-lg"></i> Salvar</button>
+    <button type="submit" class="ia_btn ia_btn_primario"><?= IconLibrary::render('check', 'ia_ico', ['aria-hidden' => 'true']) ?> Salvar</button>
   </div>
 </form>
