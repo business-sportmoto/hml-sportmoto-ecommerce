@@ -205,53 +205,10 @@ class PageController extends Controller {
      * Arquivo vence em caso de slug repetido, igual à resolução da URL.
      */
     public static function getAllPages(): array {
-        $pagesDir = ROOT_PATH . '/pages';
-        $pages    = [];
-
-        // Sem a pasta /pages a função seguia devolvendo [] — e levava junto as
-        // páginas do banco, que não dependem dela.
-        foreach (glob($pagesDir . '/*/page.json') ?: [] as $jsonFile) {
-            $config = json_decode(file_get_contents($jsonFile), true);
-            if (!is_array($config) || !($config['ativa'] ?? true)) continue;
-
-            $slug    = basename(dirname($jsonFile));
-            $pages[] = array_merge($config, ['slug' => $slug]);
-        }
-
-        // Banco: só o que não colide com arquivo, e traduzido para o mesmo
-        // formato do page.json — quem consome não distingue a origem.
-        $slugsEmArquivo = array_column($pages, 'slug');
-
-        try {
-            foreach ((new Pagina())->publicadas() as $p) {
-                if (in_array($p['slug'], $slugsEmArquivo, true)) continue;
-
-                $pages[] = [
-                    'slug'          => $p['slug'],
-                    'titulo'        => $p['titulo'],
-                    'descricao'     => $p['meta_description'] ?? '',
-                    'menu_label'    => $p['menu_label'] ?: $p['titulo'],
-                    'menu_ordem'    => $p['ordem_menu'] !== null ? (int) $p['ordem_menu'] : 99,
-                    'no_menu'       => (bool) $p['no_menu'],
-                    'no_rodape'     => (bool) $p['no_rodape'],
-                    'noindex'       => (bool) $p['noindex'],
-                    'ativa'         => true,
-                    'origem'        => 'banco',
-                    'atualizado_em' => $p['atualizado_em'] ?? null,
-                ];
-            }
-        } catch (Throwable $e) {
-            // Banco fora do ar não pode derrubar o menu inteiro: as páginas de
-            // arquivo continuam listadas e a loja segue navegável.
-            if (class_exists('LogService')) {
-                LogService::exception($e, 'warning', 'app', ['onde' => 'PageController::getAllPages']);
-            }
-        }
-
-        // Ordena pelo campo menu_ordem
-        usort($pages, fn($a, $b) => ($a['menu_ordem'] ?? 99) <=> ($b['menu_ordem'] ?? 99));
-
-        return $pages;
+        // A lista mora no PaginaService: listar página é regra de domínio, e o
+        // autoloader do painel não alcança app/controllers/. Este método fica
+        // como fachada para quem já chamava por aqui.
+        return PaginaService::todas();
     }
 
 }

@@ -9,7 +9,7 @@ declare(strict_types=1);
 // Só as páginas de BANCO moram aqui. As landing pages desenhadas continuam em
 // /pages/{slug}/index.php, com CSS e JS próprios — juntar as duas coisas numa
 // tabela jogaria fora o trabalho que existe nelas. Quem une as duas fontes numa
-// lista só, para menu e rodapé, é o PageController::getAllPages().
+// lista só, para menu e rodapé, é o PaginaService::todas().
 // ════════════════════════════════════════════════════════
 
 class Pagina

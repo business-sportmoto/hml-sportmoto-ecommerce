@@ -312,14 +312,24 @@ class FooterService
         return $colunas;
     }
 
-    /** Páginas de /pages que pedem lugar no menu. */
+    /**
+     * Páginas que pedem lugar no rodapé — de arquivo e de banco.
+     *
+     * As duas fontes declaram isso de jeitos diferentes: a página de banco tem
+     * `no_rodape` próprio, e a de arquivo só tem `no_menu` no page.json. Sem
+     * essa distinção, uma página criada no painel marcada só para o rodapé
+     * ficaria de fora justamente do rodapé — que é onde termos e privacidade
+     * moram.
+     */
     public static function linksDasPaginas(): array
     {
-        if (!class_exists('PageController')) return [];
-
         $out = [];
-        foreach (PageController::getAllPages() as $pg) {
-            if (empty($pg['no_menu'])) continue;
+        foreach (PaginaService::todas() as $pg) {
+            $quer = array_key_exists('no_rodape', $pg)
+                ? !empty($pg['no_rodape'])
+                : !empty($pg['no_menu']);
+            if (!$quer) continue;
+
             $out[] = [
                 'label' => (string) ($pg['menu_label'] ?? $pg['titulo'] ?? $pg['slug']),
                 'url'   => '/' . (string) $pg['slug'],

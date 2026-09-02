@@ -3685,3 +3685,151 @@ html[data-theme="dark"] .fp-selo{background:var(--pgto-surface-2) !important;col
   .rod_linha { flex-wrap: wrap; }
   .rod_linha_campos { grid-template-columns: 1fr; }
 }
+
+/* ###########################################################################
+   CRIADOR DE PÁGINAS — admin/views/paginas/
+   ###########################################################################
+   Tudo em token de tema, como o resto do painel. */
+
+.pg_filtros { display: flex; gap: 8px; flex-wrap: wrap; }
+.pg_filtros input[type="search"] { flex: 1; min-width: 200px; }
+.pg_filtros select { max-width: 180px; }
+
+.pg_vazio {
+  margin: 0;
+  padding: 28px 20px;
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+
+.pg_tabela .pg_titulo {
+  font-weight: 700;
+  color: var(--text);
+  text-decoration: none;
+}
+.pg_tabela .pg_titulo:hover { color: var(--blue); text-decoration: underline; }
+
+.pg_slug {
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--text-3);
+  margin-top: 2px;
+}
+
+.pg_curto {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--warning);
+}
+
+.pg_onde { display: flex; flex-wrap: wrap; gap: 4px; }
+.pg_onde span {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+}
+.pg_onde .pg_noindex { color: var(--warning); border-color: var(--warning-bd); background: var(--warning-lt); }
+.pg_onde .pg_so_link { font-weight: 500; color: var(--text-3); font-style: italic; }
+
+.pg_data { font-size: 12.5px; color: var(--text-3); white-space: nowrap; }
+.pg_acoes { display: flex; gap: 5px; align-items: center; justify-content: flex-end; }
+
+.pg_nota {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 10px);
+  padding: 9px 12px;
+  margin: 0 0 12px;
+}
+.pg_nota code {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 11.5px;
+}
+
+.pg_arquivos { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
+.pg_arquivo {
+  display: block;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 10px);
+  background: var(--surface2);
+  text-decoration: none;
+  transition: border-color .2s cubic-bezier(0.2, 0, 0, 1);
+}
+.pg_arquivo:hover { border-color: var(--blue); }
+.pg_arquivo strong { display: block; font-size: 13px; color: var(--text); }
+.pg_arquivo span {
+  display: block;
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 11.5px;
+  color: var(--text-3);
+  margin-top: 2px;
+}
+
+/* ── formulário ────────────────────────────────────────────────────────── */
+.pg_voltar {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--text-3);
+  text-decoration: none;
+  margin-bottom: 4px;
+}
+.pg_voltar:hover { color: var(--blue); }
+
+/* Conteúdo à esquerda, controles de publicação à direita — a ordem em que a
+   decisão acontece: escrever primeiro, decidir onde aparece depois. */
+.pg_layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 14px;
+  align-items: start;
+}
+@media (max-width: 1000px) {
+  .pg_layout { grid-template-columns: 1fr; }
+}
+
+.pg_titulo_input { font-size: 16px; font-weight: 700; }
+
+.pg_slug_campo { display: flex; align-items: stretch; }
+.pg_slug_base {
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-right: 0;
+  border-radius: var(--r-md, 10px) 0 0 var(--r-md, 10px);
+  background: var(--surface2);
+  font-size: 12.5px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.pg_slug_campo .form-control { border-radius: 0 var(--r-md, 10px) var(--r-md, 10px) 0; }
+
+.pg_hint { display: block; font-size: 11.5px; color: var(--text-3); margin-top: 4px; }
+.pg_hint_inline { font-style: normal; font-size: 11.5px; color: var(--text-3); }
+
+.pg_excluir { width: 100%; justify-content: center; color: var(--danger); border-color: var(--danger-bd); }
+.pg_excluir:hover { background: var(--danger-lt); }
+
+/* O textarea vira depósito quando o editor sobe; sem isto os dois apareceriam
+   um em cima do outro e o autor não saberia em qual escrever. */
+.pe-rte-oculto { display: none !important; }

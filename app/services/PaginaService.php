@@ -185,25 +185,118 @@ class PaginaService
     }
 
     /* =================================================================
+       AS DUAS FONTES
+       ================================================================= */
+
+    /**
+     * Todas as páginas publicadas — de arquivo E de banco — num formato só.
+     *
+     * Isto morava no PageController, e o painel não conseguia chamar: o
+     * autoloader do admin não inclui app/controllers/, então
+     * PageController::getAllPages() era "class not found" em toda tela do
+     * painel que precisasse da lista (a de páginas e a do rodapé).
+     *
+     * Listar páginas é regra de domínio, não de um controller. Aqui o
+     * rodapé, o mapa do site, o menu e o painel alcançam a mesma função.
+     * O PageController::getAllPages() continua existindo e delega para cá.
+     *
+     * Arquivo vence em caso de slug repetido, igual à resolução da URL.
+     */
+    public static function todas(): array
+    {
+        $paginas        = self::emArquivo();
+        $slugsEmArquivo = array_column($paginas, 'slug');
+
+        try {
+            foreach ((new Pagina())->publicadas() as $p) {
+                if (in_array($p['slug'], $slugsEmArquivo, true)) continue;
+
+                $paginas[] = [
+                    'slug'          => $p['slug'],
+                    'titulo'        => $p['titulo'],
+                    'descricao'     => $p['meta_description'] ?? '',
+                    'menu_label'    => $p['menu_label'] ?: $p['titulo'],
+                    'menu_ordem'    => $p['ordem_menu'] !== null ? (int) $p['ordem_menu'] : 99,
+                    'no_menu'       => (bool) $p['no_menu'],
+                    'no_rodape'     => (bool) $p['no_rodape'],
+                    'noindex'       => (bool) $p['noindex'],
+                    'ativa'         => true,
+                    'origem'        => 'banco',
+                    'atualizado_em' => $p['atualizado_em'] ?? null,
+                ];
+            }
+        } catch (Throwable $e) {
+            // Banco fora do ar não pode derrubar o menu inteiro: as páginas de
+            // arquivo continuam listadas e a loja segue navegável.
+            if (class_exists('LogService')) {
+                LogService::exception($e, 'warning', 'app', ['onde' => 'PaginaService::todas']);
+            }
+        }
+
+        usort($paginas, fn($a, $b) => ($a['menu_ordem'] ?? 99) <=> ($b['menu_ordem'] ?? 99));
+        return $paginas;
+    }
+
+    /** Só as páginas montadas em /pages/{slug}/index.php. */
+    public static function emArquivo(): array
+    {
+        if (!defined('ROOT_PATH')) return [];
+
+        $paginas = [];
+        foreach (glob(ROOT_PATH . '/pages/*/page.json') ?: [] as $jsonFile) {
+            $config = json_decode((string) file_get_contents($jsonFile), true);
+            if (!is_array($config) || !($config['ativa'] ?? true)) continue;
+
+            $config['slug']   = basename(dirname($jsonFile));
+            $config['origem'] = 'arquivo';
+            $paginas[]        = $config;
+        }
+        return $paginas;
+    }
+
+    /* =================================================================
        AUXILIARES
        ================================================================= */
 
     /**
+     * Acentuada → sem acento, tabela explícita.
+     *
+     * Não se usa iconv('ASCII//TRANSLIT') aqui: o resultado dele depende da
+     * biblioteca C do sistema. Neste servidor (Windows) "ç" virava "c'" e
+     * "devoluções" saía como "devoluc-oes"; em glibc sairia "devolucoes". Slug
+     * que muda conforme o sistema operacional é URL que muda no deploy.
+     */
+    private const ACENTOS = [
+        'á'=>'a','à'=>'a','ã'=>'a','â'=>'a','ä'=>'a','å'=>'a',
+        'é'=>'e','è'=>'e','ê'=>'e','ë'=>'e',
+        'í'=>'i','ì'=>'i','î'=>'i','ï'=>'i',
+        'ó'=>'o','ò'=>'o','õ'=>'o','ô'=>'o','ö'=>'o',
+        'ú'=>'u','ù'=>'u','û'=>'u','ü'=>'u',
+        'ç'=>'c','ñ'=>'n','ý'=>'y','ÿ'=>'y',
+        'Á'=>'a','À'=>'a','Ã'=>'a','Â'=>'a','Ä'=>'a','Å'=>'a',
+        'É'=>'e','È'=>'e','Ê'=>'e','Ë'=>'e',
+        'Í'=>'i','Ì'=>'i','Î'=>'i','Ï'=>'i',
+        'Ó'=>'o','Ò'=>'o','Õ'=>'o','Ô'=>'o','Ö'=>'o',
+        'Ú'=>'u','Ù'=>'u','Û'=>'u','Ü'=>'u',
+        'Ç'=>'c','Ñ'=>'n','Ý'=>'y',
+        'ª'=>'a','º'=>'o','ß'=>'ss','æ'=>'ae','Æ'=>'ae','ø'=>'o','Ø'=>'o',
+    ];
+
+    /**
      * Texto → slug.
      *
-     * Acento vira a letra sem acento (não some): "Trocas e devoluções" precisa
+     * Acento vira a letra sem acento, não some: "Trocas e devoluções" tem que
      * virar "trocas-e-devolucoes", e não "trocas-e-devolues".
+     *
+     * O paginas.js faz o mesmo no navegador (via normalize NFD) para que a
+     * prévia do endereço bata com o que o servidor vai gravar.
      */
     public static function slugify(string $texto): string
     {
         $s = trim($texto);
         if ($s === '') return '';
 
-        if (function_exists('iconv')) {
-            $conv = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s);
-            if ($conv !== false) $s = $conv;
-        }
-
+        $s = strtr($s, self::ACENTOS);
         $s = mb_strtolower($s, 'UTF-8');
         $s = preg_replace('/[^a-z0-9]+/', '-', $s) ?? '';
         return trim($s, '-');

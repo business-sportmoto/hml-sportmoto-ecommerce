@@ -107,8 +107,7 @@ class PageAdminController extends Controller
     private function paginasEmArquivo(): array
     {
         $out = [];
-        foreach (PageController::getAllPages() as $p) {
-            if (($p['origem'] ?? '') === 'banco') continue;
+        foreach (PaginaService::emArquivo() as $p) {
             $out[] = [
                 'slug'   => $p['slug'],
                 'titulo' => $p['titulo'] ?? $p['slug'],

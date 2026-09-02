@@ -407,26 +407,198 @@ final class BiService
      * senão o "% atingido" muda conforme o filtro e deixa de
      * significar qualquer coisa.
      *
-     * Só a dimensão 'loja' está implementada; as demais devolvem 0.0
-     * de propósito, para não inventar número.
+     * O grão muda com a dimensão, e isso não é detalhe:
+     *
+     *   loja / vendedor / canal  → grão de PEDIDO  (bi_fato_pedido)
+     *   marca / categoria        → grão de ITEM    (bi_fato_item)
+     *
+     * Um pedido com itens de três marcas não "pertence" a nenhuma
+     * delas; só os itens pertencem. Medir meta de marca no grão de
+     * pedido contaria o pedido inteiro para cada marca e somaria mais
+     * que o faturamento real.
      */
     private function realizadoDaMeta(array $m): float
     {
-        if ($m['dimensao'] !== 'loja') return 0.0;
+        $metrica  = (string)$m['metrica'];
+        $dimensao = (string)$m['dimensao'];
 
-        $col = [
+        // O grão é decidido pela DIMENSÃO e também pela MÉTRICA.
+        //
+        // Marca e categoria só existem no item — um pedido com itens de
+        // três marcas não pertence a nenhuma delas.
+        //
+        // E quantidade/margem também só existem no item: medir "itens
+        // vendidos" da loja no grão de pedido devolveria 0, que se lê
+        // como "não vendeu nada" em vez de "essa conta não mora aqui".
+        // `bi_fato_item` carrega canal e codigo_vendedor, então o
+        // recorte continua possível no grão fino.
+        $metricaDeItem = in_array($metrica, ['itens_vendidos', 'margem'], true);
+        $grãoItem = in_array($dimensao, ['marca', 'categoria'], true) || $metricaDeItem;
+
+        // Colunas por grão. Whitelist: nada aqui vem do usuário.
+        $colunas = $grãoItem ? [
+            'faturamento'    => 'COALESCE(SUM(receita),0)',
+            'pedidos'        => 'COUNT(DISTINCT pedido_id)',
+            'ticket_medio'   => 'COALESCE(SUM(receita) / NULLIF(COUNT(DISTINCT pedido_id),0),0)',
+            'clientes'       => 'COUNT(DISTINCT cliente_id)',
+            'itens_vendidos' => 'COALESCE(SUM(quantidade),0)',
+            // Margem só sobre a parte com custo conhecido — somar NULL
+            // como zero inventaria margem que não se sabe se existe.
+            'margem'         => 'COALESCE(ROUND(100 * SUM(lucro)
+                                    / NULLIF(SUM(CASE WHEN custo_unitario IS NOT NULL
+                                                      THEN receita END),0), 2),0)',
+        ] : [
             'faturamento'    => 'COALESCE(SUM(total),0)',
             'pedidos'        => 'COUNT(*)',
             'ticket_medio'   => 'COALESCE(AVG(total),0)',
             'clientes'       => 'COUNT(DISTINCT cliente_id)',
-        ][$m['metrica']] ?? null;
+            // Estas duas nunca chegam aqui: `$metricaDeItem` já mandou a
+            // consulta para bi_fato_item. Ficam explícitas para o dia em
+            // que alguém acrescentar uma métrica nova e precisar decidir
+            // conscientemente onde ela mora.
+            'itens_vendidos' => null,
+            'margem'         => null,
+        ];
 
+        $col = $colunas[$metrica] ?? null;
         if ($col === null) return 0.0;
 
-        return (float)$this->valor(
-            "SELECT {$col} FROM bi_fato_pedido
-              WHERE venda_valida = 1 AND data BETWEEN ? AND ?",
-            [$m['periodo_ini'], $m['periodo_fim']]
+        $tabela = $grãoItem ? 'bi_fato_item' : 'bi_fato_pedido';
+        $where  = 'venda_valida = 1 AND data BETWEEN ? AND ?';
+        $params = [$m['periodo_ini'], $m['periodo_fim']];
+
+        switch ($dimensao) {
+            case 'loja':
+                break;
+
+            case 'marca':
+                $where   .= ' AND marca_id = ?';
+                $params[] = (int)$m['dimensao_id'];
+                break;
+
+            case 'categoria':
+                $where   .= ' AND categoria_id = ?';
+                $params[] = (int)$m['dimensao_id'];
+                break;
+
+            case 'canal':
+                $where   .= ' AND canal = ?';
+                $params[] = (string)$m['dimensao_valor'];
+                break;
+
+            case 'vendedor':
+                // bi_metas guarda vendedores.id, mas o pedido carrega o
+                // CÓDIGO. Sem a tradução a meta casaria com o id como
+                // se fosse código e devolveria zero em silêncio.
+                $where   .= ' AND codigo_vendedor = (SELECT codigo FROM bi_dim_vendedor WHERE vendedor_id = ?)';
+                $params[] = (int)$m['dimensao_id'];
+                break;
+
+            default:
+                return 0.0;
+        }
+
+        return (float)$this->valor("SELECT {$col} FROM {$tabela} WHERE {$where}", $params);
+    }
+
+    // ════════════════════════════════════════════════════
+    // MARCA E CATEGORIA
+    // ════════════════════════════════════════════════════
+
+    /**
+     * Visão completa por marca (ou categoria — mesma estrutura).
+     *
+     * Traz participação no faturamento e crescimento contra o período
+     * anterior equivalente. Sem a participação, um ranking de receita
+     * não diz se a marca líder representa 12% ou 70% do negócio — e
+     * essa é a diferença entre diversificação e dependência.
+     */
+    public function porMarca(array $p, string $dim = 'marca', int $limite = 40): array
+    {
+        $mapa = [
+            'marca'     => ['i.marca_id',     'i.marca_nome'],
+            'categoria' => ['i.categoria_id', 'i.categoria_nome'],
+        ];
+        if (!isset($mapa[$dim])) $dim = 'marca';
+        [$idCol, $nomeCol] = $mapa[$dim];
+
+        // Período anterior equivalente, derivado se não veio pronto.
+        if (!isset($p['ini_ant'], $p['fim_ant'])) {
+            $ini    = new DateTimeImmutable($p['ini']);
+            $dias   = max(1, (int)$ini->diff(new DateTimeImmutable($p['fim']))->days + 1);
+            $fimAnt = $ini->modify('-1 day');
+            $p['fim_ant'] = $fimAnt->format('Y-m-d');
+            $p['ini_ant'] = $fimAnt->modify('-' . ($dias - 1) . ' days')->format('Y-m-d');
+        }
+
+        $linhas = $this->todos(
+            "SELECT {$idCol} AS id, {$nomeCol} AS nome,
+                    ROUND(SUM(CASE WHEN i.data BETWEEN ? AND ? THEN i.receita ELSE 0 END),2) AS receita,
+                    ROUND(SUM(CASE WHEN i.data BETWEEN ? AND ? THEN i.receita ELSE 0 END),2) AS receita_ant,
+                    SUM(CASE WHEN i.data BETWEEN ? AND ? THEN i.quantidade ELSE 0 END)       AS qtd,
+                    COUNT(DISTINCT CASE WHEN i.data BETWEEN ? AND ? THEN i.pedido_id END)    AS pedidos,
+                    COUNT(DISTINCT CASE WHEN i.data BETWEEN ? AND ? THEN i.cliente_id END)   AS clientes,
+                    COUNT(DISTINCT CASE WHEN i.data BETWEEN ? AND ? THEN i.produto_id END)   AS produtos,
+                    ROUND(SUM(CASE WHEN i.data BETWEEN ? AND ? THEN i.lucro END),2)          AS lucro,
+                    ROUND(100 * SUM(CASE WHEN i.data BETWEEN ? AND ? THEN i.lucro END)
+                        / NULLIF(SUM(CASE WHEN i.data BETWEEN ? AND ? AND i.custo_unitario IS NOT NULL
+                                          THEN i.receita END),0), 1)                         AS margem_pct,
+                    ROUND(100 * SUM(CASE WHEN i.data BETWEEN ? AND ? AND i.custo_unitario IS NOT NULL
+                                         THEN i.receita ELSE 0 END)
+                        / NULLIF(SUM(CASE WHEN i.data BETWEEN ? AND ? THEN i.receita END),0), 0)
+                                                                                             AS cobertura_custo_pct
+               FROM bi_fato_item i
+              WHERE i.venda_valida = 1
+                AND i.data BETWEEN ? AND ?
+                AND {$nomeCol} IS NOT NULL
+              GROUP BY {$idCol}, {$nomeCol}
+             HAVING receita > 0 OR receita_ant > 0
+              ORDER BY receita DESC
+              LIMIT " . (int)$limite,
+            array_merge(
+                [$p['ini'], $p['fim']],           // receita
+                [$p['ini_ant'], $p['fim_ant']],   // receita_ant
+                [$p['ini'], $p['fim']],           // qtd
+                [$p['ini'], $p['fim']],           // pedidos
+                [$p['ini'], $p['fim']],           // clientes
+                [$p['ini'], $p['fim']],           // produtos
+                [$p['ini'], $p['fim']],           // lucro
+                [$p['ini'], $p['fim']],           // margem num
+                [$p['ini'], $p['fim']],           // margem den
+                [$p['ini'], $p['fim']],           // cobertura num
+                [$p['ini'], $p['fim']],           // cobertura den
+                [$p['ini_ant'], $p['fim']]        // janela que cobre os dois períodos
+            )
+        );
+
+        $total = array_sum(array_map(fn($r) => (float)$r['receita'], $linhas));
+        foreach ($linhas as &$l) {
+            $l['participacao_pct'] = $total > 0 ? round(100 * (float)$l['receita'] / $total, 1) : 0.0;
+            // NULL quando não havia base: sem período anterior, "+100%"
+            // seria leitura de crescimento onde só houve estreia.
+            $l['crescimento_pct'] = (float)$l['receita_ant'] > 0
+                ? round(100 * ((float)$l['receita'] - (float)$l['receita_ant']) / (float)$l['receita_ant'], 1)
+                : null;
+        }
+        return $linhas;
+    }
+
+    /** Produtos de uma marca (ou categoria) — o drill da tabela. */
+    public function produtosDaMarca(array $p, int $id, string $dim = 'marca', int $limite = 15): array
+    {
+        $col = $dim === 'categoria' ? 'i.categoria_id' : 'i.marca_id';
+
+        return $this->todos(
+            "SELECT i.produto_id, i.nome_produto,
+                    SUM(i.quantidade)         AS qtd,
+                    ROUND(SUM(i.receita),2)   AS receita,
+                    COUNT(DISTINCT i.pedido_id) AS pedidos
+               FROM bi_fato_item i
+              WHERE i.venda_valida = 1 AND i.data BETWEEN ? AND ? AND {$col} = ?
+              GROUP BY i.produto_id, i.nome_produto
+              ORDER BY receita DESC
+              LIMIT " . (int)$limite,
+            [$p['ini'], $p['fim'], $id]
         );
     }
 

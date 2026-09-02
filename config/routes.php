@@ -482,6 +482,11 @@ Router::post('/webhooks/whatsapp', 'ChatWebhookController@receber');
 // Precisa vir ANTES do curinga /{slug}, senão o PageController engole.
 Router::get('/ir/{token}', 'ChatLinkController@ir');
 
+// Mapa do site. Vem ANTES do curinga: /mapa-do-site é gerado, não é uma
+// página de conteúdo, e se o curinga pegasse primeiro daria 404.
+Router::get('/mapa-do-site', 'SitemapController@html');
+Router::get('/sitemap.xml',  'SitemapController@xml');
+
 // Deve ser a ÚLTIMA rota do arquivo (curinga)
 Router::get('/{slug}', 'PageController@show');
 

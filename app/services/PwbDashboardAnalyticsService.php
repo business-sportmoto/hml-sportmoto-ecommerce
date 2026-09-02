@@ -406,6 +406,8 @@ final class PwbDashboardAnalyticsService
         }
 
         return [
+            'marcas'        => $this->dimensaoTabela($p, 'marca'),
+            'categorias'    => $this->dimensaoTabela($p, 'categoria'),
             'frete_tipo'    => $freteTipo,
             'abc'           => $abc,
             'canais'        => $canais,
@@ -534,6 +536,42 @@ final class PwbDashboardAnalyticsService
     }
 
     /**
+     * Marca ou categoria formatada — mesma estrutura para as duas.
+     *
+     * `share` (participação) é o número que diz se a líder representa
+     * 12% ou 70% do negócio, e essa é a diferença entre diversificação
+     * e dependência. Um ranking de receita sozinho não conta isso.
+     */
+    private function dimensaoTabela(array $p, string $dim): array
+    {
+        $out = [];
+        foreach ($this->bi->porMarca($p, $dim, 40) as $r) {
+            $cresc = $r['crescimento_pct'];
+            $out[] = [
+                'id'       => (string)($r['id'] ?? ''),
+                'name'     => $r['nome'],
+                'revenue'  => $this->brl((float)$r['receita']),
+                'share'    => number_format((float)$r['participacao_pct'], 1, ',', '.') . '%',
+                'qty'      => $this->num((float)$r['qtd']),
+                'orders'   => $this->num((float)$r['pedidos']),
+                'clients'  => $this->num((float)$r['clientes']),
+                'products' => $this->num((float)$r['produtos']),
+                'ticket'   => $this->brl((float)$r['pedidos'] > 0
+                                ? (float)$r['receita'] / (float)$r['pedidos'] : 0),
+                'margin'   => $r['margem_pct'] === null
+                            ? '— (sem custo)' : number_format((float)$r['margem_pct'], 1, ',', '.') . '%',
+                // Sem período anterior não houve crescimento: houve
+                // estreia. "+100%" ali seria leitura falsa.
+                'growth'   => $cresc === null
+                            ? '—' : ($cresc >= 0 ? '+' : '') . number_format((float)$cresc, 1, ',', '.') . '%',
+                'growth_level' => $cresc === null ? 'Sem base'
+                                : ($cresc > 0 ? 'Saudável' : ($cresc < 0 ? 'Crítico' : 'Atenção')),
+            ];
+        }
+        return $out;
+    }
+
+    /**
      * Geografia formatada. `trust_level` vira classe de badge para a
      * tela mostrar em cor quando o dado é frágil — geografia vinda do
      * cadastro atual do cliente sofre drift (ver Fase 0).
@@ -567,6 +605,7 @@ final class PwbDashboardAnalyticsService
             'monthly'        => $this->bi->serieMensal(12),
             'by_status'      => $this->bi->porStatus($p),
             'top_brands'     => $this->bi->ranking($p, 'marca', 8),
+            'marcas_share'   => array_slice($this->bi->porMarca($p, 'marca', 10), 0, 10),
             'top_categories' => $this->bi->ranking($p, 'categoria', 8),
             'by_channel'     => $this->bi->ranking($p, 'canal', 8),
             'by_payment'     => $this->bi->porPagamento($p),

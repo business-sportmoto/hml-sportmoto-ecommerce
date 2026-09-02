@@ -290,6 +290,9 @@ AdminRouter::get('/banners/stream-status',      'BannersController@streamStatus'
 
 // ── Páginas ───────────────────────────────────────────────
 AdminRouter::get('/paginas',                       'PageAdminController@index');
+AdminRouter::get('/paginas/nova',                  'PageAdminController@nova');
+AdminRouter::post('/paginas/alternar',             'PageAdminController@alternar');
+AdminRouter::post('/paginas/excluir',              'PageAdminController@excluir');
 AdminRouter::get('/paginas/editar/{id:\d+}',       'PageAdminController@edit');
 AdminRouter::post('/paginas/salvar',               'PageAdminController@save');
 
