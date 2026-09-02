@@ -3833,3 +3833,11 @@ html[data-theme="dark"] .fp-selo{background:var(--pgto-surface-2) !important;col
 /* O textarea vira depósito quando o editor sobe; sem isto os dois apareceriam
    um em cima do outro e o autor não saberia em qual escrever. */
 .pe-rte-oculto { display: none !important; }
+
+/* Divisor dentro de um card: separa dois assuntos que compartilham o bloco —
+   o texto da newsletter e as regras do cupom. */
+.rod_sep {
+  height: 1px;
+  background: var(--border);
+  margin: 18px 0 14px;
+}

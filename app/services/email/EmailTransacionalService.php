@@ -49,7 +49,8 @@ class EmailTransacionalService
 
         'senha_alterada'                 => 'Senha alterada',
         'aviso_de_login'                 => 'Aviso de login',
-        'pergunta_respondida'            => 'Pergunta respondida'
+        'pergunta_respondida'            => 'Pergunta respondida',
+        'newsletter_codigo'              => 'Código da newsletter'
     ];
 
     public function __construct()

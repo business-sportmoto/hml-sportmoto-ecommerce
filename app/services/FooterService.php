@@ -91,6 +91,28 @@ class FooterService
                 'padrao' => 'Quero meu cupom',
             ],
 
+            // Cupom de boas-vindas: decisão comercial, não de código. O valor do
+            // desconto muda com a margem, e margem não pode exigir deploy.
+            // Quem lê estas chaves e cria o cupom é o NewsletterService.
+            'footer_newsletter_cupom_ativo' => [
+                'tipo' => 'bool', 'descricao' => 'Gera cupom ao confirmar a inscrição', 'padrao' => '1',
+            ],
+            'footer_newsletter_cupom_tipo' => [
+                'tipo' => 'string', 'descricao' => 'Tipo do cupom (percentual ou fixo)', 'padrao' => 'fixo',
+            ],
+            'footer_newsletter_cupom_valor' => [
+                'tipo' => 'string', 'descricao' => 'Valor do desconto', 'padrao' => '10',
+            ],
+            'footer_newsletter_cupom_minimo' => [
+                'tipo' => 'string', 'descricao' => 'Pedido mínimo para usar o cupom', 'padrao' => '0',
+            ],
+            'footer_newsletter_cupom_dias' => [
+                'tipo' => 'string', 'descricao' => 'Dias de validade do cupom', 'padrao' => '30',
+            ],
+            'footer_newsletter_cupom_prefixo' => [
+                'tipo' => 'string', 'descricao' => 'Prefixo do código gerado', 'padrao' => 'BV',
+            ],
+
             'footer_beneficios' => [
                 'tipo' => 'json', 'descricao' => 'Faixa de benefícios do rodapé',
                 'padrao' => [

@@ -292,3 +292,4 @@ $rotuloSocial = ['instagram' => 'Instagram', 'youtube' => 'YouTube', 'facebook' 
 </footer>
 
 <?php include __DIR__ . '/../partials/modal-lembrar-dispositivo.php'; ?>
+<?php if ($f['newsletter']['ativo']) include __DIR__ . '/modal-newsletter.php'; ?>

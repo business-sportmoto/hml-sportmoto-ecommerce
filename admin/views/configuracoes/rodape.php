@@ -198,6 +198,62 @@ $ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int
           <textarea class="form-control" id="footer_newsletter_texto"
                     name="footer_newsletter_texto" rows="2" maxlength="300"><?= $e($cfg['footer_newsletter_texto']) ?></textarea>
         </div>
+
+        <div class="rod_sep"></div>
+
+        <label class="toggle-field" style="margin-bottom:12px">
+          <input type="checkbox" id="footer_newsletter_cupom_ativo" name="footer_newsletter_cupom_ativo"
+                 value="1" <?= !empty($cfg['footer_newsletter_cupom_ativo']) ? 'checked' : '' ?>>
+          <span class="toggle-slider"></span>
+          <span>Gerar cupom ao confirmar a inscrição</span>
+        </label>
+
+        <p class="rod_nota">
+          <?= $ico('info', 14) ?>
+          O cliente informa o e-mail, recebe um código de 6 dígitos, confirma com o
+          nome e ganha um cupom de <strong>uso único</strong> criado na hora. O código
+          existe porque, sem ele, bastaria inventar e-mails para gerar descontos.
+        </p>
+
+        <div class="rod_grid rod_grid--4">
+          <div class="ap-form-group">
+            <label class="ap-form-label" for="footer_newsletter_cupom_tipo">Tipo</label>
+            <select class="form-control" id="footer_newsletter_cupom_tipo" name="footer_newsletter_cupom_tipo">
+              <option value="fixo"       <?= $cfg['footer_newsletter_cupom_tipo'] === 'fixo' ? 'selected' : '' ?>>Valor em R$</option>
+              <option value="percentual" <?= $cfg['footer_newsletter_cupom_tipo'] === 'percentual' ? 'selected' : '' ?>>Percentual</option>
+            </select>
+          </div>
+          <div class="ap-form-group">
+            <label class="ap-form-label" for="footer_newsletter_cupom_valor">Desconto</label>
+            <input type="text" class="form-control" id="footer_newsletter_cupom_valor"
+                   name="footer_newsletter_cupom_valor" maxlength="10"
+                   value="<?= $e($cfg['footer_newsletter_cupom_valor']) ?>">
+          </div>
+          <div class="ap-form-group">
+            <label class="ap-form-label" for="footer_newsletter_cupom_minimo">Pedido mínimo</label>
+            <input type="text" class="form-control" id="footer_newsletter_cupom_minimo"
+                   name="footer_newsletter_cupom_minimo" maxlength="10"
+                   value="<?= $e($cfg['footer_newsletter_cupom_minimo']) ?>">
+            <span class="rod_hint">0 = sem mínimo</span>
+          </div>
+          <div class="ap-form-group">
+            <label class="ap-form-label" for="footer_newsletter_cupom_dias">Validade (dias)</label>
+            <input type="number" class="form-control" id="footer_newsletter_cupom_dias"
+                   name="footer_newsletter_cupom_dias" min="1" max="365"
+                   value="<?= $e($cfg['footer_newsletter_cupom_dias']) ?>">
+          </div>
+        </div>
+
+        <div class="ap-form-group">
+          <label class="ap-form-label" for="footer_newsletter_cupom_prefixo">Prefixo do código</label>
+          <input type="text" class="form-control" id="footer_newsletter_cupom_prefixo"
+                 name="footer_newsletter_cupom_prefixo" maxlength="8" style="max-width:150px"
+                 value="<?= $e($cfg['footer_newsletter_cupom_prefixo']) ?>">
+          <span class="rod_hint">
+            Vira algo como <code><?= $e(($cfg['footer_newsletter_cupom_prefixo'] ?: 'BV')) ?>K7M2Q</code>.
+            Sem O nem 0 no sufixo, para ninguém confundir ao digitar.
+          </span>
+        </div>
       </div>
     </div>
 

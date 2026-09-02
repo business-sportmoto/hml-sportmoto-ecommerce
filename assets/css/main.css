@@ -11328,3 +11328,151 @@ to{opacity:1;transform:scale(1)}
   text-decoration: none;
 }
 .mapa_lista a:hover { color: var(--c-primary); text-decoration: underline; }
+
+/* ###########################################################################
+   MODAL DA NEWSLETTER — views/partials/modal-newsletter.php
+   ###########################################################################
+   Em token, para acompanhar o tema claro/escuro da loja. */
+
+body.nlm-aberta { overflow: hidden; }
+
+.nlm_backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(2, 6, 23, .62);
+  backdrop-filter: blur(2px);
+}
+
+.nlm_box {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  animation: nlmEntra .22s cubic-bezier(0.05, 0.7, 0.1, 1);
+}
+@keyframes nlmEntra {
+  from { opacity: 0; transform: translateY(14px) scale(.98); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nlm_box { animation: none; }
+}
+
+.nlm_fechar {
+  position: absolute;
+  top: 10px; right: 10px;
+  width: 32px; height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--c-text-muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.nlm_fechar:hover { background: var(--c-surface); color: var(--c-dark); }
+
+.nlm_body { padding: 30px 26px 24px; text-align: center; }
+
+.nlm_icone {
+  width: 52px; height: 52px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--c-primary-l);
+  color: var(--c-primary);
+}
+.nlm_icone svg { width: 25px; height: 25px; }
+.nlm_icone--ok { background: color-mix(in srgb, var(--c-success) 16%, transparent); color: var(--c-success); }
+
+.nlm_titulo { font-size: 19px; margin: 0 0 7px; color: var(--c-dark); }
+.nlm_texto  { font-size: 14px; line-height: 1.55; color: var(--c-text-muted); margin: 0 0 18px; }
+.nlm_texto strong { color: var(--c-dark); }
+
+.nlm_campo { text-align: left; margin-bottom: 12px; }
+.nlm_campo label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--c-text);
+  margin-bottom: 5px;
+}
+
+/* Alvo grande e monoespaçado: o código vem de outra tela, quase sempre de
+   outro aparelho, e é digitado olhando para lá. */
+.nlm_codigo {
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 22px;
+  letter-spacing: 9px;
+  text-align: center;
+  padding: 12px;
+}
+
+.nlm_erro {
+  font-size: 13px;
+  color: var(--c-favorited);
+  background: color-mix(in srgb, var(--c-favorited) 12%, transparent);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 0 0 12px;
+  text-align: left;
+}
+
+.nlm_botao { width: 100%; justify-content: center; min-height: 46px; font-size: 15px; }
+
+.nlm_rodape { font-size: 13px; color: var(--c-text-muted); margin: 14px 0 0; }
+.nlm_link {
+  border: 0; background: none; padding: 0;
+  color: var(--c-primary);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* ── cupom ─────────────────────────────────────────────────────────────── */
+.nlm_cupom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 12px 12px 16px;
+  margin: 0 0 10px;
+  border: 2px dashed var(--c-primary);
+  border-radius: 12px;
+  background: var(--c-primary-l);
+}
+.nlm_cupom_codigo {
+  flex: 1;
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: var(--c-primary-d);
+  word-break: break-all;
+}
+.nlm_cupom_copiar {
+  flex: none;
+  border: 1px solid var(--c-primary);
+  background: var(--c-bg);
+  color: var(--c-primary);
+  border-radius: 8px;
+  padding: 7px 13px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.nlm_cupom_copiar:hover { background: var(--c-primary); color: var(--c-primary-w); }
+
+.nlm_cupom_regra { font-size: 12px; color: var(--c-text-muted); margin: 0 0 18px; }
+
+@media (max-width: 420px) {
+  .nlm_body { padding: 26px 18px 20px; }
+  .nlm_codigo { font-size: 19px; letter-spacing: 6px; }
+}

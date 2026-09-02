@@ -3517,24 +3517,10 @@
     });
 
     // ── Newsletter ───────────────────────────────────────────
-    $('#footer-newsletter-form').on('submit', function (e) {
-      e.preventDefault();
-      const $form = $(this);
-      const $msg  = $('#newsletter-msg');
-      const email = $form.find('input[name=email]').val();
-
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        $msg.text('E-mail inválido.').addClass('msg-error').removeClass('msg-ok');
-        return;
-      }
-
-      $.post(BASE_URL + '/newsletter', $form.serialize(), function (res) {
-        $msg.text(res.msg)
-            .removeClass('msg-error msg-ok')
-            .addClass(res.ok ? 'msg-ok' : 'msg-error');
-        if (res.ok) $form.find('input[name=email]').val('');
-      }, 'json');
-    });
+    // O formulário do rodapé virou fluxo de duas etapas (código por e-mail e
+    // cupom) e mora em assets/js/newsletter.js. O handler que existia aqui
+    // apontava para #footer-newsletter-form, id que sumiu na reformulação do
+    // rodapé — ficou anos ligado a nada, e é por isso que "não funcionava".
 
     // ── Lazy reveal com IntersectionObserver ─────────────────
     if ('IntersectionObserver' in window) {

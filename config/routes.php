@@ -304,7 +304,8 @@ Router::post('/minha-conta/devolucao/{id:\d+}/cancelar',        'CustomerDevoluc
 Router::post('/minha-conta/devolucao/{id:\d+}/rastreio',        'CustomerDevolucaoController@informarRastreio');
 
 // Newsletter
-Router::post('/newsletter',               'HomeController@newsletter');
+Router::post('/newsletter',               'NewsletterController@solicitar');
+Router::post('/newsletter/confirmar',     'NewsletterController@confirmar');
 Router::get('/newsletter/cancelar/{token}', 'HomeController@unsubscribe');
 
 // Páginas institucionais (deve ficar por último — catch-all de slug)

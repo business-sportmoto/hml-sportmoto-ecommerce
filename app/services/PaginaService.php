@@ -23,6 +23,19 @@ class PaginaService
     }
 
     /**
+     * Mínimo de texto visível para uma página poder ir ao ar.
+     *
+     * Existe por causa das 6 páginas de exemplo que estavam no banco desde
+     * abril com frases como "Nossos termos de uso." — publicar isso é pior que
+     * 404, porque o cliente conclui que a loja não tem termos, e não que a
+     * página ainda não existe.
+     *
+     * Medido sobre o texto sem marcação: 120 caracteres de <div> aninhado
+     * continuam sendo uma página vazia.
+     */
+    public const MIN_CONTEUDO = 120;
+
+    /**
      * Primeiros segmentos de URL que o roteador já usa.
      *
      * Uma página criada com um desses slugs nunca seria alcançada: o curinga
@@ -115,8 +128,9 @@ class PaginaService
         // Página vazia publicada é pior que 404: o cliente acha que a loja
         // esqueceu de escrever os termos.
         $conteudo = HtmlHelper::sanitizeRich((string) ($post['conteudo'] ?? ''));
-        if ($ativo === 1 && trim(strip_tags($conteudo)) === '') {
-            return ['ok' => false, 'msg' => 'Não dá para publicar uma página sem conteúdo. Salve como rascunho.'];
+        if ($ativo === 1 && !self::temConteudo($conteudo)) {
+            return ['ok' => false, 'msg' => 'A página ainda está curta demais para ir ao ar. '
+                . 'Escreva o texto e publique depois — ou salve como rascunho.'];
         }
 
         $dados = [
@@ -175,8 +189,25 @@ class PaginaService
         return ['ok' => true, 'msg' => 'Página excluída.'];
     }
 
+    /**
+     * Liga/desliga a publicação pela lista.
+     *
+     * A regra de "não publica página vazia" vale aqui também. Ela existia só no
+     * salvar(), e o botão da lista passava por fora: dava para pôr no ar uma
+     * página com uma frase de exemplo sem nenhum aviso. Regra que vale num
+     * caminho e não no outro é regra que não vale.
+     */
     public function alternarAtivo(int $id): array
     {
+        $p = $this->model->porId($id);
+        if (!$p) return ['ok' => false, 'msg' => 'Página não encontrada.'];
+
+        $vaiPublicar = ((int) $p['ativo']) === 0;
+        if ($vaiPublicar && !self::temConteudo((string) $p['conteudo'])) {
+            return ['ok' => false, 'msg' => 'Esta página ainda está curta demais para ir ao ar. '
+                . 'Abra e escreva o texto antes de publicar.'];
+        }
+
         $novo = $this->model->alternarAtivo($id);
         if ($novo === null) return ['ok' => false, 'msg' => 'Página não encontrada.'];
 
@@ -300,6 +331,14 @@ class PaginaService
         $s = mb_strtolower($s, 'UTF-8');
         $s = preg_replace('/[^a-z0-9]+/', '-', $s) ?? '';
         return trim($s, '-');
+    }
+
+    /** Tem texto suficiente para valer uma página pública? */
+    public static function temConteudo(?string $html): bool
+    {
+        $texto = trim(html_entity_decode(strip_tags((string) $html), ENT_QUOTES, 'UTF-8'));
+        $texto = preg_replace('/\s+/u', ' ', $texto) ?? '';
+        return mb_strlen($texto) >= self::MIN_CONTEUDO;
     }
 
     /** O slug já é de uma página montada em arquivo? */

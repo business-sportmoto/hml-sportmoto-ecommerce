@@ -72,6 +72,7 @@ $categoryModel    = new Category();
   <script src="<?= PerformanceHelper::assetVersion('js/master.js') ?>" defer></script>
   <script src="<?= PerformanceHelper::assetVersion('js/cart.js') ?>" defer></script>
   <script src="<?= PerformanceHelper::assetVersion('js/search.js') ?>" defer></script>
+  <script src="<?= PerformanceHelper::assetVersion('js/newsletter.js') ?>" defer></script>
   <script src="<?= PerformanceHelper::assetVersion('js/lightbox.js') ?>" defer></script>
 
   <script src="<?= PerformanceHelper::assetVersion('js/hls.js') ?>" defer></script>   
