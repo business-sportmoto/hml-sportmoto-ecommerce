@@ -1231,6 +1231,94 @@ class ChatNoAcaoIgResponderComentario extends ChatNo
     }
 }
 
+
+/**
+ * Etapa de IA — lê a pergunta do contato e responde a partir do PRODUTO ligado
+ * a este bloco.
+ *
+ * config: {"produto_id":482,"campos":["nome","preco","ficha"],
+ *          "responder_publico":true,"tom":"..."}
+ * portas: respondeu | nao_sabe
+ *
+ * A porta `nao_sabe` não é tratamento de erro — é o caminho normal quando a
+ * pergunta sai do que o produto responde ("faz frete pro Acre?"). O fluxo
+ * decide o que fazer: passar para humano, mandar recado padrão. É o que impede
+ * o agente de improvisar sobre o que não sabe.
+ */
+class ChatNoIaResponder extends ChatNo
+{
+    public function portas(): array   { return ['respondeu', 'nao_sabe']; }
+    public function categoria(): string { return 'acao'; }
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        $c = $this->ctx($sessao);
+
+        // A pergunta é o que a pessoa escreveu: comentário do reel, ou a última
+        // mensagem dela no direct quando o bloco roda no meio de uma conversa.
+        $pergunta = trim((string)($c['comentario'] ?? $c['ultima_mensagem'] ?? ''));
+        if ($pergunta === '') return 'nao_sabe';
+
+        $produtoId = (int)($config['produto_id'] ?? 0);
+        if ($produtoId < 1) return 'nao_sabe';
+
+        $agente = new ChatIaAgenteService($ctx->db);
+        $campos = $config['campos'] ?? ChatIaAgenteService::CAMPOS;
+
+        // Produto inativo ou apagado devolve null: melhor calar que falar de
+        // algo que saiu do ar.
+        $ctxProd = $agente->contextoProduto($produtoId, (array)$campos);
+        if ($ctxProd === null) return 'nao_sabe';
+
+        $r = $agente->responder($pergunta, $ctxProd, [
+            'publico'   => !empty($config['responder_publico']) && !empty($c['_comment_id']),
+            'tom'       => (string)($config['tom'] ?? ''),
+            'contato_id'=> (int)($ctx->contato['id'] ?? 0),
+            'fluxo_id'  => (int)($sessao['fluxo_id'] ?? 0),
+        ]);
+
+        if (!$r['ok']) return 'nao_sabe';
+
+        // Resposta pública primeiro: quem comentou espera ver algo no post, e
+        // se o direct falhar (janela fechada) o comentário já foi respondido.
+        if (!empty($r['publico']) && !empty($c['_comment_id'])) {
+            $this->responderComentario($ctx, (string)$c['_comment_id'], (string)$r['publico']);
+        }
+
+        if (trim((string)$r['direct']) !== '') {
+            $ctx->envio->texto(
+                (int)$ctx->contato['id'], (string)$r['direct'],
+                $this->opts($sessao, ['ia' => 1])
+            );
+        }
+
+        // Guarda a resposta no contexto — blocos seguintes podem usá-la
+        $c['ia_resposta'] = $r['direct'];
+        $sessao['contexto'] = $c;
+
+        return 'respondeu';
+    }
+
+    private function responderComentario(ChatExecCtx $ctx, string $commentId, string $texto): void
+    {
+        try {
+            $svc   = new ChatInstagramService($ctx->db);
+            $conta = !empty($ctx->contato['ig_conta_id'])
+                ? $svc->conta((int)$ctx->contato['ig_conta_id'])
+                : $svc->contaPadrao();
+            if ($conta) {
+                ChatInstagramClient::daConta($conta)->responderComentario($commentId, $texto);
+            }
+        } catch (Throwable $e) {
+            // O comentário pode ter sido apagado entre o gatilho e este passo
+            if (class_exists('LogService')) {
+                try { LogService::warning('ia: resposta pública falhou', ['erro' => $e->getMessage()], 'chat'); }
+                catch (Throwable $x) {}
+            }
+        }
+    }
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // REGISTRY
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1279,6 +1367,8 @@ class ChatNoRegistry
         'cond_ig_segue'               => ChatNoCondIgSegue::class,
         'msg_ig_card'                 => ChatNoMsgIgCard::class,
         'acao_ig_responder_comentario'=> ChatNoAcaoIgResponderComentario::class,
+        // ia
+        'ia_responder'                => ChatNoIaResponder::class,
     ];
 
     /** @var array<string,ChatNo> instâncias stateless reutilizáveis */

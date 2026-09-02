@@ -890,6 +890,7 @@ html[data-theme="dark"] .ch-fx-flut {
 .ch-fx-c-logica   { background: #71717a; }
 .ch-fx-c-condicao { background: #f59e0b; }
 .ch-fx-c-acao     { background: #8b5cf6; }
+.ch-fx-c-ia       { background: #0f172a; }
 
 /* Drawflow: conectores */
 .ch-fx-canvas .drawflow .drawflow-node {

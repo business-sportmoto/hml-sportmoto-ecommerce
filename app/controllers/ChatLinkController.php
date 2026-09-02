@@ -29,7 +29,21 @@ class ChatLinkController extends Controller
 
         $destino = null;
         try {
-            $destino = (new ChatIgAutomacaoService())->registrarClique($token);
+            $svc  = new ChatIgAutomacaoService();
+            $link = $svc->registrarClique($token);
+
+            if ($link) {
+                $destino = $link['url'];
+
+                // Abre a sessão ANTES do redirect: o session_id() daqui é o
+                // mesmo que o carrinho vai gravar minutos depois, e é por ele
+                // que a régua das 20h descobre de quem é o carrinho.
+                if (!empty($link['contato_id'])) {
+                    if (session_status() !== PHP_SESSION_ACTIVE) @session_start();
+                    $sid = session_id();
+                    if ($sid) $svc->registrarVisita((int)$link['contato_id'], $sid, $link['regra_id']);
+                }
+            }
         } catch (Throwable $e) {
             if (class_exists('LogService')) {
                 try { LogService::error('chat: falha no redirect de link', ['erro' => $e->getMessage()], 'chat'); }

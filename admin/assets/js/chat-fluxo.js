@@ -33,7 +33,8 @@
     mensagem: { label: 'Mensagens',           cor: '#0a66c2' },
     logica:   { label: 'Lógica',              cor: '#71717a' },
     condicao: { label: 'Condições',           cor: '#f59e0b' },
-    acao:     { label: 'Ações',               cor: '#8b5cf6' }
+    acao:     { label: 'Ações',               cor: '#8b5cf6' },
+    ia:       { label: 'IA',                  cor: '#0f172a' }
   };
 
   var UI = {
@@ -345,6 +346,26 @@
         { k: 'botao_url', label: 'URL do botão', tipo: 'text', def: '' }
       ],
       resumo: function (c) { return c.titulo || ''; }
+    },
+    ia_responder: {
+      cat: 'ia', label: 'Etapa de IA', ico: '✨',
+      desc: 'Lê a pergunta e responde a partir dos dados do produto ligado aqui.',
+      campos: [
+        { k: 'produto_id', label: 'Produto', tipo: 'number', def: '',
+          ajuda: 'ID do produto. O agente só fala do que estiver no cadastro dele.' },
+        { k: 'campos', label: 'Pode usar', tipo: 'select', def: 'todos',
+          ops: [['todos','Nome, preço, descrição, ficha e compatibilidade'],
+                ['sem_preco','Tudo, menos o preço'],
+                ['so_ficha','Só ficha técnica e compatibilidade']] },
+        { k: 'responder_publico', label: 'Responder também no comentário', tipo: 'checkbox', def: true,
+          ajuda: 'A resposta pública varia a cada comentário e nunca traz valores — ela chama para o direct.' },
+        { k: 'tom', label: 'Tom da marca (opcional)', tipo: 'textarea', def: '',
+          ajuda: 'Ex.: informal, direto, sem gíria. Não muda o que ele pode dizer.' }
+      ],
+      resumo: function (c) {
+        return (c.produto_id ? 'produto #' + c.produto_id : 'sem produto')
+             + (c.responder_publico ? ' · responde no post' : ' · só direct');
+      }
     },
     acao_ig_responder_comentario: {
       cat: 'acao', label: 'Responder comentário', ico: '💬',

@@ -684,11 +684,21 @@ class ChatIgAutomacaoService
      * Só o PRIMEIRO clique de cada link conta para o CTR — reclique da mesma
      * pessoa inflaria a métrica sem significar alcance novo.
      */
-    public function registrarClique(string $token): ?string
+    /**
+     * Conta o clique e diz QUEM clicou.
+     *
+     * Devolve array em vez de só a URL porque o /ir/{token} precisa do contato
+     * para amarrar a sessão do navegador ao contato do Instagram — é esse par
+     * que, 20h depois, permite saber de quem é o carrinho abandonado.
+     *
+     * @return array{url:string, contato_id:?int, regra_id:?int}|null
+     */
+    public function registrarClique(string $token): ?array
     {
         try {
             $st = $this->db->prepare(
-                "SELECT id, regra_id, url_destino, cliques FROM chat_ig_links WHERE token = :t LIMIT 1"
+                "SELECT id, regra_id, contato_id, url_destino, cliques
+                 FROM chat_ig_links WHERE token = :t LIMIT 1"
             );
             $st->execute([':t' => $token]);
             $link = $st->fetch(PDO::FETCH_ASSOC);
@@ -710,9 +720,46 @@ class ChatIgAutomacaoService
                 )->execute([':r' => (int)$link['regra_id']]);
             }
 
-            return (string)$link['url_destino'];
+            return [
+                'url'        => (string)$link['url_destino'],
+                'contato_id' => $link['contato_id'] !== null ? (int)$link['contato_id'] : null,
+                'regra_id'   => $link['regra_id']   !== null ? (int)$link['regra_id']   : null,
+            ];
         } catch (Throwable $e) {
             return null;
+        }
+    }
+
+    /**
+     * Amarra a sessão do navegador ao contato do Instagram.
+     *
+     * O carrinho grava `sessao_id` = session_id() (Cart.php). O clique no link
+     * do direct passa pelo nosso domínio, logo pela mesma sessão — gravar o par
+     * aqui é o que fecha o elo.
+     *
+     * LIMITE CONHECIDO: se a pessoa fizer login, o PHP regenera o id da sessão
+     * e este par se perde. A régua das 20h também procura pelo cliente_id do
+     * carrinho, o que cobre boa parte — mas não tudo.
+     */
+    public function registrarVisita(int $contatoId, string $sessaoId, ?int $regraId = null, ?int $produtoId = null): bool
+    {
+        $sessaoId = trim($sessaoId);
+        if ($contatoId < 1 || $sessaoId === '') return false;
+
+        try {
+            $st = $this->db->prepare(
+                "INSERT IGNORE INTO chat_visitas (contato_id, sessao_id, regra_id, produto_id)
+                 VALUES (:c, :s, :r, :p)"
+            );
+            $st->execute([
+                ':c' => $contatoId,
+                ':s' => mb_substr($sessaoId, 0, 128),
+                ':r' => $regraId ?: null,
+                ':p' => $produtoId ?: null,
+            ]);
+            return true;
+        } catch (Throwable $e) {
+            return false;   // o redirect não pode falhar por causa da atribuição
         }
     }
 

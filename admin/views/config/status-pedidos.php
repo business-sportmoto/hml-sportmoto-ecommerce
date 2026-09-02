@@ -88,8 +88,11 @@ $coresPossiveis = [
         <!-- Flags -->
         <div class="sp-flags">
           <?php
+            // 'estorna_estoque' saiu da lista: o Bling é o dono do saldo e
+            // mudar status no site não movimenta mais estoque. Mostrar o
+            // flag aqui sugeriria um comportamento que não existe mais.
+            // A coluna continua no banco (ver migration-estoque-bling-dono).
             $flags = [
-              ['key'=>'estorna_estoque',      'label'=>'Estoque',   'tip'=>'Estornar estoque'],
               ['key'=>'cancela_cupom',         'label'=>'Cupom',     'tip'=>'Cancelar cupom'],
               ['key'=>'bloqueia_edicao_itens', 'label'=>'Bloqueio',  'tip'=>'Bloquear edição de itens'],
               ['key'=>'notifica_cliente',      'label'=>'E-mail',    'tip'=>'Notificar cliente'],

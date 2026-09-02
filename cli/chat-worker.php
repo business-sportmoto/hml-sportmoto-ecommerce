@@ -9,7 +9,9 @@
  *   A) Timeouts        — sessões que esperavam resposta e o prazo estourou
  *   B) Sessões prontas — nós "esperar" que acordaram
  *   C) Campanhas       — consome a fila respeitando ritmo_por_minuto
- *   D) Limpeza         — log de webhook antigo (1x por hora)
+ *   D) Sino            — cliente esperando resposta, canal falhando
+ *   E) Cupom           — carrinho parado há N horas de quem veio do direct
+ *   F) Limpeza         — log de webhook antigo (1x por hora)
  *
  * Cron (crontab -u www-data -e):
  *   * * * * * cd /caminho/do/projeto && php cli/chat-worker.php --verbose >> storage/logs/chat-worker.log 2>&1
@@ -119,7 +121,14 @@ do {
 
         if ($notif->falhasDeEnvio()) $log('falhas de envio: gestores avisados');
 
-        // ── E. Limpeza (1x por hora) ──
+        // ── E. Cupom para quem veio do direct e não fechou ──
+        // Só quem clicou no link do Instagram, colocou no carrinho e deixou
+        // passar a janela. Desconto para quem já mostrou intenção e não
+        // converteu — não para quem só perguntou o preço.
+        $cupons = (new ChatCupomCarrinhoService())->enviarPendentes(30);
+        if ($cupons > 0) $log("cupons de carrinho enviados: $cupons");
+
+        // ── F. Limpeza (1x por hora) ──
         if ((int)date('i') === 3) {
             $apagados = (new ChatWebhookService())->limparLogAntigo(15);
             if ($apagados > 0) $log("log de webhook: $apagados linha(s) antiga(s) removida(s)");

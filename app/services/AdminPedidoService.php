@@ -5,14 +5,16 @@ declare(strict_types=1);
 // app/services/AdminPedidoService.php
 //
 // Toda a lógica de negócio do módulo admin de pedidos.
-// Orquestra: model + EstoqueService + CouponService + EmailService
+// Orquestra: model + CouponService + EmailService + fila do Bling.
+//
+// NÃO movimenta estoque: o Bling é o dono do saldo e baixa em todos
+// os canais quando o pedido chega lá. Ver mudarStatus() e §Bling.
 // ════════════════════════════════════════════════════════
 
 class AdminPedidoService {
 
     private AdminPedido   $model;
     private PedidoStatus  $statusModel;
-    private EstoqueService $estoque;
     private EmailService  $email;
     private PDO           $db;
 
@@ -25,7 +27,6 @@ class AdminPedidoService {
     public function __construct() {
         $this->model       = new AdminPedido();
         $this->statusModel = new PedidoStatus();
-        $this->estoque     = new EstoqueService();
         $this->email       = new EmailService();
 
         $this->wppService = new WhatsappService();
@@ -55,7 +56,6 @@ class AdminPedidoService {
 
     /**
      * Muda o status_pedido com efeitos colaterais:
-     * - Estorno de estoque se cancelado
      * - Cancelamento de cupom se cancelado
      * - Log em pedido_historico
      * - Notificação por e-mail (se $notificar = true)
@@ -119,32 +119,23 @@ class AdminPedidoService {
         }
 
         // ── Efeitos colaterais via flags do banco ─────────────
-        $avisoReativacao = null;
-
         if ($novoStatus !== $statusAtual) {
 
-            // Flag: estorna_estoque → ao ENTRAR num status de cancelamento
-            if (!empty($statusDef['estorna_estoque'])) {
-                $this->estornarEstoque($pedidoId, $pedido['codigo'], $adminId);
-            }
+            // ── ESTOQUE: nada aqui, de propósito ──────────────
+            // O Bling é o dono do saldo. Ele baixa quando o pedido entra e
+            // estorna quando o pedido é cancelado LÁ, propagando para todos
+            // os canais; o site recebe o número pronto pelo webhook/cron.
+            //
+            // Os flags estorna_estoque/reserva_estoque continuam na tabela
+            // (a migration zera os valores) mas não movem mais estoque —
+            // se voltarem a mover, o site e o Bling contam a mesma baixa
+            // duas vezes e a vitrine encolhe até o próximo espelhamento.
+            //
+            // Cancelar aqui NÃO devolve estoque: cancele no Bling.
 
             // Flag: cancela_cupom → ao ENTRAR num status que cancela cupom
             if (!empty($statusDef['cancela_cupom'])) {
                 $this->cancelarCupom($pedidoId);
-            }
-
-            // REATIVAÇÃO: estava num status que estornou estoque
-            // e está indo para um status que reserva estoque
-            $estavaCancelado = !empty($statusAtualDef['estorna_estoque']);
-            $deveReservar    = !empty($statusDef['reserva_estoque']);
-
-            if ($estavaCancelado && $deveReservar) {
-                $falhas = $this->reservarEstoque($pedidoId, $pedido['codigo'], $adminId);
-                if (!empty($falhas)) {
-                    $avisoReativacao = 'Estoque insuficiente para: '
-                        . implode(', ', $falhas)
-                        . '. Ajuste o estoque manualmente antes de processar este pedido.';
-                }
             }
         }
 
@@ -178,13 +169,10 @@ class AdminPedidoService {
             $this->email->statusPedido($pedido, $novoStatus, $observacao);
         }
 
-        // Monta avisos (retroação de status + estoque insuficiente na reativação)
+        // Monta avisos (retroação de status)
         $avisos = [];
         if ($retrocedeu) {
             $avisos[] = "Status reduzido de ".($st['label'] ?? $statusAtual)." para ".($statusDef['label'] ?? $novoStatus)."'.";
-        }
-        if ($avisoReativacao) {
-            $avisos[] = $avisoReativacao;
         }
 
         try {
@@ -286,54 +274,16 @@ class AdminPedidoService {
             return ['ok' => false, 'msg' => 'Erro ao atualizar item: ' . $e->getMessage()];
         }
 
-        $item  = $resultado['item'];
-        $delta = $resultado['delta_estoque']; // positivo = devolveu, negativo = consumiu
-
-        // FASE 2: Ajusta estoque — EstoqueService com sua própria transação
-        if ($delta < 0) {
-            // Aumentou quantidade — consome estoque
-            try {
-                $result = $this->estoque->saida(
-                    produtoId : (int)$item['produto_id'],
-                    quantidade: abs($delta),
-                    tipo      : 'saida_pedido',
-                    origem    : 'admin',
-                    opcoes    : [
-                        'sku_id'        => $item['sku_id'] ? (int)$item['sku_id'] : null,
-                        'usuario_id'    => (int)Session::get('admin_id'),
-                        'observacao'    => "Aumento de qtd no pedido #{$pedido['codigo']}",
-                        'referencia_id' => $pedidoId,
-                    ]
-                );
-                if (isset($result['ok']) && !$result['ok']) {
-                    // Reverte item para quantidade anterior
-                    $this->model->updateItem($itemId, $resultado['qtd_antiga'], (float)$item['preco_unitario']);
-                    return ['ok' => false, 'msg' => 'Estoque insuficiente para esta quantidade.'];
-                }
-            } catch (\Throwable $e) {
-                $this->model->updateItem($itemId, $resultado['qtd_antiga'], (float)$item['preco_unitario']);
-                return ['ok' => false, 'msg' => 'Erro ao reservar estoque: ' . $e->getMessage()];
-            }
-        } elseif ($delta > 0) {
-            // Reduziu quantidade — devolve estoque
-            try {
-                $this->estoque->entrada(
-                    produtoId : (int)$item['produto_id'],
-                    quantidade: $delta,
-                    tipo      : 'entrada_ajuste_pedido',
-                    origem    : 'admin',
-                    opcoes    : [
-                        'sku_id'        => $item['sku_id'] ? (int)$item['sku_id'] : null,
-                        'usuario_id'    => (int)Session::get('admin_id'),
-                        'observacao'    => "Redução de qtd no pedido #{$pedido['codigo']}",
-                        'referencia_id' => $pedidoId,
-                    ]
-                );
-            } catch (\Throwable $e) {
-                error_log('[AdminPedidoService] editarItem entrada: ' . $e->getMessage());
-                // Item já atualizado — estoque pode ser ajustado manualmente
-            }
-        }
+        // FASE 2: Estoque — NÃO mexemos aqui.
+        // O Bling é o dono do saldo. Se o pedido já foi enviado, quem
+        // reflete a mudança de quantidade é a edição do pedido NO BLING;
+        // o site recebe o saldo pronto pelo webhook/cron. Movimentar aqui
+        // faria a mesma unidade ser contada duas vezes.
+        //
+        // Consequência aceita: a edição não valida mais disponibilidade.
+        // O admin vê o saldo espelhado na tela e decide. Validar contra o
+        // espelho daria uma falsa garantia — ele pode estar defasado em
+        // até uma hora, e a autoridade é do Bling de qualquer forma.
 
         // FASE 3: Recalcula totais e cupom
         $totais = $this->model->recalcularTotais($pedidoId);
@@ -359,26 +309,11 @@ class AdminPedidoService {
         }
 
         // Remove item do BD (operação direta, sem transação externa)
-        $item = $this->model->removeItem($itemId);
+        $this->model->removeItem($itemId);
 
-        // EstoqueService com sua própria transação
-        try {
-            $this->estoque->entrada(
-                produtoId : (int)$item['produto_id'],
-                quantidade: (int)$item['quantidade'],
-                tipo      : 'entrada_cancelamento',
-                origem    : 'admin',
-                opcoes    : [
-                    'sku_id'        => $item['sku_id'] ? (int)$item['sku_id'] : null,
-                    'usuario_id'    => (int)Session::get('admin_id'),
-                    'observacao'    => "Item removido do pedido #{$pedido['codigo']}",
-                    'referencia_id' => $pedidoId,
-                ]
-            );
-        } catch (\Throwable $e) {
-            error_log('[AdminPedidoService] removerItem estoque: ' . $e->getMessage());
-            // Item removido — estoque pode ser ajustado manualmente se necessário
-        }
+        // Estoque: NÃO devolve aqui. O Bling é o dono do saldo — remover
+        // o item no pedido do Bling é o que devolve a unidade a todos os
+        // canais. Devolver aqui também contaria a mesma unidade duas vezes.
 
         $totais = $this->model->recalcularTotais($pedidoId);
         if (!empty($pedido['cupom_id'])) {
@@ -399,28 +334,10 @@ class AdminPedidoService {
             return ['ok' => false, 'msg' => 'Itens só podem ser adicionados enquanto aguardam pagamento.'];
         }
 
-        // FASE 1: Verifica e reserva estoque — EstoqueService com sua transação
-        try {
-            $result = $this->estoque->saida(
-                produtoId : $produtoId,
-                quantidade: $qtd,
-                tipo      : 'saida_pedido',
-                origem    : 'admin',
-                opcoes    : [
-                    'sku_id'        => $skuId,
-                    'usuario_id'    => (int)Session::get('admin_id'),
-                    'referencia_id' => $pedidoId,
-                ]
-            );
-            if (isset($result['ok']) && !$result['ok']) {
-                return ['ok' => false, 'msg' => 'Estoque insuficiente.'];
-            }
-        } catch (\Throwable $e) {
-            error_log('[AdminPedidoService] adicionarItem saida: ' . $e->getMessage());
-            return ['ok' => false, 'msg' => 'Erro ao reservar estoque: ' . $e->getMessage()];
-        }
+        // Estoque: NÃO consome aqui. Quem baixa é o Bling, ao receber o
+        // pedido. Consumir no site duplicaria a baixa da mesma unidade.
 
-        // FASE 2: Insere item no pedido e recalcula
+        // Insere item no pedido e recalcula
         $itemId = $this->model->addItem($pedidoId, $produtoId, $skuId, $qtd, $preco);
         $totais  = $this->model->recalcularTotais($pedidoId);
 
@@ -485,30 +402,19 @@ class AdminPedidoService {
             return ['ok' => false, 'msg' => 'Erro ao criar pedido: ' . $e->getMessage()];
         }
 
-        // ── FASE 2: Ajuste de estoque fora da transação ───────
-        // EstoqueService abre e fecha sua própria transação por item.
-        // Se falhar, o pedido já existe — o admin pode ajustar estoque manualmente.
-        $errosEstoque = [];
-        foreach ($itens as $item) {
-            try {
-                $result = $this->estoque->saida(
-                    produtoId : (int)$item['produto_id'],
-                    quantidade: (int)$item['qtd'],
-                    tipo      : 'saida_pedido',
-                    origem    : 'admin',
-                    opcoes    : [
-                        'sku_id'        => !empty($item['sku_id']) ? (int)$item['sku_id'] : null,
-                        'usuario_id'    => $adminId,
-                        'referencia_id' => $pedidoId,
-                    ]
-                );
-                if (isset($result['ok']) && !$result['ok']) {
-                    $errosEstoque[] = $item['nome'] ?? "produto_id {$item['produto_id']}";
-                }
-            } catch (\Throwable $e) {
-                error_log('[AdminPedidoService] estoque saida item: ' . $e->getMessage());
-                $errosEstoque[] = $item['nome'] ?? "produto_id {$item['produto_id']}";
-            }
+        // ── FASE 2: Enfileira para o Bling ───────────────────
+        // Substitui a antiga baixa de estoque local. O Bling é o dono do
+        // saldo: é o pedido chegando LÁ que baixa em todos os canais,
+        // inclusive no site. Baixar aqui também contaria duas vezes.
+        //
+        // Pedido manual entra na mesma fila do pedido do site — mesma
+        // garantia de entrega, mesmo alerta se algum item estiver sem
+        // vínculo (aí sim o estoque não baixa e alguém precisa saber).
+        try {
+            (new BlingOrderService())->enfileirar($pedidoId);
+        } catch (\Throwable $e) {
+            // Pedido já existe; a fila pode ser reprocessada pelo painel.
+            LogService::exception($e, 'error', 'int', ['pedido_id' => $pedidoId]);
         }
 
         // ── FASE 3: Notificação e retorno ──────────────────────
@@ -517,9 +423,9 @@ class AdminPedidoService {
             $this->email->pedidoCriado($pedido);
         }
 
-        $aviso = !empty($errosEstoque)
-            ? 'Pedido criado, mas estoque não ajustado para: ' . implode(', ', $errosEstoque) . '. Verifique manualmente.'
-            : null;
+        // Estoque não é mais ajustado aqui — quem baixa é o Bling ao
+        // receber o pedido da fila. Sem aviso de estoque, portanto.
+        $aviso = null;
 
         return [
             'ok'       => true,
@@ -559,68 +465,21 @@ class AdminPedidoService {
     // HELPERS PRIVADOS
     // ════════════════════════════════════════════════════
 
-    /**
-     * Estorna estoque de todos os itens do pedido (ao cancelar).
-     */
-    private function estornarEstoque(int $pedidoId, string $codigo, int $adminId): void {
-        $itens = $this->model->getItens($pedidoId);
-        foreach ($itens as $item) {
-            try {
-                $this->estoque->entrada(
-                    produtoId : (int)$item['produto_id'],
-                    quantidade: (int)$item['quantidade'],
-                    tipo      : 'entrada_cancelamento',
-                    origem    : 'pedido',
-                    opcoes    : [
-                        'sku'        => $item['sku'] ? (int)$item['sku'] : null,
-                        'usuario_id'    => $adminId,
-                        'observacao'    => "Cancelamento do pedido #{$codigo}",
-                        'referencia_id' => $pedidoId,
-                    ]
-                );
-            } catch (\Throwable $e) {
-                error_log("[AdminPedidoService] estornarEstoque item {$item['id']}: " . $e->getMessage());
-            }
-        }
-    }
-
-    /**
-     * Re-reserva estoque ao REATIVAR um pedido cancelado.
-     *
-     * Chamado quando o pedido SAI de um status com estorna_estoque=1
-     * e ENTRA num status com reserva_estoque=1.
-     * Retorna array de itens com falha (estoque insuficiente).
-     */
-    private function reservarEstoque(int $pedidoId, string $codigo, int $adminId): array {
-        $itens  = $this->model->getItens($pedidoId);
-        $falhas = [];
-
-        foreach ($itens as $item) {
-            try {
-                $result = $this->estoque->saida(
-                    produtoId : (int)$item['produto_id'],
-                    quantidade: (int)$item['quantidade'],
-                    tipo      : 'saida_reativacao_pedido',
-                    origem    : 'pedido',
-                    opcoes    : [
-                        'sku_id'        => $item['sku_id'] ? (int)$item['sku_id'] : null,
-                        'usuario_id'    => $adminId,
-                        'observacao'    => "Reativação do pedido #{$codigo}",
-                        'referencia_id' => $pedidoId,
-                    ]
-                );
-
-                if (isset($result['ok']) && !$result['ok']) {
-                    $falhas[] = $item['nome_produto'] ?? "produto_id {$item['produto_id']}";
-                }
-            } catch (\Throwable $e) {
-                error_log("[AdminPedidoService] reservarEstoque item {$item['id']}: " . $e->getMessage());
-                $falhas[] = $item['nome_produto'] ?? "produto_id {$item['produto_id']}";
-            }
-        }
-
-        return $falhas;
-    }
+    // ── estornarEstoque() e reservarEstoque() foram REMOVIDOS ──
+    //
+    // O Bling passou a ser o dono do saldo: cancelar ou reativar um
+    // pedido no site não move mais estoque. Quem devolve a unidade a
+    // todos os canais é o cancelamento feito NO BLING; o site recebe o
+    // saldo pronto pelo webhook/cron.
+    //
+    // Além de duplicarem a contagem, os dois gravavam valores que o
+    // ENUM de estoque_log não aceita ('entrada_cancelamento',
+    // 'saida_reativacao_pedido', origem 'pedido') — com
+    // STRICT_TRANS_TABLES ligado, todo INSERT deles falhava. E o
+    // estornarEstoque ainda passava a chave 'sku' em vez de 'sku_id',
+    // então movia estoque no nível do produto mesmo em item com variação.
+    //
+    // Ajuste manual de saldo continua disponível em Estoquecontroller.
 
     /**
      * Cancela o uso de cupom vinculado ao pedido.

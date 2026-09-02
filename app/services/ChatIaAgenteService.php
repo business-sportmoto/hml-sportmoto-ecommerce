@@ -244,6 +244,170 @@ class ChatIaAgenteService
         return implode("\n", $l);
     }
 
+    // =========================================================================
+    // RESPOSTA
+    // =========================================================================
+
+    /**
+     * Responde a pergunta a partir do contexto do produto.
+     *
+     * @param array $opts publico (bool), tom, contato_id, fluxo_id
+     * @return array{ok:bool, direct:string, publico:?string, motivo:string}
+     */
+    public function responder(string $pergunta, array $ctxProduto, array $opts = []): array
+    {
+        $pergunta = trim(mb_substr($pergunta, 0, 500));
+        if ($pergunta === '') return $this->naoSei('pergunta vazia');
+
+        // O direct é a resposta que importa; o público é o convite.
+        $direct = $this->gerar($pergunta, $ctxProduto, false, $opts);
+        if ($direct === null) return $this->naoSei('modelo não respondeu');
+        if ($this->ehNaoSei($direct)) return $this->naoSei('fora do que o produto responde');
+
+        $v = $this->validarNumeros($direct, $ctxProduto);
+        if (!$v['ok']) {
+            // Número inventado no direct derruba a resposta inteira. Reescrever
+            // seria adivinhar qual parte está certa.
+            $this->logar('ia: número fora do contexto no direct', [
+                'invasores' => $v['invasores'], 'produto_id' => $ctxProduto['id'] ?? null,
+            ]);
+            return $this->naoSei('número fora do contexto: ' . implode(', ', $v['invasores']));
+        }
+
+        $publico = null;
+        if (!empty($opts['publico'])) {
+            $p = $this->gerar($pergunta, $ctxProduto, true, $opts);
+            if ($p !== null && !$this->ehNaoSei($p)) {
+                // No público a régua é mais dura: número nenhum, nem os certos.
+                // Preço em comentário aberto vira print e sobrevive à promoção.
+                $publico = preg_match('/\d{3,}/u', $p) ? null : mb_substr(trim($p), 0, 160);
+            }
+        }
+
+        return ['ok' => true, 'direct' => trim($direct), 'publico' => $publico, 'motivo' => ''];
+    }
+
+    private function naoSei(string $motivo): array
+    {
+        return ['ok' => false, 'direct' => '', 'publico' => null, 'motivo' => $motivo];
+    }
+
+    /** O modelo tem uma saída explícita para "não dá para responder com isto". */
+    private function ehNaoSei(string $t): bool
+    {
+        return stripos($t, 'NAO_SEI') !== false || stripos($t, 'NÃO_SEI') !== false;
+    }
+
+    /**
+     * Uma chamada ao modelo, passando pelo IAOrchestrator.
+     *
+     * Cada resposta vira uma linha em `ia_geracoes` — de onde saem, de graça, o
+     * teto de gasto diário, o fallback entre modelos e o custo por resposta.
+     * `produto_id` já existe na tabela, então o histórico fica ligado ao produto.
+     */
+    private function gerar(string $pergunta, array $ctx, bool $publico, array $opts): ?string
+    {
+        $prompt = $this->montarPrompt($pergunta, $ctx, $publico, $opts);
+
+        return $this->gerarTexto($prompt, $publico, $opts + [
+            'produto_id' => $ctx['id'] ?? null,
+            'pergunta'   => $pergunta,
+        ]);
+    }
+
+    /** O prompt inteiro, separado da chamada — dá para ler e testar sozinho. */
+    public function montarPrompt(string $pergunta, array $ctx, bool $publico, array $opts = []): string
+    {
+        return $this->instrucao($publico)
+                . (!empty($opts['tom']) ? "\nTOM DA MARCA: " . trim((string)$opts['tom']) . "\n" : '')
+                . "\n=== DADOS DO PRODUTO ===\n" . $this->contextoEmTexto($ctx)
+                . "\n=== PERGUNTA DO CLIENTE ===\n" . $pergunta;
+    }
+
+    /**
+     * A chamada ao modelo.
+     *
+     * `protected` de propósito: é a costura por onde o teste troca o modelo
+     * por um dublê e exercita cada caminho de decisão sem gastar token nem
+     * depender da rede. Testar a DECISÃO é o que importa aqui — a redação
+     * do modelo muda a cada chamada e não dá para afirmar nada sobre ela.
+     */
+    protected function gerarTexto(string $prompt, bool $publico, array $opts): ?string
+    {
+        $pergunta = (string)($opts['pergunta'] ?? '');
+
+        try {
+            $st = $this->db->prepare(
+                "INSERT INTO ia_geracoes
+                    (uuid, produto_id, capacidade, formato, prompt_final, contexto,
+                     status, criado_em)
+                 VALUES (:u, :p, 'texto', :f, :pf, :ctx, 'processando', NOW())"
+            );
+            $st->execute([
+                ':u'   => $this->uuid(),
+                ':p'   => (int)($opts['produto_id'] ?? 0) ?: null,
+                ':f'   => $publico ? 'ig_comentario' : 'ig_direct',
+                ':pf'  => $prompt,
+                ':ctx' => json_encode([
+                    'pergunta'   => $pergunta,
+                    'contato_id' => $opts['contato_id'] ?? null,
+                    'fluxo_id'   => $opts['fluxo_id'] ?? null,
+                ], JSON_UNESCAPED_UNICODE),
+            ]);
+            $geracaoId = (int)$this->db->lastInsertId();
+
+            $ger = $this->db->query("SELECT * FROM ia_geracoes WHERE id = $geracaoId")->fetch(PDO::FETCH_ASSOC);
+            $res = (new IAOrchestrator())->executarTexto($ger, ['modelo_id' => null]);
+
+            $texto = trim((string)($res->texto ?? ''));
+            $bom   = $res->ok && $texto !== '';
+
+            // Custo e tokens fecham na mesma linha: sem isso o teto diário do
+            // IACustoService nunca enxerga o que o atendimento gastou.
+            $this->db->prepare(
+                "UPDATE ia_geracoes
+                 SET status = :s, resultado_texto = :t, erro = :e,
+                     modelo_id = :mid, provedor_codigo = :prov, modelo_codigo = :mcod,
+                     tokens_in = :ti, tokens_out = :to, tempo_ms = :ms,
+                     custo_real_usd = :custo, concluido_em = NOW()
+                 WHERE id = :id"
+            )->execute([
+                ':s'     => $bom ? 'concluida' : 'falhou',
+                ':t'     => $texto ?: null,
+                ':e'     => $bom ? null : mb_substr((string)($res->erro ?? 'sem texto'), 0, 600),
+                ':mid'   => $res->modeloId,
+                ':prov'  => $res->provedorCodigo,
+                ':mcod'  => $res->modeloCodigo,
+                ':ti'    => $res->tokensIn,
+                ':to'    => $res->tokensOut,
+                ':ms'    => $res->tempoMs,
+                ':custo' => $res->custoRealUsd,
+                ':id'    => $geracaoId,
+            ]);
+
+            return $bom ? $texto : null;
+
+        } catch (Throwable $e) {
+            // Modelo fora do ar não pode derrubar o fluxo: cai na porta nao_sabe
+            $this->logar('ia: falha ao gerar resposta', ['erro' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    private function uuid(): string
+    {
+        $b = random_bytes(16);
+        $b[6] = chr((ord($b[6]) & 0x0f) | 0x40);
+        $b[8] = chr((ord($b[8]) & 0x3f) | 0x80);
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($b), 4));
+    }
+
+    private function logar(string $msg, array $ctx): void
+    {
+        if (!class_exists('LogService')) return;
+        try { LogService::warning($msg, $ctx, 'chat'); } catch (Throwable $e) {}
+    }
+
     /**
      * Instrução do sistema.
      *
