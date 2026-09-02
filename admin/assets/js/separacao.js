@@ -408,7 +408,7 @@
             if (completo) {
                 // O botao recebe o foco: fecha o ciclo com Enter, sem mouse.
                 $('#estProdutoBox').addClass('is-completo');
-                foco($('#estImprimir'));
+                foco($('#estImprimirNf'));      // primeiro passo do balcao
                 status($statusP, 'Todos os itens conferidos.', 'ok');
             } else {
                 $('#estProdutoBox').removeClass('is-completo');
@@ -494,11 +494,13 @@
 
             $('#estProdutoBox').prop('hidden', false);
             $('#estImprimirBox').prop('hidden', true);
+            var temEtiqueta = !!(p.etiqueta && p.etiqueta.url_pdf);
             $('#estImprimirDanfe').prop('disabled', !p.nfe_danfe);
+            $('#estImprimirEtiqueta').prop('disabled', !temEtiqueta);
             $('#estNotaEtiqueta').text(
-                p.etiqueta && p.etiqueta.url_pdf
-                    ? 'Saem dois trabalhos: NF simplificada e etiqueta.'
-                    : 'Sem etiqueta emitida: sai só a NF simplificada.'
+                temEtiqueta
+                    ? 'Um documento por clique.'
+                    : 'Sem etiqueta emitida: só a NF simplificada está disponível.'
             );
             pintarProgresso();
             status($status, 'Encontrado por ' + (via || 'código') + '.', 'ok');
@@ -549,24 +551,19 @@
         function urlNf()       { return window.SEP_BASE + '/' + atual.id + '/nf'; }
         function urlEtiqueta() { return (atual.etiqueta && atual.etiqueta.url_pdf) || ''; }
 
-        // Imprime e libera a estacao para o proximo pedido.
+        // Um documento por clique.
         //
-        // So o botao principal conclui. Os outros dois imprimem e deixam o
-        // pedido na tela: quem pediu so a DANFE ainda vai precisar da etiqueta,
-        // e limpar ali obrigaria a bipar o pedido de novo.
-        function concluir(urls) {
-            if (!atual) return;
-            var id = atual.id;
-            Impressao.fila(urls);      // segue em background; a fila espera sozinha
-            status($status, 'Pedido #' + id + ' concluído. Próximo.', 'ok');
-            limparPedido();
-            foco($campo);              // pronto para o proximo, sem mouse
-        }
-
-        function imprimir() {
-            if (!atual) return;
-            // NF simplificada sempre; a etiqueta so existe depois de emitida.
-            concluir([urlNf(), urlEtiqueta()]);
+        // Nenhum botao limpa a tela: quem fecha o pedido e bipar o proximo, que
+        // ja troca tudo em carregar(). Assim o operador pode reimprimir a nota
+        // sem ter que bipar o pedido de novo.
+        //
+        // O foco anda sozinho na ordem do balcao — nota, etiqueta, proximo
+        // pedido — porque a estacao e operada com leitor, nao com mouse.
+        function mandar(url, msg, $depois) {
+            if (!atual || !url) return;
+            Impressao.fila([url]);     // segue em background; a fila espera sozinha
+            status($statusP, msg, 'ok');
+            foco($depois);
         }
 
         /* ── eventos ───────────────────────────────────── */
@@ -591,12 +588,19 @@
             marcarItem(item);
         });
 
-        $('#estImprimir').on('click', imprimir);
-
         $('#estImprimirNf').on('click', function () {
+            mandar(urlNf(), 'NF simplificada enviada para a impressora.',
+                   $('#estImprimirEtiqueta'));
+        });
+
+        $('#estImprimirEtiqueta').on('click', function () {
             if (!atual) return;
-            Impressao.fila([urlNf()]);
-            status($statusP, 'NF simplificada enviada para a impressora.', 'ok');
+            if (!urlEtiqueta()) {
+                status($statusP, 'Este pedido ainda nao tem etiqueta emitida.', 'aviso');
+                return;
+            }
+            mandar(urlEtiqueta(), 'Etiqueta enviada para a impressora. Bipe o proximo pedido.',
+                   $campo);
         });
 
         // A DANFE completa vem do Bling: outro dominio, e atras de uma
@@ -624,7 +628,7 @@
         // e um clique perdido no fundo faria a próxima leitura sumir.
         $(document).on('click', function (ev) {
             if ($(ev.target).is('input, select, textarea, button, a')) return;
-            foco(atual && $('#estImprimirBox').prop('hidden') === false ? $('#estImprimir')
+            foco(atual && $('#estImprimirBox').prop('hidden') === false ? $('#estImprimirNf')
                : atual ? $produto
                : $campo);
         });

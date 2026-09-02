@@ -966,8 +966,14 @@ $pwb_charts = $pwb_dashboard_data['charts'] ?? [];
     });
   }
 
-  /** Barras horizontais: legivel com rotulo longo, que e o caso aqui. */
-  function barras(canvasId, itens, corHex) {
+  /**
+   * Barras horizontais: legivel com rotulo longo, que e o caso aqui.
+   *
+   * `preenchimento` recebe um TOKEN de tema (--pwb-g-ciano, --pwb-blue…),
+   * nao um hex. Cor fixa no JS ignoraria a troca de tema: o mesmo azul
+   * que funciona no dark fica lavado sobre fundo claro.
+   */
+  function barras(canvasId, itens, preenchimento) {
     var canvas = document.getElementById(canvasId);
     if (!canvas || !itens || !itens.length) return;
 
@@ -976,7 +982,7 @@ $pwb_charts = $pwb_dashboard_data['charts'] ?? [];
       var pct = Math.max(1, (Number(i.valor) || 0) / max * 100);
       return '<div class="pwb_bar_row">' +
                '<span class="pwb_bar_label" title="' + esc(i.rotulo) + '">' + esc(i.rotulo) + '</span>' +
-               '<span class="pwb_bar_track"><span class="pwb_bar_fill" style="width:' + pct + '%;background:' + corHex + '"></span></span>' +
+               '<span class="pwb_bar_track"><span class="pwb_bar_fill" style="width:' + pct + '%;background:var(' + preenchimento + ')"></span></span>' +
                '<span class="pwb_bar_value">' + esc(i.texto) + '</span>' +
              '</div>';
     }).join('');
@@ -1020,55 +1026,55 @@ $pwb_charts = $pwb_dashboard_data['charts'] ?? [];
 
   barras('pwb_chart_monthly_revenue', (charts.monthly || []).map(function (m) {
     return { rotulo: m.ano_mes, valor: m.faturamento, texto: brl(m.faturamento) };
-  }), '#2563eb');
+  }), '--pwb-g-ciano');
 
   barras('pwb_chart_orders_by_month', (charts.monthly || []).map(function (m) {
     return { rotulo: m.ano_mes, valor: m.pedidos, texto: m.pedidos };
-  }), '#0ea472');
+  }), '--pwb-g-verde');
 
   barras('pwb_chart_order_status', (charts.by_status || []).map(function (r) {
     return { rotulo: r.status_pedido, valor: r.pedidos, texto: r.pedidos };
-  }), '#7c3aed');
+  }), '--pwb-g-roxo');
 
   barras('pwb_chart_payment_methods', (charts.by_payment || []).map(function (r) {
     return { rotulo: r.forma, valor: r.receita, texto: brl(r.receita) };
-  }), '#7c3aed');
+  }), '--pwb-g-roxo');
 
   barras('pwb_chart_traffic_sources', (charts.by_channel || []).map(function (r) {
     return { rotulo: r.nome, valor: r.receita, texto: brl(r.receita) };
-  }), '#0ea472');
+  }), '--pwb-g-verde');
 
   barras('pwb_chart_traffic_sources_bar', (charts.top_brands || []).map(function (r) {
     return { rotulo: r.nome, valor: r.receita, texto: brl(r.receita) };
-  }), '#2563eb');
+  }), '--pwb-g-ciano');
 
   barras('pwb_chart_stock_flow', (charts.top_categories || []).map(function (r) {
     return { rotulo: r.nome, valor: r.receita, texto: brl(r.receita) };
-  }), '#d97706');
+  }), '--pwb-g-ambar');
 
   barras('pwb_chart_recompra', (charts.recompra || []).map(function (r) {
     return { rotulo: r.faixa, valor: r.clientes, texto: r.clientes + ' cli.' };
-  }), '#0ea472');
+  }), '--pwb-g-verde');
 
   barras('pwb_chart_geo_uf', (charts.geo_uf || []).map(function (r) {
     return { rotulo: r.local, valor: r.receita, texto: brl(r.receita) };
-  }), '#2563eb');
+  }), '--pwb-g-ciano');
 
   barras('pwb_chart_parcelas', (charts.parcelas || []).map(function (r) {
     return { rotulo: r.parcelas + 'x', valor: r.receita, texto: brl(r.receita) };
-  }), '#2563eb');
+  }), '--pwb-g-ciano');
 
   barras('pwb_chart_recusas', (charts.recusas || []).map(function (r) {
     return { rotulo: r.motivo, valor: r.ocorrencias, texto: r.ocorrencias + 'x' };
-  }), '#dc2626');
+  }), '--pwb-g-vermelho');
 
   barras('pwb_chart_desconto', (charts.desconto || []).map(function (r) {
     return { rotulo: r.grupo, valor: r.ticket, texto: brl(r.ticket) + ' de ticket' };
-  }), '#d97706');
+  }), '--pwb-g-ambar');
 
   barras('pwb_chart_devolvidos', (charts.devolvidos || []).map(function (r) {
     return { rotulo: r.produto, valor: r.valor, texto: brl(r.valor) };
-  }), '#dc2626');
+  }), '--pwb-g-vermelho');
 
   linha('pwb_chart_ai_usage', charts.daily || []);
 

@@ -1,331 +1,560 @@
-/* ════════════════════════════════════════════════════════
+/* ════════════════════════════════════════════════════════════════
    admin/assets/css/powerbi.css
-   Estilos do painel de BI (admin/views/powerbi/pwb-dashboard.php)
+   Painel de BI — dark premium, com tradução fiel para o tema claro.
 
-   A view existia com 24KB de markup e NENHUMA folha de estilo — as
-   classes pwb_* não estavam definidas em lugar nenhum do projeto, o
-   que fazia a página renderizar como HTML cru.
+   O brief (.claude/skills/layout-dashboard-dark-premium.md) descreve
+   só o dark. Mas o painel do admin tem seletor de tema
+   (html[data-theme="dark|light"], dark é o padrão), e entregar só o
+   escuro deixaria metade dos usuários com texto branco sobre branco.
 
-   Herda os tokens de admin.css (--blue, --border, --surface…) com
-   fallback, para o painel acompanhar o tema do admin em vez de criar
-   uma segunda identidade visual.
-   ════════════════════════════════════════════════════════ */
+   Como os dois convivem: TODA cor vive num token declarado duas
+   vezes — o bloco base é o dark (é o padrão do painel), e
+   html[data-theme="light"] reescreve os mesmos tokens. Nenhuma cor
+   literal aparece fora do bloco de tokens. Trocar de tema não muda
+   uma linha de estrutura: muda a paleta.
 
+   No claro os gradientes neon continuam, um pouco mais fechados —
+   rosa/ciano vibrante sobre branco perde contraste com o texto, e o
+   número é o que precisa ser lido.
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── Tokens: DARK (padrão do painel) ───────────────────────────── */
+/* `.admin-content` entra aqui junto porque é ELE que pinta o fundo
+   ambiente (ver "Sangria" abaixo) — e variável CSS só desce, então o
+   pai não conseguiria ler um token declarado no filho. */
+.pwb_dashboard, .admin-content {
+  /* Superfícies — azul-marinho quase preto → marinho intermediário */
+  --pwb-canvas:    #0a0e17;
+  --pwb-panel:     #101725;
+  --pwb-card:      #151d2e;
+  --pwb-card-2:    #1b2436;
+  --pwb-line:      rgba(255,255,255,.07);
+  --pwb-line-hi:   rgba(255,255,255,.13);
+
+  /* Texto */
+  --pwb-t0:        #f2f5fa;
+  --pwb-t1:        #a9b6cc;
+  --pwb-t2:        #6b7a95;
+
+  /* Destaques neon */
+  --pwb-magenta:   #f45cd0;
+  --pwb-purple:    #8b5cf6;
+  --pwb-lilac:     #a78bfa;
+  --pwb-blue:      #3b82f6;
+  --pwb-cyan:      #22d3ee;
+  --pwb-green:     #34d399;
+  --pwb-amber:     #fbbf24;
+  --pwb-red:       #fb7185;
+
+  /* Gradientes do brief */
+  --pwb-g-rosa:    linear-gradient(135deg, #f45cd0 0%, #a855f7 52%, #7c3aed 100%);
+  --pwb-g-ciano:   linear-gradient(135deg, #22d3ee 0%, #3b82f6 55%, #7c3aed 100%);
+  --pwb-g-roxo:    linear-gradient(135deg, #8b5cf6 0%, #c4b5fd 100%);
+  --pwb-g-verde:    linear-gradient(135deg, #34d399 0%, #22d3ee 100%);
+  --pwb-g-ambar:    linear-gradient(135deg, #fbbf24 0%, #f45cd0 100%);
+  --pwb-g-vermelho: linear-gradient(135deg, #fb7185 0%, #a855f7 100%);
+
+  /* Fundos translúcidos de badge — em dark o alpha baixo já basta */
+  --pwb-a-green:   rgba(52,211,153,.15);
+  --pwb-a-red:     rgba(251,113,133,.15);
+  --pwb-a-amber:   rgba(251,191,36,.15);
+  --pwb-a-blue:    rgba(59,130,246,.16);
+  --pwb-a-neutral: rgba(255,255,255,.07);
+  --pwb-tc-green:  #6ee7b7;
+  --pwb-tc-red:    #fda4af;
+  --pwb-tc-amber:  #fcd34d;
+  --pwb-tc-blue:   #93c5fd;
+
+  /* Ambiente: as "formas abstratas" do brief, como luz difusa dentro
+     do painel. Pseudo-elemento exigiria mudar o DOM; radial-gradient
+     no próprio fundo dá o mesmo resultado sem tocar no HTML. */
+  --pwb-glow:
+    radial-gradient(80rem 40rem at -10% -20%,  rgba(139,92,246,.20), transparent 60%),
+    radial-gradient(70rem 40rem at 110% 0%,    rgba(34,211,238,.14), transparent 60%),
+    radial-gradient(60rem 40rem at 30% 120%,   rgba(244,92,208,.12), transparent 60%);
+
+  --pwb-shadow:    0 24px 60px rgba(0,0,0,.55);
+  --pwb-shadow-sm: 0 2px 10px rgba(0,0,0,.30);
+  --pwb-r-lg:      26px;   /* painel principal   */
+  --pwb-r-md:      18px;   /* cards              */
+  --pwb-r-sm:      12px;   /* controles          */
+}
+
+/* ── Tokens: LIGHT ────────────────────────────────────────────── */
+html[data-theme="light"] .pwb_dashboard,
+html[data-theme="light"] .admin-content {
+  --pwb-canvas:    #eef1f7;
+  --pwb-panel:     #ffffff;
+  --pwb-card:      #f7f9fc;
+  --pwb-card-2:    #eef2f8;
+  --pwb-line:      #e4e9f2;
+  --pwb-line-hi:   #cfd8e6;
+
+  --pwb-t0:        #0d1526;
+  --pwb-t1:        #4a5772;
+  --pwb-t2:        #7c8AA3;
+
+  /* Mesmos matizes, um passo mais fechados: neon puro sobre branco
+     tira legibilidade do número, que é o que importa aqui. */
+  --pwb-magenta:   #d926ac;
+  --pwb-purple:    #7c3aed;
+  --pwb-lilac:     #8b5cf6;
+  --pwb-blue:      #2563eb;
+  --pwb-cyan:      #0891b2;
+  --pwb-green:     #059669;
+  --pwb-amber:     #d97706;
+  --pwb-red:       #dc2626;
+
+  --pwb-g-rosa:    linear-gradient(135deg, #e0399f 0%, #9333ea 52%, #6d28d9 100%);
+  --pwb-g-ciano:   linear-gradient(135deg, #0ea5c4 0%, #2563eb 55%, #6d28d9 100%);
+  --pwb-g-roxo:    linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%);
+  --pwb-g-verde:    linear-gradient(135deg, #059669 0%, #0891b2 100%);
+  --pwb-g-ambar:    linear-gradient(135deg, #d97706 0%, #d926ac 100%);
+  --pwb-g-vermelho: linear-gradient(135deg, #dc2626 0%, #9333ea 100%);
+
+  --pwb-a-green:   #e7f7f0;
+  --pwb-a-red:     #fdeaec;
+  --pwb-a-amber:   #fdf3e3;
+  --pwb-a-blue:    #e8effd;
+  --pwb-a-neutral: #eef2f8;
+  --pwb-tc-green:  #047857;
+  --pwb-tc-red:    #b91c1c;
+  --pwb-tc-amber:  #b45309;
+  --pwb-tc-blue:   #1d4ed8;
+
+  --pwb-glow:
+    radial-gradient(80rem 40rem at -10% -20%,  rgba(124,58,237,.10), transparent 60%),
+    radial-gradient(70rem 40rem at 110% 0%,    rgba(8,145,178,.08),  transparent 60%),
+    radial-gradient(60rem 40rem at 30% 120%,   rgba(217,38,172,.07), transparent 60%);
+
+  --pwb-shadow:    0 18px 44px rgba(15,23,42,.10);
+  --pwb-shadow-sm: 0 1px 3px rgba(15,23,42,.07);
+}
+
+/* ════════════════════════════════════════════════════════════════
+   ESTRUTURA
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── Sangria do fundo ──────────────────────────────────────────
+   `.admin-content` tem padding 28/32, e o painel flutuante deixava
+   essa moldura com o fundo CHAPADO da página em volta — uma faixa
+   morta, sem o gradiente, visivelmente descolada do painel.
+
+   Em vez de sangrar com margem negativa (que hardcodaria o padding
+   do admin e quebraria se ele mudasse), quem pinta o ambiente passa
+   a ser o próprio `.admin-content`: o gradiente cobre a área inteira,
+   de ponta a ponta, e os cards flutuam sobre ele.
+
+   Estilizar `.admin-content` daqui é seguro porque este arquivo só é
+   carregado na rota /admin/power-bi — o `<link>` no layout é
+   condicional. Se algum dia ele passar a ser global, esta regra
+   precisa de escopo. */
+.admin-content {
+  background-color: var(--pwb-canvas);
+  background-image: var(--pwb-glow);
+  /* Conteúdo curto não pode deixar o fundo da página aparecer embaixo. */
+  min-height: calc(100vh - var(--topbar-h, 60px));
+  /* Sem border-box o min-height somaria o padding e criaria uma barra
+     de rolagem de ~56px em página curta. */
+  box-sizing: border-box;
+}
+
+/* O container vira só o grid: o "painel flutuante" do brief agora é a
+   área inteira, e a profundidade vem dos cards internos. Um painel
+   arredondado DENTRO de um fundo idêntico seria uma borda invisível. */
 .pwb_dashboard {
-  --pwb-blue:     var(--blue,    #2563eb);
-  --pwb-green:    var(--green,   #0ea472);
-  --pwb-bg:       var(--bg,      #f8fafc);
-  --pwb-surface:  var(--surface, #ffffff);
-  --pwb-surface2: var(--surface2,#f1f5f9);
-  --pwb-border:   var(--border,  #e2e8f0);
-  --pwb-text:     #0f172a;
-  --pwb-text2:    #475569;
-  --pwb-text3:    #94a3b8;
-  --pwb-danger:   #dc2626;
-  --pwb-warn:     #d97706;
-  --pwb-radius:   14px;
-
   display: grid;
-  grid-template-columns: 232px minmax(0, 1fr);
-  gap: 18px;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: 20px;
   align-items: start;
-  color: var(--pwb-text);
+  background: transparent;
+  color: var(--pwb-t0);
   font-size: 14px;
+  font-family: var(--font, 'Plus Jakarta Sans', system-ui, sans-serif);
 }
 
-/* ── Sidebar ─────────────────────────────────────────── */
+/* ── Sidebar ───────────────────────────────────────────────────── */
 .pwb_sidebar {
-  position: sticky; top: 16px;
-  background: var(--pwb-surface);
-  border: 1px solid var(--pwb-border);
-  border-radius: var(--pwb-radius);
-  padding: 16px 12px;
-  display: flex; flex-direction: column; gap: 6px;
+  /* min-width:0 nao e detalhe: item de grid nasce com min-width:auto,
+     entao no mobile (nav horizontal) o conteudo da nav esticava a
+     coluna para ~2000px e a pagina inteira rolava de lado. */
+  min-width: 0;
+  /* +16px para nao colar na topbar fixa do admin */
+  position: sticky; top: calc(var(--topbar-h, 60px) + 16px);
+  background: var(--pwb-panel);
+  border-radius: var(--pwb-r-md);
+  padding: 20px 12px;
+  display: flex; flex-direction: column; gap: 4px;
+  box-shadow: var(--pwb-shadow-sm);
 }
-.pwb_brand { display: flex; align-items: center; gap: 9px; padding: 4px 8px 14px; }
-.pwb_brand_icon { color: var(--pwb-blue); display: flex; }
-.pwb_brand_text { font-size: 14px; font-weight: 800; letter-spacing: -.01em; }
+.pwb_brand {
+  display: flex; align-items: center; gap: 10px;
+  padding: 2px 10px 18px;
+  border-bottom: 1px solid var(--pwb-line);
+  margin-bottom: 12px;
+}
+.pwb_brand_icon {
+  width: 30px; height: 30px; flex-shrink: 0;
+  display: grid; place-items: center; border-radius: 9px;
+  background: var(--pwb-g-roxo); color: #fff;
+}
+.pwb_brand_text {
+  font-size: 14.5px; font-weight: 700;
+  letter-spacing: -.02em; color: var(--pwb-t0);
+}
 .pwb_sidebar_toggle { display: none; }
 
-.pwb_nav { display: flex; flex-direction: column; gap: 2px; }
+.pwb_nav { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .pwb_nav_item {
-  display: flex; align-items: center; gap: 10px;
-  width: 100%; padding: 9px 10px;
-  background: transparent; border: 0; border-radius: 9px;
-  color: var(--pwb-text2); font-size: 13.5px; font-weight: 600;
+  position: relative;
+  display: flex; align-items: center; gap: 11px;
+  width: 100%; padding: 9px 12px;
+  background: transparent; border: 0; border-radius: 10px;
+  color: var(--pwb-t1); font: inherit;
+  font-size: 13px; font-weight: 500;
   text-align: left; cursor: pointer;
-  transition: background .14s ease, color .14s ease;
+  transition: background .16s ease, color .16s ease;
 }
-.pwb_nav_item:hover { background: var(--pwb-surface2); color: var(--pwb-text); }
-.pwb_nav_active { background: var(--blue-lt, #eff6ff); color: var(--pwb-blue); }
-.pwb_nav_active svg { color: var(--pwb-blue); }
+/* :not(.pwb_nav_active) e a dupla classe no ativo resolvem uma briga
+   de especificidade: `.pwb_nav_item:hover` vale 0-2-0 e `.pwb_nav_active`
+   sozinho vale 0-1-0 — o hover vencia, e o gradiente do item ativo
+   sumia justamente enquanto o mouse estava em cima dele. */
+.pwb_nav_item:not(.pwb_nav_active):hover { background: var(--pwb-a-neutral); color: var(--pwb-t0); }
+
+/* Item ativo: gradiente roxo + marcador lateral, como no brief. */
+.pwb_nav_item.pwb_nav_active {
+  background: var(--pwb-g-roxo);
+  color: #fff; font-weight: 600;
+  box-shadow: 0 6px 18px -6px var(--pwb-purple);
+}
+.pwb_nav_active::before {
+  content: ''; position: absolute; left: -12px; top: 50%;
+  width: 3px; height: 20px; transform: translateY(-50%);
+  border-radius: 0 3px 3px 0; background: var(--pwb-magenta);
+}
+.pwb_nav_active svg { color: #fff; }
+.pwb_nav_label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .pwb_sidebar_link {
-  margin-top: auto; padding: 9px 10px; border-radius: 9px;
-  display: flex; align-items: center; gap: 10px;
-  color: var(--pwb-text2); font-size: 13.5px; font-weight: 600; text-decoration: none;
+  margin-top: auto; padding: 9px 12px; border-radius: 10px;
+  display: flex; align-items: center; gap: 11px;
+  color: var(--pwb-t2); font-size: 13px; font-weight: 500;
+  text-decoration: none;
+  border-top: 1px solid var(--pwb-line); padding-top: 14px; margin-top: 14px;
 }
-.pwb_sidebar_link:hover { background: var(--pwb-surface2); }
+.pwb_sidebar_link:hover { color: var(--pwb-t0); }
 
-.pwb_icon_svg { width: 18px; height: 18px; flex-shrink: 0; }
+.pwb_icon_svg { width: 17px; height: 17px; flex-shrink: 0; }
 
-/* ── Header ──────────────────────────────────────────── */
-.pwb_main { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+/* ── Header ────────────────────────────────────────────────────── */
+.pwb_main { min-width: 0; display: flex; flex-direction: column; gap: 20px; }
 
 .pwb_header {
   display: flex; justify-content: space-between; align-items: flex-start;
-  gap: 16px; flex-wrap: wrap;
+  gap: 16px; flex-wrap: wrap; padding: 2px 2px 0;
 }
-.pwb_title { font-size: 21px; font-weight: 800; margin: 0; letter-spacing: -.02em; }
-.pwb_subtitle { font-size: 12.5px; color: var(--pwb-text3); margin: 3px 0 0; }
+.pwb_header_title_box { min-width: 0; }
+.pwb_title {
+  font-size: 25px; font-weight: 800; margin: 0;
+  letter-spacing: -.035em; color: var(--pwb-t0);
+}
+.pwb_subtitle { font-size: 12.5px; color: var(--pwb-t2); margin: 4px 0 0; }
 
-.pwb_header_actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pwb_header_actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
 .pwb_search_box, .pwb_period_box {
-  display: flex; align-items: center; gap: 7px;
-  background: var(--pwb-surface); border: 1px solid var(--pwb-border);
-  border-radius: 9px; padding: 0 10px; height: 36px; color: var(--pwb-text3);
+  display: flex; align-items: center; gap: 8px;
+  background: var(--pwb-panel); border: 1px solid var(--pwb-line);
+  border-radius: 999px; padding: 0 14px; height: 38px; color: var(--pwb-t2);
 }
 .pwb_search_input, .pwb_period_select {
-  border: 0; background: transparent; outline: none;
-  font-size: 13px; color: var(--pwb-text); height: 100%;
+  border: 0; background: transparent; outline: none; font: inherit;
+  font-size: 13px; color: var(--pwb-t0); height: 100%;
 }
-.pwb_search_input { width: 168px; }
+.pwb_search_input { width: 160px; }
+.pwb_search_input::placeholder { color: var(--pwb-t2); }
 .pwb_period_select { cursor: pointer; }
+.pwb_period_select option { background: var(--pwb-panel); color: var(--pwb-t0); }
 
 .pwb_icon_button {
-  width: 36px; height: 36px; display: grid; place-items: center;
-  background: var(--pwb-surface); border: 1px solid var(--pwb-border);
-  border-radius: 9px; color: var(--pwb-text2); cursor: pointer; position: relative;
+  width: 38px; height: 38px; display: grid; place-items: center;
+  background: var(--pwb-panel); border: 1px solid var(--pwb-line);
+  border-radius: 50%; color: var(--pwb-t1); cursor: pointer; position: relative;
+  transition: color .16s ease, border-color .16s ease;
 }
-.pwb_icon_button:hover { background: var(--pwb-surface2); }
+.pwb_icon_button:hover { color: var(--pwb-t0); border-color: var(--pwb-line-hi); }
+.pwb_notification_button { overflow: visible; }
 .pwb_notification_count {
-  position: absolute; top: -5px; right: -5px;
+  position: absolute; top: -3px; right: -3px;
   min-width: 17px; height: 17px; padding: 0 4px;
-  background: var(--pwb-danger); color: #fff;
-  border-radius: 9px; font-size: 10px; font-weight: 800;
+  background: var(--pwb-magenta); color: #fff;
+  border-radius: 999px; font-size: 10px; font-weight: 800;
   display: grid; place-items: center;
 }
 .pwb_avatar {
-  width: 36px; height: 36px; border-radius: 50%;
-  background: var(--grad-primary, linear-gradient(135deg,#2563eb,#0ea472));
-  color: #fff; font-size: 12.5px; font-weight: 800;
+  width: 38px; height: 38px; border-radius: 50%;
+  background: var(--pwb-g-rosa); color: #fff;
+  font-size: 12.5px; font-weight: 800;
   display: grid; place-items: center;
 }
 
-/* ── KPIs ────────────────────────────────────────────── */
+/* ════════════════════════════════════════════════════════════════
+   KPIs
+   ════════════════════════════════════════════════════════════════ */
 .pwb_kpi_grid {
-  display: grid; gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  display: grid; gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
 }
 .pwb_kpi_card {
-  display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;
-  background: var(--pwb-surface); border: 1px solid var(--pwb-border);
-  border-radius: var(--pwb-radius); padding: 15px 16px;
+  position: relative; overflow: hidden;
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+  background: var(--pwb-card); border-radius: var(--pwb-r-md);
+  padding: 20px; min-width: 0;
+  box-shadow: var(--pwb-shadow-sm);
 }
-.pwb_kpi_content { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pwb_kpi_content { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .pwb_kpi_label {
-  font-size: 11.5px; font-weight: 700; color: var(--pwb-text3);
-  text-transform: uppercase; letter-spacing: .04em;
+  font-size: 10.5px; font-weight: 700; color: var(--pwb-t2);
+  text-transform: uppercase; letter-spacing: .09em;
 }
+/* O número é o elemento mais importante da tela — hierarquia do §22. */
 .pwb_kpi_value {
-  font-size: 22px; font-weight: 800; letter-spacing: -.03em;
-  line-height: 1.15; word-break: break-word;
+  font-size: 27px; font-weight: 800; letter-spacing: -.04em;
+  line-height: 1.1; color: var(--pwb-t0); word-break: break-word;
 }
 .pwb_kpi_trend {
   display: inline-flex; align-items: center; gap: 5px;
-  font-size: 11.5px; color: var(--pwb-text3); margin-top: 2px;
+  font-size: 11.5px; color: var(--pwb-t2); margin-top: 4px;
 }
 .pwb_kpi_trend svg { width: 13px; height: 13px; }
-/* O sinal vem do PHP (kpi.trend_dir), nao do CSS.
-   A versao anterior tinha tres regras que TODAS pintavam de verde,
-   com um comentario afirmando que a queda saia em vermelho — CSS nao
-   le o texto do elemento, entao -30% aparecia verde. */
-.pwb_kpi_trend_value { font-weight: 800; color: var(--pwb-text2); }
-.pwb_kpi_up   .pwb_kpi_trend_value,
-.pwb_kpi_up   .pwb_kpi_trend svg { color: var(--pwb-green); }
-.pwb_kpi_down .pwb_kpi_trend_value,
-.pwb_kpi_down .pwb_kpi_trend svg { color: var(--pwb-danger); }
+/* O sinal vem do PHP (kpi.trend_dir). CSS não lê o texto do elemento —
+   uma versão anterior "colorava a queda" com três regras que todas
+   pintavam de verde, e -30% aparecia como alta. */
+.pwb_kpi_trend_value { font-weight: 800; color: var(--pwb-t1); }
+.pwb_kpi_trend_label { color: var(--pwb-t2); }
+.pwb_kpi_up   .pwb_kpi_trend_value, .pwb_kpi_up   .pwb_kpi_trend svg { color: var(--pwb-green); }
+.pwb_kpi_down .pwb_kpi_trend_value, .pwb_kpi_down .pwb_kpi_trend svg { color: var(--pwb-red); }
 .pwb_kpi_down .pwb_kpi_trend svg { transform: scaleY(-1); }
+
 .pwb_kpi_icon {
-  width: 34px; height: 34px; flex-shrink: 0;
-  display: grid; place-items: center; border-radius: 9px;
-  background: var(--pwb-surface2); color: var(--pwb-text2);
+  width: 38px; height: 38px; flex-shrink: 0;
+  display: grid; place-items: center; border-radius: 12px;
+  background: var(--pwb-a-neutral); color: var(--pwb-t1);
 }
-.pwb_kpi_revenue .pwb_kpi_icon,
-.pwb_kpi_profit  .pwb_kpi_icon { background: var(--green-lt, #ecfdf5); color: var(--pwb-green); }
-.pwb_kpi_orders  .pwb_kpi_icon,
-.pwb_kpi_customers .pwb_kpi_icon { background: var(--blue-lt, #eff6ff); color: var(--pwb-blue); }
 
-/* ── Painéis ─────────────────────────────────────────── */
-/* O markup usa `pwb_chart_grid` (9 vezes). A folha definia
-   `pwb_grid_2`, que NÃO existe no HTML — resultado: todas as seções
-   de duas colunas empilhavam em largura cheia. Era a maior parte do
-   "espaçamento errado". */
+/* Os dois primeiros KPIs recebem gradiente (§10). Só os DOIS: se
+   todos brilhassem, nenhum se destacaria. */
+.pwb_kpi_revenue, .pwb_kpi_orders { border: 0; }
+.pwb_kpi_revenue { background: var(--pwb-g-rosa);  box-shadow: 0 14px 34px -14px var(--pwb-magenta); }
+.pwb_kpi_orders  { background: var(--pwb-g-ciano); box-shadow: 0 14px 34px -14px var(--pwb-blue); }
+.pwb_kpi_revenue .pwb_kpi_label, .pwb_kpi_orders .pwb_kpi_label { color: rgba(255,255,255,.78); }
+.pwb_kpi_revenue .pwb_kpi_value, .pwb_kpi_orders .pwb_kpi_value { color: #fff; }
+.pwb_kpi_revenue .pwb_kpi_trend, .pwb_kpi_orders .pwb_kpi_trend,
+.pwb_kpi_revenue .pwb_kpi_trend_label, .pwb_kpi_orders .pwb_kpi_trend_label { color: rgba(255,255,255,.72); }
+.pwb_kpi_revenue .pwb_kpi_trend_value, .pwb_kpi_orders .pwb_kpi_trend_value { color: #fff; }
+.pwb_kpi_revenue .pwb_kpi_icon, .pwb_kpi_orders .pwb_kpi_icon {
+  background: rgba(255,255,255,.18); color: #fff;
+}
+
+/* Ícone tingido por família nos demais cards. */
+.pwb_kpi_ticket .pwb_kpi_icon, .pwb_kpi_profit .pwb_kpi_icon {
+  background: var(--pwb-a-green); color: var(--pwb-green);
+}
+.pwb_kpi_customers .pwb_kpi_icon, .pwb_kpi_new .pwb_kpi_icon {
+  background: var(--pwb-a-blue); color: var(--pwb-blue);
+}
+.pwb_kpi_items .pwb_kpi_icon, .pwb_kpi_discount .pwb_kpi_icon {
+  background: var(--pwb-a-amber); color: var(--pwb-amber);
+}
+
+/* ════════════════════════════════════════════════════════════════
+   PAINÉIS E GRIDS
+   ════════════════════════════════════════════════════════════════ */
+/* O markup usa `pwb_chart_grid` (9x). Uma versão anterior definia
+   `pwb_grid_2`, que não existe no HTML — as seções de duas colunas
+   empilhavam em largura cheia. */
 .pwb_chart_grid,
-.pwb_grid_2 { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.pwb_grid_2 { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
 
-/* Na visão geral o primeiro bloco é assimétrico: o gráfico grande
-   ao lado do menor. */
-.pwb_chart_grid_overview { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
-@media (min-width: 900px) {
-  .pwb_chart_grid_overview { grid-template-columns: 1.6fr 1fr; }
-}
-
-/* Painel que ocupa a linha inteira mesmo dentro de um grid. */
+.pwb_chart_grid_overview { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); }
 .pwb_panel_wide { grid-column: 1 / -1; }
 
-/* Classe de altura herdada do markup. Hoje é inerte de propósito —
-   a altura vem do conteúdo (ver .pwb_chart_box). Mantida para não
-   quebrar o HTML existente. */
-.pwb_chart_tall { }
+/* Brief §24: gráfico principal ocupando duas colunas, card lateral na
+   terceira. Sem esta regra o `pwb_panel_wide` do markup expandia o
+   gráfico para a linha inteira e jogava "Pedidos por Status" para
+   baixo, sozinho e estreito. */
+@media (min-width: 1000px) {
+  .pwb_chart_grid_overview { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .pwb_chart_grid_overview .pwb_panel_wide { grid-column: span 2; }
+}
+
 .pwb_panel {
-  background: var(--pwb-surface); border: 1px solid var(--pwb-border);
-  border-radius: var(--pwb-radius); padding: 16px 18px; min-width: 0;
+  background: var(--pwb-panel); border-radius: var(--pwb-r-md);
+  padding: 22px 24px; min-width: 0;
+  box-shadow: var(--pwb-shadow-sm);
 }
 .pwb_panel_header {
   display: flex; justify-content: space-between; align-items: baseline;
-  gap: 10px; flex-wrap: wrap; margin-bottom: 12px;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
 }
-.pwb_panel_title { font-size: 14.5px; font-weight: 800; margin: 0 0 12px; letter-spacing: -.01em; }
+.pwb_panel_title {
+  font-size: 15px; font-weight: 700; margin: 0 0 16px;
+  letter-spacing: -.02em; color: var(--pwb-t0);
+}
 .pwb_panel_header .pwb_panel_title { margin: 0; }
-.pwb_panel_hint { font-size: 11.5px; color: var(--pwb-text3); }
+.pwb_panel_hint { font-size: 11.5px; color: var(--pwb-t2); }
+.pwb_panel_hint a { color: var(--pwb-lilac); text-decoration: none; }
+.pwb_panel_hint a:hover { text-decoration: underline; }
 
-/* O <canvas> do markup é substituído por SVG no carregamento.
-   A altura vem do CONTEÚDO, nunca de um min-height no container:
-   reservar 190px para três barras deixava metade do painel vazio.
-   A versão anterior corrigia isso com :has(), o que fazia o layout
-   depender do suporte a um seletor — num navegador sem ele, o espaço
-   morto voltava. Agora não depende de nada. */
+/* A altura vem do CONTEÚDO. Um min-height fixo aqui deixava metade
+   do painel vazio quando o gráfico tinha três barras. */
 .pwb_chart_box { display: block; }
-/* O canvas só existe até o JS trocá-lo por SVG. Altura zero evita a
-   caixa fantasma de 300x150 (tamanho padrão do elemento) piscando. */
+.pwb_chart_tall { }
+/* O canvas só existe até o JS trocá-lo por SVG; altura zero evita a
+   caixa fantasma de 300x150 piscando. */
 .pwb_chart_canvas { display: block; max-width: 100%; height: 0; }
-.pwb_legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; font-size: 12px; color: var(--pwb-text2); }
-
-/* ── Tabelas ─────────────────────────────────────────── */
-/* overflow-x próprio: tabela larga rola dentro do painel em vez de
-   empurrar a página inteira para o lado. */
-.pwb_table_wrap { overflow-x: auto; margin: 0 -18px; padding: 0 18px; }
-.pwb_table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.pwb_th {
-  text-align: left; padding: 9px 10px; white-space: nowrap;
-  font-size: 11px; font-weight: 800; color: var(--pwb-text3);
-  text-transform: uppercase; letter-spacing: .04em;
-  border-bottom: 1px solid var(--pwb-border);
+.pwb_legend {
+  display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px;
+  font-size: 12px; color: var(--pwb-t1);
 }
-.pwb_td { padding: 10px; border-bottom: 1px solid var(--pwb-surface2); vertical-align: middle; }
-.pwb_tbody .pwb_tr:hover { background: var(--pwb-surface2); }
+
+/* ════════════════════════════════════════════════════════════════
+   TABELAS
+   ════════════════════════════════════════════════════════════════ */
+/* Rola dentro do painel; a página nunca rola na horizontal. */
+.pwb_table_wrap { overflow-x: auto; margin: 0 -24px; padding: 0 24px; }
+.pwb_table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pwb_thead { background: transparent; }
+.pwb_th {
+  text-align: left; padding: 0 12px 11px; white-space: nowrap;
+  font-size: 10.5px; font-weight: 700; color: var(--pwb-t2);
+  text-transform: uppercase; letter-spacing: .09em;
+  border-bottom: 1px solid var(--pwb-line);
+}
+.pwb_td {
+  padding: 13px 12px; color: var(--pwb-t1);
+  border-bottom: 1px solid var(--pwb-line); vertical-align: middle;
+}
+.pwb_td:first-child { color: var(--pwb-t0); font-weight: 500; }
+.pwb_tbody .pwb_tr { transition: background .14s ease; }
+.pwb_tbody .pwb_tr:hover { background: var(--pwb-a-neutral); }
 .pwb_tbody .pwb_tr:last-child .pwb_td { border-bottom: 0; }
 
+/* ── Badges ────────────────────────────────────────────────────── */
 .pwb_badge {
-  display: inline-block; padding: 3px 9px; border-radius: 20px;
+  display: inline-block; padding: 4px 11px; border-radius: 999px;
   font-size: 11px; font-weight: 700; white-space: nowrap;
-  background: var(--pwb-surface2); color: var(--pwb-text2);
+  background: var(--pwb-a-neutral); color: var(--pwb-t1);
 }
-.pwb_badge_success { background: var(--green-lt, #ecfdf5); color: #047857; }
-.pwb_badge_warning { background: #fffbeb; color: var(--pwb-warn); }
-.pwb_badge_danger  { background: #fef2f2; color: var(--pwb-danger); }
-.pwb_badge_info    { background: var(--blue-lt, #eff6ff); color: var(--pwb-blue); }
-/* pwb_badge_class() tambem emite estas duas; sem defini-las elas
-   caem no estilo base e ficam indistinguiveis das demais. */
-.pwb_badge_primary { background: var(--blue-lt, #eff6ff); color: var(--pwb-blue); }
-.pwb_badge_default { background: var(--pwb-surface2); color: var(--pwb-text2); }
+.pwb_badge_success { background: var(--pwb-a-green);   color: var(--pwb-tc-green); }
+.pwb_badge_warning { background: var(--pwb-a-amber);   color: var(--pwb-tc-amber); }
+.pwb_badge_danger  { background: var(--pwb-a-red);     color: var(--pwb-tc-red); }
+.pwb_badge_info    { background: var(--pwb-a-blue);    color: var(--pwb-tc-blue); }
+.pwb_badge_primary { background: var(--pwb-a-blue);    color: var(--pwb-tc-blue); }
+.pwb_badge_default { background: var(--pwb-a-neutral); color: var(--pwb-t1); }
 
 .pwb_stock_bar {
-  display: inline-block; width: 54px; height: 6px; margin-right: 7px;
-  background: var(--pwb-surface2); border-radius: 4px; overflow: hidden; vertical-align: middle;
+  display: inline-block; width: 56px; height: 6px; margin-right: 8px;
+  background: var(--pwb-a-neutral); border-radius: 999px;
+  overflow: hidden; vertical-align: middle;
 }
-.pwb_stock_fill { display: block; height: 100%; background: var(--pwb-blue); border-radius: 4px; }
+.pwb_stock_fill { display: block; height: 100%; background: var(--pwb-g-ciano); border-radius: 999px; }
 
-/* ── Cards de métrica ────────────────────────────────── */
+/* ── Cards de métrica ──────────────────────────────────────────── */
 .pwb_metric_grid {
-  display: grid; gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
 }
 .pwb_metric_card {
-  background: var(--pwb-surface); border: 1px solid var(--pwb-border);
-  border-radius: var(--pwb-radius); padding: 14px 16px;
-  display: flex; flex-direction: column; gap: 3px;
+  background: var(--pwb-card); border-radius: var(--pwb-r-md);
+  padding: 17px 19px; display: flex; flex-direction: column; gap: 4px;
+  box-shadow: var(--pwb-shadow-sm);
 }
-.pwb_metric_label { font-size: 11.5px; font-weight: 700; color: var(--pwb-text3); }
-.pwb_metric_value { font-size: 19px; font-weight: 800; letter-spacing: -.02em; }
-.pwb_metric_hint  { font-size: 11.5px; color: var(--pwb-text3); }
+.pwb_metric_label { font-size: 11px; font-weight: 700; color: var(--pwb-t2); letter-spacing: .02em; }
+.pwb_metric_value { font-size: 21px; font-weight: 800; letter-spacing: -.03em; color: var(--pwb-t0); }
+.pwb_metric_hint  { font-size: 11.5px; color: var(--pwb-t2); line-height: 1.45; }
 
-/* ── Troca de painel ─────────────────────────────────── */
-.pwb_view { display: none; flex-direction: column; gap: 14px; }
-.pwb_view_active { display: flex; }
-
-/* ── Responsivo ──────────────────────────────────────── */
-@media (max-width: 1000px) {
-  .pwb_dashboard { grid-template-columns: 1fr; }
-  .pwb_sidebar { position: static; }
-  .pwb_nav { flex-direction: row; overflow-x: auto; }
-  .pwb_nav_item { white-space: nowrap; }
-  .pwb_sidebar_link { margin-top: 0; }
-}
-@media (max-width: 640px) {
-  .pwb_search_box { display: none; }
-  .pwb_kpi_value { font-size: 19px; }
-}
-
-/* ── Gráficos em SVG (substituem os <canvas> inertes) ── */
-.pwb_bars { display: flex; flex-direction: column; gap: 8px; width: 100%; }
-.pwb_bar_row { display: grid; grid-template-columns: minmax(70px, 118px) 1fr auto; gap: 10px; align-items: center; }
+/* ════════════════════════════════════════════════════════════════
+   GRÁFICOS EM SVG
+   ════════════════════════════════════════════════════════════════ */
+.pwb_bars { display: flex; flex-direction: column; gap: 11px; width: 100%; }
+.pwb_bar_row { display: grid; grid-template-columns: minmax(72px, 124px) 1fr auto; gap: 12px; align-items: center; }
 .pwb_bar_label {
-  font-size: 12px; color: var(--pwb-text2); font-weight: 600;
+  font-size: 12px; color: var(--pwb-t2); font-weight: 500;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.pwb_bar_track { height: 9px; background: var(--pwb-surface2); border-radius: 5px; overflow: hidden; }
-.pwb_bar_fill  { display: block; height: 100%; border-radius: 5px; transition: width .3s ease; }
-.pwb_bar_value { font-size: 12px; font-weight: 700; white-space: nowrap; }
+.pwb_bar_track { height: 9px; background: var(--pwb-a-neutral); border-radius: 999px; overflow: hidden; }
+.pwb_bar_fill  { display: block; height: 100%; border-radius: 999px; transition: width .45s cubic-bezier(.4,0,.2,1); }
+.pwb_bar_value { font-size: 12.5px; font-weight: 700; white-space: nowrap; color: var(--pwb-t0); }
 
 .pwb_linebox { width: 100%; }
-.pwb_svg_line { width: 100%; height: 170px; display: block; }
+.pwb_svg_line { width: 100%; height: 180px; display: block; }
 .pwb_line_legend {
   display: flex; justify-content: space-between;
-  font-size: 11px; color: var(--pwb-text3); margin-top: 6px;
+  font-size: 11px; color: var(--pwb-t2); margin-top: 8px;
 }
-/* O aviso de vazio é o único que precisa de altura própria — sem ela
-   o painel colapsa numa linha de texto colada no título. */
+/* "Sem dados" precisa de altura própria; sem ela o painel colapsa
+   numa linha de texto colada no título. */
 .pwb_chart_vazio {
-  font-size: 12.5px; color: var(--pwb-text3); margin: 0;
-  min-height: 90px; display: grid; place-items: center;
+  font-size: 12.5px; color: var(--pwb-t2); margin: 0;
+  min-height: 96px; display: grid; place-items: center;
 }
 
-/* ── Matriz de coorte ────────────────────────────────── */
+/* ── Matriz de coorte ──────────────────────────────────────────── */
 .pwb_coorte_tabela .pwb_th,
 .pwb_coorte_tabela .pwb_td { text-align: center; white-space: nowrap; }
 .pwb_coorte_tabela .pwb_th:first-child,
 .pwb_coorte_tabela .pwb_td:first-child { text-align: left; }
-.pwb_coorte_cel { font-weight: 700; font-size: 12px; border-radius: 4px; }
-/* O hover da linha nao pode apagar a escala de cor da celula, que e a
-   informacao principal da matriz. */
+.pwb_coorte_cel { font-weight: 700; font-size: 12px; border-radius: 7px; }
+/* O hover da linha não pode apagar a escala de cor da célula — ela é
+   a informação principal da matriz. */
 .pwb_coorte_tabela .pwb_tr:hover { background: transparent; }
 
-/* ── Insights e curva ABC ────────────────────────────── */
-.pwb_insights { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+/* ── Insights e curva ABC ──────────────────────────────────────── */
+.pwb_insights { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
 .pwb_insight {
-  padding: 10px 12px 10px 32px; position: relative;
-  background: var(--pwb-surface2); border-radius: 9px;
-  font-size: 13.5px; line-height: 1.5;
+  padding: 13px 16px 13px 40px; position: relative;
+  background: var(--pwb-card); border-radius: var(--pwb-r-sm);
+  font-size: 13.5px; line-height: 1.55; color: var(--pwb-t1);
 }
 .pwb_insight::before {
-  content: '→'; position: absolute; left: 12px; top: 10px;
-  color: var(--pwb-blue); font-weight: 800;
+  content: ''; position: absolute; left: 16px; top: 17px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--pwb-g-roxo);
+}
+/* A classe A/B/C é a informação principal da linha; em cinza uniforme
+   o leitor teria que conferir o percentual para saber. */
+.pwb_abc_a { background: var(--pwb-a-green);   color: var(--pwb-tc-green); }
+.pwb_abc_b { background: var(--pwb-a-blue);    color: var(--pwb-tc-blue); }
+.pwb_abc_c { background: var(--pwb-a-neutral); color: var(--pwb-t2); }
+
+/* ── Troca de painel ───────────────────────────────────────────── */
+.pwb_view { display: none; flex-direction: column; gap: 18px; }
+.pwb_view_active { display: flex; }
+
+/* ════════════════════════════════════════════════════════════════
+   RESPONSIVO
+   ════════════════════════════════════════════════════════════════ */
+@media (max-width: 1040px) {
+  .pwb_dashboard { grid-template-columns: minmax(0, 1fr); }
+  /* Sidebar vira faixa rolável no topo — o drawer do §25 exigiria JS
+     e um overlay que o painel ainda não tem. */
+  .pwb_sidebar { position: static; padding: 14px; }
+  .pwb_brand { border-bottom: 0; margin-bottom: 8px; padding-bottom: 8px; }
+  .pwb_nav { flex-direction: row; overflow-x: auto; gap: 6px; padding-bottom: 4px; }
+  .pwb_nav_item { white-space: nowrap; }
+  .pwb_nav_active::before { display: none; }
+  .pwb_sidebar_link { margin-top: 10px; padding-top: 10px; }
+}
+@media (max-width: 660px) {
+  
+  .pwb_search_box { display: none; }
+  .pwb_panel { padding: 18px 16px; }
+  .pwb_table_wrap { margin: 0 -16px; padding: 0 16px; }
+  .pwb_title { font-size: 21px; }
+  .pwb_kpi_value { font-size: 23px; }
 }
 
-/* A/B/C com cores proprias: a classe e a informacao principal da
-   linha, e cinza uniforme obriga a ler o numero para saber. */
-.pwb_abc_a { background: var(--green-lt, #ecfdf5); color: #047857; }
-.pwb_abc_b { background: var(--blue-lt, #eff6ff);  color: var(--pwb-blue); }
-.pwb_abc_c { background: var(--pwb-surface2);      color: var(--pwb-text3); }
-
-/* ── Classes do markup que ainda não tinham regra ─────── */
-/* Todas existiam no HTML herdado e caíam no estilo padrão do
-   navegador. Nenhuma quebrava a página, mas juntas deixavam o
-   cabeçalho e a barra lateral desalinhados. */
-.pwb_header_title_box { min-width: 0; }
-.pwb_nav_label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pwb_kpi_trend_label { color: var(--pwb-text3); }
-.pwb_notification_button { overflow: visible; }
-.pwb_thead { background: transparent; }
+/* Quem prefere menos movimento não recebe a animação da barra. */
+@media (prefers-reduced-motion: reduce) {
+  .pwb_bar_fill, .pwb_nav_item, .pwb_tbody .pwb_tr, .pwb_icon_button { transition: none; }
+}

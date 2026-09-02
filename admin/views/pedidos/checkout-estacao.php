@@ -82,17 +82,18 @@ $ico = static fn($n, $s = 16) => '<span class="log_iw" style="font-size:' . (int
               <div class="est_pronto_sub">Imprima e feche a caixa.</div>
             </div>
           </div>
-          <!-- O principal fecha o pedido e libera a estacao. Os secundarios
-               imprimem sem limpar a tela: quem pede so um documento em geral
-               ainda vai precisar do outro. -->
-          <button type="button" class="btn btn-primary est_btn_imprimir" id="estImprimir">
-            <?= $ico('printer', 16) ?> NF simplificada + etiqueta
-          </button>
+          <!-- Um documento por clique. Nenhum botao limpa a tela: o pedido sai
+               quando o proximo e bipado, entao da para reimprimir sem rebipar. -->
+          <div class="est_btns_pri">
+            <button type="button" class="btn btn-primary est_btn_imprimir" id="estImprimirNf">
+              <?= $ico('docs', 16) ?> NF simplificada
+            </button>
+            <button type="button" class="btn btn-primary est_btn_imprimir" id="estImprimirEtiqueta" disabled>
+              <?= $ico('etiqueta', 16) ?> Etiqueta de envio
+            </button>
+          </div>
 
           <div class="est_btns_sec">
-            <button type="button" class="btn btn-secondary" id="estImprimirNf">
-              <?= $ico('docs', 15) ?> Só a NF simplificada
-            </button>
             <button type="button" class="btn btn-secondary" id="estImprimirDanfe" disabled>
               <?= $ico('open-in-new', 15) ?> DANFE completa
             </button>

@@ -148,6 +148,24 @@ if ($semClasse) {
               . "propósito — classifique cada um em /admin/configuracoes/status-pedidos.";
 }
 
+// Pedido cuja data não existe em bi_dim_data fica INVISÍVEL em
+// qualquer modelo que use o calendário como tabela de datas — o caso
+// do Power BI. Some sem erro, que é o pior tipo de falha.
+$foraCal = (int)$db->query(
+    "SELECT COUNT(*) FROM bi_fato_pedido p
+      LEFT JOIN bi_dim_data d ON d.data = p.data
+      WHERE p.data IS NOT NULL AND d.data IS NULL"
+)->fetchColumn();
+if ($foraCal > 0) {
+    $lim = $db->query("SELECT MIN(data) a, MAX(data) b FROM bi_dim_data")->fetch();
+    linha('falta', "{$foraCal} pedido(s) FORA do calendário",
+          "bi_dim_data cobre {$lim['a']} a {$lim['b']} — esses pedidos somem no Power BI");
+    $avisos[] = "Estenda o seed de bi_dim_data em sql/bi-fase0.sql §2 (e acrescente "
+              . "as Páscoas correspondentes em §2.2), depois rode o script de novo.";
+} else {
+    linha('ok', 'todo pedido tem linha no calendário');
+}
+
 // ────────────────────────────────────────────────────────
 echo PHP_EOL . "O QUE SÓ PREENCHE DAQUI PRA FRENTE" . PHP_EOL;
 
@@ -171,14 +189,35 @@ foreach ($daquiPraFrente as [$rotulo, $sql, $comoEncher]) {
 // ────────────────────────────────────────────────────────
 echo PHP_EOL . "COBERTURA (bi_saude_dados)" . PHP_EOL;
 foreach ($db->query("SELECT * FROM bi_saude_dados") as $s) {
+    $total = (int)$s['total'];
+    if ($total === 0) {
+        // 0% sobre zero linhas nao e "nada coberto", e "nada a cobrir".
+        // Mostrar 0% aqui sugeriria um problema que nao existe.
+        linha('aviso', str_pad($s['indicador'], 26) . str_pad('—', 8) . '(sem base)');
+        continue;
+    }
     $pct = (float)($s['pct'] ?? 0);
     linha($pct >= 50 ? 'ok' : 'aviso',
           str_pad($s['indicador'], 26) . str_pad($pct . '%', 8)
-          . "({$s['preenchido']} de {$s['total']})");
+          . "({$s['preenchido']} de {$total})");
 }
 
 // ────────────────────────────────────────────────────────
 echo PHP_EOL . str_repeat('─', 62) . PHP_EOL;
+
+if ($pedidos === 0) {
+    echo "ESTRUTURA OK — MAS A BASE ESTÁ VAZIA." . PHP_EOL . PHP_EOL;
+    echo "Os 24 objetos de banco existem e as views respondem. O painel vai" . PHP_EOL;
+    echo "abrir sem números porque NÃO HÁ PEDIDO NENHUM em `{$sc}` —" . PHP_EOL;
+    echo "isso é o comportamento correto, não uma falha do BI." . PHP_EOL . PHP_EOL;
+    echo "O BI lê o que a loja tem; ele não gera dado. Para ver o painel" . PHP_EOL;
+    echo "com conteúdo, este ambiente precisa de pedidos: importe uma cópia" . PHP_EOL;
+    echo "da produção, ou faça alguns pedidos de teste pela própria loja." . PHP_EOL . PHP_EOL;
+    echo "Um pedido de teste já acende quase tudo: faturamento, produtos," . PHP_EOL;
+    echo "geografia, funil, pagamentos e estoque." . PHP_EOL;
+    exit(0);
+}
+
 echo "BANCO OK — o painel tem o que precisar para renderizar." . PHP_EOL;
 if ($avisos) {
     echo PHP_EOL . "Atenção:" . PHP_EOL;

@@ -9,6 +9,14 @@ declare(strict_types=1);
  */
 class BlingOrderService
 {
+    /**
+     * Teto de tentativas do CRON. Enforçado no seletor da fila, não
+     * dentro do enviarPedido() — assim o cron para de bater num pedido
+     * quebrado, mas o botão do admin ainda força o reenvio.
+     * Mesma regra do BlingContatoService.
+     */
+    private const MAX_TENTATIVAS = 5;
+
     private BlingApiClient $api;
     private PDO            $db;
 
@@ -53,6 +61,135 @@ class BlingOrderService
     }
 
     // ════════════════════════════════════════════════════
+    // FILA DE ENVIO — site → Bling
+    //
+    // O Bling é o dono do estoque: ele baixa o saldo de todos os
+    // canais quando o pedido entra. Pedido que não chega ao Bling
+    // é estoque que não baixa em canal nenhum. Por isso o envio
+    // NÃO pode ser "melhor esforço" no checkout.
+    //
+    // O checkout só marca 'pendente' (um UPDATE, sem I/O externo):
+    // Bling fora não derruba a compra. O cron drena e insiste.
+    // ════════════════════════════════════════════════════
+
+    /**
+     * Marca um pedido para envio. Idempotente e barato.
+     *
+     * Não re-enfileira o que já sincronizou — o guard é o mesmo do
+     * enviarPedido() (bling_pedidos_map), mas aqui evita até o UPDATE.
+     */
+    public function enfileirar(int $pedidoId): void
+    {
+        $this->db->prepare(
+            "UPDATE pedidos
+             SET bling_sync_status     = 'pendente',
+                 bling_sync_tentativas = 0,
+                 bling_sync_erro       = NULL
+             WHERE id = ?
+               AND bling_sync_status <> 'sincronizado'"
+        )->execute([$pedidoId]);
+    }
+
+    /**
+     * Drena a fila. Chamado pelo cron.
+     *
+     * @return array{total:int, ok:int, falhas:int, detalhes:array}
+     */
+    public function processarFila(int $limite = 50): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT id FROM pedidos
+             WHERE bling_sync_status = 'pendente'
+               AND bling_sync_tentativas < ?
+             ORDER BY bling_sync_tentativas ASC, id ASC
+             LIMIT ?"
+        );
+        $stmt->execute([self::MAX_TENTATIVAS, $limite]);
+        $ids = array_map('intval', array_column($stmt->fetchAll(), 'id'));
+
+        $ok = 0; $falhas = 0; $detalhes = [];
+
+        foreach ($ids as $id) {
+            try {
+                $this->enviarPedido($id);
+                $ok++;
+            } catch (\Throwable $e) {
+                $falhas++;
+                $detalhes[] = ['pedido_id' => $id, 'msg' => $e->getMessage()];
+            }
+            usleep(300000); // 0,3s — respiro sob o teto de 3 rps
+        }
+
+        return ['total' => count($ids), 'ok' => $ok,
+                'falhas' => $falhas, 'detalhes' => $detalhes];
+    }
+
+    /**
+     * Pedidos que esgotaram as tentativas do cron. Nenhum deles baixou
+     * estoque no Bling — logo, nenhum baixou em canal nenhum. É a lista
+     * que o painel precisa mostrar em vermelho.
+     */
+    public function pedidosComFalha(int $limite = 50): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT id, codigo, total, criado_em,
+                    bling_sync_tentativas, bling_sync_erro
+             FROM pedidos
+             WHERE bling_sync_status = 'erro'
+             ORDER BY criado_em DESC
+             LIMIT ?"
+        );
+        $stmt->execute([$limite]);
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Itens que vão ao Bling sem `produto.id` — os que não baixam estoque.
+     *
+     * @return array<int,array{produto_id:int,codigo:?string,nome:string,quantidade:int}>
+     */
+    private function itensSemVinculo(array $itens): array
+    {
+        $out = [];
+        foreach ($itens as $i) {
+            if (!empty($i['bling_id'])) continue;
+            $out[] = [
+                'produto_id' => (int)($i['produto_id'] ?? 0),
+                'codigo'     => trim((string)($i['codigo_item'] ?? '')) ?: null,
+                'nome'       => (string)($i['nome_produto'] ?? 'sem nome'),
+                'quantidade' => (int)($i['quantidade'] ?? 0),
+            ];
+        }
+        return $out;
+    }
+
+    private function marcarSincronizado(int $pedidoId): void
+    {
+        $this->db->prepare(
+            "UPDATE pedidos
+             SET bling_sync_status     = 'sincronizado',
+                 bling_sync_erro       = NULL,
+                 bling_sincronizado_em = NOW()
+             WHERE id = ?"
+        )->execute([$pedidoId]);
+    }
+
+    /**
+     * Conta a tentativa e guarda o motivo. Vira 'erro' ao bater o teto —
+     * o cron para de tentar, mas o admin ainda pode forçar pelo botão.
+     */
+    private function marcarFalha(int $pedidoId, string $msg): void
+    {
+        $this->db->prepare(
+            "UPDATE pedidos
+             SET bling_sync_tentativas = bling_sync_tentativas + 1,
+                 bling_sync_erro       = ?,
+                 bling_sync_status     = IF(bling_sync_tentativas + 1 >= ?, 'erro', 'pendente')
+             WHERE id = ?"
+        )->execute([mb_substr($msg, 0, 500), self::MAX_TENTATIVAS, $pedidoId]);
+    }
+
+    // ════════════════════════════════════════════════════
     // PUSH: site → Bling
     // ════════════════════════════════════════════════════
 
@@ -61,7 +198,87 @@ class BlingOrderService
      * Idempotente: se o pedido já foi enviado, retorna o bling_id salvo sem nova chamada.
      * Funciona para pedidos criados no site, no admin ou importados da Tray.
      */
+    /**
+     * Envia o pedido ao Bling e REGISTRA O RESULTADO no próprio pedido.
+     *
+     * O registro de estado é o que transforma o envio de "melhor esforço"
+     * em fila confiável: sucesso marca 'sincronizado' (sai da fila),
+     * falha conta a tentativa e guarda o motivo (o cron volta depois).
+     *
+     * Continua lançando a exceção para cima — o admin que aperta o botão
+     * precisa ver o erro do Bling, não um "ok" silencioso.
+     */
     public function enviarPedido(int $pedidoId): array
+    {
+        try {
+            $r = $this->executarEnvio($pedidoId);
+            $this->marcarSincronizado($pedidoId);
+
+            // Só alerta em envio REAL. 'already_sent' não chamou a API e
+            // já alertou na primeira vez — repetir viraria ruído no sino.
+            if (($r['action'] ?? '') !== 'already_sent' && !empty($r['itens_sem_vinculo'])) {
+                $this->alertarItensSemVinculo($pedidoId, $r['itens_sem_vinculo']);
+            }
+
+            return $r;
+        } catch (\Throwable $e) {
+            $this->marcarFalha($pedidoId, $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Item sem bling_id foi para o Bling como linha de texto livre.
+     * O pedido existe lá, o site marcou 'sincronizado', a fila esvaziou —
+     * e o estoque NÃO baixou em canal nenhum. O produto segue à venda no
+     * site e nos marketplaces com saldo que já não existe.
+     *
+     * É a falha mais perigosa do modelo (Bling dono do estoque), porque
+     * todo o resto reporta sucesso. Por isso vai como critical + sino:
+     * ninguém descobre isso lendo log de rotina.
+     */
+    private function alertarItensSemVinculo(int $pedidoId, array $itens): void
+    {
+        $stmt = $this->db->prepare("SELECT codigo FROM pedidos WHERE id = ? LIMIT 1");
+        $stmt->execute([$pedidoId]);
+        $codigo = (string)($stmt->fetchColumn() ?: $pedidoId);
+
+        $nomes = array_map(
+            fn($i) => trim(($i['codigo'] ?? '—') . ' · ' . ($i['nome'] ?? 'sem nome')),
+            $itens
+        );
+
+        LogService::critical(
+            'Pedido enviado ao Bling com itens SEM vínculo — estoque não será baixado',
+            [
+                'pedido_id'  => $pedidoId,
+                'codigo'     => $codigo,
+                'itens'      => $itens,
+                'consequencia' => 'Produtos seguem à venda no site e nos marketplaces '
+                                . 'com saldo que já não existe. Vincular no Bling e '
+                                . 'ajustar o estoque manualmente.',
+            ],
+            'bling'
+        );
+
+        // Notificação in-app não pode derrubar o envio já concluído.
+        try {
+            $qtd = count($nomes);
+            NotificacaoService::criarBroadcast([
+                'categoria' => 'estoque',
+                'tipo'      => 'bling_item_sem_vinculo',
+                'titulo'    => "Estoque não baixou no pedido #{$codigo}",
+                'mensagem'  => $qtd . ' item(ns) foram ao Bling sem vínculo de produto: '
+                             . mb_substr(implode(' | ', $nomes), 0, 400)
+                             . '. Vincule no Bling e ajuste o estoque manualmente.',
+                'url'       => '/admin/pedidos/' . $pedidoId,
+            ], 'todos_admins');
+        } catch (\Throwable $e) {
+            LogService::exception($e, 'error', 'bling', ['pedido_id' => $pedidoId]);
+        }
+    }
+
+    private function executarEnvio(int $pedidoId): array
     {
         // Já enviado? Retorna sem nova chamada à API
         $map = $this->db->prepare(
@@ -84,7 +301,13 @@ class BlingOrderService
         $blingContatoId = $this->upsertContato($pedido);
         // Monta payload do pedido
 
-        $payload = $this->buildPedidoPayload($pedido, $blingContatoId);    
+        $payload = $this->buildPedidoPayload($pedido, $blingContatoId);
+
+        // Levantado ANTES do envio, mas alertado só depois do sucesso
+        // (em enviarPedido): se o envio falhar, o pedido volta pra fila
+        // e não há nada a alertar ainda.
+        $semVinculo = $this->itensSemVinculo($pedido['itens']);
+
         if ($blingExistente) {
             // Já existe — só salva o mapeamento
             $this->db->prepare(
@@ -93,7 +316,8 @@ class BlingOrderService
 
             $response = $this->api->put('/pedidos/vendas/'.$blingExistente, $payload);
 
-            return ['ok' => true, 'bling_id' => $blingExistente, 'action' => 'recovered', 'res'=>$response];
+            return ['ok' => true, 'bling_id' => $blingExistente, 'action' => 'recovered',
+                    'res' => $response, 'itens_sem_vinculo' => $semVinculo];
         }
 
         
@@ -111,7 +335,8 @@ class BlingOrderService
             "INSERT INTO bling_pedidos_map (pedido_id, bling_id) VALUES (?, ?)"
         )->execute([$pedidoId, $blingPedidoId]);
 
-        return ['ok' => true, 'bling_id' => $blingPedidoId, 'action' => 'created'];
+        return ['ok' => true, 'bling_id' => $blingPedidoId, 'action' => 'created',
+                'itens_sem_vinculo' => $semVinculo];
     }
 
     // ════════════════════════════════════════════════════
@@ -249,11 +474,26 @@ class BlingOrderService
                 'quantidade' => (int)$item['quantidade'],
                 'desconto'   => 0,
             ];
+
+            // O `codigo` vai SEMPRE que existir, com ou sem vínculo.
+            // Com vínculo é redundância inofensiva; sem vínculo é a
+            // única chance de o Bling casar a linha com um produto dele
+            // — e, se não casar, ao menos a linha fica rastreável pelo
+            // mesmo código que o site usa.
+            $codigo = trim((string)($item['codigo_item'] ?? ''));
+            if ($codigo !== '') {
+                $itemPayload['codigo'] = $codigo;
+            }
+
             if (!empty($item['bling_id'])) {
                 $itemPayload['produto'] = ['id' => (int)$item['bling_id']];
             } else {
+                // Sem produto.id o Bling aceita a linha como texto livre e
+                // NÃO baixa estoque. O pedido entra "com sucesso" e mente.
+                // Quem alerta é o alertarItensSemVinculo() — aqui só monta.
                 $itemPayload['descricao'] = $item['nome_produto'] ?? 'Produto sem código';
             }
+
             return $itemPayload;
         }, $pedido['itens']);
 
@@ -434,11 +674,27 @@ class BlingOrderService
         $pedido = $stmt->fetch();
         if (!$pedido) return null;
 
-        // Itens com bling_id do SKU
+        // Itens com o vínculo do Bling resolvido.
+        //
+        // pedido_itens.sku é VARCHAR mas guarda o ID de produto_skus
+        // (ver AdminPedido::addItem) — daí o join por ps.id.
+        //
+        // O fallback para pr.bling_id só vale quando o produto NÃO tem
+        // variação. Em produto com variação, o bling_id do pai é o da
+        // FAMÍLIA: usá-lo baixaria estoque do item errado no Bling.
+        // Melhor ficar sem vínculo e ser sinalizado do que acertar o
+        // produto errado silenciosamente.
+        //
+        // codigo_item alimenta o campo `codigo` do item no payload —
+        // é o que dá ao Bling uma chance de casar por código quando o
+        // ID não existe, e o que torna a linha rastreável de qualquer jeito.
         $stmtItens = $this->db->prepare(
-            "SELECT pi.*, ps.bling_id
+            "SELECT pi.*,
+                    COALESCE(ps.bling_id, IF(pr.tem_variacao = 0, pr.bling_id, NULL)) AS bling_id,
+                    COALESCE(ps.sku, pr.sku_legado) AS codigo_item
              FROM pedido_itens pi
-             LEFT JOIN produto_skus ps ON ps.id = pi.sku
+             LEFT JOIN produto_skus ps ON ps.id  = pi.sku
+             LEFT JOIN produtos     pr ON pr.id  = pi.produto_id
              WHERE pi.pedido_id = ?"
         );
         $stmtItens->execute([$pedidoId]);

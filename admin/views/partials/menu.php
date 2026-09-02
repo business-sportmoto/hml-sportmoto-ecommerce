@@ -354,6 +354,12 @@
         </span>
         Configurações
       </a>
+      <a href="<?= BASE_URL ?>/admin/configuracoes/rodape" class="admin-nav-item<?= adminIsActive('/admin/configuracoes/rodape') ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('docs'); ?>
+        </span>
+        Rodapé
+      </a>
       <a href="<?= BASE_URL ?>/admin/usuarios" class="admin-nav-item<?= adminIsActive('/admin/usuarios') ?>">
         <span class="admin-nav-icon">
           <?= IconLibrary::render('user_admin'); ?> 

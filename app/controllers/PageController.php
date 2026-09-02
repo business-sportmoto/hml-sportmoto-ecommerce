@@ -18,7 +18,16 @@ class PageController extends Controller {
         $slug    = preg_replace('/[^a-z0-9\-]/', '', strtolower($slug));
         $pageDir = $this->pagesDir . '/' . $slug;
 
+        // Ordem: arquivo primeiro, banco depois.
+        //
+        // As landing pages montadas em /pages tem CSS e JS proprios e sao
+        // versionadas no git; elas ganham do banco de proposito, para que criar
+        // uma pagina no painel nunca possa derrubar uma pagina de campanha. O
+        // PaginaService recusa slug que ja exista em arquivo, entao o conflito
+        // e barrado na origem — isto aqui e a segunda linha de defesa.
         if (!is_dir($pageDir) || !file_exists($pageDir . '/index.php')) {
+            if ($this->mostrarDoBanco($slug)) return;
+
             http_response_code(404);
             $this->render('errors/404', [], 'main');
             return;
@@ -68,6 +77,46 @@ class PageController extends Controller {
             'extra_css'      => isset($assets['css']) ? (is_array($assets['css']) ? $assets['css'] : [$assets['css']]) : [],
             'extra_js'       => isset($assets['js'])  ? (is_array($assets['js']) ? $assets['js'] : [$assets['js']]) : [],
         ], $layout);
+    }
+
+    /**
+     * Renderiza uma página de conteúdo vinda da tabela `paginas`.
+     *
+     * Devolve false quando não existe, para o chamador seguir para o 404 — em
+     * vez de renderizar o 404 aqui e deixar duas telas de erro no mesmo fluxo.
+     */
+    private function mostrarDoBanco(string $slug): bool
+    {
+        $pagina = (new PaginaService())->porSlug($slug);
+        if (!$pagina) return false;
+
+        SeoHelper::setTitle(($pagina['meta_title'] ?? '') !== '' ? $pagina['meta_title'] : $pagina['titulo']);
+        if (!empty($pagina['meta_description'])) SeoHelper::setDescription($pagina['meta_description']);
+        SeoHelper::setCanonical(BASE_URL . '/' . $slug);
+        if (!empty($pagina['noindex'])) SeoHelper::setRobots('noindex, follow');
+
+        $breadcrumb = [
+            ['label' => 'Início', 'url' => BASE_URL],
+            ['label' => $pagina['titulo'], 'url' => null],
+        ];
+        SeoHelper::setBreadcrumb($breadcrumb);
+
+        $conteudo = $this->capturePageContent(ROOT_PATH . '/views/pagina-conteudo.php', ['pagina' => $pagina]);
+
+        // Mesmo wrapper das páginas de arquivo: uma página do painel tem que
+        // sair visualmente igual a uma página montada à mão.
+        $this->render('page-wrapper', [
+            'page_content'   => $conteudo,
+            'page_config'    => $pagina,
+            'page_assets'    => ['css' => [], 'js' => []],
+            'page_slug'      => $slug,
+            'usa_breadcrumb' => true,
+            'breadcrumb'     => $breadcrumb,
+            'extra_css'      => [],
+            'extra_js'       => [],
+        ], 'main');
+
+        return true;
     }
 
     /**
@@ -147,19 +196,56 @@ class PageController extends Controller {
     }
 
     /**
-     * Retorna todas as páginas ativas para exibir no menu ou sitemap.
+     * Todas as páginas ativas — arquivo E banco — para menu, rodapé e sitemap.
+     *
+     * Uma fonte só para quem consome. O rodapé e o menu não têm por que saber
+     * que existem dois lugares onde uma página pode morar; quando souberem,
+     * cada um vai reimplementar a união do seu jeito.
+     *
+     * Arquivo vence em caso de slug repetido, igual à resolução da URL.
      */
     public static function getAllPages(): array {
         $pagesDir = ROOT_PATH . '/pages';
-        if (!is_dir($pagesDir)) return [];
+        $pages    = [];
 
-        $pages = [];
-        foreach (glob($pagesDir . '/*/page.json') as $jsonFile) {
+        // Sem a pasta /pages a função seguia devolvendo [] — e levava junto as
+        // páginas do banco, que não dependem dela.
+        foreach (glob($pagesDir . '/*/page.json') ?: [] as $jsonFile) {
             $config = json_decode(file_get_contents($jsonFile), true);
             if (!is_array($config) || !($config['ativa'] ?? true)) continue;
 
             $slug    = basename(dirname($jsonFile));
             $pages[] = array_merge($config, ['slug' => $slug]);
+        }
+
+        // Banco: só o que não colide com arquivo, e traduzido para o mesmo
+        // formato do page.json — quem consome não distingue a origem.
+        $slugsEmArquivo = array_column($pages, 'slug');
+
+        try {
+            foreach ((new Pagina())->publicadas() as $p) {
+                if (in_array($p['slug'], $slugsEmArquivo, true)) continue;
+
+                $pages[] = [
+                    'slug'          => $p['slug'],
+                    'titulo'        => $p['titulo'],
+                    'descricao'     => $p['meta_description'] ?? '',
+                    'menu_label'    => $p['menu_label'] ?: $p['titulo'],
+                    'menu_ordem'    => $p['ordem_menu'] !== null ? (int) $p['ordem_menu'] : 99,
+                    'no_menu'       => (bool) $p['no_menu'],
+                    'no_rodape'     => (bool) $p['no_rodape'],
+                    'noindex'       => (bool) $p['noindex'],
+                    'ativa'         => true,
+                    'origem'        => 'banco',
+                    'atualizado_em' => $p['atualizado_em'] ?? null,
+                ];
+            }
+        } catch (Throwable $e) {
+            // Banco fora do ar não pode derrubar o menu inteiro: as páginas de
+            // arquivo continuam listadas e a loja segue navegável.
+            if (class_exists('LogService')) {
+                LogService::exception($e, 'warning', 'app', ['onde' => 'PageController::getAllPages']);
+            }
         }
 
         // Ordena pelo campo menu_ordem
@@ -168,69 +254,4 @@ class PageController extends Controller {
         return $pages;
     }
 
-    // Adicionar ao CartController existente
-
-    public function mini(): void {
-        $cartModel = new Cart();
-        $clienteId = Session::getClienteId();
-        $carrinhoId = $this->getCarrinhoId();
-
-        if (!$carrinhoId) {
-            $this->json(['ok' => true, 'items' => [], 'count' => 0,
-                        'subtotal_fmt' => 'R$ 0,00', 'total_fmt' => 'R$ 0,00',
-                        'desconto' => 0, 'frete' => 0]);
-        }
-
-        $items  = $cartModel->getItems($carrinhoId);
-        $totals = $cartModel->getTotals($carrinhoId);
-        $cart   = $cartModel->find($carrinhoId);
-
-        // Monta itens formatados
-        $itemsFormatted = array_map(function ($item) {
-            return [
-                'id'          => $item['id'],
-                'produto_id'  => $item['produto_id'],
-                'nome'        => $item['nome_produto'],
-                'slug'        => $item['produto_slug'] ?? '',
-                'imagem'      => $item['imagem']        ?? null,
-                'quantidade'  => (int)$item['quantidade'],
-                'estoque'     => (int)($item['estoque_total'] ?? 99),
-                'preco_fmt'   => PriceHelper::format((float)$item['preco_unitario']),
-                'subtotal_fmt'=> PriceHelper::format((float)$item['subtotal']),
-                'opcoes'      => !empty($item['opcoes_snapshot'])
-                                ? implode(', ', array_map(
-                                    fn($k, $v) => "{$k}: {$v}",
-                                    array_keys(json_decode($item['opcoes_snapshot'], true)),
-                                    json_decode($item['opcoes_snapshot'], true)
-                                ))
-                                : null,
-            ];
-        }, $items);
-
-        // Melhor parcela
-        $melhorParcela = null;
-        if ($totals['total'] > 0) {
-            $parcelas      = PriceHelper::installments($totals['total']);
-            $ultima        = end($parcelas);
-            if ($ultima && $ultima['parcelas'] > 1) {
-                $melhorParcela = $ultima['label'];
-            }
-        }
-
-        $this->json([
-            'ok'              => true,
-            'items'           => $itemsFormatted,
-            'count'           => count($items),
-            'subtotal_fmt'    => PriceHelper::format((float)$totals['subtotal']),
-            'desconto'        => (float)$totals['desconto'],
-            'desconto_fmt'    => PriceHelper::format((float)$totals['desconto']),
-            'frete'           => (float)$totals['frete'],
-            'frete_fmt'       => PriceHelper::format((float)$totals['frete']),
-            'total_fmt'       => PriceHelper::format((float)$totals['total']),
-            'total'           => (float)$totals['total'],
-            'cupom_codigo'    => $cart['cupom_codigo']    ?? null,
-            'vendedor_codigo' => $cart['vendedor_codigo'] ?? null,
-            'melhor_parcela'  => $melhorParcela,
-        ]);
-    }
 }

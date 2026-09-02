@@ -301,6 +301,8 @@ AdminRouter::post('/paginas/salvar',               'PageAdminController@save');
 AdminRouter::get ('/configuracoes',                             'SettingsAdminController@index');
 AdminRouter::post('/configuracoes/salvar',                     'SettingsAdminController@salvar');
 AdminRouter::post('/configuracoes/salvar-grupo',               'SettingsAdminController@salvarGrupo');
+AdminRouter::get ('/configuracoes/rodape',                       'AdminRodapeController@index');
+AdminRouter::post('/configuracoes/rodape/salvar',                'AdminRodapeController@salvar');
 AdminRouter::get ('/configuracoes/status-pedidos',              'AdminStatusPedidoController@index');
 AdminRouter::get ('/configuracoes/status-pedidos/dados/{id:\d+}','AdminStatusPedidoController@dados');
 AdminRouter::post('/configuracoes/status-pedidos/salvar',       'AdminStatusPedidoController@salvar');

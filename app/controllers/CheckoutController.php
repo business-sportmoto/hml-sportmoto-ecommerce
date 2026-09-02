@@ -2111,13 +2111,22 @@ class CheckoutController extends Controller {
             $this->service->mudarStatus($pedidoId, 'pagamento_aprovado', 'Pagamento aprovado. ' . $msg_credito, 0, false);
         }
 
-        // → Bling: envia SEMPRE após criação, independente do status de pagamento
-        // try {
-        //     (new BlingOrderService())->enviarPedido($pedidoId);
-        // } catch (\Throwable $e) {
-        //     // error_log();
-        //     LogService::error('[CheckoutController] Bling enviarPedido #' . $pedidoId . ': ' . $e->getMessage(), $e);
-        // }
+        // → Bling: ENFILEIRA sempre após criação, independente do status
+        //   de pagamento.
+        //
+        // Enfileira em vez de enviar inline de propósito. O Bling é o dono
+        // do estoque — ele baixa o saldo de todos os canais quando o pedido
+        // entra — mas enviar aqui colocaria uma chamada externa no caminho
+        // do dinheiro: Bling lento atrasa a confirmação da compra, e Bling
+        // fora faria o envio falhar em silêncio (era um try/catch que só
+        // logava). O UPDATE abaixo não tem I/O externo e nunca derruba o
+        // checkout; o cron drena a fila e insiste até conseguir.
+        try {
+            (new BlingOrderService())->enfileirar($pedidoId);
+        } catch (\Throwable $e) {
+            // Nem o enfileiramento pode derrubar a compra já paga.
+            LogService::exception($e, 'error', 'int', ['pedido_id' => $pedidoId]);
+        }
     
         $db->prepare(
             "UPDATE pedidos

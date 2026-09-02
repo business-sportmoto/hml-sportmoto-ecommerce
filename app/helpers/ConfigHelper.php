@@ -39,6 +39,17 @@ class ConfigHelper {
     }
 
     /**
+     * Invalida o cache em memória.
+     *
+     * Quem grava por fora do set() — o painel do rodapé grava várias chaves numa
+     * transação só — precisa avisar, senão o resto da requisição segue lendo os
+     * valores antigos e a tela mostra "salvo" com o conteúdo velho.
+     */
+    public static function limparCache(): void {
+        self::$cache = null;
+    }
+
+    /**
      * Carrega todas as configurações do banco uma única vez.
      */
     private static function load(): void {
