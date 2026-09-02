@@ -28,7 +28,8 @@ require $ROOT . '/config/database.php';
 
 spl_autoload_register(function (string $c) use ($ROOT): void {
     if (!preg_match('/^[A-Za-z0-9_]+$/', $c)) return;
-    foreach (['/core/', '/app/helpers/', '/app/services/', '/app/services/ia/', '/app/models/'] as $p) {
+    foreach (['/core/', '/app/helpers/', '/app/services/',
+              '/app/services/ia/', '/app/services/ia/providers/', '/app/models/'] as $p) {
         $f = $ROOT . $p . $c . '.php';
         if (is_file($f)) { require_once $f; return; }
     }

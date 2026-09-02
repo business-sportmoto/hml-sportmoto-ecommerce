@@ -73,6 +73,42 @@ $log = function (string $msg) use ($verbose): void {
     }
 };
 
+/**
+ * Avisa o sino quando uma geração conclui.
+ *
+ * Isolado num try/catch PRÓPRIO de propósito: a chamada estava solta dentro do
+ * try do job, então uma exceção do módulo de notificação caía no catch de baixo
+ * e marcava como FALHOU uma geração que já tinha concluído e já tinha sido
+ * cobrada. Aviso é efeito colateral — nunca pode reescrever o desfecho.
+ *
+ * Capacidades internas (recorte de produto) não avisam: são etapa de pipeline,
+ * não entrega para uma pessoa acompanhar.
+ */
+function avisarConclusao(array $g, IAResultado $r, string $capacidade, callable $log): void
+{
+    if ($capacidade === 'remocao_fundo') {
+        return;
+    }
+    if (!class_exists('NotificacaoService')) {
+        return;
+    }
+
+    try {
+        NotificacaoService::criarBroadcast([
+            'categoria' => 'sistema',
+            'tipo'      => 'central_ia_sucesso',
+            'titulo'    => "Geração #{$g['id']} concluída via {$r->modeloCodigo}",
+            'url'       => '/admin/ia/historico',
+        ], 'todos_admins');
+    } catch (Throwable $e) {
+        LogService::warning('ia_worker_notificacao_erro', [
+            'geracao_id' => (int) $g['id'],
+            'erro'       => $e->getMessage(),
+        ]);
+        $log("Geração #{$g['id']} concluiu, mas o aviso no sino falhou: " . $e->getMessage());
+    }
+}
+
 /* ------------------------------------------------------------------ */
 /* Lock de instância única                                              */
 /* ------------------------------------------------------------------ */
@@ -148,7 +184,13 @@ try {
                     'nome'               => $g['tipo_nome'] ?? '',
                 ];
 
-                $r = (($g['capacidade'] ?? 'texto') === 'imagem')
+                $capacidade = (string) ($g['capacidade'] ?? 'texto');
+
+                // remocao_fundo é mídia e vai pelo executarImagem — o
+                // orquestrador trata as duas capacidades ali. Comparar só com
+                // 'imagem' mandava todo recorte para um modelo de TEXTO, que
+                // voltava sem binário e derrubava a geração em salvar_arquivo.
+                $r = in_array($capacidade, ['imagem', 'remocao_fundo'], true)
                     ? $orq->executarImagem($g, $tipo)
                     : $orq->executarTexto($g, $tipo);
 
@@ -159,12 +201,7 @@ try {
                     $servico->concluir($g, $r);
                     $log("Geração #{$g['id']} concluída via {$r->modeloCodigo} em {$r->tempoMs}ms" .
                          ($r->custoRealUsd !== null ? ' (US$ ' . number_format($r->custoRealUsd, 6, '.', '') . ')' : '') . '.');
-                         NotificacaoService::criarBroadcast([
-                            'categoria' => 'sistema',
-                            'tipo'      => 'central_ia_sucesso',
-                            'titulo'    => "Geração #{$g['id']} concluída via {$r->modeloCodigo}",
-                            'url'       => "/admin/ia/historico",
-                        ], 'todos_admins');
+                    avisarConclusao($g, $r, $capacidade, $log);
                     $processadas++;
                 } else {
                     $servico->falhar($g, $r);

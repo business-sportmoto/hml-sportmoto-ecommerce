@@ -457,7 +457,8 @@ class ChatIaAgenteService
      */
     protected function gerarTexto(string $prompt, bool $publico, array $opts): ?string
     {
-        $pergunta = (string)($opts['pergunta'] ?? '');
+        $pergunta  = (string)($opts['pergunta'] ?? '');
+        $geracaoId = 0;
 
         try {
             // usuario_id e tipo_conteudo_id são NOT NULL com FK. A resposta é
@@ -517,7 +518,19 @@ class ChatIaAgenteService
             return $bom ? $texto : null;
 
         } catch (Throwable $e) {
-            // Modelo fora do ar não pode derrubar o fluxo: cai na porta nao_sabe
+            // Modelo fora do ar não pode derrubar o fluxo: cai na porta nao_sabe.
+            // Mas a linha não pode ficar eternamente em 'processando': o motivo
+            // só existiria no arquivo de log, e quem for investigar pelo painel
+            // veria uma geração pendurada sem explicação nenhuma.
+            if ($geracaoId > 0) {
+                try {
+                    $this->db->prepare(
+                        "UPDATE ia_geracoes SET status = 'falhou', erro = :e, concluido_em = NOW()
+                         WHERE id = :id AND status = 'processando'"
+                    )->execute([':e' => mb_substr($e->getMessage(), 0, 600), ':id' => $geracaoId]);
+                } catch (Throwable $x) { /* o log abaixo ainda registra */ }
+            }
+
             $this->logar('ia: falha ao gerar resposta', ['erro' => $e->getMessage()]);
             return null;
         }
@@ -591,19 +604,34 @@ class ChatIaAgenteService
      */
     public function instrucao(bool $publico): string
     {
-        $base = "Você responde clientes de uma loja de peças e acessórios de moto, em português do Brasil.\n"
-              . "Responda APENAS com o que estiver nos DADOS DO PRODUTO abaixo.\n"
-              . "Se a pergunta não puder ser respondida com esses dados, responda exatamente: NAO_SEI\n"
-              . "Nunca invente preço, prazo, estoque ou compatibilidade.\n"
-              . "Nunca prometa desconto, frete grátis ou condição de pagamento.\n";
+        // O público NÃO leva a cláusula do NAO_SEI, e isso é deliberado.
+        //
+        // "Responda apenas com os DADOS DO PRODUTO, senão diga NAO_SEI" junto de
+        // "não escreva valores nem números" é uma contradição: numa pergunta de
+        // preço a única resposta possível está nos dados e é justamente o que
+        // está proibido. O modelo fazia a coisa certa e devolvia NAO_SEI — e a
+        // opção "responder também no comentário" quase nunca produzia nada.
+        //
+        // O comentário público não responde: ele acusa o assunto e chama para o
+        // direct. Se dava ou não para responder já foi decidido pelo direct, que
+        // roda antes e manda em tudo — quando ele falha, o público nem é gerado.
+        if ($publico) {
+            return "Você responde comentários no Instagram de uma loja de peças e acessórios de moto, "
+                 . "em português do Brasil.\n"
+                 . "A resposta completa JÁ FOI enviada para esta pessoa no direct.\n"
+                 . "Escreva um comentário curto que reconheça o ASSUNTO da pergunta e chame a pessoa "
+                 . "para ver o direct.\n"
+                 . "Máximo 140 caracteres, tom leve, no máximo 1 emoji.\n"
+                 . "NUNCA escreva valores, números, prazos, nem prometa desconto ou frete grátis.\n"
+                 . "Varie a forma a cada resposta, mas fale do que a pessoa perguntou.\n";
+        }
 
-        return $publico
-            ? $base . "Este texto vai como RESPOSTA PÚBLICA no comentário do Instagram.\n"
-                    . "Máximo 140 caracteres, tom leve, 1 emoji no máximo.\n"
-                    . "NÃO escreva valores nem números: convide a pessoa para o direct, "
-                    . "onde a resposta completa será enviada.\n"
-                    . "Varie a forma a cada resposta, mas fale do que a pessoa perguntou.\n"
-            : $base . "Este texto vai no DIRECT. Máximo 600 caracteres, direto ao ponto, "
-                    . "sem saudação longa. Pode usar os valores dos dados.\n";
+        return "Você responde clientes de uma loja de peças e acessórios de moto, em português do Brasil.\n"
+             . "Responda APENAS com o que estiver nos DADOS DO PRODUTO abaixo.\n"
+             . "Se a pergunta não puder ser respondida com esses dados, responda exatamente: NAO_SEI\n"
+             . "Nunca invente preço, prazo, estoque ou compatibilidade.\n"
+             . "Nunca prometa desconto, frete grátis ou condição de pagamento.\n"
+             . "Este texto vai no DIRECT. Máximo 600 caracteres, direto ao ponto, "
+             . "sem saudação longa. Pode usar os valores dos dados.\n";
     }
 }

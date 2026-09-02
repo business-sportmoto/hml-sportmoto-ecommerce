@@ -43,7 +43,8 @@ if (is_file($ROOT . '/vendor/autoload.php')) require_once $ROOT . '/vendor/autol
 spl_autoload_register(function (string $class) use ($ROOT): void {
     if (!preg_match('/^[A-Za-z0-9_]+$/', $class)) return;
     foreach (['/core/', '/app/controllers/', '/app/models/', '/app/helpers/',
-              '/app/services/', '/app/services/email/', '/app/services/email/providers/'] as $p) {
+              '/app/services/', '/app/services/email/', '/app/services/email/providers/',
+              '/app/services/ia/', '/app/services/ia/providers/'] as $p) {
         $f = $ROOT . $p . $class . '.php';
         if (file_exists($f)) { require_once $f; return; }
     }

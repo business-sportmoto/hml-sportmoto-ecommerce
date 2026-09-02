@@ -8,11 +8,9 @@
  * (hash_origem = sha256 do nome do arquivo — os uploads usam nome
  * aleatório, então foto nova = arquivo novo = hash novo).
  *
- * AJUSTE (config): defina a base pública das imagens de produto —
- *   define('IA_PRODUTO_IMG_BASE', 'https://SEU-DOMINIO/uploads/produtos');
- * O Replicate baixa a imagem por essa URL, então ela precisa ser
- * alcançável da internet (no Laragon, aponte para a homolog — o dump
- * carrega os mesmos nomes de arquivo).
+ * O Replicate BAIXA a imagem de origem pela URL, então ela precisa ser
+ * alcançável da internet. Aqui isso já vem de graça: produto_imagens.arquivo
+ * guarda a URL completa do CDN. Ver urlPublica().
  */
 class IARecorteService
 {
@@ -52,8 +50,7 @@ class IARecorteService
             if (!$img) {
                 return null;
             }
-            $img['url'] = $img['arquivo'];//$this->urlPublica((string) $img['arquivo']);
-            // LogService::debug('debug', $img);
+            $img['url'] = $this->urlPublica((string) $img['arquivo']);
             return $img;
         } catch (Throwable $e) {
             LogService::error('ia_recorte_imagem_erro', ['produto_id' => $produtoId, 'erro' => $e->getMessage()]);
@@ -61,9 +58,27 @@ class IARecorteService
         }
     }
 
-    /** URL absoluta que o provedor consegue baixar (null se a base não estiver configurada). */
+    /**
+     * URL absoluta que o provedor consegue baixar.
+     *
+     * Neste projeto produto_imagens.arquivo JÁ guarda a URL completa do CDN
+     * (https://media.sportmoto.com.br/produtos/…) — é o que o ImageHelper
+     * devolve cru para a loja. Então o caminho normal é repassar o valor.
+     * O prefixo por IA_PRODUTO_IMG_BASE fica como compatibilidade para
+     * registros legados que porventura guardem só o nome do arquivo.
+     */
     public function urlPublica(string $arquivo): ?string
     {
+        $arquivo = trim($arquivo);
+        if ($arquivo === '') {
+            return null;
+        }
+
+        // Já é absoluta: é o caso de 100% das linhas hoje.
+        if (preg_match('#^https?://#i', $arquivo)) {
+            return $arquivo;
+        }
+
         if (!defined('IA_PRODUTO_IMG_BASE') || IA_PRODUTO_IMG_BASE === '') {
             return null;
         }
@@ -85,7 +100,7 @@ class IARecorteService
             return ['ok' => false, 'msg' => 'Produto sem imagem cadastrada.'];
         }
         if (empty($img['url'])) {
-            return ['ok' => false, 'msg' => 'Defina IA_PRODUTO_IMG_BASE no config (URL pública das imagens de produto).'];
+            return ['ok' => false, 'msg' => 'A foto do produto não tem URL pública — o provedor precisa conseguir baixá-la.'];
         }
 
         $hash = hash('sha256', (string) $img['arquivo']);
@@ -140,8 +155,15 @@ class IARecorteService
             'custo_estimado_usd'       => $custo,
         ]);
 
-        if ($id === null) {
+        // IAGeracao::criar() devolve int: o id, 0 em erro, ou -1062 quando a
+        // dedup barra. Comparar com null (como estava) nunca casava: a
+        // duplicata virava "sucesso" com id -1062 e uuid fantasma, e a tela
+        // ficava em polling eterno por uma geração que não existe.
+        if ($id === -1062) {
             return ['ok' => false, 'msg' => 'Recorte já solicitado neste minuto — aguarde a conclusão.'];
+        }
+        if ($id <= 0) {
+            return ['ok' => false, 'msg' => 'Erro ao enfileirar a remoção de fundo.'];
         }
 
         LogService::audit('ia_recorte_enfileirado', [

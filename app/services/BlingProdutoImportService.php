@@ -310,8 +310,16 @@ final class BlingProdutoImportService
             // o seu, e é lá que ele fica. Gravar aqui daria uma margem média
             // que não corresponde a nenhuma variação real.
             'preco_custo'     => $temVar ? null : ($this->custoDoProduto($b) ?: null),
-            'descricao_curta' => $this->texto($b['descricaoCurta'] ?? '') ?: null,
-            'descricao'       => $this->texto($b['descricaoComplementar'] ?? '') ?: null,
+            // ⚠ OS NOMES DO BLING ENGANAM — não "corrija" este cruzamento.
+            //
+            // Verificado no catálogo real: 'descricaoCurta' é a descrição
+            // LONGA (2.000+ caracteres, o texto de venda completo) e
+            // 'descricaoComplementar' é o resumo curto (~200 caracteres,
+            // e frequentemente vazio). Mapear pelo nome, como o instinto
+            // manda, joga o texto de venda no campo de resumo do card e
+            // deixa a página do produto quase vazia.
+            'descricao'       => $this->texto($b['descricaoCurta'] ?? '') ?: null,
+            'descricao_curta' => $this->resumo($b['descricaoComplementar'] ?? '') ?: null,
             'marca_id'        => $this->findOrCreateMarca(trim((string)($b['marca'] ?? ''))),
             'peso_kg'         => $this->positivo($b['pesoLiquido'] ?? $b['pesoBruto'] ?? 0),
             'comprimento_cm'  => $this->positivo($dim['profundidade'] ?? 0),
@@ -607,6 +615,23 @@ final class BlingProdutoImportService
         // O Bling devolve HTML editado por humano; passa pelo mesmo
         // saneador da descrição digitada no painel.
         return class_exists('HtmlHelper') ? HtmlHelper::sanitizeRich($html) : strip_tags($html);
+    }
+
+    /**
+     * Resumo do card: o campo do formulário tem maxlength 300, então um
+     * valor maior entraria no banco mas travaria o próximo salvamento do
+     * produto no painel. Corta em 300 e registra quando isso acontece.
+     */
+    private function resumo(?string $html): string
+    {
+        $txt = $this->texto($html);
+        if ($txt === '' || mb_strlen($txt) <= 300) return $txt;
+
+        LogService::warning('descricaoComplementar do Bling truncada em 300 caracteres', [
+            'tamanho_original' => mb_strlen($txt),
+        ], 'bling');
+
+        return mb_substr($txt, 0, 300);
     }
 
     private function positivo($v): ?float

@@ -73,7 +73,6 @@ class IAGeracaoService
         }
 
         $contexto = $this->builder->montarContexto($produtoId);
-        LogService::debug('enfileirar', $contexto, 'app');
         if ($contexto === null) {
             return ['ok' => false, 'msg' => 'Produto não encontrado ou removido.'];
         }
@@ -107,18 +106,15 @@ class IAGeracaoService
         $imagemReferencia = null;
         if ($capacidade === 'imagem' && !empty($entrada['usar_referencia'])) {
             $imgRef = (new IARecorteService())->imagemDoProduto($produtoId);
-            
             if ($imgRef === null) {
                 return ['ok' => false, 'msg' => 'Produto sem imagem cadastrada para usar como referência.'];
             }
             if (empty($imgRef['url'])) {
-                return ['ok' => false, 'msg' => 'Defina IA_PRODUTO_IMG_BASE no config para usar a foto como referência.'];
+                return ['ok' => false, 'msg' => 'A foto do produto não tem URL pública — não dá para usá-la como referência.'];
             }
             $imagemReferencia = (string) $imgRef['url'];
             $promptFinal .= "\nUse a imagem de referência fornecida: mantenha o produto idêntico ao da foto (forma, cores, rótulos, proporções).";
         }
-
-        LogService::debug('imagemReferencia enfileirar', [$promptFinal, $imagemReferencia]);
 
         // Custo estimado (modelo primário da capacidade) e limites — barra ANTES de gastar
         if ($capacidade === 'imagem') {

@@ -104,7 +104,16 @@ class IAGeracao
         }
     }
 
-    /** Watchdog: devolve à fila jobs presos e falha definitivamente após 3 tentativas. */
+    /**
+     * Watchdog: devolve à fila jobs presos e falha definitivamente após 3 tentativas.
+     *
+     * O `iniciado_em IS NULL` cobre um ponto cego: reivindicarLote() sempre
+     * preenche a coluna, mas uma linha que chegue a 'processando' por fora
+     * (SQL manual, script novo) fica com NULL — e `NULL < data` é NULL, nunca
+     * verdadeiro. Sem essa cláusula a linha some das duas pontas: o claim só
+     * pega 'na_fila' e o watchdog não a enxerga. Fica presa para sempre.
+     * Sem hora de início conhecida, trata-se como parada.
+     */
     public function recuperarPresos(int $minutos = 10): void
     {
         try {
@@ -112,7 +121,7 @@ class IAGeracao
                 "UPDATE ia_geracoes
                     SET status = 'na_fila'
                   WHERE status = 'processando'
-                    AND iniciado_em < DATE_SUB(NOW(), INTERVAL {$minutos} MINUTE)
+                    AND (iniciado_em IS NULL OR iniciado_em < DATE_SUB(NOW(), INTERVAL {$minutos} MINUTE))
                     AND tentativas < 3"
             )->execute();
 
@@ -120,7 +129,7 @@ class IAGeracao
                 "UPDATE ia_geracoes
                     SET status = 'falhou', erro = '[watchdog] excedeu 3 tentativas sem conclusão', concluido_em = NOW()
                   WHERE status = 'processando'
-                    AND iniciado_em < DATE_SUB(NOW(), INTERVAL {$minutos} MINUTE)
+                    AND (iniciado_em IS NULL OR iniciado_em < DATE_SUB(NOW(), INTERVAL {$minutos} MINUTE))
                     AND tentativas >= 3"
             )->execute();
 

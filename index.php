@@ -37,6 +37,11 @@ spl_autoload_register(function (string $class): void {
         ROOT_PATH . '/app/services/logistica/',
         ROOT_PATH . '/app/services/logistica/transportadoras/',
         ROOT_PATH . '/app/services/conversion/',
+        // O webhook do Instagram entra por aqui, e o bloco de IA do fluxo
+        // precisa do orquestrador e do adaptador do provedor. Sem estas duas
+        // linhas a IA só funcionava dentro do painel.
+        ROOT_PATH . '/app/services/ia/',
+        ROOT_PATH . '/app/services/ia/providers/',
         ROOT_PATH . '/app/services/app/',
         ROOT_PATH . '/app/presenters/',
     ];
