@@ -153,6 +153,104 @@ class IAModelo
         }
     }
 
+    /* ------------------------------------------------------------------ */
+    /* params_padrao — config por modelo                                   */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * O que cada capacidade aceita quando o modelo não declara nada.
+     * São os valores que estavam cravados no código antes desta camada.
+     */
+    private const PROPORCOES_PADRAO = ['1:1', '3:2', '2:3'];
+
+    /**
+     * `params_padrao` tem duas naturezas misturadas no mesmo JSON: parâmetros
+     * que vão CRUS para o payload do provedor (temperature, output_format…) e
+     * metadados que só interessam a este projeto. Os metadados vivem num bloco
+     * reservado `ia` para não vazarem para a API — antes o `ref_param` ficava
+     * solto no topo e o adapter tinha de lembrar de dar unset nele.
+     *
+     *   {"ia": {"proporcoes": ["1:1","9:16"], "aceita_referencia": true,
+     *           "ref_param": "input_images"},
+     *    "output_format": "webp"}
+     *
+     * Chaves do bloco `ia`:
+     *  - proporcoes        (string[]) proporções que o modelo aceita
+     *  - aceita_referencia (bool)     aceita imagem de entrada como referência
+     *  - ref_param         (string)   nome do input onde a referência vai
+     */
+    public static function meta(?string $json): array
+    {
+        $bruto = self::decodificar($json);
+        $ia    = is_array($bruto['ia'] ?? null) ? $bruto['ia'] : [];
+
+        $proporcoes = [];
+        foreach ((array) ($ia['proporcoes'] ?? []) as $p) {
+            $p = trim((string) $p);
+            // Formato L:A, só dígitos — não deixa entrar lixo no payload.
+            if ($p !== '' && preg_match('/^\d{1,2}:\d{1,2}$/', $p)) {
+                $proporcoes[] = $p;
+            }
+        }
+
+        return [
+            'proporcoes'        => $proporcoes !== [] ? array_values(array_unique($proporcoes)) : self::PROPORCOES_PADRAO,
+            'declara_proporcoes' => $proporcoes !== [],
+            'aceita_referencia' => !empty($ia['aceita_referencia']),
+            'ref_param'         => is_string($ia['ref_param'] ?? null) && $ia['ref_param'] !== ''
+                                       ? $ia['ref_param'] : 'input_images',
+        ];
+    }
+
+    /** Só o que deve seguir para o payload do provedor (sem o bloco `ia`). */
+    public static function paramsApi(?string $json): array
+    {
+        $bruto = self::decodificar($json);
+        unset($bruto['ia']);
+        return $bruto;
+    }
+
+    /**
+     * Modelo primário (menor prioridade) ativo da capacidade, com provedor
+     * ativo e chave configurada — o mesmo critério do orquestrador. É ele que
+     * a tela usa para saber quais proporções oferecer.
+     */
+    public function primarioDaCapacidade(string $capacidade): ?array
+    {
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT m.id, m.codigo_modelo, m.nome, m.capacidade, m.params_padrao, m.custo_config
+                   FROM ia_modelos m
+             INNER JOIN ia_provedores p
+                     ON p.id = m.provedor_id AND p.ativo = 1 AND p.api_key_enc IS NOT NULL
+                  WHERE m.capacidade = :cap AND m.ativo = 1
+               ORDER BY m.prioridade ASC, m.id ASC
+                  LIMIT 1"
+            );
+            $stmt->execute([':cap' => $capacidade]);
+            return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        } catch (Throwable $e) {
+            LogService::error('ia_modelo_primario_erro', ['capacidade' => $capacidade, 'erro' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /** Proporções a oferecer para uma capacidade (cai no padrão sem modelo ativo). */
+    public function proporcoesDaCapacidade(string $capacidade): array
+    {
+        $primario = $this->primarioDaCapacidade($capacidade);
+        return self::meta($primario['params_padrao'] ?? null)['proporcoes'];
+    }
+
+    private static function decodificar(?string $json): array
+    {
+        if ($json === null || trim($json) === '') {
+            return [];
+        }
+        $dec = json_decode($json, true);
+        return is_array($dec) ? $dec : [];
+    }
+
     /** Resumo humanizado do custo_config para exibição em tabela. */
     public static function resumoCusto(?string $json): string
     {

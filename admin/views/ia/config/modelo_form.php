@@ -67,16 +67,16 @@ $val  = function (string $campo, $padrao = '') use ($mod) {
   </div>
 
   <div class="ia_form_grupo">
-    <label for="ia_mod_custo">Custo (JSON)</label>
+    <label for="ia_mod_custo">Custo (JSON) <span class="ia_obrigatorio">*</span></label>
     <textarea id="ia_mod_custo" name="custo_config" class="ia_input ia_input_mono" rows="3"
-              spellcheck="false"
+              spellcheck="false" required
               placeholder='{"tipo":"por_token","usd_in_1m":0.75,"usd_out_1m":4.5}'><?= $val('custo_config') ?></textarea>
     <p class="ia_ajuda">
-      Formatos aceitos:
-      <code>{"tipo":"por_token","usd_in_1m":..,"usd_out_1m":..}</code> ·
+      <strong>Obrigatório.</strong> Texto cobra por token; imagem e demais mídias, por unidade:<br>
+      <code>{"tipo":"por_token","usd_in_1m":..,"usd_out_1m":..}</code><br>
       <code>{"tipo":"por_imagem","usd_imagem":..}</code> ·
-      <code>{"tipo":"por_execucao","usd_execucao":..}</code>.
-      Vazio = custo não rastreado (não recomendado).
+      <code>{"tipo":"por_execucao","usd_execucao":..}</code><br>
+      Sem custo o modelo gasta de verdade mas não entra no rollup nem nos tetos.
     </p>
   </div>
 
@@ -85,7 +85,13 @@ $val  = function (string $campo, $padrao = '') use ($mod) {
     <textarea id="ia_mod_params" name="params_padrao" class="ia_input ia_input_mono" rows="3"
               spellcheck="false"
               placeholder='{"temperature":0.8}'><?= $val('params_padrao') ?></textarea>
-    <p class="ia_ajuda">Enviados em toda chamada deste modelo; o prompt pode sobrescrever.</p>
+    <p class="ia_ajuda">
+      Enviados em toda chamada deste modelo; o prompt pode sobrescrever.<br>
+      O bloco <code>ia</code> é reservado e <em>não</em> vai para o provedor:<br>
+      <code>{"ia":{"proporcoes":["1:1","16:9"],"aceita_referencia":true,"ref_param":"input_images"}}</code><br>
+      <code>proporcoes</code> limita o que a tela de geração oferece ·
+      <code>aceita_referencia</code> libera usar a foto do produto como referência.
+    </p>
   </div>
 
   <div class="ia_form_grupo">

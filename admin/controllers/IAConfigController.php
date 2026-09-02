@@ -338,8 +338,15 @@ class IAConfigController extends Controller
         if ($custoConfig === false) {
             return; // json de erro já enviado
         }
+        if (!$this->validarCustoConfig($custoConfig, $capacidade)) {
+            return; // json de erro já enviado
+        }
+
         $paramsPadrao = $this->validarJsonCampo('params_padrao');
         if ($paramsPadrao === false) {
+            return;
+        }
+        if (!$this->validarParamsPadrao($paramsPadrao)) {
             return;
         }
 
@@ -403,6 +410,14 @@ class IAConfigController extends Controller
         }
 
         $novo = ((int) $atual['ativo'] === 1) ? 0 : 1;
+
+        // Mesma régua do provedor sem chave: não se liga um modelo que gasta
+        // sem aparecer. Sem esta trava o custo_config obrigatório do salvar
+        // seria contornável por um clique no toggle.
+        if ($novo === 1 && trim((string) ($atual['custo_config'] ?? '')) === '') {
+            $this->json(['ok' => false, 'msg' => 'Configure o custo do modelo antes de ativá-lo — sem isso o gasto não entra no rollup nem nos tetos.']);
+            return;
+        }
 
         if (!$modelo->atualizar($id, ['ativo' => $novo])) {
             $this->json(['ok' => false, 'msg' => 'Erro ao alterar o status.']);
@@ -655,6 +670,93 @@ class IAConfigController extends Controller
         }
 
         return json_encode($dec, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * custo_config é OBRIGATÓRIO e precisa ter forma válida.
+     *
+     * Era opcional, e modelo sem custo escapava inteiro do controle: o
+     * IACustoService estima 0, o custo real volta null, o rollup não registra
+     * e os tetos diário/mensal nunca são atingidos. Dois modelos de imagem
+     * ficaram assim — gastavam de verdade sem aparecer em lugar nenhum.
+     *
+     * Devolve false com a resposta JSON de erro já enviada.
+     */
+    private function validarCustoConfig(?string $json, string $capacidade): bool
+    {
+        if ($json === null) {
+            $this->json(['ok' => false, 'msg' => 'Informe o custo do modelo — sem ele o gasto não entra no rollup nem nos tetos.']);
+            return false;
+        }
+
+        $cfg  = json_decode($json, true);
+        $tipo = is_array($cfg) ? (string) ($cfg['tipo'] ?? '') : '';
+
+        // Cada tipo tem o seu campo de valor; token é o único com dois.
+        $campos = [
+            'por_token'    => ['usd_in_1m', 'usd_out_1m'],
+            'por_imagem'   => ['usd_imagem'],
+            'por_execucao' => ['usd_execucao'],
+        ];
+
+        if (!isset($campos[$tipo])) {
+            $this->json(['ok' => false, 'msg' => 'custo_config: "tipo" deve ser por_token, por_imagem ou por_execucao.']);
+            return false;
+        }
+
+        // Texto cobra por token; mídia cobra por unidade. Trocar isso faz o
+        // IACustoService devolver null e o gasto some do rollup.
+        $esperado = ($capacidade === 'texto') ? 'por_token' : ['por_imagem', 'por_execucao'];
+        $ok = is_array($esperado) ? in_array($tipo, $esperado, true) : $tipo === $esperado;
+        if (!$ok) {
+            $this->json(['ok' => false, 'msg' => ($capacidade === 'texto')
+                ? 'Capacidade texto cobra por token — use "tipo": "por_token".'
+                : 'Esta capacidade cobra por unidade — use "por_imagem" ou "por_execucao".']);
+            return false;
+        }
+
+        foreach ($campos[$tipo] as $campo) {
+            if (!isset($cfg[$campo]) || !is_numeric($cfg[$campo]) || (float) $cfg[$campo] < 0) {
+                $this->json(['ok' => false, 'msg' => "custo_config: informe \"{$campo}\" como número maior ou igual a zero."]);
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** Valida o bloco reservado `ia` do params_padrao (ver IAModelo::meta). */
+    private function validarParamsPadrao(?string $json): bool
+    {
+        if ($json === null) {
+            return true;
+        }
+
+        $cfg = json_decode($json, true);
+        $ia  = is_array($cfg) && is_array($cfg['ia'] ?? null) ? $cfg['ia'] : null;
+        if ($ia === null) {
+            return true;
+        }
+
+        if (array_key_exists('proporcoes', $ia)) {
+            if (!is_array($ia['proporcoes']) || $ia['proporcoes'] === []) {
+                $this->json(['ok' => false, 'msg' => 'params_padrao.ia.proporcoes deve ser uma lista não vazia, ex.: ["1:1","16:9"].']);
+                return false;
+            }
+            foreach ($ia['proporcoes'] as $p) {
+                if (!is_string($p) || !preg_match('/^\d{1,2}:\d{1,2}$/', $p)) {
+                    $this->json(['ok' => false, 'msg' => 'params_padrao.ia.proporcoes: use o formato "L:A", ex.: "16:9".']);
+                    return false;
+                }
+            }
+        }
+
+        if (array_key_exists('ref_param', $ia) && (!is_string($ia['ref_param']) || trim($ia['ref_param']) === '')) {
+            $this->json(['ok' => false, 'msg' => 'params_padrao.ia.ref_param deve ser o nome do input, ex.: "input_images".']);
+            return false;
+        }
+
+        return true;
     }
 
     /**

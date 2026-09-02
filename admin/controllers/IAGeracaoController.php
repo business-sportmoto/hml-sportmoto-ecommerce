@@ -83,6 +83,9 @@ class IAGeracaoController extends Controller
         $html = $this->partial('gerar/_produto_painel', [
             'ctx'     => $contexto,
             'tipos'   => (new IATipoConteudo())->listarAtivos(),
+            // O select de proporção segue o que o modelo primário aceita —
+            // oferecer uma opção que o modelo recusa é convite para HTTP 422.
+            'proporcoes' => (new IAModelo())->proporcoesDaCapacidade('imagem'),
             'angulos' => (new IAPromptTemplate())->listarAngulos(),
             'imagem'  => (new IARecorteService())->imagemDoProduto($produtoId),
             'csrf'    => $this->tokenCsrf(),

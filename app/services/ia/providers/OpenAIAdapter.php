@@ -104,13 +104,25 @@ class OpenAIAdapter extends IAProviderBase
     /** Imagem síncrona via /images/generations (gpt-image-1.5 devolve base64 no corpo). */
     public function gerarImagem(array $job): IAResultado
     {
+        // A API da OpenAI recebe pixels, não razão. Só o que o modelo declara
+        // aceitar (params_padrao.ia.proporcoes) entra na conversão; pedido fora
+        // da lista cai na primeira aceita, em vez de ir com tamanho inválido.
         $tamanhos = ['1:1' => '1024x1024', '3:2' => '1536x1024', '2:3' => '1024x1536'];
+        $aceitas  = array_values(array_intersect(
+            (array) ($job['meta']['proporcoes'] ?? array_keys($tamanhos)),
+            array_keys($tamanhos)
+        )) ?: ['1:1'];
+
+        $pedida = (string) ($job['proporcao'] ?? '1:1');
+        if (!in_array($pedida, $aceitas, true)) {
+            $pedida = (string) reset($aceitas);
+        }
 
         $payload = [
             'model'  => (string) $job['modelo_codigo'],
             'prompt' => (string) $job['prompt'],
             'n'      => 1,
-            'size'   => $tamanhos[$job['proporcao'] ?? '1:1'] ?? '1024x1024',
+            'size'   => $tamanhos[$pedida] ?? '1024x1024',
         ];
 
         $params = is_array($job['params'] ?? null) ? $job['params'] : [];

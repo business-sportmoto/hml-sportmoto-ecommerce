@@ -2421,6 +2421,8 @@ textarea.ia_input { resize: vertical; min-height: 88px; line-height: 1.5; }
 .ia_input_mono,
 .ia_mono { font-family: 'DM Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
 .ia_ajuda { font-size: 11.5px; color: var(--ia-txt2); margin: 6px 0 0; line-height: 1.45; }
+.ia_ajuda code { font-family: 'DM Mono', ui-monospace, monospace; font-size: 11px; background: var(--ia-fundo); border: 1px solid var(--ia-borda); border-radius: 5px; padding: 1px 5px; }
+.ia_obrigatorio { color: var(--ia-erro-tx); font-weight: 700; }
 .ia_check {
   display: flex;
   align-items: center;

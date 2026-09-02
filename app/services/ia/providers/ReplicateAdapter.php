@@ -38,8 +38,7 @@ class ReplicateAdapter extends IAProviderBase
     {
         $input = [
             'prompt'       => (string) $job['prompt'],
-            'aspect_ratio' => in_array($job['proporcao'] ?? '1:1', ['1:1', '3:2', '2:3'], true)
-                                  ? $job['proporcao'] : '1:1',
+            'aspect_ratio' => $this->proporcaoAceita($job),
         ];
 
         $params = is_array($job['params'] ?? null) ? $job['params'] : [];
@@ -50,10 +49,10 @@ class ReplicateAdapter extends IAProviderBase
         }
 
         // Foto do produto como referência (FLUX.2 aceita imagens de entrada).
-        // Nome do parâmetro configurável por modelo: params_padrao {"ref_param":"input_images"}
-        $refParam = is_string($input['ref_param'] ?? null) ? $input['ref_param'] : 'input_images';
-        unset($input['ref_param']);
+        // O nome do input vem de params_padrao.ia.ref_param — o bloco `ia` já
+        // chega separado, então não há mais o que remover do payload.
         if (!empty($job['imagem_referencia'])) {
+            $refParam = (string) ($job['meta']['ref_param'] ?? 'input_images');
             $input[$refParam] = [(string) $job['imagem_referencia']];
         }
 
@@ -165,5 +164,22 @@ class ReplicateAdapter extends IAProviderBase
     public function baixarSaida(string $url): array
     {
         return $this->httpBinario($url, 90);
+    }
+
+    /**
+     * Proporção que ESTE modelo aceita.
+     *
+     * A lista vinha cravada como ['1:1','3:2','2:3'], que é o que o FLUX.2
+     * aceita — modelos com outro conjunto (imagen-4-ultra quer 9:16/16:9)
+     * recebiam um valor inválido e devolviam HTTP 422. Agora cada modelo
+     * declara o seu em params_padrao.ia.proporcoes; pedido fora da lista cai
+     * na primeira aceita, em vez de estourar a prediction.
+     */
+    private function proporcaoAceita(array $job): string
+    {
+        $aceitas = $job['meta']['proporcoes'] ?? ['1:1'];
+        $pedida  = (string) ($job['proporcao'] ?? '1:1');
+
+        return in_array($pedida, $aceitas, true) ? $pedida : (string) reset($aceitas);
     }
 }

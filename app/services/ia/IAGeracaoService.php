@@ -60,12 +60,16 @@ class IAGeracaoService
             return ['ok' => false, 'msg' => 'Esta capacidade de mídia chega nas próximas fases.'];
         }
 
-        // Proporção (só imagem): 1:1, 3:2 ou 2:3 — vai para ia_geracoes.formato
+        // Proporção (só imagem) — vai para ia_geracoes.formato.
+        // A lista aceita é a que o modelo PRIMÁRIO declara, não mais um trio
+        // cravado: cadastrar um modelo com outro conjunto fazia a prediction
+        // voltar em HTTP 422. Fora da lista, cai na primeira aceita.
         $proporcao = null;
         if ($capacidade === 'imagem') {
-            $proporcao = (string) ($entrada['proporcao'] ?? '1:1');
-            if (!in_array($proporcao, ['1:1', '3:2', '2:3'], true)) {
-                $proporcao = '1:1';
+            $aceitas   = (new IAModelo())->proporcoesDaCapacidade('imagem');
+            $proporcao = (string) ($entrada['proporcao'] ?? '');
+            if (!in_array($proporcao, $aceitas, true)) {
+                $proporcao = (string) reset($aceitas);
             }
             if ($variacoes > 3) {
                 return ['ok' => false, 'msg' => 'Para imagem, gere no máximo 3 variações por vez.'];

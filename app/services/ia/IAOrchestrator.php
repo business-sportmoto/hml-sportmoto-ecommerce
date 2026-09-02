@@ -66,7 +66,7 @@ class IAOrchestrator
                 'max_tokens'    => isset($tipo['max_tokens']) ? (int) $tipo['max_tokens'] : null,
                 'modelo_codigo' => (string) $m['codigo_modelo'],
                 'timeout_s'     => (int) $m['timeout_s'],
-                'params'        => $this->decodificarJson($m['params_padrao']),
+                'params'        => IAModelo::paramsApi($m['params_padrao'] ?? null),
             ];
 
             $resultado = $adapter->gerarTexto($job);
@@ -141,9 +141,16 @@ class IAOrchestrator
         $ultimo = null;
 
         foreach ($candidatos as $m) {
-            // Referência de imagem: por ora só o Replicate (FLUX.2) aceita.
-            if ($referencia !== null && $m['prov_codigo'] !== 'replicate') {
-                $this->logRoteamento((int) $geracao['id'], $m, 'pulado', 'sem_suporte_referencia', 'Modelo não aceita imagem de referência.', 0);
+            $meta = IAModelo::meta($m['params_padrao'] ?? null);
+
+            // Aceitar imagem de referência é característica DO MODELO, declarada
+            // em params_padrao.ia.aceita_referencia. Antes isto era o código do
+            // provedor cravado ('replicate'): bastava cadastrar um modelo que
+            // aceita referência sob outro provedor — ou mover um modelo entre
+            // provedores — para a cadeia inteira ser pulada e a geração morrer
+            // em todos_falharam.
+            if ($referencia !== null && !$meta['aceita_referencia']) {
+                $this->logRoteamento((int) $geracao['id'], $m, 'pulado', 'sem_suporte_referencia', 'Modelo não declara suporte a imagem de referência.', 0);
                 continue;
             }
 
@@ -164,7 +171,8 @@ class IAOrchestrator
                     'imagem_origem' => (string) ($ctx['imagem_origem'] ?? ''),
                     'modelo_codigo' => (string) $m['codigo_modelo'],
                     'timeout_s'     => (int) $m['timeout_s'],
-                    'params'        => $this->decodificarJson($m['params_padrao']),
+                    'params'        => IAModelo::paramsApi($m['params_padrao'] ?? null),
+                    'meta'          => $meta,
                 ];
                 $resultado = $adapter->removerFundo($job);
             } else {
@@ -173,7 +181,8 @@ class IAOrchestrator
                     'proporcao'         => !empty($geracao['formato']) ? (string) $geracao['formato'] : '1:1',
                     'modelo_codigo'     => (string) $m['codigo_modelo'],
                     'timeout_s'         => (int) $m['timeout_s'],
-                    'params'            => $this->decodificarJson($m['params_padrao']),
+                    'params'            => IAModelo::paramsApi($m['params_padrao'] ?? null),
+                    'meta'              => $meta,
                     'imagem_referencia' => $referencia,
                 ];
                 $resultado = $adapter->gerarImagem($job);

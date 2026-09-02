@@ -121,13 +121,22 @@ $rotuloGrupo = [
       <div class="ia_form_grupo" id="ia_g_proporcao_wrap" style="display:none">
         <label for="ia_g_proporcao">Proporção</label>
         <select id="ia_g_proporcao" name="proporcao" class="ia_input">
-          <option value="1:1" selected>Quadrado (1:1) — feed</option>
-          <option value="3:2">Paisagem (3:2) — banner/site</option>
-          <option value="2:3">Retrato (2:3) — story base</option>
-          <option value="9:16">Story 9:16</option>
-          <option value="16:9">16:9</option>
-          <option value="3:4">3:4</option>
-          <option value="4:3">4:3</option>
+          <?php
+          // Só as proporções que o modelo primário declara aceitar. A lista
+          // fixa daqui oferecia 7 opções enquanto o backend aceitava 3: as
+          // demais eram trocadas em silêncio ou voltavam em HTTP 422.
+          $rotulos = [
+              '1:1'  => 'Quadrado (1:1) — feed',
+              '3:2'  => 'Paisagem (3:2) — banner/site',
+              '2:3'  => 'Retrato (2:3) — story base',
+              '9:16' => 'Story (9:16)',
+              '16:9' => 'Widescreen (16:9)',
+              '3:4'  => 'Retrato (3:4)',
+              '4:3'  => 'Paisagem (4:3)',
+          ];
+          foreach (($proporcoes ?? ['1:1']) as $i => $p): ?>
+            <option value="<?= ia_e($p) ?>"<?= $i === 0 ? ' selected' : '' ?>><?= ia_e($rotulos[$p] ?? $p) ?></option>
+          <?php endforeach; ?>
         </select>
         <p class="ia_ajuda">Formatos exatos (1920×800 etc.) saem do compositor na Fase 2C.</p>
         <?php if (!empty($imagem) && !empty($imagem['url'])): ?>
