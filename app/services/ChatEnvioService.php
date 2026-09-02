@@ -249,8 +249,13 @@ class ChatEnvioService
         $wamid = null; $erro = null; $erroCodigo = null;
 
         try {
+            // Private reply só na PRIMEIRA mensagem da conversa: a Meta aceita
+            // uma por comentário, e depois dela a janela de 24h está aberta.
+            $viaComentario = !empty($opts['ig_comment_id']) && $this->conversaMuda((int)$conversa['id'])
+                ? (string)$opts['ig_comment_id'] : null;
+
             $r = $canal === 'instagram'
-                ? $this->despacharInstagram($contato, $spec, $opts['_tag_ig'] ?? null)
+                ? $this->despacharInstagram($contato, $spec, $opts['_tag_ig'] ?? null, $viaComentario)
                 : $this->despachar((string)$contato['wa_id'], $spec, $respostaA);
             $wamid = $r['wamid'] ?? null;
         } catch (ChatMetaException $e) {
@@ -321,7 +326,28 @@ class ChatEnvioService
      *   · cta_url → card com botão de URL
      *   · template→ recusado com mensagem clara (não existe no IG)
      */
-    private function despacharInstagram(array $contato, array $spec, ?string $tag): array
+    /**
+     * Conversa ainda sem nenhuma mensagem — ou seja, a porta do direct nunca
+     * foi aberta. É o que decide se a primeira mensagem sai como private reply.
+     */
+    private function conversaMuda(int $conversaId): bool
+    {
+        if ($conversaId < 1) return false;
+        $st = $this->db->prepare("SELECT 1 FROM chat_mensagens WHERE conversa_id = :c LIMIT 1");
+        $st->execute([':c' => $conversaId]);
+        return !$st->fetchColumn();
+    }
+
+    /**
+     * @param string|null $commentId Quando presente, a mensagem sai como
+     *        resposta privada AO COMENTÁRIO. É o único caminho para falar com
+     *        quem só comentou: sem mensagem prévia dessa pessoa não existe
+     *        janela de 24h, e a tag de atendimento humano estende uma janela
+     *        aberta, não cria uma. Vale uma vez por comentário — daí o uso
+     *        restrito à primeira mensagem da conversa.
+     */
+    private function despacharInstagram(array $contato, array $spec, ?string $tag,
+                                        ?string $commentId = null): array
     {
         $conta = $this->contaIg($contato['ig_conta_id'] ?? null);
         if (!$conta) throw new ChatIgException('Instagram: nenhuma conta conectada', 0, null, null, true);
@@ -332,7 +358,9 @@ class ChatEnvioService
 
         switch ($tipo) {
             case 'texto':
-                return $cli->enviarTexto($igsid, (string)$spec['texto'], $tag);
+                return $commentId
+                    ? $cli->responderNoDirect($commentId, (string)$spec['texto'])
+                    : $cli->enviarTexto($igsid, (string)$spec['texto'], $tag);
 
             case 'midia':
                 // O IG chama de "file" o que o WhatsApp chama de "document"
@@ -353,7 +381,10 @@ class ChatEnvioService
                         'payload' => (string)($b['id'] ?? ('btn_' . ($i + 1))),
                     ];
                 }
-                return $cli->enviarRespostasRapidas($igsid, (string)$spec['corpo'], $ops, $tag);
+                return $commentId
+                    ? $cli->responderNoDirectComOpcoes($commentId,
+                        (string)($spec['corpo'] ?? $spec['texto'] ?? ''), $ops)
+                    : $cli->enviarRespostasRapidas($igsid, (string)$spec['corpo'], $ops, $tag);
 
             case 'lista':
                 $ops = [];

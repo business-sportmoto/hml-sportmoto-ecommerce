@@ -368,7 +368,10 @@ AdminRouter::post('/configuracoes/bling/sync-depositos', 'AdminBlingController@s
 AdminRouter::post('/configuracoes/bling/vincular-produtos', 'AdminBlingController@vincularProdutos');
 
 AdminRouter::post('/configuracoes/bling/vincular-contatos', 'AdminBlingController@vincularContatos');
-AdminRouter::post('/configuracoes/bling/processar-contatos', 'AdminBlingController@processarContatos');
+// 'processar-contatos' removida: apontava para AdminBlingController@
+// processarContatos, que nunca existiu — qualquer POST na URL dava fatal.
+// A fila de contatos é drenada pelo cli/bling-sync.php.
+AdminRouter::post('/configuracoes/bling/deposito-padrao', 'AdminBlingController@setDepositoPadrao');
 
 AdminRouter::get('/logs',          'AdminLogsController@index');
 AdminRouter::get('/logs/detalhe',  'AdminLogsController@detalhe');

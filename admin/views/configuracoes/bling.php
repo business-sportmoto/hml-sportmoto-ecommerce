@@ -285,13 +285,20 @@
         <div style="padding:14px 20px;">
           <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:10px;font-size:13.5px;">
             <?php
+            // Esta lista é lida como documentação do que o sistema faz.
+            // Manter item marcado ✓ que não acontece é pior que não ter a
+            // lista — foi o caso de "Pedido aprovado → Bling" (a chamada
+            // estava comentada no checkout) e "Sync de estoque" (o bloco
+            // tinha sido removido do cron). Ao mudar o comportamento,
+            // ATUALIZE AQUI.
             $itens = [
-              ['Pedido aprovado → Bling',        true,  'Automático ao confirmar pagamento'],
-              ['Status Bling → site',             true,  'Via webhook em tempo real'],
-              ['NF-e autorizada → site',          true,  'URL do PDF salva automaticamente'],
-              ['Sync de estoque',                 true,  'Cron a cada 15min ou manual'],
-              ['Sync de preços',                  false, 'Sprint futuro'],
-              ['Pedidos antigos → Bling',         false, 'Manual por pedido'],
+              ['Pedido → Bling',            true,  'Entra na fila no checkout; o cron envia e insiste'],
+              ['Estoque: Bling → site',     true,  'Webhook em tempo real + cron horário de reconciliação'],
+              ['Status Bling → site',       true,  'Via webhook, só para pedidos já sincronizados'],
+              ['NF-e autorizada → site',    true,  'URL do PDF e chave salvas automaticamente'],
+              ['Vínculo de catálogo',       true,  'Cron diário casa por código (SKU / Referência)'],
+              ['Estoque: site → Bling',     false, 'Não existe: o Bling é o dono do saldo'],
+              ['Sync de preços',            false, 'Não implementado'],
             ];
             foreach ($itens as [$label, $ativo, $detalhe]):
             ?>
@@ -353,7 +360,11 @@
             </div>
             <?php else: ?>
               <?php foreach ($depositos as $dep): ?>
-              <div style="display:flex;align-items:center;gap:12px;padding:11px 14px;border:1px solid var(--c-border);border-radius:8px;margin-bottom:8px;<?= $dep['padrao'] ? 'background:#f0fdf4;border-color:#bbf7d0;' : '' ?>">
+              <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;border:1px solid var(--c-border);border-radius:8px;margin-bottom:8px;cursor:pointer;<?= $dep['padrao'] ? 'background:#f0fdf4;border-color:#bbf7d0;' : '' ?>">
+                <input type="radio" name="deposito_padrao" class="dep-radio"
+                       value="<?= View::e($dep['bling_deposito_id']) ?>"
+                       <?= $dep['padrao'] ? 'checked' : '' ?>
+                       style="flex-shrink:0;cursor:pointer;">
                 <div style="width:9px;height:9px;border-radius:50%;flex-shrink:0;background:<?= $dep['ativo'] ? 'var(--success)' : 'var(--border2)' ?>;<?= $dep['padrao'] ? 'box-shadow:0 0 0 3px rgba(22,163,74,.2);' : '' ?>"></div>
                 <div style="flex:1;min-width:0;">
                   <div style="font-weight:700;font-size:13.5px;color:var(--c-dark);">
@@ -364,22 +375,41 @@
                   </div>
                   <code style="font-size:11.5px;color:var(--c-text-muted);">ID: <?= View::e($dep['bling_deposito_id']) ?></code>
                 </div>
-              </div>
+              </label>
               <?php endforeach; ?>
+              <p style="font-size:12px;color:var(--c-text-muted);margin-top:10px;line-height:1.6;">
+                Trocar o depósito muda de onde vem o saldo de <strong>todo</strong>
+                o catálogo. O próximo sync reescreve os saldos do site com os
+                números do depósito escolhido.
+              </p>
             <?php endif; ?>
           </div>
         </div>
       </div>
 
       <div class="admin-card">
-        <h3 class="ap-card-title">Cron de estoque</h3>
+        <h3 class="ap-card-title">Crons da integração</h3>
         <div style="padding:14px 20px;">
-          <p style="font-size:13px;color:var(--c-text-muted);margin-bottom:12px;line-height:1.6;">
-            Adicione ao crontab do servidor para sync automático:
+          <p style="font-size:13px;color:var(--c-text-muted);margin-bottom:10px;line-height:1.6;">
+            <strong>Pulso horário</strong> — envia pedidos da fila, espelha o
+            saldo do Bling e drena a fila de contatos:
           </p>
-          <code style="display:block;background:var(--c-bg-alt);padding:10px 12px;border-radius:8px;font-size:11.5px;line-height:1.8;">
-            */15 * * * * php <?= ROOT_PATH ?>/cron/bling-sync-estoque.php
+          <code style="display:block;background:var(--c-bg-alt);padding:10px 12px;border-radius:8px;font-size:11.5px;line-height:1.8;word-break:break-all;">
+            0 * * * * php <?= ROOT_PATH ?>/cli/bling-sync.php
           </code>
+
+          <p style="font-size:13px;color:var(--c-text-muted);margin:14px 0 10px;line-height:1.6;">
+            <strong>Vínculo diário</strong> — casa o catálogo por código e
+            reporta produtos vendáveis sem vínculo:
+          </p>
+          <code style="display:block;background:var(--c-bg-alt);padding:10px 12px;border-radius:8px;font-size:11.5px;line-height:1.8;word-break:break-all;">
+            20 4 * * * php <?= ROOT_PATH ?>/cli/bling-vinculos.php
+          </code>
+
+          <p style="font-size:12px;color:var(--c-text-muted);margin-top:12px;line-height:1.6;">
+            O antigo <code>cron/bling-sync-estoque.php</code> não existe mais.
+            Se ainda estiver no crontab, remova — ele falha silenciosamente.
+          </p>
         </div>
       </div>
     </aside>
@@ -573,6 +603,31 @@ $('#btn-desconectar').on('click', function() {
   });
 });
 
+
+// ── Depósito padrão ───────────────────────────────────
+// Confirma antes: trocar o depósito reescreve o saldo de TODO o
+// catálogo no próximo sync. Não é um toggle cosmético.
+$(document).on('change', '.dep-radio', function () {
+  var $r  = $(this);
+  var id  = $r.val();
+  var nome= $r.closest('label').find('div > div').first().text().trim();
+
+  if (!confirm('Usar "' + nome + '" como depósito padrão?\n\n'
+             + 'O saldo de todo o catálogo passa a vir deste depósito no próximo sync.')) {
+    location.reload();   // desfaz a marcação visual do radio
+    return;
+  }
+
+  $.post(ADMIN_URL + '/configuracoes/bling/deposito-padrao', {
+    _token: CSRF_TOKEN,
+    bling_deposito_id: id
+  })
+  .done(function (r) {
+    showToast(r.msg, r.ok ? 'success' : 'error');
+    if (r.ok) setTimeout(function () { location.reload(); }, 1200);
+  })
+  .fail(function () { showToast('Erro de rede.', 'error'); });
+});
 
 $('#btn-sync-depositos').on('click', function () {
   var $btn = $(this);

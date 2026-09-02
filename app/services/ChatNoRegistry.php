@@ -142,10 +142,18 @@ abstract class ChatNo
 
     protected function opts(array $sessao, array $extra = []): array
     {
-        return array_merge([
+        $base = [
             'origem'    => 'fluxo',
             'origem_id' => (int)($sessao['fluxo_id'] ?? 0),
-        ], $extra);
+        ];
+
+        // Fluxo que nasceu de um comentário do Instagram carrega o id dele. O
+        // envio decide se usa: só a primeira mensagem da conversa sai como
+        // private reply, que é o que abre a porta com quem nunca mandou DM.
+        $comentario = (string)($this->ctx($sessao)['_comment_id'] ?? '');
+        if ($comentario !== '') $base['ig_comment_id'] = $comentario;
+
+        return array_merge($base, $extra);
     }
 }
 

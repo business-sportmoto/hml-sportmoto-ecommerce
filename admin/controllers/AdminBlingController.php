@@ -127,18 +127,96 @@ class AdminBlingController extends Controller
     }
  
     // ── POST /admin/configuracoes/bling/sync-estoque ──────
+    /**
+     * Força o espelhamento de saldo AGORA — mesma operação do cron horário.
+     *
+     * Usa sincronizarEstoque() e NÃO sincronizarTudo(): o segundo resolve
+     * vínculo com 1 chamada + 120ms de sleep por produto sem bling_id, sem
+     * limite. Com catálogo real isso passa de 10 minutos e o botão morre no
+     * timeout do PHP — era o comportamento anterior. Vincular é tarefa do
+     * botão "Vincular agora" (listagem em lote) e do cron diário.
+     */
     public function syncEstoque(): void
     {
         $this->verifyCsrf();
+
+        // Mesmo teto dos outros botões longos desta tela.
+        set_time_limit(300);
+
         try {
-            $result = (new BlingEstoqueService())->sincronizarTudo();
-            $this->json([
-                'ok'  => true,
-                'msg' => "Sincronização concluída: {$result['atualizados']} SKUs atualizados, {$result['erros']} erros.",
-            ] + $result);
+            $result = (new BlingEstoqueService())->sincronizarEstoque();
+
+            // O service devolve 'erro' (ex.: sem depósito padrão) num retorno
+            // que, no resto, parece sucesso. Antes isso virava um toast VERDE
+            // dizendo "0 SKUs atualizados" — o admin saía achando que
+            // sincronizou. Aqui vira falha explícita.
+            if (!empty($result['erro'])) {
+                $this->json(['ok' => false, 'msg' => $result['erro']] + $result);
+            }
+
+            $msg = "Sincronização concluída: {$result['atualizados']} de {$result['total']} "
+                 . "vínculo(s) atualizados.";
+            if (!empty($result['erros'])) {
+                $msg .= " {$result['erros']} lote(s) falharam — veja o log de operações.";
+            }
+
+            $this->json(['ok' => true, 'msg' => $msg] + $result);
         } catch (\Throwable $e) {
+            LogService::exception($e, 'error', 'bling');
             $this->json(['ok' => false, 'msg' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * POST /admin/configuracoes/bling/deposito-padrao
+     *
+     * O saldo do site espelha UM depósito. Até aqui o `padrao` só vinha do
+     * que o Bling devolve em /depositos, com fallback para o primeiro ativo —
+     * se a conta tem mais de um depósito e o "padrão" dele não é o do
+     * e-commerce, o site espelhava o saldo errado e não havia como corrigir
+     * sem UPDATE no banco.
+     */
+    public function setDepositoPadrao(): void
+    {
+        $this->verifyCsrf();
+
+        $blingDepositoId = SecurityHelper::sanitizeString($_POST['bling_deposito_id'] ?? '');
+        if ($blingDepositoId === '') {
+            $this->json(['ok' => false, 'msg' => 'Depósito inválido.']);
+        }
+
+        $db = Database::getInstance()->getConnection();
+
+        // Whitelist: só aceita depósito que já veio do Bling. Impede que um
+        // POST forjado aponte o espelho para um ID qualquer.
+        $stmt = $db->prepare(
+            "SELECT descricao FROM bling_depositos WHERE bling_deposito_id = ? LIMIT 1"
+        );
+        $stmt->execute([$blingDepositoId]);
+        $descricao = $stmt->fetchColumn();
+        if ($descricao === false) {
+            $this->json(['ok' => false, 'msg' => 'Depósito não encontrado. Sincronize os depósitos primeiro.']);
+        }
+
+        try {
+            $db->beginTransaction();
+            $db->exec("UPDATE bling_depositos SET padrao = 0");
+            $db->prepare("UPDATE bling_depositos SET padrao = 1, ativo = 1 WHERE bling_deposito_id = ?")
+               ->execute([$blingDepositoId]);
+            $db->commit();
+        } catch (\Throwable $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            $this->json(['ok' => false, 'msg' => 'Erro ao salvar: ' . $e->getMessage()]);
+        }
+
+        LogService::audit('Depósito padrão do Bling alterado', [
+            'bling_deposito_id' => $blingDepositoId,
+            'descricao'         => $descricao,
+            'usuario_id'        => AuthHelper::usuarioId(),
+        ]);
+
+        $this->json(['ok' => true,
+                     'msg' => "Depósito padrão: {$descricao}. O próximo sync já usa este saldo."]);
     }
  
     // ── POST /admin/configuracoes/bling/forcar-sync ───────
@@ -219,7 +297,18 @@ class AdminBlingController extends Controller
             $this->json(['ok' => false, 'msg' => 'Nenhum mapeamento enviado.']);
         }
  
-        $db   = Database::getInstance()->getConnection();
+        $db = Database::getInstance()->getConnection();
+
+        // Whitelist dos status locais. O <select> da UI já é populado a
+        // partir daqui, mas o POST é texto livre — e pedidos.status_pedido
+        // é varchar SEM foreign key. Um slug inválido não daria erro nenhum:
+        // o webhook do Bling gravaria a string no pedido e o painel passaria
+        // a mostrar um status que não existe, sem nada nos logs.
+        $validos = array_column(
+            $db->query("SELECT slug FROM pedido_status WHERE ativo = 1")->fetchAll(),
+            'slug'
+        );
+
         $stmt = $db->prepare(
             "INSERT INTO bling_status_map (bling_id, bling_label, status_local)
              VALUES (?, ?, ?)
@@ -227,19 +316,44 @@ class AdminBlingController extends Controller
                bling_label  = VALUES(bling_label),
                status_local = VALUES(status_local)"
         );
- 
+
+        $invalidos = [];
+        $salvos    = 0;
+
         $db->beginTransaction();
         try {
             foreach ($itens as $item) {
                 $bId = trim($item['bling_id']    ?? '');
                 $bLb = trim($item['bling_label'] ?? '');
                 $lSt = trim($item['status_local']?? '');
-                if ($bId && $lSt) $stmt->execute([$bId, $bLb, $lSt]);
+                if (!$bId || !$lSt) continue;
+
+                if (!in_array($lSt, $validos, true)) {
+                    $invalidos[] = $lSt;
+                    continue;
+                }
+
+                $stmt->execute([$bId, $bLb, $lSt]);
+                $salvos++;
             }
+
+            // Nada salvo e há inválidos: não é sucesso parcial, é erro.
+            if ($salvos === 0 && $invalidos) {
+                $db->rollBack();
+                $this->json(['ok' => false, 'msg' =>
+                    'Nenhum status local válido: ' . implode(', ', array_unique($invalidos))]);
+            }
+
             $db->commit();
-            $this->json(['ok' => true, 'msg' => 'Mapeamento salvo com sucesso.']);
+
+            $msg = "{$salvos} mapeamento(s) salvos.";
+            if ($invalidos) {
+                $msg .= ' Ignorados por status inexistente: '
+                      . implode(', ', array_unique($invalidos)) . '.';
+            }
+            $this->json(['ok' => true, 'msg' => $msg, 'invalidos' => array_values(array_unique($invalidos))]);
         } catch (\Throwable $e) {
-            $db->rollBack();
+            if ($db->inTransaction()) $db->rollBack();
             $this->json(['ok' => false, 'msg' => $e->getMessage()]);
         }
     }

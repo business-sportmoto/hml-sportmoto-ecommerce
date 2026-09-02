@@ -179,6 +179,13 @@ class Order extends Model {
                 pr.ativo  AS produto_ativo,
                 -- Imagem principal atual (snapshot resolvido depois)
                 img.arquivo                                   AS imagem_arquivo,
+                -- pedido_itens.sku e VARCHAR mas guarda o ID de
+                -- produto_skus (ver AdminPedido::addItem). O alias explicito
+                -- e obrigatorio: sem ele o array_column por sku_id logo
+                -- abaixo devolvia [] e o batch de sku_atributos nunca rodava
+                -- -- o cliente via a cor do produto mas NUNCA o tamanho da
+                -- variacao que comprou.
+                pi.sku                                        AS sku_id,
                 ps.sku                                        AS sku_codigo,
                 ps.estoque                                    AS estoque_sku,
                 pr.estoque_total                              AS estoque_produto

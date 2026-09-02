@@ -193,7 +193,16 @@ class AdminPedido {
                     (SELECT img.arquivo FROM produto_imagens img
                      WHERE img.produto_id = pr.id AND img.principal = 1 LIMIT 1)
                 )          AS imagem,
-                COALESCE(pi.sku, ps.sku) AS sku,
+                -- pedido_itens.sku e VARCHAR mas guarda o ID de produto_skus
+                -- (ver addItem). Os dois aliases separam o que sempre esteve
+                -- misturado num nome so:
+                --   sku_id -> a chave estrangeira, para joins e movimentacoes
+                --   sku    -> o codigo legivel, para exibir na tela
+                -- Antes era COALESCE(pi.sku, ps.sku): como pi.sku nunca e
+                -- nulo, vencia sempre e a tela do pedido mostrava o id cru
+                -- (SKU: 4) em vez do codigo (SKU: CAP-XYZ-AML-60).
+                pi.sku     AS sku_id,
+                ps.sku     AS sku,
                 ps.estoque AS estoque_sku,
                 pr.estoque_total AS estoque_produto,
                 -- Atributos do SKU concatenados
