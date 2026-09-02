@@ -73,7 +73,7 @@
         if (reenvio) erroModal('');
 
         $.ajax({
-            url: window.BASE_URL + '/newsletter',
+            url: BASE_URL + '/newsletter',
             method: 'POST',
             dataType: 'json',
             data: { email: email, _csrf_token: token() }
@@ -127,7 +127,7 @@
         $btn.prop('disabled', true).text('Confirmando…');
 
         $.ajax({
-            url: window.BASE_URL + '/newsletter/confirmar',
+            url: BASE_URL + '/newsletter/confirmar',
             method: 'POST',
             dataType: 'json',
             data: { email: emailAtual, nome: nome, codigo: codigo, _csrf_token: token() }
