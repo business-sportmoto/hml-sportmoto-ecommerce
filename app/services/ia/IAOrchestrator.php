@@ -358,6 +358,8 @@ class IAOrchestrator
                 return new ReplicateAdapter($chave, $baseUrl, $configExtra);
             case 'gemini':
                 return new GeminiAdapter($chave, $baseUrl, $configExtra);
+            case 'claude':
+                return new ClaudeAdapter($chave, $baseUrl, $configExtra);
             default:
                 LogService::warning('ia_adapter_desconhecido', ['codigo' => $codigo]);
                 return null;

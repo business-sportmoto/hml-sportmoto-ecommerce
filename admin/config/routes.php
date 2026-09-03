@@ -346,6 +346,8 @@ AdminRouter::post('/configuracoes/pwa/publicar',          'AdminPwaController@pu
 
 
 AdminRouter::get ('/configuracoes/bling',                          'AdminBlingController@index');
+AdminRouter::get ('/configuracoes/bling/logs',                     'AdminBlingController@logs');
+AdminRouter::get ('/configuracoes/bling/logs/{id:\d+}',            'AdminBlingController@logDetalhe');
 AdminRouter::post('/configuracoes/bling/credenciais',              'AdminBlingController@salvarCredenciais');
 AdminRouter::get ('/configuracoes/bling/autorizar',                'AdminBlingController@autorizar');
 AdminRouter::get ('/configuracoes/bling/callback',                 'AdminBlingController@callback');

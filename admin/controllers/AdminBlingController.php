@@ -21,9 +21,9 @@ class AdminBlingController extends Controller
         $db          = Database::getInstance()->getConnection();
         $conectado   = $this->auth->estaConectado();
         $tokenInfo   = $db->query("SELECT expires_at, atualizado_em FROM bling_tokens WHERE id = 1 LIMIT 1")->fetch();
-        $logs        = $db->query(
-            "SELECT * FROM bling_sync_log ORDER BY criado_em DESC LIMIT 50"
-        )->fetchAll();
+        // A primeira página vem no HTML para a tela abrir preenchida; daí em
+        // diante quem manda é o filtro, por Ajax.
+        $logs = (new BlingLogService())->listar([], 1);
         $ultimaSync  = $db->query(
             "SELECT MAX(criado_em) FROM bling_sync_log WHERE tipo = 'estoque' AND status = 'ok'"
         )->fetchColumn();
@@ -51,6 +51,37 @@ class AdminBlingController extends Controller
             'conectado', 'tokenInfo', 'logs', 'ultimaSync', 'depositos',
             'cobertura', 'pedidosFalha', 'filaPendente'
         ),'admin');
+    }
+
+    // ── GET /admin/configuracoes/bling/logs ───────────────
+    //
+    // Lista filtrada e paginada. Sempre JSON: a tabela é redesenhada no
+    // navegador a cada filtro, sem recarregar a página inteira (que tem
+    // cobertura, depósitos e mapa de status junto).
+    public function logs(): void
+    {
+        $filtros = [
+            'de'         => SecurityHelper::sanitizeString($_GET['de']         ?? ''),
+            'ate'        => SecurityHelper::sanitizeString($_GET['ate']        ?? ''),
+            'tipo'       => SecurityHelper::sanitizeString($_GET['tipo']       ?? ''),
+            'direcao'    => SecurityHelper::sanitizeString($_GET['direcao']    ?? ''),
+            'status'     => SecurityHelper::sanitizeString($_GET['status']     ?? ''),
+            'produto_id' => SecurityHelper::sanitizeInt($_GET['produto_id']    ?? 0),
+            'sku_legado' => SecurityHelper::sanitizeString($_GET['sku_legado'] ?? ''),
+            'referencia' => SecurityHelper::sanitizeString($_GET['referencia'] ?? ''),
+        ];
+
+        $r = (new BlingLogService())->listar($filtros, (int)($_GET['pagina'] ?? 1));
+        $this->json(['ok' => true] + $r);
+    }
+
+    // ── GET /admin/configuracoes/bling/logs/{id} ──────────
+    public function logDetalhe(int $id): void
+    {
+        $log = (new BlingLogService())->detalhe($id);
+        if (!$log) $this->json(['ok' => false, 'msg' => 'Registro não encontrado.'], 404);
+
+        $this->json(['ok' => true, 'log' => $log]);
     }
 
     // ── POST /admin/configuracoes/bling/vincular-produtos ─────

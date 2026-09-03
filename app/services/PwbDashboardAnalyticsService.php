@@ -26,6 +26,9 @@ final class PwbDashboardAnalyticsService
 {
     private BiService $bi;
 
+    /** Views que faltam neste ambiente, para a tela avisar. */
+    private array $indisponivel = [];
+
     public function __construct(?BiService $bi = null)
     {
         $this->bi = $bi ?? new BiService();
@@ -34,16 +37,50 @@ final class PwbDashboardAnalyticsService
     public function getDashboardData(string $periodo = '30d'): array
     {
         $p = $this->bi->periodo($periodo);
-        $k = $this->bi->kpis($p);
+        $k = $this->protegido(fn() => $this->bi->kpis($p), 'bi_fato_pedido / bi_fato_item', []);
 
         return [
             'meta'    => $this->meta($p, $periodo),
-            'kpis'    => $this->kpis($k, $p),
+            'kpis'    => $k ? $this->kpis($k, $p) : [],
             'tables'  => $this->tables($p),
             'metrics' => $this->metrics($p),
             'charts'  => $this->charts($p),
-            'saude'   => $this->bi->saude(),
+            'saude'   => $this->protegido(fn() => $this->bi->saude(), 'bi_saude_dados', []),
+            // Lista o que este ambiente não tem. Vazia = tudo no lugar.
+            'indisponivel' => array_values(array_unique($this->indisponivel)),
         ];
+    }
+
+    /**
+     * Executa um bloco e, se a VIEW não existir neste ambiente,
+     * devolve o fallback em vez de derrubar a página.
+     *
+     * Por que isto existe: a camada semântica ganhou views novas ao
+     * longo do projeto. Quem sobe os PHP sem reaplicar o
+     * `sql/bi-fase2.sql` fica com o painel INTEIRO em erro 500 — uma
+     * view de clips ausente levava a página de faturamento junto, e
+     * nada na tela dizia o porquê.
+     *
+     * Só o erro "table or view not found" (SQLSTATE 42S02) é
+     * absorvido. Qualquer outro problema de SQL continua estourando,
+     * porque bug de consulta escondido é pior que página quebrada.
+     */
+    private function protegido(callable $fn, string $recurso, $fallback)
+    {
+        try {
+            return $fn();
+        } catch (\PDOException $e) {
+            if (($e->getCode() ?: '') !== '42S02') throw $e;
+
+            $this->indisponivel[] = $recurso;
+            if (class_exists('LogService')) {
+                LogService::warning('BI: view ausente no ambiente', [
+                    'recurso' => $recurso,
+                    'erro'    => $e->getMessage(),
+                ], 'bi');
+            }
+            return $fallback;
+        }
     }
 
     // ── Cabeçalho ────────────────────────────────────────
@@ -242,7 +279,7 @@ final class PwbDashboardAnalyticsService
         }
 
         $cupons = [];
-        foreach ($this->bi->cupons($p, 15) as $r) {
+        foreach ($this->protegido(fn() => $this->bi->cupons($p, 15), 'bi_fato_cupom', []) as $r) {
             $cupons[] = [
                 'code'     => $r['codigo'],
                 'type'     => $r['tipo'],
@@ -391,7 +428,7 @@ final class PwbDashboardAnalyticsService
         }
 
         $freteTipo = [];
-        foreach ($this->bi->fretePorTipo($p) as $r) {
+        foreach ($this->protegido(fn() => $this->bi->fretePorTipo($p), 'bi_fato_frete', []) as $r) {
             $freteTipo[] = [
                 'type'    => $r['tipo_frete'],
                 'labels'  => $this->num((float)$r['etiquetas']),
@@ -406,7 +443,7 @@ final class PwbDashboardAnalyticsService
         }
 
         $clips = [];
-        foreach ($this->bi->clips($p, 30) as $r) {
+        foreach ($this->protegido(fn() => $this->bi->clips($p, 30), 'bi_fato_clip', []) as $r) {
             $clips[] = [
                 'title'    => $r['titulo'],
                 'author'   => $r['autor_nome'] ?? '—',
@@ -424,7 +461,7 @@ final class PwbDashboardAnalyticsService
         }
 
         $sharers = [];
-        foreach ($this->bi->compartilhadores($p, 25) as $r) {
+        foreach ($this->protegido(fn() => $this->bi->compartilhadores($p, 25), 'bi_fato_compartilhamento', []) as $r) {
             $sharers[] = [
                 'name'     => $r['compartilhador'],
                 'origin'   => ucfirst((string)$r['origem']),
@@ -450,8 +487,8 @@ final class PwbDashboardAnalyticsService
         return [
             'clips'         => $clips,
             'compartilhadores' => $sharers,
-            'marcas'        => $this->dimensaoTabela($p, 'marca'),
-            'categorias'    => $this->dimensaoTabela($p, 'categoria'),
+            'marcas'        => $this->protegido(fn() => $this->dimensaoTabela($p, 'marca'), 'bi_fato_item (marca)', []),
+            'categorias'    => $this->protegido(fn() => $this->dimensaoTabela($p, 'categoria'), 'bi_fato_item (categoria)', []),
             'frete_tipo'    => $freteTipo,
             'abc'           => $abc,
             'canais'        => $canais,
@@ -574,7 +611,7 @@ final class PwbDashboardAnalyticsService
              'hint'  => $par['pct_itens'] . '% dos produtos fazem 80% da receita'],
         ];
 
-        $rc = $this->bi->clipsResumo($p);
+        $rc = $this->protegido(fn() => $this->bi->clipsResumo($p), 'bi_fato_clip', ['views'=>0,'sessoes'=>0,'clips'=>0,'ativos'=>0,'likes'=>0,'comentarios'=>0]);
         $clipKpi = [
             ['label' => 'Views no período', 'value' => $this->num((float)$rc['views']),
              'hint'  => $rc['sessoes'] . ' sessões distintas'],
@@ -584,7 +621,7 @@ final class PwbDashboardAnalyticsService
             ['label' => 'Comentários', 'value' => $this->num((float)$rc['comentarios']),'hint' => 'no acervo todo'],
         ];
 
-        $cs = $this->bi->compartilhamentos($p);
+        $cs = $this->protegido(fn() => $this->bi->compartilhamentos($p), 'bi_fato_compartilhamento', ['kpi'=>['compartilhamentos'=>0,'valor_compartilhado'=>0,'visualizacoes'=>0,'conversoes'=>0,'pedidos_identificados'=>0,'receita'=>0],'funil'=>[]]);
         $shareKpi = [
             ['label' => 'Compartilhamentos', 'value' => $this->num((float)$cs['kpi']['compartilhamentos']),
              'hint'  => $this->brl((float)$cs['kpi']['valor_compartilhado']) . ' em carrinhos'],
@@ -677,10 +714,10 @@ final class PwbDashboardAnalyticsService
             'monthly'        => $this->bi->serieMensal(12),
             'by_status'      => $this->bi->porStatus($p),
             'top_brands'     => $this->bi->ranking($p, 'marca', 8),
-            'marcas_share'   => array_slice($this->bi->porMarca($p, 'marca', 10), 0, 10),
-            'clips_serie'    => $this->bi->clipsSerie($p),
-            'clips_top'      => $this->bi->clips($p, 8),
-            'share_funil'    => $this->bi->compartilhamentos($p)['funil'],
+            'marcas_share'   => $this->protegido(fn() => array_slice($this->bi->porMarca($p, 'marca', 10), 0, 10), 'bi_fato_item (marca)', []),
+            'clips_serie'    => $this->protegido(fn() => $this->bi->clipsSerie($p), 'bi_fato_clip_view', []),
+            'clips_top'      => $this->protegido(fn() => $this->bi->clips($p, 8), 'bi_fato_clip', []),
+            'share_funil'    => $this->protegido(fn() => $this->bi->compartilhamentos($p)['funil'], 'bi_fato_compartilhamento', []),
             'top_categories' => $this->bi->ranking($p, 'categoria', 8),
             'by_channel'     => $this->bi->ranking($p, 'canal', 8),
             'by_payment'     => $this->bi->porPagamento($p),

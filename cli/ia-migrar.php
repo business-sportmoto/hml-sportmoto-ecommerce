@@ -83,6 +83,10 @@ $migrations = [
         $ativo = $pdo->query("SELECT ativo FROM ia_modelos WHERE codigo_modelo = 'gemini-3-flash' LIMIT 1")->fetchColumn();
         return $ativo === false || (int) $ativo === 0;
     }],
+    ['2026-09-03_ia_provedor_claude.sql', 'Provedor Anthropic Claude — 3 modelos de texto', function () use ($pdo, $temTabela) {
+        if (!$temTabela('ia_provedores')) { return false; }
+        return (int) $pdo->query("SELECT COUNT(*) FROM ia_provedores WHERE codigo = 'claude'")->fetchColumn() > 0;
+    }],
 ];
 
 /* ------------------------------------------------------------------ */

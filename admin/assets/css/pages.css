@@ -4434,3 +4434,149 @@ html[data-theme="dark"] .fp-selo{background:var(--pgto-surface-2) !important;col
   background: var(--border);
   margin: 18px 0 14px;
 }
+
+/* ###########################################################################
+   LOG DE OPERAÇÕES DO BLING — admin/views/configuracoes/bling.php
+   ########################################################################### */
+
+.blg_head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.blg_head h3 { margin: 0; font-size: 13px; font-weight: 800; }
+.blg_total { font-size: 12px; color: var(--text-3); }
+
+/* ── filtros ───────────────────────────────────────────────────────────── */
+.blg_filtros {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+  align-items: end;
+}
+.blg_campo { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.blg_campo label {
+  font-size: 11px; font-weight: 700; letter-spacing: .3px;
+  text-transform: uppercase; color: var(--text-3);
+}
+.blg_campo .form-control { font-size: 13px; padding: 7px 10px; }
+
+/* Os botões acompanham a última linha da grade em vez de virarem uma linha
+   só deles — com 8 filtros a grade quebra em qualquer largura. */
+.blg_acoes { display: flex; gap: 8px; align-items: end; }
+.blg_acoes .btn { flex: 1; justify-content: center; }
+
+.blg_nota {
+  margin: 0; padding: 9px 20px;
+  font-size: 12px; color: var(--text-2);
+  background: var(--blue-lt, var(--surface2));
+  border-bottom: 1px solid var(--border);
+}
+.blg_nota code {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 4px; padding: 0 4px; font-size: 11.5px;
+}
+
+/* ── tabela ────────────────────────────────────────────────────────────── */
+.blg_tabela tbody.is-carregando { opacity: .45; pointer-events: none; }
+
+.blg_linha { cursor: pointer; transition: background .15s cubic-bezier(0.2, 0, 0, 1); }
+.blg_linha:hover { background: var(--surface2); }
+.blg_linha:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--blue);
+}
+
+.blg_data { font-size: 12px; color: var(--text-2); white-space: nowrap; }
+.blg_dir  { font-size: 12px; color: var(--text-3); }
+
+.blg_ref {
+  font-size: 11.5px; color: var(--text-2);
+  word-break: break-all;
+}
+.blg_resumo {
+  font-size: 12px; color: var(--text-3);
+  margin-top: 3px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 46ch;
+}
+.blg_resumo.is-erro { color: var(--danger); }
+
+.blg_seta { color: var(--text-3); font-size: 17px; text-align: center; }
+.blg_linha:hover .blg_seta { color: var(--blue); }
+
+.blg_vazio { text-align: center; padding: 26px; color: var(--text-3); font-size: 13px; }
+
+/* ── paginação ─────────────────────────────────────────────────────────── */
+.blg_paginacao {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+}
+.blg_intervalo { font-size: 12px; color: var(--text-3); }
+.blg_pag_nav { display: flex; align-items: center; gap: 4px; }
+.blg_pag_btn {
+  min-width: 32px; height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer; font-size: 14px; line-height: 1;
+}
+.blg_pag_btn:hover:not(.is-off) { border-color: var(--blue); color: var(--blue); }
+.blg_pag_btn.is-off { opacity: .35; cursor: not-allowed; }
+.blg_pag_atual { font-size: 12.5px; color: var(--text-2); padding: 0 8px; white-space: nowrap; }
+
+/* ── drawer do detalhe ─────────────────────────────────────────────────── */
+.blgd_topo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.blgd_dir  { font-size: 12.5px; color: var(--text-3); }
+.blgd_data { font-size: 12.5px; color: var(--text-3); margin-left: auto; }
+
+.blgd_grade {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px; margin-bottom: 16px;
+}
+.blgd_rotulo {
+  font-size: 11px; font-weight: 700; letter-spacing: .3px;
+  text-transform: uppercase; color: var(--text-3); margin-bottom: 4px;
+}
+.blgd_valor {
+  font-size: 13px; color: var(--text);
+  word-break: break-all;
+  font-family: 'SF Mono', ui-monospace, monospace;
+}
+
+.blgd_produto {
+  padding: 12px 14px; margin-bottom: 16px;
+  border: 1px solid var(--border); border-radius: var(--r-md, 10px);
+  background: var(--surface2);
+}
+.blgd_produto a { color: var(--blue); font-weight: 700; font-size: 13.5px; text-decoration: none; }
+.blgd_produto a:hover { text-decoration: underline; }
+.blgd_produto_meta { font-size: 12px; color: var(--text-3); margin-top: 3px; }
+
+.blgd_erro { margin-bottom: 16px; }
+.blgd_erro pre {
+  margin: 0; padding: 11px 13px;
+  background: var(--danger-lt); border: 1px solid var(--danger-bd);
+  border-radius: var(--r-md, 10px);
+  color: var(--danger);
+  font-size: 12px; line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word;
+}
+
+.blgd_bloco { margin-bottom: 16px; }
+/* JSON pode ter centenas de linhas; rola dentro do próprio bloco em vez de
+   esticar o drawer. */
+.blgd_json {
+  margin: 0; padding: 12px 14px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--r-md, 10px);
+  font-size: 11.5px; line-height: 1.55;
+  max-height: 380px; overflow: auto;
+  white-space: pre; tab-size: 2;
+}

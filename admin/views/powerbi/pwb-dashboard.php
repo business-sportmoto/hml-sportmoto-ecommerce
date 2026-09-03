@@ -156,6 +156,9 @@ $pwb_metrics = $pwb_dashboard_data['metrics'] ?? [];
 $pwb_meta = $pwb_dashboard_data['meta'] ?? [];
 // A view nao extraia 'charts'; o painel executivo le os insights dai.
 $pwb_charts = $pwb_dashboard_data['charts'] ?? [];
+// Views da camada semantica que faltam NESTE ambiente. Vazio = tudo
+// no lugar. Ver PwbDashboardAnalyticsService::protegido().
+$pwb_indisponivel = $pwb_dashboard_data['indisponivel'] ?? [];
 ?>
 
 <div class="pwb_dashboard" data-pwb-api-url="<?= pwb_e($pwb_dashboard_config['api_url']) ?>">
@@ -195,6 +198,19 @@ $pwb_charts = $pwb_dashboard_data['charts'] ?? [];
     </aside>
 
     <main class="pwb_main">
+        <?php if (!empty($pwb_indisponivel)): ?>
+        <?php // Sem este aviso, painel vazio por view ausente e painel
+              // vazio por falta de venda ficam indistinguiveis. ?>
+        <div class="form-alert form-alert--warning" style="font-size:13px;">
+            <strong>Camada semântica incompleta neste ambiente.</strong>
+            Faltam <?= count($pwb_indisponivel) ?> view(s):
+            <code><?= pwb_e(implode('</code>, <code>', $pwb_indisponivel)) ?></code>.
+            Os painéis que dependem delas aparecem vazios — o resto funciona.
+            Reaplique <code>sql/bi-fase2.sql</code>
+            (com <code>--default-character-set=utf8mb4</code>) e rode
+            <code>php cli/bi-diagnostico.php</code> para confirmar.
+        </div>
+        <?php endif; ?>
         <header class="pwb_header">
             <div class="pwb_header_title_box">
                 <h1 class="pwb_title"><?= pwb_e($pwb_meta['title'] ?? 'Visão Geral') ?></h1>

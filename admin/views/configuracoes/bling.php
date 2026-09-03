@@ -141,42 +141,93 @@
         </div>
       </div>
 
-      <!-- Log de operações -->
-      <div class="admin-card">
-        <div style="padding:14px 20px;border-bottom:1px solid var(--c-border);display:flex;align-items:center;justify-content:space-between;">
-          <h3 style="margin:0;font-size:13px;font-weight:800;">Log de operações</h3>
-          <span class="odh-count-badge"><?= count($logs) ?></span>
+      <!-- ── Log de operações ────────────────────────────────
+           A tabela é desenhada pelo JS, inclusive na primeira carga: o
+           servidor manda a página 1 já pronta em BLING_LOG e o mesmo
+           template pinta filtro e paginação depois. Dois templates — um
+           em PHP e outro em JS — divergem no primeiro ajuste. -->
+      <div class="admin-card blg">
+        <div class="blg_head">
+          <h3>Log de operações</h3>
+          <span class="blg_total" id="blgTotal"></span>
         </div>
+
+        <form class="blg_filtros" id="blgFiltros" onsubmit="return false;">
+          <div class="blg_campo">
+            <label for="blg-de">De</label>
+            <input type="date" id="blg-de" name="de" class="form-control">
+          </div>
+          <div class="blg_campo">
+            <label for="blg-ate">Até</label>
+            <input type="date" id="blg-ate" name="ate" class="form-control">
+          </div>
+          <div class="blg_campo">
+            <label for="blg-tipo">Tipo</label>
+            <select id="blg-tipo" name="tipo" class="form-control">
+              <option value="">Todos</option>
+              <?php foreach (BlingLogService::TIPOS as $t): ?>
+                <option value="<?= $t ?>"><?= ucfirst($t) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div class="blg_campo">
+            <label for="blg-direcao">Direção</label>
+            <select id="blg-direcao" name="direcao" class="form-control">
+              <option value="">Todas</option>
+              <?php foreach (BlingLogService::DIRECOES as $d): ?>
+                <option value="<?= $d ?>"><?= ucfirst($d) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div class="blg_campo">
+            <label for="blg-status">Status</label>
+            <select id="blg-status" name="status" class="form-control">
+              <option value="">Todos</option>
+              <?php foreach (BlingLogService::STATUS as $st): ?>
+                <option value="<?= $st ?>"><?= ucfirst($st) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div class="blg_campo">
+            <label for="blg-produto">ID do produto</label>
+            <input type="number" id="blg-produto" name="produto_id" class="form-control" min="1" placeholder="Ex.: 3">
+          </div>
+          <div class="blg_campo">
+            <label for="blg-sku">SKU legado</label>
+            <input type="text" id="blg-sku" name="sku_legado" class="form-control" placeholder="Ex.: MSY29022">
+          </div>
+          <div class="blg_campo">
+            <label for="blg-ref">Referência</label>
+            <input type="text" id="blg-ref" name="referencia" class="form-control" placeholder="/produtos/167…">
+          </div>
+          <div class="blg_acoes">
+            <button type="button" class="btn btn-primary btn-sm" id="blgFiltrar">Filtrar</button>
+            <button type="button" class="btn btn-outline btn-sm" id="blgLimpar">Limpar</button>
+          </div>
+        </form>
+
+        <p class="blg_nota" id="blgNotaProduto" hidden>
+          O filtro por produto casa pelo <code>bling_id</code> gravado no vínculo.
+          Produto ainda não vinculado não tem operação nenhuma para mostrar.
+        </p>
+
         <div class="table-wrap">
-          <table class="admin-table">
+          <table class="admin-table blg_tabela">
             <thead>
               <tr>
-                <th>Tipo</th><th>Direção</th><th>Ref.</th>
-                <th>Status</th><th>Erro</th><th>Data</th>
+                <th style="width:132px">Data</th>
+                <th style="width:96px">Tipo</th>
+                <th style="width:88px">Direção</th>
+                <th>Referência</th>
+                <th style="width:80px">Status</th>
+                <th style="width:34px"></th>
               </tr>
             </thead>
-            <tbody>
-              <?php foreach ($logs as $log): ?>
-              <tr>
-                <td><span class="badge"><?= View::e($log['tipo']) ?></span></td>
-                <td><?= View::e($log['direcao']) ?></td>
-                <td><code style="font-size:11px;"><?= View::e($log['referencia_id'] ?? '—') ?></code></td>
-                <td>
-                  <span class="badge badge-<?= $log['status'] === 'ok' ? 'success' : ($log['status'] === 'erro' ? 'danger' : 'warning') ?>">
-                    <?= $log['status'] ?>
-                  </span>
-                </td>
-                <td style="font-size:12px;color:var(--c-danger);max-width:200px;overflow:hidden;text-overflow:ellipsis;">
-                  <?= View::e($log['msg_erro'] ?? '') ?>
-                </td>
-                <td style="font-size:12px;color:var(--c-text-muted);">
-                  <?= date('d/m H:i', strtotime($log['criado_em'])) ?>
-                </td>
-              </tr>
-              <?php endforeach; ?>
-            </tbody>
+            <tbody id="blgCorpo"></tbody>
           </table>
         </div>
+
+        <div class="blg_paginacao" id="blgPaginacao"></div>
       </div>
     </div>
 
@@ -673,3 +724,13 @@ $('#btn-vincular-contatos').on('click', function () {
     showToast(s === 'timeout' ? 'Demorou demais — veja os logs.' : 'Erro de rede.', 'error'); });
 });
 </script>
+
+<script>
+  /* Pagina 1 ja resolvida no servidor: a tabela pinta sem uma segunda ida ao
+     banco, e o mesmo template do bling-log.js serve para o filtro depois. */
+  window.BLING_LOG = {
+    base    : '<?= ADMIN_URL ?>/configuracoes/bling/logs',
+    inicial : <?= json_encode($logs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>
+  };
+</script>
+<script src="<?= PerformanceHelper::assetVersion('js/bling-log.js', true) ?>"></script>
