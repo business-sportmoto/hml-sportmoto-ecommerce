@@ -54,6 +54,7 @@ Referências externas do Vault (`docs/sportmoto-os/`) que a IA deve carregar com
 @docs/sportmoto-os/11-contexto-ia/01-arquitetura-atual.md
 @docs/sportmoto-os/11-contexto-ia/02-convencoes.md
 @docs/sportmoto-os/11-contexto-ia/03-status-atual.md
+@docs/sportmoto-os/11-contexto-ia/04-sessao-chat-ia-instagram.md
 ```
 
 > Estes `@` apontam para arquivos do Vault. Em Claude Code eles são importados; na interface web (claude.ai) são apenas texto — anexe os arquivos manualmente quando necessário.

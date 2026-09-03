@@ -87,6 +87,12 @@ $migrations = [
         if (!$temTabela('ia_provedores')) { return false; }
         return (int) $pdo->query("SELECT COUNT(*) FROM ia_provedores WHERE codigo = 'claude'")->fetchColumn() > 0;
     }],
+    // Detector: a coluna que liga a pergunta à geração. Nasce junto com o
+    // tipo qa_produto e com o usuario_id anulável, na mesma migration.
+    // DEPENDÊNCIA EXTERNA: precisa da tabela `produto_perguntas` (da loja),
+    // como o fase0 precisa de `produtos` e `usuarios`.
+    ['2026-09-03_ia_qa_produto.sql', 'Q&A de produto pela Central (procedência da resposta)',
+        fn () => $temColuna('produto_perguntas', 'ia_geracao_id')],
     ['2026-09-03_ia_seo_aplicado.sql', 'Procedência do SEO aplicado por entidade', fn () => $temTabela('ia_seo_aplicado')],
 ];
 

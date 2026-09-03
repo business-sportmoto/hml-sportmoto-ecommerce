@@ -330,8 +330,17 @@ class SecurityHelper {
             // o tempo. Listar um a um vira uma cacada a cada release deles,
             // com o checkout quebrado no intervalo. Sao dominios de UMA
             // empresa, entao o curinga custa pouco e evita esse ciclo.
-            $pgtoScript  = 'https://sdk.mercadopago.com https://device.clearsale.com.br';
-            $pgtoConnect = 'https://*.mercadopago.com https://*.mercadolibre.com';
+            // Silent Order Post da Cielo: o script vem de www.pagador.com.br
+            // e posta o cartao DIRETO (XHR) nos hosts de transacao — Cielo
+            // com provider "cielo", Braspag como reserva. Sem o connect-src
+            // o POST e bloqueado em silencio e o cartao "nao salva".
+            $sopScript   = 'https://www.pagador.com.br';
+            $sopConnect  = 'https://transactionsandbox.cieloecommerce.cielo.com.br '
+                         . 'https://transaction.cieloecommerce.cielo.com.br '
+                         . 'https://transactionsandbox.pagador.com.br https://www.pagador.com.br';
+
+            $pgtoScript  = 'https://sdk.mercadopago.com https://device.clearsale.com.br ' . $sopScript;
+            $pgtoConnect = 'https://*.mercadopago.com https://*.mercadolibre.com ' . $sopConnect;
             $pgtoFrame   = 'https://*.mercadopago.com https://*.mercadolibre.com';
 
             // ── 3-D Secure ──────────────────────────────────────────────

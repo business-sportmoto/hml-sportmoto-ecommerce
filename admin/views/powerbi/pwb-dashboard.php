@@ -1101,17 +1101,27 @@ $pwb_indisponivel = $pwb_dashboard_data['indisponivel'] ?? [];
                     <h2 class="pwb_panel_title">IA mais utilizada</h2>
                     <span class="pwb_panel_hint">Custo = o que saiu da conta; falha não custou</span>
                 </div>
-                <?php // A resposta das perguntas de PRODUTO nao passa pelo
-                      // roteador de IA, entao nao aparece nesta tabela. Sem
-                      // este aviso, alguem leria "gpt-5.4-mini respondeu as
-                      // perguntas" — o que nao esta escrito em lugar nenhum. ?>
+                <?php // Desde 03/09/2026 a Q&A de produto passa pelo roteador e
+                      // aparece nesta tabela. O aviso so faz sentido enquanto
+                      // existirem respostas antigas, sem procedencia — por isso
+                      // e' condicional: aviso permanente vira ruido e ninguem le.
+                      $qaSemProcedencia = 0;
+                      try {
+                          $qaSemProcedencia = (int) Database::getInstance()->getConnection()
+                              ->query("SELECT COUNT(*) FROM produto_perguntas
+                                        WHERE resposta_fonte = 'ia' AND ia_geracao_id IS NULL")
+                              ->fetchColumn();
+                      } catch (\Throwable $e) { /* coluna ainda nao migrada */ }
+                ?>
+                <?php if ($qaSemProcedencia > 0): ?>
                 <div class="form-alert form-alert--warning" style="font-size:12.5px;margin-bottom:14px;">
-                    <strong>Qual IA respondeu cada pergunta de produto não está gravado.</strong>
-                    Esse caminho usa o <code>GeminiQAService</code>, que salva só o texto —
-                    o modelo não vai para <code>ia_geracoes</code>. A tabela abaixo cobre o
-                    que passou pelo roteador de IA: geração de conteúdo, imagens e o
-                    atendimento via <em>chat</em>.
+                    <strong><?= (int) $qaSemProcedencia ?> resposta(s) de pergunta de produto sem procedência.</strong>
+                    São anteriores à migração da Q&amp;A para a Central de IA: naquele
+                    caminho o modelo não era gravado, e não há como recuperar.
+                    As respostas novas entram normalmente na tabela abaixo, como
+                    <code>qa_produto</code>.
                 </div>
+                <?php endif; ?>
                 <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
                     <thead class="pwb_thead"><tr class="pwb_tr">
                         <th class="pwb_th">Provedor</th><th class="pwb_th">Modelo</th>

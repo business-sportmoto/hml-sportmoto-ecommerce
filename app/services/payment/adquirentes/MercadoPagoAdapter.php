@@ -396,14 +396,29 @@ class MercadoPagoAdapter implements AdquirenteInterface
 
         $r = $this->http('POST', '/v1/customers/' . rawurlencode($customerId) . '/cards', ['token' => $token]);
 
-        LogService::audit('customers', [$token, $customerId]);
+        // NAO LOGAR O TOKEN. Ja houve um `LogService::audit('customers',
+        // [$token, ...])` aqui, e ele gravou credencial de pagamento em
+        // arquivo, em banco e em backup. Mesma classe do vazamento da chave
+        // da Comtele. Se precisar rastrear, use o customerId — ele identifica
+        // a chamada sem valer dinheiro.
 
         if ($r['erro'] !== null || $r['http'] < 200 || $r['http'] >= 300) {
             $motivo = (string) ($r['body']['message'] ?? $r['raw']);
 
+            // "Invalid credentials" AQUI NAO E O ACCESS TOKEN. O token do
+            // cartao nasce no navegador com a PUBLIC KEY; se ela for de outra
+            // aplicacao (ou foi regenerada no painel), o MP recusa o token
+            // com essa mensagem, mesmo com o access token valido. O final da
+            // chave serve para conferir no painel sem expor o segredo.
+            $dica = stripos($motivo, 'credentials') !== false
+                ? 'public key (final ' . substr($this->publicKey, -6) . ') e access token '
+                  . 'precisam ser da MESMA aplicacao do Mercado Pago'
+                : null;
+
             LogService::error('Mercado Pago recusou salvar o cartao', [
                 'customer' => $customerId, 'http' => $r['http'],
                 'motivo'   => mb_substr($motivo, 0, 200),
+                'dica'     => $dica,
                 // A resposta crua ajuda a depurar e nao carrega segredo.
                 // O TOKEN nao entra aqui: e credencial de pagamento, e log
                 // fica em banco, em backup e em print de suporte.

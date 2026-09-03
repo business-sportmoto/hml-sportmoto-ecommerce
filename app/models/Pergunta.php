@@ -142,13 +142,20 @@ class Pergunta extends Model {
         return (int)$this->db->lastInsertId();
     }
 
-    public function salvarRespostaIA(int $id, string $resposta): void {
+    /**
+     * @param ?int $geracaoId Geração da Central de IA que produziu o texto.
+     *                        Sem ele a resposta fica sem procedência — era o
+     *                        estado antigo, em que não dava para saber qual
+     *                        modelo respondeu. Continua opcional para não
+     *                        quebrar chamador que ainda não o passe.
+     */
+    public function salvarRespostaIA(int $id, string $resposta, ?int $geracaoId = null): void {
         $this->db->prepare(
             "UPDATE produto_perguntas
-             SET resposta = ?, resposta_fonte = 'ia',
+             SET resposta = ?, resposta_fonte = 'ia', ia_geracao_id = ?,
                  respondida_em = NOW(), status = 'respondida'
              WHERE id = ?"
-        )->execute([$resposta, $id]);
+        )->execute([$resposta, $geracaoId ?: null, $id]);
     }
 
     public function marcarParaAdmin(int $id): void {

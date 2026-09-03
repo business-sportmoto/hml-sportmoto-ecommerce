@@ -160,7 +160,16 @@ class SeoIaService
         ];
 
         $servico = new IAGeracaoService();
-        $r = $this->orq->executarTexto($geracao, $tipoArr);
+
+        // Mesma trava da Q&A: orquestrador que LANÇA deixaria esta linha presa
+        // em 'processando', e o watchdog a devolveria à fila para o worker
+        // regerar um SEO que ninguém está esperando — gastando de novo.
+        try {
+            $r = $this->orq->executarTexto($geracao, $tipoArr);
+        } catch (\Throwable $e) {
+            $servico->falhar($geracao, IAResultado::falha('excecao', mb_substr($e->getMessage(), 0, 500), false));
+            throw $e;
+        }
 
         if (!$r->ok) {
             $servico->falhar($geracao, $r);

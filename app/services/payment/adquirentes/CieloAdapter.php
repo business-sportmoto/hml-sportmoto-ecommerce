@@ -79,6 +79,108 @@ class CieloAdapter implements AdquirenteInterface
         return $this->merchantId !== '' && $this->merchantKey !== '';
     }
 
+    // =========================================================================
+    // Silent Order Post — tokenização NO NAVEGADOR
+    // =========================================================================
+
+    /**
+     * Credencial de 20 minutos para o script do Silent Order Post.
+     *
+     * É o que permite salvar o cartão no Cartão Protegido SEM o número passar
+     * pelo nosso servidor: o script lê os inputs da página e posta direto na
+     * Cielo. Duas chamadas, as duas daqui de dentro (o par OAuth2 é segredo
+     * e nunca vai para o navegador):
+     *
+     *   1. OAuth2 client_credentials (Braspag)   → bearer
+     *   2. POST /post/api/public/v2/accesstoken  → AccessToken do SOP
+     *
+     * O SOP é infraestrutura Braspag (dona da Cielo E-commerce): o OAuth2 e o
+     * accesstoken vivem em `*.braspag.com.br` / `*.pagador.com.br`, e o script
+     * com `provider: "cielo"` posta o cartão em `transaction.cieloecommerce`.
+     * Está assim na doc; se a conta responder 401 no accesstoken, o suporte
+     * da Cielo é quem libera o par OAuth2 de produção.
+     *
+     * @return array{accessToken:string, environment:string, provider:string}|null
+     */
+    public function sopAcesso(): ?array
+    {
+        $clientId = PagamentoCredencialService::envExtra('cielo', 'SOP_CLIENT_ID');
+        $secret   = PagamentoCredencialService::envExtra('cielo', 'SOP_CLIENT_SECRET');
+
+        if ($clientId === '' || $secret === '' || $this->merchantId === '') {
+            LogService::warning('Cielo SOP sem credencial OAuth2', [
+                'tem_client_id' => $clientId !== '', 'tem_secret' => $secret !== '',
+            ], 'pagamento');
+            return null;
+        }
+
+        $sandbox = $this->ambiente !== 'producao';
+        $oauth   = $sandbox ? 'https://authsandbox.braspag.com.br/oauth2/token'
+                            : 'https://auth.braspag.com.br/oauth2/token';
+        $sop     = ($sandbox ? 'https://transactionsandbox.pagador.com.br'
+                             : 'https://transaction.pagador.com.br')
+                 . '/post/api/public/v2/accesstoken';
+
+        // 1. bearer
+        $r = $this->httpCru('POST', $oauth, 'grant_type=client_credentials', [
+            'Authorization: Basic ' . base64_encode($clientId . ':' . $secret),
+            'Content-Type: application/x-www-form-urlencoded',
+        ]);
+        $bearer = (string) ($r['body']['access_token'] ?? '');
+        if ($r['erro'] !== null || $r['http'] !== 200 || $bearer === '') {
+            LogService::error('Cielo SOP: OAuth2 recusou', [
+                'http' => $r['http'], 'erro' => $r['erro'],
+                'motivo' => mb_substr((string) ($r['body']['error_description'] ?? $r['raw']), 0, 200),
+            ], 'pagamento');
+            return null;
+        }
+
+        // 2. AccessToken do SOP
+        $r = $this->httpCru('POST', $sop, '', [
+            'Authorization: Bearer ' . $bearer,
+            'MerchantId: ' . $this->merchantId,
+            'Content-Type: application/json',
+        ]);
+        $token = (string) ($r['body']['AccessToken'] ?? '');
+        if ($r['erro'] !== null || !in_array($r['http'], [200, 201], true) || $token === '') {
+            LogService::error('Cielo SOP: accesstoken recusou', [
+                'http' => $r['http'], 'erro' => $r['erro'],
+                'motivo' => mb_substr((string) ($r['raw'] ?? ''), 0, 200),
+            ], 'pagamento');
+            return null;
+        }
+
+        return [
+            'accessToken' => $token,
+            'environment' => $sandbox ? 'sandbox' : 'production',
+            'provider'    => 'cielo',
+        ];
+    }
+
+    /** HTTP para hosts fora da API 3.0 (OAuth2/SOP), sem os headers Merchant*. */
+    protected function httpCru(string $metodo, string $url, string $corpo, array $headers): array
+    {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CUSTOMREQUEST  => $metodo,
+            CURLOPT_TIMEOUT        => $this->timeout,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_HTTPHEADER     => $headers,
+            CURLOPT_POSTFIELDS     => $corpo,
+        ]);
+        $raw  = curl_exec($ch);
+        $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $erro = curl_errno($ch) ? curl_error($ch) : null;
+        curl_close($ch);
+
+        return [
+            'http' => $http, 'erro' => $erro,
+            'raw'  => is_string($raw) ? $raw : '',
+            'body' => is_string($raw) ? (json_decode($raw, true) ?: []) : [],
+        ];
+    }
+
     private function opcao(string $chave): mixed
     {
         return $this->config[$chave] ?? null;
@@ -100,15 +202,43 @@ class CieloAdapter implements AdquirenteInterface
 
     public function autorizarCartao(array $d): PagamentoClassificacao
     {
-        $cartao = $d['cartao'] ?? [];
-        $pan    = preg_replace('/\D/', '', (string) ($cartao['numero'] ?? ''));
+        $cartao  = $d['cartao'] ?? [];
+        $pan     = preg_replace('/\D/', '', (string) ($cartao['numero'] ?? ''));
+        $cardRef = trim((string) ($d['card_ref'] ?? ''));
 
-        // ESTA API NÃO ACEITA TOKEN DE NAVEGADOR. Se só veio o token de outra
-        // adquirente, não há como cobrar aqui — e mandar assim mesmo devolve
+        // CARTÃO SALVO NO CARTÃO PROTEGIDO: cobra pelo CardToken (36 chars),
+        // que o Silent Order Post gerou no navegador com enableTokenize. O
+        // CVV é obrigatório na doc do cartão tokenizado — vem do checkout, a
+        // cada compra, e não é guardado por ninguém.
+        if ($cardRef !== '') {
+            $cvv = preg_replace('/\D/', '', (string) ($d['cvv'] ?? ($cartao['cvv'] ?? '')));
+
+            $pagamento = array_filter([
+                'Type'           => 'CreditCard',
+                'Amount'         => (int) ($d['valor_centavos'] ?? 0),
+                'Currency'       => 'BRL',
+                'Country'        => 'BRA',
+                'Installments'   => max(1, (int) ($d['parcelas'] ?? 1)),
+                'Interest'       => 'ByMerchant',
+                'Capture'        => ($d['captura'] ?? '') !== 'manual',
+                'Authenticate'   => false,
+                'SoftDescriptor' => self::descritor($d),
+                'CreditCard'     => array_filter([
+                    'CardToken'    => $cardRef,
+                    'SecurityCode' => $cvv,
+                    'Brand'        => self::bandeiraParaCielo((string) ($d['bandeira'] ?? '')),
+                ], static fn($v) => $v !== null && $v !== ''),
+            ], static fn($v) => $v !== null && $v !== '');
+
+            return $this->criar($d, $pagamento, 'cartao');
+        }
+
+        // ESTA API NÃO ACEITA TOKEN DE NAVEGADOR de outra adquirente. Se só
+        // veio isso, não há como cobrar aqui — e mandar assim mesmo devolve
         // uma recusa sem sentido, gastando uma tentativa no emissor.
         if ($pan === '') {
             $c = $this->classificar(PagamentoClassificacao::ERRO_TECNICO, 'sem_dados_do_cartao');
-            $c->mensagemAdquirente = 'A Cielo exige os dados do cartão; só havia token de outra adquirente.';
+            $c->mensagemAdquirente = 'A Cielo exige os dados do cartão ou um CardToken dela; só havia token de outra adquirente.';
             return $c;
         }
 

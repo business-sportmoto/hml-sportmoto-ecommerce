@@ -208,24 +208,34 @@ class PagamentoRoteador
 
         $codigo = (string) ($cfg['adquirente'] ?? '');
 
-        // CARTAO SALVO NAO ROTEIA: o token so vale na adquirente que o emitiu.
+        // TOKEN DE CARTAO SO VALE ONDE NASCEU.
         //
-        // Apresenta-lo a outra nao daria fallback, daria uma recusa sem
-        // sentido — ela nao reconhece o ponteiro. Entao quando o pagamento usa
-        // um cartao salvo, TODO no de tentativa passa a apontar para a dona
-        // dele, e um no configurado para outra adquirente e pulado.
+        // Um cartao salvo pode existir em VARIAS adquirentes (uma referencia
+        // por cofre, em cartoes_salvos_adquirentes) — e so nessas ele pode
+        // ser apresentado. Um cartao novo existe em UMA: a que emitiu o token
+        // no navegador. Nos dois casos o checkout manda a lista permitida;
+        // no de tentativa fora dela e pulado, nao "tentado para ver".
         //
-        // Consequencia honesta: cartao salvo + adquirente fora do ar = falha.
-        // Nao ha para onde cair, e o cliente escolhe outra forma.
+        // Apresentar a outra nao daria fallback, daria uma recusa sem
+        // sentido — ela nao reconhece o ponteiro — e gastaria uma tentativa.
+        //
+        // Consequencia honesta: cartao salvo em uma so adquirente + ela fora
+        // do ar = falha. Nao ha para onde cair, e o cliente escolhe outra
+        // forma. Salvo em duas, cai para a segunda sem pedir nada.
+        $permitidas = array_values(array_filter(array_map('strval',
+            (array) ($ctx['adquirentes_permitidas'] ?? [])
+        )));
+        // Compatibilidade: quem ainda manda `adquirente_fixa` (string).
         $fixa = (string) ($ctx['adquirente_fixa'] ?? '');
+        if ($fixa !== '' && !in_array($fixa, $permitidas, true)) $permitidas[] = $fixa;
 
-        if ($fixa !== '' && $codigo !== $fixa) {
+        if ($permitidas !== [] && !in_array($codigo, $permitidas, true)) {
             $this->gravarTentativa($ctx, $r, $noRef, $codigo, null, 'pulado',
                 'cartao_de_outra_adquirente',
-                'Cartao salvo pertence a ' . $fixa . '; este no usa ' . $codigo);
+                'Cartao existe em ' . implode(', ', $permitidas) . '; este no usa ' . $codigo);
 
-            LogService::info('No pulado: cartao salvo e de outra adquirente', [
-                'no' => $noRef, 'no_usa' => $codigo, 'cartao_e_de' => $fixa,
+            LogService::info('No pulado: cartao nao existe nesta adquirente', [
+                'no' => $noRef, 'no_usa' => $codigo, 'cartao_existe_em' => $permitidas,
                 'order_id_loja' => $ctx['order_id_loja'] ?? null,
             ], 'pagamento');
 
@@ -253,6 +263,16 @@ class PagamentoRoteador
         $tentativaId = $this->gravarTentativa($ctx, $r, $noRef, $codigo, $tentativaRef, 'erro', null, null);
 
         $dados = $ctx + ['tentativa_ref' => $tentativaRef];
+
+        // A REFERENCIA DO CARTAO E POR ADQUIRENTE. O checkout manda o mapa
+        // `cartao_refs` (codigo => customer_ref/card_ref); aqui entra so a
+        // desta adquirente, para o adapter nao precisar conhecer o mapa nem
+        // arriscar usar a referencia de outra.
+        $refs = (array) ($ctx['cartao_refs'][$codigo] ?? []);
+        if ($refs !== []) {
+            $dados['card_ref']     = (string) ($refs['card_ref'] ?? '');
+            $dados['customer_ref'] = (string) ($refs['customer_ref'] ?? '');
+        }
 
         try {
             $c = match ((string) ($ctx['metodo'] ?? '')) {

@@ -1696,10 +1696,13 @@ final class BiService
     /**
      * Uso de IA por provedor/modelo.
      *
-     * ⚠ NÃO cobre as respostas das perguntas de produto: aquele
-     * caminho (GeminiQAService) não registra o modelo em lugar nenhum.
-     * O que sai daqui é o que passou pelo roteador de IA — geração de
-     * conteúdo, imagens e o atendimento via CHAT.
+     * Cobre tudo que passou pelo roteador de IA: geração de conteúdo,
+     * imagens, o atendimento via CHAT e — desde 03/09/2026 — as respostas
+     * das perguntas de produto (tipo `qa_produto`).
+     *
+     * ⚠ As perguntas respondidas ANTES dessa data não aparecem: naquele
+     * caminho o GeminiQAService chamava o Gemini direto e não registrava
+     * nada. Não há como reconstruir o modelo delas.
      *
      * As falhas entram na conta com provedor '(não roteado)'. Contar
      * só as concluídas esconderia exatamente o que um diagnóstico

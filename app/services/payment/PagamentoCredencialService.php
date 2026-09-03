@@ -244,6 +244,31 @@ class PagamentoCredencialService
         return '';
     }
 
+    /**
+     * Credencial EXTRA de uma adquirente, só do `.env`, com a mesma regra de
+     * ambiente do resto: em sandbox, os nomes de teste vêm primeiro.
+     *
+     * Serve para o que não tem coluna própria em pgto_gateways — hoje, o par
+     * OAuth2 do Silent Order Post da Cielo (`CIELO_SOP_CLIENT_ID` /
+     * `CIELO_SOP_CLIENT_SECRET`, ou `SANDBOX_CIELO_SOP_*`).
+     */
+    public static function envExtra(string $codigo, string $campo): string
+    {
+        $env     = self::prefixoEnv($codigo);
+        $linha   = self::linha($codigo);
+        $sandbox = $linha !== null ? (bool) $linha['sandbox'] : false;
+
+        $nomes = $sandbox
+            ? [$env . 'TEST_' . $campo, 'SANDBOX_' . $env . $campo, $env . $campo]
+            : [$env . $campo];
+
+        foreach ($nomes as $k) {
+            $v = self::env($k);
+            if ($v !== '') return $v;
+        }
+        return '';
+    }
+
     /** mercadopago → MP_ ; safrapay → SAFRAPAY_ */
     private static function prefixoEnv(string $codigo): string
     {

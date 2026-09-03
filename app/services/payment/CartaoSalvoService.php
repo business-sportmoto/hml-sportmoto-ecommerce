@@ -94,33 +94,67 @@ class CartaoSalvoService
     }
 
     /**
-     * @return true|null|false  true = removeu · null = nada a remover lá ·
-     *                          false = a adquirente recusou (não apagar local)
+     * Remove o cartão em TODAS as adquirentes onde ele existe.
+     *
+     * Um cartão pode ter referência no Mercado Pago e na Cielo ao mesmo
+     * tempo (ver cartoes_salvos_adquirentes). Remover só na primeira deixaria
+     * o outro cofre com um cartão cobrável e sem dono conhecido.
+     *
+     * @return true|null|false  true = removeu onde dava · null = nada a
+     *                          remover lá · false = alguma adquirente com
+     *                          remoção RECUSOU (não apagar local)
      */
     private function removerNaAdquirente(array $cartao): ?bool
     {
-        $codigo   = (string) ($cartao['adquirente'] ?? '');
-        $customer = (string) ($cartao['customer_ref'] ?? '');
-        $card     = (string) ($cartao['card_ref'] ?? '');
+        $refs = (new CartaoSalvo())->todasAsRefs((int) $cartao['id']);
 
-        // Cartão antigo, salvo antes de existir o par customer/card: não há o
-        // que remover lá, e travar a exclusão prenderia o cliente a um
-        // registro que ele não consegue apagar.
-        if ($codigo === '' || $customer === '' || $card === '') return null;
-
-        $adapter = AdquirenteFactory::porCodigo($codigo);
-
-        // Adquirente sem adapter de remoção (Malga, legado): o registro local
-        // sai, e o log fica para reconciliar depois.
-        if ($adapter === null || !method_exists($adapter, 'removerCartao')) {
-            LogService::warning('Cartao removido so localmente', [
-                'adquirente' => $codigo,
-                'motivo'     => 'adapter sem removerCartao',
-            ], 'pagamento');
-            return null;
+        // Legado sem linha filha: cai para as colunas antigas do próprio
+        // cartão, que guardam a primeira (e única) adquirente.
+        if ($refs === [] && !empty($cartao['adquirente'])) {
+            $refs = [[
+                'codigo'       => (string) $cartao['adquirente'],
+                'customer_ref' => $cartao['customer_ref'] ?? null,
+                'card_ref'     => $cartao['card_ref'] ?? null,
+            ]];
         }
 
-        return $adapter->removerCartao($customer, $card) ? true : false;
+        if ($refs === []) return null;
+
+        $resultado = null;   // null = nada removível encontrado ainda
+
+        foreach ($refs as $ref) {
+            $codigo   = (string) ($ref['codigo'] ?? '');
+            $customer = (string) ($ref['customer_ref'] ?? '');
+            $card     = (string) ($ref['card_ref'] ?? '');
+
+            if ($codigo === '' || $card === '') continue;
+
+            $adapter = AdquirenteFactory::porCodigo($codigo);
+
+            // Sem endpoint de remoção — a Cielo não publica nenhum para o
+            // Cartão Protegido; a Malga também não tinha. O registro local
+            // sai e o log fica para reconciliar. Não é falha: é limitação
+            // deles, e travar o cliente por isso seria pior.
+            if ($adapter === null || !method_exists($adapter, 'removerCartao')) {
+                LogService::warning('Cartao removido so localmente nesta adquirente', [
+                    'adquirente' => $codigo, 'motivo' => 'adapter sem removerCartao',
+                ], 'pagamento');
+                continue;
+            }
+
+            // Mercado Pago exige o par customer + card.
+            if ($customer === '') continue;
+
+            $ok = $adapter->removerCartao($customer, $card);
+
+            // Uma recusa de verdade (não-404) segura a exclusão local: dizer
+            // "removido" com o cartão ainda cobrável lá seria mentir.
+            if (!$ok) return false;
+
+            $resultado = true;
+        }
+
+        return $resultado;
     }
 
     private function promoverMaisRecente(int $clienteId): void

@@ -202,10 +202,17 @@ class PerguntaController extends Controller {
         try {
             $contexto = GeminiQAService::montarContexto($produtoId);
             $svc      = new GeminiQAService();
-            $r        = $svc->responder($contexto, $pergunta);
+            // O meta não entra no prompt — serve para auditar a geração na
+            // Central (quem perguntou, de onde, sobre qual produto).
+            $r        = $svc->responder($contexto, $pergunta, [
+                'origem'     => 'loja',
+                'produto_id' => $produtoId,
+                'cliente_id' => $clienteId,
+                'ip'         => $ip,
+            ]);
 
             if ($r['ok'] && $r['fonte'] === 'ia' && !empty($r['resposta'])) {
-                $this->perguntas->salvarRespostaIA($id, $r['resposta']);
+                $this->perguntas->salvarRespostaIA($id, $r['resposta'], $r['geracao_id'] ?? null);
                 $this->json([
                     'ok'        => true,
                     'msg'       => 'Resposta gerada!',

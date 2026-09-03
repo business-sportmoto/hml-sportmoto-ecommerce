@@ -332,9 +332,23 @@ if (!$faltaNovas) {
           "gerações de IA: {$ia['total']}  ·  {$ia['modelos']} modelos  ·  "
           . "{$ia['falhas']} falhas  ·  US\$ {$ia['custo']} reais");
 
-    if ((int)$q['por_ia'] > 0) {
-        linha('aviso', 'qual modelo respondeu cada pergunta NÃO é gravado',
-              'o GeminiQAService salva só o texto; nada vai para ia_geracoes');
+    // Desde 03/09/2026 a Q&A passa pela Central: cada resposta gera uma linha
+    // em ia_geracoes e produto_perguntas.ia_geracao_id aponta para ela. O que
+    // resta sem procedência são as respostas ANTERIORES a essa mudança — não
+    // dá para reconstruir de onde vieram, e o aviso precisa dizer isso em vez
+    // de acusar um defeito que não existe mais.
+    $semProc = (int) $db->query(
+        "SELECT COUNT(*) FROM produto_perguntas
+          WHERE resposta_fonte = 'ia' AND ia_geracao_id IS NULL"
+    )->fetchColumn();
+
+    if ($semProc > 0) {
+        linha('aviso', "{$semProc} resposta(s) de IA sem procedência",
+              'respondidas antes da migração da Q&A para a Central — o modelo '
+              . 'não foi gravado e não há como recuperar');
+    } elseif ((int)$q['por_ia'] > 0) {
+        linha('ok', 'toda resposta de IA tem procedência registrada',
+              'produto_perguntas.ia_geracao_id -> ia_geracoes');
     }
 }
 

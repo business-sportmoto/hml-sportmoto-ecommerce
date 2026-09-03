@@ -174,10 +174,17 @@ class AppPerguntasController extends AppApiController
     {
         try {
             $contexto = GeminiQAService::montarContexto($produtoId);
-            $r        = (new GeminiQAService())->responder($contexto, $pergunta);
+            // O meta não entra no prompt — serve para auditar a geração na
+            // Central (quem perguntou, de onde, sobre qual produto).
+            $r        = (new GeminiQAService())->responder($contexto, $pergunta, [
+                'origem'     => 'app',
+                'produto_id' => $produtoId,
+                'cliente_id' => (int)$this->clienteId,
+                'ip'         => (string)$this->ipReal(),
+            ]);
 
             if (!empty($r['ok']) && ($r['fonte'] ?? '') === 'ia' && !empty($r['resposta'])) {
-                $modelo->salvarRespostaIA($perguntaId, (string)$r['resposta']);
+                $modelo->salvarRespostaIA($perguntaId, (string)$r['resposta'], $r['geracao_id'] ?? null);
 
                 return [
                     'fonte'    => 'ia',

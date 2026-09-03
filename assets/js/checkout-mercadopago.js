@@ -191,6 +191,86 @@
     },
 
     /**
+     * Só o SDK, sem montar iframe nenhum — para a tela de inputs próprios.
+     *
+     * É o modo "core methods": o número vem de <input>s da página e vai
+     * para mp.createCardToken. O PAN passa pela nossa página (SAQ A-EP),
+     * nunca pelo nosso servidor. Escolha registrada no Vault
+     * (pagamentos-cartao-multi-adquirente): é o que permite salvar o mesmo
+     * cartão no Mercado Pago E na Cielo com uma digitação só.
+     */
+    initCore: function (opts) {
+      if (mp) return Promise.resolve(true);
+      if (!opts || !opts.publicKey) return Promise.reject(new Error('Chave pública do Mercado Pago ausente.'));
+
+      var self = this;
+      return new Promise(function (resolve, reject) {
+        self._carregarSdk(function (ok) {
+          if (!ok) { reject(new Error('Não foi possível carregar o Mercado Pago.')); return; }
+          try {
+            mp = new window.MercadoPago(opts.publicKey, { locale: 'pt-BR' });
+            pronto = true;
+            resolve(true);
+          } catch (e) { reject(e); }
+        });
+      });
+    },
+
+    /**
+     * Tokeniza a partir de campos NOSSOS (core method), e não dos iframes.
+     *
+     *   tokenizarCampos({ numero, validade: 'MM/AA', cvv, titular, documento })
+     *   → { tokenId, brand, last4, bin }
+     */
+    tokenizarCampos: function (d) {
+      var self = this;
+      d = d || {};
+
+      var numero = String(d.numero || '').replace(/\D/g, '');
+      var val    = String(d.validade || '').replace(/\D/g, '');
+      var cvv    = String(d.cvv || '').replace(/\D/g, '');
+      var nome   = String(d.titular || '').trim();
+      var doc    = String(d.documento || '').replace(/\D/g, '');
+
+      if (!mp) return Promise.reject(new Error('Mercado Pago não iniciado.'));
+      if (numero.length < 13) return Promise.reject(new Error('Número do cartão inválido.'));
+      if (val.length !== 4)   return Promise.reject(new Error('Validade inválida (MM/AA).'));
+      if (cvv.length < 3)     return Promise.reject(new Error('Código de segurança inválido.'));
+      if (nome.length < 3)    return Promise.reject(new Error('Informe o nome como está impresso no cartão.'));
+      if (!cpfValido(doc) && !cnpjValido(doc)) {
+        return Promise.reject(new Error(doc.length > 11 ? 'CNPJ do titular inválido.' : 'CPF do titular inválido.'));
+      }
+
+      var bin = numero.slice(0, 6);
+
+      // Bandeira antes do token: o servidor grava e a Orders API pede o id.
+      return mp.getPaymentMethods({ bin: bin }).then(function (r) {
+        var achado = r && r.results && r.results[0];
+        bandeira = achado ? achado.id : null;
+        return mp.createCardToken({
+          cardNumber:           numero,
+          cardholderName:       nome,
+          cardExpirationMonth:  val.slice(0, 2),
+          cardExpirationYear:   '20' + val.slice(2, 4),
+          securityCode:         cvv,
+          identificationType:   doc.length > 11 ? 'CNPJ' : 'CPF',
+          identificationNumber: doc
+        });
+      }).then(function (token) {
+        if (!token || !token.id) throw new Error('Não foi possível validar o cartão no Mercado Pago.');
+        return {
+          tokenId: token.id,
+          brand:   bandeira,
+          last4:   token.last_four_digits || numero.slice(-4),
+          bin:     token.first_six_digits || bin
+        };
+      }).catch(function (err) {
+        console.error('[MP] createCardToken (core):', err);
+        throw new Error(self._mensagemDe(err));
+      });
+    },
+
+    /**
      * Tokeniza um cartao JA SALVO, a partir do card_id guardado.
      *
      * POR QUE O CVV E PEDIDO DE NOVO:

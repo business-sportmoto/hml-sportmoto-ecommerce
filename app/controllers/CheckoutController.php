@@ -2608,9 +2608,12 @@ class CheckoutController extends Controller {
     public function paymentCardAdd(): void {
         $this->requireLogin();
 
-        $adq = $this->adquirenteDoCartao();
+        // TODAS as adquirentes em que o navegador consegue tokenizar — o
+        // cartao vai para cada cofre com uma digitacao so.
+        $conjunto = $this->adquirentesParaSalvar();
+        $adq      = $this->adquirenteDoCartao();
 
-        if ($adq === null) {
+        if ($conjunto === [] && $adq === null) {
             // Volta ao passo de pagamento com o aviso, em vez de uma pagina de
             // erro: o cliente ainda pode pagar com Pix ou boleto, e uma tela
             // sem saida no meio do checkout so faz ele abandonar.
@@ -2620,11 +2623,20 @@ class CheckoutController extends Controller {
             return;
         }
 
-        // A view le estas constantes para escolher o glue de tokenizacao.
-        if (!defined('CHECKOUT_ADQUIRENTE'))  define('CHECKOUT_ADQUIRENTE',  $adq['codigo']);
-        if (!defined('CHECKOUT_PUBLIC_KEY'))  define('CHECKOUT_PUBLIC_KEY',  $adq['public_key']);
-        if (!defined('CHECKOUT_CLIENT_ID'))   define('CHECKOUT_CLIENT_ID',   $adq['client_id']);
-        if (!defined('CHECKOUT_SANDBOX'))     define('CHECKOUT_SANDBOX',     $adq['sandbox']);
+        // A view le estas constantes. CHECKOUT_ADQUIRENTES e o conjunto novo
+        // (inputs proprios, N cofres); as demais seguem para o caminho legado
+        // da Malga enquanto ela nao sai de cena.
+        if (!defined('CHECKOUT_ADQUIRENTES')) define('CHECKOUT_ADQUIRENTES', json_encode(
+            array_map(static fn($a) => array_diff_key($a, ['gateway_id' => 1]), $conjunto),
+            JSON_UNESCAPED_SLASHES
+        ));
+        if ($adq !== null) {
+            if (!defined('CHECKOUT_ADQUIRENTE'))  define('CHECKOUT_ADQUIRENTE',  $adq['codigo']);
+            if (!defined('CHECKOUT_PUBLIC_KEY'))  define('CHECKOUT_PUBLIC_KEY',  $adq['public_key']);
+            if (!defined('CHECKOUT_CLIENT_ID'))   define('CHECKOUT_CLIENT_ID',   $adq['client_id']);
+            if (!defined('CHECKOUT_SANDBOX'))     define('CHECKOUT_SANDBOX',     $adq['sandbox']);
+        }
+        $adq = $adq ?? ['codigo' => 'multi', 'client_id' => '', 'public_key' => '', 'sandbox' => false];
 
         // Compatibilidade com a view atual enquanto a Malga nao sai de cena.
         if ($adq['codigo'] === 'malga') {
@@ -2942,6 +2954,60 @@ class CheckoutController extends Controller {
      *
      * @return array{codigo:string, public_key:string, client_id:string, sandbox:bool}|null
      */
+    /**
+     * Adquirentes ATIVAS em que o navegador consegue tokenizar o cartão.
+     *
+     * Cada uma entra com o que o seu script precisa — e nada além disso:
+     *   mercadopago → public key (core method createCardToken)
+     *   cielo       → AccessToken de 20 min do Silent Order Post (nasce no
+     *                 servidor; o par OAuth2 nunca sai daqui)
+     *
+     * A tela de salvar cartão tokeniza em TODAS em paralelo: é o que faz um
+     * cartão salvo existir em vários cofres e cair de uma adquirente para
+     * outra sem pedir nada ao cliente. Ver Vault,
+     * pagamentos-cartao-multi-adquirente.
+     *
+     * @return array<string, array{gateway_id:int, publicKey?:string, sandbox?:bool,
+     *                             accessToken?:string, environment?:string, provider?:string}>
+     */
+    private function adquirentesParaSalvar(): array
+    {
+        $pdo = Database::getInstance()->getConnection();
+        $st  = $pdo->query("SELECT id, codigo FROM pgto_gateways WHERE ativo = 1");
+        $ativas = [];
+        foreach (($st ? $st->fetchAll(\PDO::FETCH_ASSOC) : []) as $g) {
+            $ativas[(string) $g['codigo']] = (int) $g['id'];
+        }
+
+        $out = [];
+
+        if (isset($ativas['mercadopago'])) {
+            $c = PagamentoCredencialService::para('mercadopago');
+            if ($c['public_key'] !== '') {
+                $out['mercadopago'] = [
+                    'gateway_id' => $ativas['mercadopago'],
+                    'publicKey'  => $c['public_key'],
+                    'sandbox'    => (bool) $c['sandbox'],
+                ];
+            }
+        }
+
+        if (isset($ativas['cielo'])) {
+            try {
+                $sop = (new CieloAdapter())->sopAcesso();
+                if ($sop !== null) {
+                    $out['cielo'] = ['gateway_id' => $ativas['cielo']] + $sop;
+                }
+            } catch (\Throwable $e) {
+                // Sem o SOP a Cielo fica de fora desta tela; o cartão ainda
+                // salva nas outras. Derrubar a página aqui seria pior.
+                LogService::exception($e, 'warning', 'pagamento', ['acao' => 'sop_acesso']);
+            }
+        }
+
+        return $out;
+    }
+
     private function adquirenteDoCartao(): ?array
     {
         $pdo = Database::getInstance()->getConnection();
@@ -3258,20 +3324,40 @@ class CheckoutController extends Controller {
         $principal = (int) ($_POST['padrao'] ?? 0);
         $apelido   = $apelido !== '' ? $apelido : null;
 
-        if (empty($tokenId)) {
+        // UM TOKEN POR ADQUIRENTE. A tela nova tokeniza em todas as
+        // adquirentes ativas e manda `tokens[codigo]`; a antiga manda so
+        // `gateway_token`. Os dois formatos entram no mesmo mapa.
+        //
+        //   Malga         UUID com hifens  (8-4-4-4-12)
+        //   Mercado Pago  32 hexadecimais, sem hifen (uso unico)
+        //   Cielo         UUID — e ja e o CardToken do cofre, nao um token
+        //                 temporario: o Silent Order Post guardou ao tokenizar
+        $uuid = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i';
+        $hex  = '/^[0-9a-f]{32,33}$/i';
+
+        $tokens = [];
+        foreach ((array) ($_POST['tokens'] ?? []) as $cod => $tk) {
+            $cod = strtolower(trim((string) $cod));
+            $tk  = trim((string) $tk);
+            if ($cod === '' || $tk === '') continue;
+            if (!preg_match($uuid, $tk) && !preg_match($hex, $tk)) {
+                $this->json(['ok' => false, 'msg' => 'Token inválido. Atualize a página e tente novamente.']);
+            }
+            $tokens[$cod] = $tk;
+        }
+
+        if ($tokens === [] && $tokenId !== '') {
+            if (!preg_match($uuid, $tokenId) && !preg_match($hex, $tokenId)) {
+                $this->json(['ok' => false, 'msg' => 'Token inválido. Atualize a página e tente novamente.']);
+            }
+            // Caminho legado: uma adquirente so, escolhida pelo servidor.
+            $tokens[$this->adquirenteDoCartao()['codigo'] ?? 'malga'] = $tokenId;
+        }
+
+        if ($tokens === []) {
             $this->json(['ok' => false, 'msg' => 'Token do cartão ausente. Tente novamente.']);
         }
-        // CADA ADQUIRENTE TEM UM FORMATO DE TOKEN.
-        //   Malga         UUID com hifens  (8-4-4-4-12)
-        //   Mercado Pago  32 hexadecimais, sem hifen
-        // A regex antiga so aceitava UUID, entao todo token do Mercado Pago
-        // era recusado aqui com "Token invalido" — sem pista do motivo.
-        $formatoOk = preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $tokenId)
-                  || preg_match('/^[0-9a-f]{32,33}$/i', $tokenId);
-
-        if (!$formatoOk) {
-            $this->json(['ok' => false, 'msg' => 'Token inválido. Atualize a página e tente novamente.']);
-        }
+        $tokenId = reset($tokens);
 
         // Documento do titular. O Mercado Pago exige para tokenizar, e guardar
         // evita pedir de novo na proxima compra.
