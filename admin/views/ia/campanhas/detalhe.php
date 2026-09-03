@@ -6,7 +6,10 @@
 if (!function_exists('ia_e')) {
     function ia_e($v): string { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); }
 }
-include __DIR__ . '/../_estilos.php';
+// O CSS do modulo vive em admin/assets/css/pages.css (bloco
+// "admin/views/ia/**"), carregado pelo layout do painel. O pacote
+// original injetava um _estilos.php por view; ao unificar a folha,
+// esse include ficou apontando para um arquivo que nao existe.
 ?>
 <div class="ia_pagina">
 
@@ -43,8 +46,19 @@ include __DIR__ . '/../_estilos.php';
   var CSRF = <?= json_encode($csrf) ?>;
 
   // Icones do HTML montado em JS: o IconLibrary so existe no servidor.
+  // Icones do HTML montado em JS. Chaves SEMANTICAS (nao classes de fonte):
+  // a biblioteca nao tem "pause", entao pausa usa sync-disabled, que comunica
+  // "parado" melhor que qualquer alternativa disponivel.
   var IA_ICO = <?= json_encode([
-      'publicado' => IconLibrary::render('check', 'ia_ico', ['aria-hidden' => 'true']),
+      'publicado' => IconLibrary::render('check',         'ia_ico', ['aria-hidden' => 'true']),
+      'rascunho'  => IconLibrary::render('pencil',        'ia_ico', ['aria-hidden' => 'true']),
+      'pausada'   => IconLibrary::render('sync-disabled', 'ia_ico', ['aria-hidden' => 'true']),
+      'concluida' => IconLibrary::render('check-circle',  'ia_ico', ['aria-hidden' => 'true']),
+      'cancelada' => IconLibrary::render('cancel',        'ia_ico', ['aria-hidden' => 'true']),
+      'arquivada' => IconLibrary::render('inbox',         'ia_ico', ['aria-hidden' => 'true']),
+      'iniciar'   => IconLibrary::render('play-arrow',    'ia_ico', ['aria-hidden' => 'true']),
+      'refazer'   => IconLibrary::render('reload',        'ia_ico', ['aria-hidden' => 'true']),
+      'aprovar'   => IconLibrary::render('shield-check',  'ia_ico', ['aria-hidden' => 'true']),
   ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
   var campId = <?= (int) $campanha_id ?>;
   var statusAtual = '';
@@ -96,9 +110,12 @@ include __DIR__ . '/../_estilos.php';
   $(document).on('keydown', function (e) { if (e.key === 'Escape') { drawerFechar(); } });
 
   /* ── Ações contextuais do topo ── */
+  // O SVG entra como HTML; o rotulo, como TEXTO — assim um rotulo com
+  // contador nunca vira markup por acidente.
   function botao(rotulo, icone, primario, fn) {
-    return $('<button type="button" class="ia_btn' + (primario ? ' ia_btn_primario' : '') + '">')
-      .html('<i class="bi ' + icone + '"></i> ' + rotulo).on('click', fn);
+    var $b = $('<button type="button" class="ia_btn' + (primario ? ' ia_btn_primario' : '') + '">');
+    $b.html(icone || '').append(document.createTextNode(' ' + rotulo));
+    return $b.on('click', fn);
   }
   function acaoSimples(url, confirmar) {
     return function () {
@@ -114,20 +131,20 @@ include __DIR__ . '/../_estilos.php';
     var $a = $('#ia_d_acoes');
     $a.find('button').remove();
     if (c.status === 'gerando') {
-      $a.append(botao('Pausar', 'bi-pause-circle', false, acaoSimples('/admin/ia/campanha/pausar')));
+      $a.append(botao('Pausar', IA_ICO.pausada, false, acaoSimples('/admin/ia/campanha/pausar')));
     }
     if (c.status === 'pausada' || c.status === 'rascunho') {
-      $a.append(botao(c.status === 'rascunho' ? 'Iniciar' : 'Retomar', 'bi-play-circle', true, acaoSimples('/admin/ia/campanha/' + (c.status === 'rascunho' ? 'iniciar' : 'retomar'))));
-      $a.append(botao('Cancelar', 'bi-slash-circle', false, acaoSimples('/admin/ia/campanha/cancelar', 'Cancelar a campanha? Gerações na fila serão canceladas.')));
+      $a.append(botao(c.status === 'rascunho' ? 'Iniciar' : 'Retomar', IA_ICO.iniciar, true, acaoSimples('/admin/ia/campanha/' + (c.status === 'rascunho' ? 'iniciar' : 'retomar'))));
+      $a.append(botao('Cancelar', IA_ICO.cancelada, false, acaoSimples('/admin/ia/campanha/cancelar', 'Cancelar a campanha? Gerações na fila serão canceladas.')));
     }
     if (cont.falhas > 0 && (c.status === 'concluida' || c.status === 'pausada' || c.status === 'gerando')) {
-      $a.append(botao('Refazer falhas (' + cont.falhas + ')', 'bi-arrow-repeat', false, acaoSimples('/admin/ia/campanha/refazer-falhas')));
+      $a.append(botao('Refazer falhas (' + cont.falhas + ')', IA_ICO.refazer, false, acaoSimples('/admin/ia/campanha/refazer-falhas')));
     }
     if (cont.concluidas > 0) {
-      $a.append(botao('Aprovar concluídas', 'bi-patch-check', false, acaoSimples('/admin/ia/campanha/aprovar-concluidas')));
+      $a.append(botao('Aprovar concluídas', IA_ICO.aprovar, false, acaoSimples('/admin/ia/campanha/aprovar-concluidas')));
     }
     if (c.status === 'concluida' || c.status === 'cancelada') {
-      $a.append(botao('Arquivar', 'bi-archive', false, acaoSimples('/admin/ia/campanha/arquivar')));
+      $a.append(botao('Arquivar', IA_ICO.arquivada, false, acaoSimples('/admin/ia/campanha/arquivar')));
     }
   }
 

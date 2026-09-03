@@ -6,7 +6,10 @@
 if (!function_exists('ia_e')) {
     function ia_e($v): string { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); }
 }
-include __DIR__ . '/../_estilos.php';
+// O CSS do modulo vive em admin/assets/css/pages.css (bloco
+// "admin/views/ia/**"), carregado pelo layout do painel. O pacote
+// original injetava um _estilos.php por view; ao unificar a folha,
+// esse include ficou apontando para um arquivo que nao existe.
 
 $grupos = [];
 foreach ($tipos as $t) {

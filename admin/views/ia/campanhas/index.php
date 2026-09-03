@@ -6,7 +6,10 @@
 if (!function_exists('ia_e')) {
     function ia_e($v): string { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); }
 }
-include __DIR__ . '/../_estilos.php';
+// O CSS do modulo vive em admin/assets/css/pages.css (bloco
+// "admin/views/ia/**"), carregado pelo layout do painel. O pacote
+// original injetava um _estilos.php por view; ao unificar a folha,
+// esse include ficou apontando para um arquivo que nao existe.
 ?>
 <div class="ia_pagina">
 
@@ -40,17 +43,22 @@ include __DIR__ . '/../_estilos.php';
 
   // Icones do HTML montado em JS: o IconLibrary so existe no servidor.
   var IA_ICO = <?= json_encode([
-      'continuar' => IconLibrary::render('pencil', 'ia_ico', ['aria-hidden' => 'true']),
-      'abrir'     => IconLibrary::render('grid',   'ia_ico', ['aria-hidden' => 'true']),
+      'continuar' => IconLibrary::render('pencil',        'ia_ico', ['aria-hidden' => 'true']),
+      'abrir'     => IconLibrary::render('grid',          'ia_ico', ['aria-hidden' => 'true']),
+      'rascunho'  => IconLibrary::render('pencil',        'ia_ico', ['aria-hidden' => 'true']),
+      'pausada'   => IconLibrary::render('sync-disabled', 'ia_ico', ['aria-hidden' => 'true']),
+      'concluida' => IconLibrary::render('check-circle',  'ia_ico', ['aria-hidden' => 'true']),
+      'cancelada' => IconLibrary::render('cancel',        'ia_ico', ['aria-hidden' => 'true']),
+      'arquivada' => IconLibrary::render('inbox',         'ia_ico', ['aria-hidden' => 'true']),
   ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 
   var PILL = {
-    rascunho:  ['ia_pill_neutra', 'bi-pencil',        'Rascunho'],
-    gerando:   ['ia_pill_azul',   '',                  'Gerando'],
-    pausada:   ['ia_pill_neutra', 'bi-pause-circle',   'Pausada'],
-    concluida: ['ia_pill_ok',     'bi-check-circle',   'Concluída'],
-    cancelada: ['ia_pill_erro',   'bi-slash-circle',   'Cancelada'],
-    arquivada: ['ia_pill_neutra', 'bi-archive',        'Arquivada']
+    rascunho:  ['ia_pill_neutra', 'rascunho',  'Rascunho'],
+    gerando:   ['ia_pill_azul',   '',          'Gerando'],
+    pausada:   ['ia_pill_neutra', 'pausada',   'Pausada'],
+    concluida: ['ia_pill_ok',     'concluida', 'Concluída'],
+    cancelada: ['ia_pill_erro',   'cancelada', 'Cancelada'],
+    arquivada: ['ia_pill_neutra', 'arquivada', 'Arquivada']
   };
 
   function toast(msg, ok) {
@@ -72,7 +80,7 @@ include __DIR__ . '/../_estilos.php';
     $('<p class="ia_camp_nome">').text(c.nome).appendTo($topo);
     var $pill = $('<span class="ia_pill ' + p[0] + '">');
     if (c.status === 'gerando') { $pill.append('<span class="ia_spin"></span> '); }
-    else if (p[1]) { $pill.append('<i class="bi ' + p[1] + '"></i> '); }
+    else if (p[1] && IA_ICO[p[1]]) { $pill.append(IA_ICO[p[1]] + ' '); }
     $pill.append(document.createTextNode(p[2]));
     $pill.appendTo($topo);
     $topo.appendTo($c);

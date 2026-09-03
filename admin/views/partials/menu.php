@@ -285,11 +285,26 @@
         Clips
       </a>
 
-      <a href="<?= BASE_URL ?>/admin/ia/gerar" class="admin-nav-item<?= adminIsActive('/admin/ia') ?>">
+      <?php
+        // adminIsActive() e str_contains puro: '/admin/ia' acenderia os DOIS
+        // itens em /admin/ia/campanhas. Aqui a Central cobre gerar, historico
+        // e config; campanhas tem item proprio.
+        $uriIa       = $_SERVER['REQUEST_URI'] ?? '';
+        $ehCampanhas = str_contains($uriIa, '/admin/ia/campanha');
+        $ehCentral   = str_contains($uriIa, '/admin/ia/') && !$ehCampanhas;
+      ?>
+      <a href="<?= BASE_URL ?>/admin/ia/gerar" class="admin-nav-item<?= $ehCentral ? ' active' : '' ?>">
         <span class="admin-nav-icon">
           <?= IconLibrary::render('wand-stars', 'icon icon--md') ?>
         </span>
         Central de IA
+      </a>
+
+      <a href="<?= BASE_URL ?>/admin/ia/campanhas" class="admin-nav-item<?= $ehCampanhas ? ' active' : '' ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('stacks', 'icon icon--md') ?>
+        </span>
+        Campanhas de IA
       </a>
 
       <a href="<?= BASE_URL ?>/admin/fluxos" class="admin-nav-item<?= adminIsActive('/admin/fluxos') ?>">
