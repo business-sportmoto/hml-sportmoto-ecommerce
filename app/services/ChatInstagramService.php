@@ -548,8 +548,33 @@ class ChatInstagramService
             }
         }
 
-        // ── 2. DM privado (private reply) ──
+        // ── 2. O contato ──
+        //
+        // Ele amarra tag, fluxo e conversa. Nascia só dentro do ramo do DM
+        // abaixo, e a receita "por fluxo" desliga o DM de propósito — então a
+        // única receita feita para entregar a conversa ao fluxo era justamente
+        // a que não criava contato, e o fluxo nunca começava. Sem erro, sem
+        // sessão, sem log: o comentário casava e morria ali.
+        //
+        // `garantirContato` é upsert por wa_id, então criar aqui não conflita
+        // com o ramo do DM, que pode reatribuir com o IGSID que a API devolve
+        // (é o id certo para mensagem, e nem sempre igual ao do comentário).
         $contatoId = null;
+        $precisaContato = (int)$regra['enviar_dm'] === 1
+                       || !empty($regra['tag_id'])
+                       || !empty($regra['fluxo_id']);
+
+        if ($precisaContato && $fromId !== '') {
+            try {
+                $contatoId = $this->garantirContato($fromId, $fromUser, $conta) ?: null;
+            } catch (Throwable $e) {
+                $this->logar('error', 'ig: falha ao criar contato do comentário', [
+                    'from_ig_id' => $fromId, 'erro' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        // ── 3. DM privado (private reply) ──
         if ((int)$regra['enviar_dm'] === 1 && ChatConfig::bool('ig_dm_por_comentario', true)) {
             $exigeSeguidor = (int)($regra['exigir_seguidor'] ?? 0) === 1;
 
@@ -628,13 +653,13 @@ class ChatInstagramService
             }
         }
 
-        // ── 3. Tag ──
+        // ── 4. Tag ──
         if (!empty($regra['tag_id']) && $contatoId) {
             $this->contatos->aplicarTag($contatoId, (int)$regra['tag_id']);
             $feito[] = 'tag aplicada';
         }
 
-        // ── 4. Fluxo ──
+        // ── 5. Fluxo ──
         if (!empty($regra['fluxo_id']) && $contatoId) {
             try {
                 $sessao = (new ChatFluxoMotor($this->db))->iniciar(

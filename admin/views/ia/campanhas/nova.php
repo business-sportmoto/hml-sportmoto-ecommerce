@@ -28,59 +28,59 @@ foreach ($tipos as $t) {
     </div>
   </div>
 
-  <div class="ia_cartao">
+  <div class="ia_card">
     <h2 class="ia_secao_titulo">1 · Dados e briefing</h2>
     <div class="ia_form_linha">
       <div class="ia_form_grupo">
         <label for="ia_c_nome">Nome da campanha</label>
-        <input type="text" id="ia_c_nome" maxlength="200" placeholder="Ex.: Black Friday Capacetes">
+        <input type="text" id="ia_c_nome" class="ia_input" maxlength="200" placeholder="Ex.: Black Friday Capacetes">
       </div>
       <div class="ia_form_grupo">
         <label for="ia_c_orcamento">Teto de orçamento (US$, opcional)</label>
-        <input type="number" id="ia_c_orcamento" min="0" step="0.01" placeholder="vazio = sem teto">
+        <input type="number" id="ia_c_orcamento" class="ia_input" min="0" step="0.01" placeholder="vazio = sem teto">
         <p class="ia_ajuda">Ao atingir, o driver pausa a campanha e avisa no sino.</p>
       </div>
     </div>
     <div class="ia_form_linha">
       <div class="ia_form_grupo">
         <label for="ia_c_objetivo">Objetivo</label>
-        <input type="text" id="ia_c_objetivo" placeholder="Ex.: ofertas de black friday com até 40% off">
+        <input type="text" id="ia_c_objetivo" class="ia_input" placeholder="Ex.: ofertas de black friday com até 40% off">
       </div>
       <div class="ia_form_grupo">
         <label for="ia_c_publico">Público</label>
-        <input type="text" id="ia_c_publico" placeholder="Ex.: motociclistas urbanos">
+        <input type="text" id="ia_c_publico" class="ia_input" placeholder="Ex.: motociclistas urbanos">
       </div>
     </div>
     <div class="ia_form_linha">
       <div class="ia_form_grupo">
         <label for="ia_c_tom">Tom</label>
-        <input type="text" id="ia_c_tom" placeholder="Ex.: urgente e premium">
+        <input type="text" id="ia_c_tom" class="ia_input" placeholder="Ex.: urgente e premium">
       </div>
       <div class="ia_form_grupo">
         <label for="ia_c_condicao">Condição especial</label>
-        <input type="text" id="ia_c_condicao" placeholder="Ex.: frete grátis acima de R$ 350">
+        <input type="text" id="ia_c_condicao" class="ia_input" placeholder="Ex.: frete grátis acima de R$ 350">
       </div>
     </div>
   </div>
 
-  <div class="ia_cartao">
+  <div class="ia_card">
     <h2 class="ia_secao_titulo">2 · Produtos <span class="ia_celula_sub">(<span id="ia_c_qtd">0</span>/60)</span></h2>
     <div class="ia_form_linha">
       <div class="ia_form_grupo">
         <label for="ia_c_busca">Buscar produto</label>
-        <input type="text" id="ia_c_busca" placeholder="Nome ou código…" autocomplete="off">
+        <input type="text" id="ia_c_busca" class="ia_input" placeholder="Nome ou código…" autocomplete="off">
         <div class="ia_busca_lista" id="ia_c_busca_lista"></div>
       </div>
       <div class="ia_form_grupo">
         <label>Atalho: adicionar em lote</label>
         <div class="ia_form_linha_compacta">
-          <select id="ia_c_categoria">
+          <select id="ia_c_categoria" class="ia_input">
             <option value="">Categoria…</option>
             <?php foreach ($categorias as $cat): ?>
               <option value="<?= (int) $cat['id'] ?>"><?= ia_e($cat['nome']) ?></option>
             <?php endforeach; ?>
           </select>
-          <select id="ia_c_marca">
+          <select id="ia_c_marca" class="ia_input">
             <option value="">Marca…</option>
             <?php foreach ($marcas as $m): ?>
               <option value="<?= (int) $m['id'] ?>"><?= ia_e($m['nome']) ?></option>
@@ -94,7 +94,7 @@ foreach ($tipos as $t) {
     <div class="ia_chips" id="ia_c_chips"></div>
   </div>
 
-  <div class="ia_cartao">
+  <div class="ia_card">
     <h2 class="ia_secao_titulo">3 · Tipos de conteúdo</h2>
     <?php foreach ($grupos as $grupo => $lista): ?>
       <p class="ia_grupo_rotulo"><?= ia_e(ucfirst($grupo)) ?></p>
@@ -106,14 +106,14 @@ foreach ($tipos as $t) {
               <?= ia_e($t['nome']) ?>
             </label>
             <?php if ($t['capacidade'] === 'composicao'): ?>
-              <select class="ia_c_cfg_layout" style="display:none">
+              <select class="ia_c_cfg_layout ia_input" style="display:none">
                 <option value="">Layout…</option>
                 <?php foreach ($layouts as $l): ?>
                   <option value="<?= ia_e($l['codigo']) ?>"><?= ia_e($l['nome']) ?></option>
                 <?php endforeach; ?>
               </select>
             <?php elseif ($t['capacidade'] === 'imagem'): ?>
-              <select class="ia_c_cfg_proporcao" style="display:none">
+              <select class="ia_c_cfg_proporcao ia_input" style="display:none">
                 <option value="1:1">1:1</option><option value="3:2">3:2</option><option value="2:3">2:3</option>
               </select>
             <?php endif; ?>
@@ -123,7 +123,7 @@ foreach ($tipos as $t) {
     <?php endforeach; ?>
   </div>
 
-  <div class="ia_cartao">
+  <div class="ia_card">
     <h2 class="ia_secao_titulo">4 · Revisão e custo</h2>
     <button type="button" class="ia_btn" id="ia_c_estimar"><?= IconLibrary::render('calculadora', 'ia_ico', ['aria-hidden' => 'true']) ?> Calcular estimativa</button>
     <div id="ia_c_estimativa" style="margin-top:12px"></div>

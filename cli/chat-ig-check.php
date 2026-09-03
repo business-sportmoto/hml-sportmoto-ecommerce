@@ -226,6 +226,39 @@ if ($frase !== '') {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+$titulo('5. Erros que ficaram só no log');
+// A resposta pública e a private reply são engolidas por try/catch de propósito:
+// comentário apagado no meio do caminho não pode derrubar a jornada. O preço é
+// que o motivo fica invisível para quem investiga pela tela — o comentário
+// aparece com público=0 e nada explica. Aqui ele aparece.
+try {
+    $logs = $db->query(
+        "SELECT criado_em, nivel, mensagem, contexto FROM logs
+         WHERE mensagem LIKE 'ig:%' OR mensagem LIKE 'ia:%'
+         ORDER BY id DESC LIMIT 8"
+    )->fetchAll(PDO::FETCH_ASSOC);
+
+    if (!$logs) {
+        echo '  ' . $cor('nenhum aviso registrado', 'fraco') . "\n";
+    }
+    foreach ($logs as $l) {
+        $ctx = json_decode((string)$l['contexto'], true) ?: [];
+        $erro = (string)($ctx['erro'] ?? '');
+        echo '  ' . $cor('·', $l['nivel'] === 'error' ? 'ruim' : 'aviso')
+           . " {$l['criado_em']} {$l['mensagem']}\n";
+        if ($erro !== '') echo '      ' . $cor(mb_substr($erro, 0, 160), 'fraco') . "\n";
+
+        if (stripos($erro, 'access token') !== false || stripos($erro, 'OAuth') !== false) {
+            $problemas[] = 'Token do Instagram inválido ou expirado — é o que faz a resposta '
+                         . 'pública falhar em silêncio. Reconecte a conta em /admin/chat/instagram.';
+        }
+    }
+    $problemas = array_values(array_unique($problemas));
+} catch (Throwable $e) {
+    echo '  ' . $cor('não deu para ler a tabela de logs: ' . $e->getMessage(), 'fraco') . "\n";
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 $titulo('Lembretes que não dá para ver no banco');
 echo '  ' . $cor('·', 'fraco') . " Comentário feito pela PRÓPRIA conta é sempre descartado —\n"
    . "    trava fixa no código, não a caixinha da tela. Teste de outro perfil.\n";
