@@ -64,7 +64,9 @@ $db = Database::getInstance()->getConnection();
 $id = $db->query("SELECT id FROM ia_provedores WHERE codigo = 'gemini' LIMIT 1")->fetchColumn();
 
 if ($id === false) {
-    exit("Provedor 'gemini' não existe — rode antes sql/2026-07-16_ia_gemini_seo.sql.\n");
+    exit("Provedor 'gemini' não existe neste banco — as migrations da IA ainda não foram aplicadas aqui." . PHP_EOL
+       . "Rode:  php cli/ia-migrar.php --aplicar" . PHP_EOL
+       . "(sem argumentos ele só mostra o que falta)" . PHP_EOL);
 }
 
 $last4 = IACriptoService::last4((string) GEMINI_API_KEY);

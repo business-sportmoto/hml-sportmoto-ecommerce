@@ -36,12 +36,17 @@ $opts    = getopt('', ['aplicar', 'banco::']);
 $aplicar = array_key_exists('aplicar', $opts);
 $banco   = isset($opts['banco']) && $opts['banco'] !== '' ? (string) $opts['banco'] : DB_NAME;
 
-$pdo = new PDO(
-    'mysql:host=' . DB_HOST . ';port=' . DB_PORT . ';dbname=' . $banco . ';charset=utf8mb4',
-    DB_USER,
-    DB_PASS,
-    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]
-);
+try {
+    $pdo = new PDO(
+        'mysql:host=' . DB_HOST . ';port=' . DB_PORT . ';dbname=' . $banco . ';charset=utf8mb4',
+        DB_USER,
+        DB_PASS,
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]
+    );
+} catch (PDOException $e) {
+    fwrite(STDERR, "Não foi possível conectar em '{$banco}' @ " . DB_HOST . ': ' . $e->getMessage() . PHP_EOL);
+    exit(1);
+}
 
 /* ------------------------------------------------------------------ */
 /* Detectores                                                           */
@@ -71,6 +76,13 @@ $migrations = [
     ['2026-07-16_ia_gemini_seo.sql', 'Gemini + SEO — provedor e tipo seo_pacote', fn () => $temColuna('ia_tipos_conteudo', 'saida')],
     ['2026-07-20_ia_fase2c.sql',     'Fase 2C — compositor de banners',        fn () => $temColuna('ia_geracoes', 'etapa')],
     ['2026-07-20_ia_fase3a.sql',     'Fase 3A — motor de campanhas',           fn () => $temTabela('ia_campanha_tipos')],
+    // Detector: o gemini-3-flash (que não existe na API) já saiu da cadeia.
+    // Os UPDATEs são idempotentes, então um falso "pendente" só repete no-ops.
+    ['2026-09-03_ia_catalogo_ajustes.sql', 'Ajustes de catálogo — pino do SEO, timeouts, referência', function () use ($pdo, $temTabela) {
+        if (!$temTabela('ia_modelos')) { return false; }
+        $ativo = $pdo->query("SELECT ativo FROM ia_modelos WHERE codigo_modelo = 'gemini-3-flash' LIMIT 1")->fetchColumn();
+        return $ativo === false || (int) $ativo === 0;
+    }],
 ];
 
 /* ------------------------------------------------------------------ */
