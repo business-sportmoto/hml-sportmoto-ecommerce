@@ -86,6 +86,8 @@ class IAGeracaoController extends Controller
             // O select de proporção segue o que o modelo primário aceita —
             // oferecer uma opção que o modelo recusa é convite para HTTP 422.
             'proporcoes' => (new IAModelo())->proporcoesDaCapacidade('imagem'),
+            // Layouts do compositor (2C) — o select só aparece no tipo banner.
+            'layouts'    => (new IAComposicaoService())->listarLayouts(),
             'angulos' => (new IAPromptTemplate())->listarAngulos(),
             'imagem'  => (new IARecorteService())->imagemDoProduto($produtoId),
             'csrf'    => $this->tokenCsrf(),
@@ -172,6 +174,10 @@ class IAGeracaoController extends Controller
             'variacoes'        => (int) ($_POST['variacoes'] ?? 1),
             'proporcao'        => trim((string) ($_POST['proporcao'] ?? '1:1')),
             'usar_referencia'  => !empty($_POST['usar_referencia']),
+            // Banner (2C): o pipeline de composição lê estes três.
+            'layout'           => trim((string) ($_POST['layout'] ?? '')),
+            'banner_headline'  => trim((string) ($_POST['banner_headline'] ?? '')),
+            'banner_subtitulo' => trim((string) ($_POST['banner_subtitulo'] ?? '')),
         ]);
 
         $this->json($resultado);
@@ -225,6 +231,32 @@ class IAGeracaoController extends Controller
         }
         readfile($real);
         exit;
+    }
+
+    /** Publica a arte final como banner do site — nasce INATIVO (2C). */
+    public function bannerPublicar()
+    {
+        $this->exigirPermissao('marketing_ia_aprovar');
+        if (!$this->exigirPost()) {
+            return;
+        }
+        $this->verifyCsrf();
+
+        $usuarioId = $this->usuarioAtualId();
+        if ($usuarioId <= 0) {
+            $this->json(['ok' => false, 'msg' => 'Sessão expirada — faça login novamente.']);
+            return;
+        }
+
+        $this->json((new IAComposicaoService())->publicarBanner(
+            (int) ($_POST['geracao_id'] ?? 0),
+            $usuarioId,
+            [
+                'zona_id' => (int) ($_POST['zona_id'] ?? 0),
+                'titulo'  => trim((string) ($_POST['titulo'] ?? '')),
+                'link'    => trim((string) ($_POST['link'] ?? '')),
+            ]
+        ));
     }
 
     /* ------------------------------------------------------------------ */

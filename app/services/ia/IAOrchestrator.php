@@ -67,6 +67,11 @@ class IAOrchestrator
                 'modelo_codigo' => (string) $m['codigo_modelo'],
                 'timeout_s'     => (int) $m['timeout_s'],
                 'params'        => IAModelo::paramsApi($m['params_padrao'] ?? null),
+                // Saída JSON nativa quando o tipo pede: responseMimeType no
+                // Gemini, response_format no OpenAI. É o que faz o fallback
+                // devolver JSON parseável em vez do envelope cru do provedor
+                // — a causa do SEO que era salvo em branco em silêncio.
+                'saida_json'    => (($tipo['saida'] ?? 'texto') === 'json'),
             ];
 
             $resultado = $adapter->gerarTexto($job);
@@ -287,8 +292,14 @@ class IAOrchestrator
     /* Internos                                                            */
     /* ------------------------------------------------------------------ */
 
-    /** Modelos ativos da capacidade, provedor ativo + com chave, prioridade ASC. */
-    private function modelosDaCapacidade(string $capacidade, ?int $modeloOverride): array
+    /**
+     * Modelos ativos da capacidade, provedor ativo + com chave, prioridade ASC.
+     *
+     * Público porque o IAComposicaoService (pipeline de banner) percorre a
+     * mesma cadeia por etapa, com fallback PÓS-aceite: precisa da lista para
+     * saber qual é o próximo candidato quando uma prediction falha no provedor.
+     */
+    public function modelosDaCapacidade(string $capacidade, ?int $modeloOverride): array
     {
         try {
             $sql = "SELECT m.id, m.provedor_id, m.codigo_modelo, m.timeout_s,
@@ -345,6 +356,8 @@ class IAOrchestrator
                 return new OpenAIAdapter($chave, $baseUrl, $configExtra);
             case 'replicate':
                 return new ReplicateAdapter($chave, $baseUrl, $configExtra);
+            case 'gemini':
+                return new GeminiAdapter($chave, $baseUrl, $configExtra);
             default:
                 LogService::warning('ia_adapter_desconhecido', ['codigo' => $codigo]);
                 return null;
@@ -359,7 +372,8 @@ class IAOrchestrator
         return $this->chaves[$provedorId];
     }
 
-    private function logRoteamento(int $geracaoId, array $m, string $resultado, ?string $erroCodigo, ?string $erro, int $tempoMs): void
+    /** Público pelo mesmo motivo: o pipeline de composição loga etapa a etapa. */
+    public function logRoteamento(int $geracaoId, array $m, string $resultado, ?string $erroCodigo, ?string $erro, int $tempoMs): void
     {
         try {
             $stmt = $this->db->prepare(

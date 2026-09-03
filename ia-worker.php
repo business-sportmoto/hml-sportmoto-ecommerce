@@ -182,9 +182,19 @@ try {
                     'max_tokens'         => $g['max_tokens'] ?? null,
                     'modelo_id'          => $g['tipo_modelo_id'] ?? null,
                     'nome'               => $g['tipo_nome'] ?? '',
+                    'saida'              => $g['tipo_saida'] ?? 'texto',
                 ];
 
                 $capacidade = (string) ($g['capacidade'] ?? 'texto');
+
+                // Banner (2C): o pipeline decide a etapa e devolve o desfecho.
+                // Não passa pelo orquestrador direto — cada etapa tem a sua
+                // capacidade e o seu próprio lançamento de custo.
+                if ($capacidade === 'composicao') {
+                    $log('composicao: ' . (new IAComposicaoService())->processar($g) . " — geração #{$g['id']}");
+                    $processadas++;
+                    continue;
+                }
 
                 // remocao_fundo é mídia e vai pelo executarImagem — o
                 // orquestrador trata as duas capacidades ali. Comparar só com

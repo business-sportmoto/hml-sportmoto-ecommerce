@@ -56,6 +56,12 @@ class IAGeracaoService
             return ['ok' => false, 'msg' => 'Tipo de conteúdo inválido ou inativo.'];
         }
         $capacidade = (string) $tipo['capacidade'];
+
+        // Banner: pipeline próprio (recorte -> cena -> compositor), Fase 2C.
+        if ($capacidade === 'composicao') {
+            return (new IAComposicaoService())->enfileirarBanner($entrada, $tipo);
+        }
+
         if (!in_array($capacidade, ['texto', 'imagem'], true)) {
             return ['ok' => false, 'msg' => 'Esta capacidade de mídia chega nas próximas fases.'];
         }
@@ -241,7 +247,7 @@ class IAGeracaoService
         $capacidade = (string) ($geracao['capacidade'] ?? 'texto');
 
         // MÍDIA: persiste os binários ANTES de marcar concluída — sem arquivo não há conclusão.
-        if (in_array($capacidade, ['imagem', 'remocao_fundo'], true)) {
+        if (in_array($capacidade, ['imagem', 'remocao_fundo', 'composicao'], true)) {
             $caminhos = empty($r->imagens) ? [] : $this->salvarImagens($geracao, $r->imagens);
             if (empty($caminhos)) {
                 $this->falhar($geracao, IAResultado::falha('salvar_arquivo', 'Imagem gerada, mas falhou ao gravar no storage.', false));
@@ -265,13 +271,17 @@ class IAGeracaoService
             'custo_real_usd'  => $r->custoRealUsd,
         ]);
 
-        $this->custo->registrarRollup(
-            (int) $geracao['usuario_id'],
-            (string) ($r->provedorCodigo ?? 'desconhecido'),
-            (string) $geracao['capacidade'],
-            (float) ($r->custoRealUsd ?? $geracao['custo_estimado_usd'] ?? 0),
-            false
-        );
+        // Composição já lançou o rollup POR ETAPA (remocao_fundo + imagem);
+        // lançar de novo aqui contaria o mesmo gasto duas vezes.
+        if ($capacidade !== 'composicao') {
+            $this->custo->registrarRollup(
+                (int) $geracao['usuario_id'],
+                (string) ($r->provedorCodigo ?? 'desconhecido'),
+                (string) $geracao['capacidade'],
+                (float) ($r->custoRealUsd ?? $geracao['custo_estimado_usd'] ?? 0),
+                false
+            );
+        }
 
         $this->salvarRespostaBruta($geracao, $r);
     }
@@ -297,6 +307,11 @@ class IAGeracaoService
      */
     public function processarRetornoProvedor(array $geracao, array $remoto, ReplicateAdapter $adapter): string
     {
+        // Banner: quem decide o próximo passo da etapa é o pipeline da 2C.
+        if (($geracao['capacidade'] ?? '') === 'composicao') {
+            return (new IAComposicaoService())->processarRetorno($geracao, $remoto, $adapter);
+        }
+
         if (($geracao['status'] ?? '') !== 'aguardando_provedor') {
             return 'ignorado'; // já resolvida por outro caminho
         }

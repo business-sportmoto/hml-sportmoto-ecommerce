@@ -97,9 +97,17 @@ $rotuloGrupo = [
             <optgroup label="<?= ia_e($rotuloGrupo[$grupo] ?? ucfirst($grupo)) ?>">
               <?php foreach ($itens as $t): ?>
                 <?php
-                  $cap        = (string) $t['capacidade'];
-                  $habilitado = in_array($cap, ['texto', 'imagem'], true);
-                  $sufixo     = $habilitado ? '' : (($cap === 'video') ? ' (Fase 4)' : ' (em breve)');
+                  $cap = (string) $t['capacidade'];
+
+                  // Banner depende do Imagick. Desabilitar aqui, com o motivo
+                  // no rótulo, é melhor que deixar clicar e falhar depois.
+                  $semImagick = ($cap === 'composicao' && !IACompositorService::disponivel());
+                  $habilitado = in_array($cap, ['texto', 'imagem', 'composicao'], true) && !$semImagick;
+
+                  if ($habilitado)        { $sufixo = ''; }
+                  elseif ($semImagick)    { $sufixo = ' (requer Imagick no servidor)'; }
+                  elseif ($cap === 'video') { $sufixo = ' (Fase 4)'; }
+                  else                    { $sufixo = ' (em breve)'; }
                 ?>
                 <option value="<?= (int) $t['id'] ?>" data-cap="<?= ia_e($cap) ?>" <?= $habilitado ? '' : 'disabled' ?>>
                   <?= ia_e($t['nome']) ?><?= $sufixo ?>
@@ -138,13 +146,31 @@ $rotuloGrupo = [
             <option value="<?= ia_e($p) ?>"<?= $i === 0 ? ' selected' : '' ?>><?= ia_e($rotulos[$p] ?? $p) ?></option>
           <?php endforeach; ?>
         </select>
-        <p class="ia_ajuda">Formatos exatos (1920×800 etc.) saem do compositor na Fase 2C.</p>
+        <p class="ia_ajuda">Para formato exato (1920×800 etc.), use o tipo <strong>Banner do produto</strong> — ele monta no tamanho do layout.</p>
         <?php if (!empty($imagem) && !empty($imagem['url'])): ?>
           <label class="ia_check" style="margin-top:8px">
             <input type="checkbox" name="usar_referencia" value="1">
-            Usar a foto do produto como referência (FLUX.2)
+            Usar a foto do produto como referência
           </label>
         <?php endif; ?>
+      </div>
+
+      <?php // Compositor de banners (Fase 2C): só aparece no tipo de capacidade 'composicao'. ?>
+      <div class="ia_form_grupo" id="ia_g_layout_wrap" style="display:none">
+        <label for="ia_g_layout">Layout do banner</label>
+        <select id="ia_g_layout" name="layout" class="ia_input">
+          <?php foreach (($layouts ?? []) as $l): ?>
+            <option value="<?= ia_e($l['codigo']) ?>"><?= ia_e($l['nome']) ?></option>
+          <?php endforeach; ?>
+        </select>
+        <input type="text" name="banner_headline" class="ia_input" maxlength="80"
+               placeholder="Headline (vazio = nome do produto)" style="margin-top:8px">
+        <input type="text" name="banner_subtitulo" class="ia_input" maxlength="120"
+               placeholder="Subtítulo (opcional)" style="margin-top:8px">
+        <p class="ia_ajuda">
+          Foto real recortada + cena de IA + preço, montados no tamanho exato do layout.
+          O preço vem do banco; a cena nunca contém o produto nem texto.
+        </p>
       </div>
     </div>
 

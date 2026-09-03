@@ -24,12 +24,12 @@ class SeoIaController extends Controller {
             $this->json(['ok' => false, 'msg' => 'Tipo inválido.']);
         }
 
-        if (empty(GEMINI_API_KEY)) {
-            $this->json([
-                'ok'  => false,
-                'msg' => 'Chave da API Gemini não configurada. Verifique o .env',
-            ]);
-        }
+        // A chave do SEO não vem mais do .env: o SeoIaService roda pelo
+        // orquestrador da Central de IA e a credencial fica cifrada em
+        // ia_provedores. Checar GEMINI_API_KEY aqui barrava a geração mesmo
+        // com o provedor corretamente configurado na tela. Quem não estiver
+        // configurado agora recebe a mensagem exata do serviço (tipo ausente,
+        // nenhum modelo ativo, teto de gasto atingido), tratada no catch abaixo.
 
         // Sanitiza o contexto
         $contextoLimpo = [];

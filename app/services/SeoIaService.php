@@ -3,15 +3,43 @@
 declare(strict_types=1);
 
 /**
- * SeoIaService — gera campos de SEO via Gemini.
- * Plugável: aceita qualquer contexto (produto, categoria, marca, página).
+ * SeoIaService v2 — gera os campos de SEO pela Central de Marketing IA.
+ *
+ * O CONTRATO PÚBLICO NÃO MUDOU: gerarSeo(tipo, contexto, idioma) → array com
+ * meta_title, meta_description, keywords, google_category. O SeoIaController
+ * e as telas continuam intactos.
+ *
+ * O que mudou por dentro:
+ *  - Roda pelo IAOrchestrator (tipo de sistema `seo_pacote`, pinado no
+ *    gemini-3-flash; se o Google falhar, cai nos GPT — que devolvem JSON
+ *    nativo igual, via response_format). O bug do fallback antigo, que
+ *    devolvia o envelope cru e salvava SEO em branco, morre aqui.
+ *  - Execução SÍNCRONA (o Ajax espera), mas REGISTRADA em ia_geracoes:
+ *    custo real no rollup, roteamento logado, auditoria completa.
+ *  - Limites de gasto (diário/mensal/por minuto) passam a valer para o SEO.
+ *  - Prompt saneado: regra fantasma `seo_text` removida e bloco de regras
+ *    consolidado (viviam duplicados no promptBase antigo).
+ *  - A chave do SEO sai do .env: fica cifrada em ia_provedores (tela de
+ *    config ou cli/migrar-chave-gemini.php).
+ *
+ * ATENÇÃO: o GeminiService legado NÃO foi aposentado neste projeto, ao
+ * contrário do que o README do pacote afirma. GeminiQAService (perguntas de
+ * produto) e ReviewSummaryService (resumo de avaliações) continuam usando
+ * ele, e ambos leem GEMINI_API_KEY / GEMINI_MODEL do .env. Apagar o arquivo
+ * ou remover essas variáveis derruba as duas funcionalidades.
+ *
+ * Injeção por construtor (padrão do projeto): em produção, new SeoIaService()
+ * como sempre; nos testes, injeta-se um orquestrador fake.
  */
-class SeoIaService {
+class SeoIaService
+{
+    private IAOrchestrator $orq;
+    private IACustoService $custo;
 
-    private GeminiService $gemini;
-
-    public function __construct() {
-        $this->gemini = new GeminiService();
+    public function __construct(?IAOrchestrator $orq = null)
+    {
+        $this->orq   = $orq ?? new IAOrchestrator();
+        $this->custo = new IACustoService();
     }
 
     /**
@@ -21,77 +49,133 @@ class SeoIaService {
      * @param array  $contexto — dados do item (nome, descricao, categoria, etc.)
      * @param string $idioma   — padrão: 'pt-BR'
      */
-    public function gerarSeo(string $tipo, array $contexto, string $idioma = 'pt-BR'): array {
-        $prompt = $this->buildPrompt($tipo, $contexto, $idioma);
+    public function gerarSeo(string $tipo, array $contexto, string $idioma = 'pt-BR'): array
+    {
+        if (!in_array($tipo, ['produto', 'categoria', 'marca', 'pagina'], true)) {
+            throw new \InvalidArgumentException("Tipo desconhecido: {$tipo}");
+        }
 
-        $resultado = $this->gemini->gerarJson($prompt);
+        $tipoRow = (new IATipoConteudo())->buscarPorCodigo('seo_pacote');
+        if ($tipoRow === null || (int) $tipoRow['ativo'] !== 1) {
+            throw new \RuntimeException('Tipo seo_pacote ausente — rode a migration Gemini/SEO da Central de Marketing IA.');
+        }
+
+        $usuarioId = (int) AuthHelper::usuarioId();
+        if ($usuarioId <= 0) {
+            throw new \RuntimeException('Sessão inválida para registrar a geração de SEO.');
+        }
+
+        $prompt = $this->montarPrompt($tipo, $contexto, $idioma);
+
+        // Limites de gasto valem para o SEO também
+        $custoEst = $this->custo->estimarTexto(
+            $this->custo->custoConfigPrimarioTexto(),
+            mb_strlen($prompt) + mb_strlen((string) $tipoRow['instrucoes_sistema']),
+            (int) $tipoRow['max_tokens']
+        );
+        $chk = $this->custo->podeGerar($usuarioId, $custoEst, 1);
+        if (!$chk['ok']) {
+            throw new \RuntimeException($chk['msg']);
+        }
+
+        // Registro síncrono: nasce 'processando' para o worker NUNCA reivindicar
+        $uuid = $this->uuidV4();
+        $id   = (new IAGeracao())->criar([
+            'uuid'                     => $uuid,
+            'usuario_id'               => $usuarioId,
+            'produto_id'               => null,
+            'campanha_id'              => null,
+            'geracao_origem_id'        => null,
+            'tipo_conteudo_id'         => (int) $tipoRow['id'],
+            'capacidade'               => 'texto',
+            'formato'                  => null,
+            'angulo'                   => null,
+            'prompt_template_id'       => null,
+            'prompt_template_snapshot' => null,
+            'prompt_final'             => $prompt,
+            'contexto'                 => json_encode(
+                ['seo_tipo' => $tipo, 'dados' => $contexto, 'idioma' => $idioma],
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+            ),
+            'chave_dedup'              => hash('sha256', uniqid('seo|' . $tipo . '|', true)),
+            'custo_estimado_usd'       => $custoEst,
+            'status'                   => 'processando',
+        ]);
+
+        // IAGeracao::criar() devolve int: id, 0 em erro ou -1062 na dedup.
+        // Comparar com null nunca casava — um INSERT falho seguia adiante com
+        // id 0 e o custo era lançado contra uma geração inexistente.
+        if ($id <= 0) {
+            throw new \RuntimeException('Não foi possível registrar a geração de SEO.');
+        }
+
+        $geracao = [
+            'id'                 => $id,
+            'uuid'               => $uuid,
+            'usuario_id'         => $usuarioId,
+            'capacidade'         => 'texto',
+            'prompt_final'       => $prompt,
+            'custo_estimado_usd' => $custoEst,
+        ];
+        $tipoArr = [
+            'instrucoes_sistema' => $tipoRow['instrucoes_sistema'],
+            'max_tokens'         => (int) $tipoRow['max_tokens'],
+            'modelo_id'          => $tipoRow['modelo_id'],
+            'nome'               => $tipoRow['nome'],
+            'saida'              => $tipoRow['saida'] ?? 'json',
+        ];
+
+        $servico = new IAGeracaoService();
+        $r = $this->orq->executarTexto($geracao, $tipoArr);
+
+        if (!$r->ok) {
+            $servico->falhar($geracao, $r);
+            throw new \RuntimeException('SEO IA: ' . ($r->erro ?: 'geração falhou em todos os provedores.'));
+        }
+
+        $dados = $this->decodificarJsonTolerante((string) $r->texto);
+        if ($dados === null) {
+            $servico->falhar($geracao, IAResultado::falha('json_invalido', 'Provedor devolveu JSON inválido para o pacote SEO.', false));
+            throw new \RuntimeException('SEO IA: resposta do provedor não é um JSON válido.');
+        }
+
+        $servico->concluir($geracao, $r); // resultado_texto = JSON bruto (auditoria) + custo no rollup
 
         return [
-            'meta_title'       => $this->sanitizar($resultado['meta_title']       ?? '', 90),
-            'meta_description' => $this->sanitizar($resultado['meta_description'] ?? '', 256),
-            'keywords'         => $this->sanitizarKeywords($resultado['keywords'] ?? ''),
-            'google_category'  => $this->sanitizar($resultado['google_category']  ?? '', 200),
+            'meta_title'       => $this->sanitizar($dados['meta_title']       ?? '', 90),
+            'meta_description' => $this->sanitizar($dados['meta_description'] ?? '', 256),
+            'keywords'         => $this->sanitizarKeywords((string) ($dados['keywords'] ?? '')),
+            'google_category'  => $this->sanitizar($dados['google_category']  ?? '', 200),
         ];
     }
 
-    // ── Prompts por tipo ──────────────────────────────────
+    /* ── Prompts por tipo (persona e regras vivem em instrucoes_sistema do tipo) ── */
 
-    private function buildPrompt(string $tipo, array $ctx, string $idioma): string {
-        $base = $this->promptBase($idioma);
+    private function montarPrompt(string $tipo, array $ctx, string $idioma): string
+    {
+        $base = <<<PROMPT
+        Loja: Sportmoto — https://www.sportmoto.com.br — Porto Alegre/RS, enviamos para todo o Brasil.
+        Condições: até 12x sem juros, desconto no Pix, frete grátis acima de R$ 350 conforme regras.
+        Idioma de saída: {$idioma}.
 
-        return match ($tipo) {
-            'produto'   => $base . $this->promptProduto($ctx),
-            'categoria' => $base . $this->promptCategoria($ctx),
-            'marca'     => $base . $this->promptMarca($ctx),
-            'pagina'    => $base . $this->promptPagina($ctx),
-            default     => throw new \InvalidArgumentException("Tipo desconhecido: {$tipo}"),
+
+        PROMPT;
+
+        return $base . match ($tipo) {
+            'produto'   => $this->promptProduto($ctx),
+            'categoria' => $this->promptCategoria($ctx),
+            'marca'     => $this->promptMarca($ctx),
+            'pagina'    => $this->promptPagina($ctx),
         };
     }
 
-    private function promptBase(string $idioma): string {
-        return <<<PROMPT
-        Você é um especialista em SEO para e-commerce brasileiro.
-        Responda APENAS com um objeto JSON válido, sem markdown, sem explicações.
-        Idioma de saída: {$idioma}.
-        
-        O nome da minha loja é Sportmoto.
-        Meu site é https://www.sportmoto.com.br.
-        Parcelamos em até 12x sem juros e no pix tem desconto. Frete grátis acima de R$ 350 * conforme regras (importante).
-        Estamos localizados em Porto Alegre, RS, mas enviamos para todo o Brasil.
-
-        Regras obrigatórias:
-        - meta_title com no máximo 90 caracteres.
-        - meta_description com no máximo 256 caracteres.        
-        - keywords com 5 a 10 termos relevantes.        
-        - seo_text com 1 a 2 parágrafos, sem exagero, sem promessas falsas.
-        - Evite keyword stuffing.
-        - Priorize intenção de compra e busca orgânica.
-        - Para produtos de moto, use linguagem de ecommerce premium e objetiva.
-        - Não invente informações técnicas que não existam no contexto.
-
-        O JSON deve ter exatamente estas chaves:
-        {
-          "meta_title": "string com até 90 caracteres",
-          "meta_description": "string com até 256 caracteres, persuasiva e com CTA",
-          "keywords": "palavra1, palavra2, palavra3 (mínimo 5, máximo 10, separadas por vírgula)",
-          "google_category": "categoria no formato Google Merchant Center (ex: Vestuário e acessórios > Roupas)"
-        }
-
-        Regras obrigatórias:
-        - meta_title: inclua o nome principal + benefício/diferencial. Máx 90 chars.
-        - meta_description: texto convincente com CTA (ex: "Compre agora", "Frete grátis"). Máx 256 chars.
-        - keywords: termos que os usuários realmente buscam. Sem repetição. Lowercase.
-        - google_category: use a taxonomia oficial do Google Merchant Center em português.
-
-        PROMPT;
-    }
-
-    private function promptProduto(array $ctx): string {
-        $nome      = $ctx['nome']          ?? '';
-        $descricao = $ctx['descricao']     ?? '';
-        $categoria = $ctx['categoria']     ?? '';
-        $marca     = $ctx['marca']         ?? '';
-        $preco     = $ctx['preco']         ?? '';
+    private function promptProduto(array $ctx): string
+    {
+        $nome      = $ctx['nome']            ?? '';
+        $marca     = $ctx['marca']           ?? '';
+        $categoria = $ctx['categoria']       ?? '';
+        $preco     = $ctx['preco']           ?? '';
+        $descricao = $ctx['descricao']       ?? ($ctx['descricao_curta'] ?? '');
 
         return <<<PROMPT
         Contexto: PRODUTO de e-commerce.
@@ -106,7 +190,8 @@ class SeoIaService {
         PROMPT;
     }
 
-    private function promptCategoria(array $ctx): string {
+    private function promptCategoria(array $ctx): string
+    {
         $nome      = $ctx['nome']      ?? '';
         $descricao = $ctx['descricao'] ?? '';
         $parent    = $ctx['parent']    ?? '';
@@ -119,12 +204,13 @@ class SeoIaService {
         Descrição: {$descricao}
 
         Gere os campos SEO para esta categoria.
-        Para meta_title, use formato: "{$nome} | Nome da Loja"
-        Para google_category, use a categoria mais adequada para produtos desta seção.
+        Para meta_title, use o formato: "{$nome} | Sportmoto"
+        Para google_category, use a categoria mais adequada aos produtos desta seção.
         PROMPT;
     }
 
-    private function promptMarca(array $ctx): string {
+    private function promptMarca(array $ctx): string
+    {
         $nome      = $ctx['nome']      ?? '';
         $descricao = $ctx['descricao'] ?? '';
 
@@ -135,14 +221,15 @@ class SeoIaService {
         Descrição: {$descricao}
 
         Gere os campos SEO para a página desta marca.
-        Para meta_title: "Produtos {$nome} | Nome da Loja"
-        Para google_category: use a categoria mais representativa da marca.
+        Para meta_title: "Produtos {$nome} | Sportmoto"
+        Para google_category, use a categoria mais representativa da marca.
         PROMPT;
     }
 
-    private function promptPagina(array $ctx): string {
-        $titulo    = $ctx['titulo']    ?? '';
-        $conteudo  = $ctx['conteudo'] ?? '';
+    private function promptPagina(array $ctx): string
+    {
+        $titulo   = $ctx['titulo']   ?? '';
+        $conteudo = $ctx['conteudo'] ?? '';
 
         return <<<PROMPT
         Contexto: PÁGINA INSTITUCIONAL de e-commerce.
@@ -155,19 +242,42 @@ class SeoIaService {
         PROMPT;
     }
 
-    // ── Sanitização ───────────────────────────────────────
+    /* ── Sanitização (inalterada) ─────────────────────────── */
 
-    private function sanitizar(string $valor, int $maxLen): string {
+    private function sanitizar(string $valor, int $maxLen): string
+    {
         $valor = strip_tags($valor);
         $valor = preg_replace('/\s+/', ' ', $valor);
-        return mb_substr(trim($valor), 0, $maxLen);
+        return mb_substr(trim((string) $valor), 0, $maxLen);
     }
 
-    private function sanitizarKeywords(string $keywords): string {
-        $lista = array_map('trim', explode(',', strtolower($keywords)));
+    private function sanitizarKeywords(string $keywords): string
+    {
+        $lista = array_map('trim', explode(',', mb_strtolower($keywords)));
         $lista = array_filter($lista);
         $lista = array_unique($lista);
         $lista = array_slice($lista, 0, 10);
         return implode(', ', $lista);
+    }
+
+    /* ── Internos ─────────────────────────────────────────── */
+
+    /** JSON nativo garante o parse; a tolerância a cercas fica de cinto de segurança. */
+    private function decodificarJsonTolerante(string $texto): ?array
+    {
+        $texto = trim($texto);
+        if (strpos($texto, '```') === 0) {
+            $texto = preg_replace('/^```(?:json)?\s*|\s*```$/', '', $texto);
+        }
+        $dec = json_decode((string) $texto, true);
+        return is_array($dec) ? $dec : null;
+    }
+
+    private function uuidV4(): string
+    {
+        $b = random_bytes(16);
+        $b[6] = chr((ord($b[6]) & 0x0f) | 0x40);
+        $b[8] = chr((ord($b[8]) & 0x3f) | 0x80);
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($b), 4));
     }
 }

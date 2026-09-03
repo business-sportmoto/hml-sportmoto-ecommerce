@@ -138,14 +138,17 @@ jQuery(function ($) {
     carregarPainel(id);
   });
 
-  // Capacidade do tipo escolhido comanda o formulário: imagem troca
-  // ângulo por proporção (delegado — o painel chega via AJAX).
+  // A capacidade do tipo escolhido comanda quais campos aparecem
+  // (delegado — o painel chega via AJAX):
+  //   texto      -> ângulo criativo
+  //   imagem     -> proporção
+  //   composicao -> layout do banner + headline/subtítulo
   $(document).on('change', '#ia_g_tipo', function () {
     var cap = $(this).find('option:selected').data('cap') || 'texto';
-    var ehImagem = (cap === 'imagem');
-    $('#ia_g_angulo_wrap').toggle(!ehImagem);
-    $('#ia_g_proporcao_wrap').toggle(ehImagem);
-    if (ehImagem) { $('#ia_g_angulo').val(''); }
+    $('#ia_g_angulo_wrap').toggle(cap === 'texto');
+    $('#ia_g_proporcao_wrap').toggle(cap === 'imagem');
+    $('#ia_g_layout_wrap').toggle(cap === 'composicao');
+    if (cap !== 'texto') { $('#ia_g_angulo').val(''); }
   });
 
   // Remoção de fundo da foto do produto (cache-first): reusa o card + polling.

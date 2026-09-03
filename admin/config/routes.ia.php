@@ -31,6 +31,9 @@ AdminRouter::post('/ia/recorte/gerar',              'IAGeracaoController@recorte
 AdminRouter::get ('/ia/gerar/status',               'IAGeracaoController@status');
 AdminRouter::get ('/ia/arquivo',                    'IAGeracaoController@arquivo');
 
+// ── IA · Compositor de banners (Fase 2C) ──────────────────
+AdminRouter::post('/ia/banner/publicar',            'IAGeracaoController@bannerPublicar');
+
 // ── IA · Histórico e curadoria (Fase 1) ───────────────────
 AdminRouter::get ('/ia/historico',                  'IAGeracaoController@historico');
 AdminRouter::get ('/ia/historico/linhas',           'IAGeracaoController@historicoLinhas');

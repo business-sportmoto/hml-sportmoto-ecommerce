@@ -159,7 +159,8 @@ jQuery(function ($) {
     linhas:    '/admin/ia/historico/linhas',
     detalhe:   '/admin/ia/historico/detalhe',
     aprovacao: '/admin/ia/historico/aprovacao',
-    refazer:   '/admin/ia/historico/refazer'
+    refazer:   '/admin/ia/historico/refazer',
+    publicar:  '/admin/ia/banner/publicar'
   };
 
   var pagina  = <?= (int) $pagina ?>;
@@ -248,6 +249,16 @@ jQuery(function ($) {
     var $b = $(this);
     iaPost(URLS.aprovacao, { id: $b.data('id'), acao: $b.data('acao') }, function (r) {
       toast(r.msg || (r.ok ? 'Curadoria atualizada.' : 'Erro.'), r.ok);
+      if (r.ok) { drawerFechar(); recarregar(); }
+    });
+  });
+
+  // Publicar banner (2C): cria a linha em `banners` INATIVA, para revisão.
+  $(document).on('click', '.ia_ac_publicar_hist', function () {
+    var $b = $(this).prop('disabled', true);
+    iaPost(URLS.publicar, { geracao_id: $b.data('id') }, function (r) {
+      $b.prop('disabled', false);
+      toast(r.msg || (r.ok ? 'Banner criado.' : 'Erro ao publicar.'), r.ok);
       if (r.ok) { drawerFechar(); recarregar(); }
     });
   });

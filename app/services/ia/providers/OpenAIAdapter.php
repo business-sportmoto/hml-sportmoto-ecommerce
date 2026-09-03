@@ -50,6 +50,12 @@ class OpenAIAdapter extends IAProviderBase
             $payload['max_completion_tokens'] = min($maxTokens, 8000);
         }
 
+        // Saída JSON nativa: o fallback devolve JSON parseável igual ao Gemini,
+        // em vez do envelope cru que o service antigo lia errado.
+        if (!empty($job['saida_json'])) {
+            $payload['response_format'] = ['type' => 'json_object'];
+        }
+
         // params_padrao do catálogo (temperature etc.) — o payload base prevalece.
         $params = is_array($job['params'] ?? null) ? $job['params'] : [];
         foreach ($params as $chave => $valor) {

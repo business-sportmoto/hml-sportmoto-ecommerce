@@ -104,6 +104,12 @@ $contexto = json_decode((string) ($g['contexto'] ?? ''), true);
 <?php endif; ?>
 
 <div class="ia_form_rodape">
+  <?php // Banner pronto (2C): publica na zona compatível, sempre INATIVO. ?>
+  <?php if (($g['capacidade'] ?? '') === 'composicao' && $g['status'] === 'concluida'): ?>
+    <button type="button" class="ia_btn ia_btn_primario ia_ac_publicar_hist" data-id="<?= (int) $g['id'] ?>">
+      <?= IconLibrary::render('campaign', 'ia_ico', ['aria-hidden' => 'true']) ?> Publicar banner
+    </button>
+  <?php endif; ?>
   <button type="button" class="ia_btn ia_ac_curar" data-id="<?= (int) $g['id'] ?>" data-acao="reprovado"><?= IconLibrary::render('x-circle', 'ia_ico', ['aria-hidden' => 'true']) ?> Reprovar</button>
   <button type="button" class="ia_btn ia_ac_curar" data-id="<?= (int) $g['id'] ?>" data-acao="arquivado"><?= IconLibrary::render('inbox', 'ia_ico', ['aria-hidden' => 'true']) ?> Arquivar</button>
   <?php if ($g['status'] === 'concluida' || $g['status'] === 'falhou'): ?>

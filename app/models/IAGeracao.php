@@ -30,7 +30,7 @@ class IAGeracao
                     (:uuid, :usuario_id, :produto_id, :campanha_id, :origem,
                      :tipo_id, :capacidade, :formato, :angulo, :template_id,
                      :template_snapshot, :prompt_final, :contexto,
-                     :dedup, :custo_estimado, \'na_fila\', \'pendente\')'
+                     :dedup, :custo_estimado, :status, \'pendente\')'
             );
             $stmt->execute([
                 ':uuid'              => $d['uuid'],
@@ -48,6 +48,12 @@ class IAGeracao
                 ':contexto'          => $d['contexto'],
                 ':dedup'             => $d['chave_dedup'],
                 ':custo_estimado'    => $d['custo_estimado_usd'],
+                // Execução SÍNCRONA (o SEO roda no request, não no worker)
+                // nasce 'processando' para o worker nunca reivindicar e rodar
+                // a mesma geração de novo. Whitelist porque valor fora do ENUM
+                // aborta o INSERT inteiro.
+                ':status'            => in_array($d['status'] ?? '', ['na_fila', 'processando'], true)
+                                            ? $d['status'] : 'na_fila',
             ]);
             return (int) $this->db->lastInsertId();
         } catch (PDOException $e) {
@@ -90,7 +96,7 @@ class IAGeracao
             $upd->execute(array_map('intval', $ids));
 
             $sel = $this->db->prepare(
-                "SELECT g.*, t.instrucoes_sistema, t.max_tokens, t.modelo_id AS tipo_modelo_id, t.nome AS tipo_nome
+                "SELECT g.*, t.instrucoes_sistema, t.max_tokens, t.modelo_id AS tipo_modelo_id, t.nome AS tipo_nome, t.saida AS tipo_saida
                    FROM ia_geracoes g
              INNER JOIN ia_tipos_conteudo t ON t.id = g.tipo_conteudo_id
                   WHERE g.id IN ({$marcadores}) AND g.status = 'processando'
@@ -101,6 +107,38 @@ class IAGeracao
         } catch (Throwable $e) {
             LogService::error('ia_reivindicar_erro', ['erro' => $e->getMessage()]);
             return [];
+        }
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Pipeline de composição (Fase 2C)                                    */
+    /* ------------------------------------------------------------------ */
+
+    /** Em que passo o banner está: recorte | cena | null (fora do pipeline). */
+    public function marcarEtapa(int $id, ?string $etapa): void
+    {
+        try {
+            $this->db->prepare('UPDATE ia_geracoes SET etapa = :e WHERE id = :id')
+                     ->execute([':e' => $etapa, ':id' => $id]);
+        } catch (Throwable $e) {
+            LogService::error('ia_marcar_etapa_erro', ['id' => $id, 'erro' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Regrava o snapshot de contexto.
+     *
+     * O pipeline do banner acumula estado entre etapas ali dentro (custo somado,
+     * modelos já tentados, caminho do recorte) — é o que permite retomar de onde
+     * parou quando uma prediction falha e a etapa cai no próximo modelo.
+     */
+    public function atualizarContexto(int $id, string $json): void
+    {
+        try {
+            $this->db->prepare('UPDATE ia_geracoes SET contexto = :c WHERE id = :id')
+                     ->execute([':c' => $json, ':id' => $id]);
+        } catch (Throwable $e) {
+            LogService::error('ia_atualizar_contexto_erro', ['id' => $id, 'erro' => $e->getMessage()]);
         }
     }
 
