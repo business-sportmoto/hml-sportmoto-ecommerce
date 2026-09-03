@@ -988,9 +988,10 @@ class ChatIgAutomacaoService
                      FROM ia_geracoes
                      WHERE formato IN ('ig_comentario','ig_direct')
                        AND criado_em >= :d
-                       AND CAST(JSON_EXTRACT(contexto, '$.fluxo_id') AS UNSIGNED) = :f"
+                       AND JSON_UNQUOTE(JSON_EXTRACT(contexto, '$.fluxo_id')) = :f"
                 );
-                $st->execute([':f' => $fluxoId, ':d' => $desde]);
+                // Texto, não CAST: JSON null estoura o CAST em sql_mode estrito
+                $st->execute([':f' => (string)$fluxoId, ':d' => $desde]);
                 $r = $st->fetch(PDO::FETCH_ASSOC) ?: [];
 
                 $out['ia'] = [

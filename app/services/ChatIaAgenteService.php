@@ -387,9 +387,11 @@ class ChatIaAgenteService
                    AND criado_em >= CURDATE()
                    -- Falha antes do provedor não custou nada: nao ocupa cota
                    AND NOT (status = 'falhou' AND modelo_id IS NULL)
-                   AND CAST(JSON_EXTRACT(contexto, '$.fluxo_id') AS UNSIGNED) = :f"
+                   AND JSON_UNQUOTE(JSON_EXTRACT(contexto, '$.fluxo_id')) = :f"
             );
-            $st->execute([':f' => $fluxoId]);
+            // Compara como texto: CAST de JSON null estoura em sql_mode estrito,
+            // e o valor gravado é sempre um inteiro sem formatação.
+            $st->execute([':f' => (string)$fluxoId]);
             return (int)$st->fetchColumn() < $teto;
         } catch (Throwable $e) {
             return true;
