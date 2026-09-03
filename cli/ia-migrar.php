@@ -87,6 +87,7 @@ $migrations = [
         if (!$temTabela('ia_provedores')) { return false; }
         return (int) $pdo->query("SELECT COUNT(*) FROM ia_provedores WHERE codigo = 'claude'")->fetchColumn() > 0;
     }],
+    ['2026-09-03_ia_seo_aplicado.sql', 'Procedência do SEO aplicado por entidade', fn () => $temTabela('ia_seo_aplicado')],
 ];
 
 /* ------------------------------------------------------------------ */

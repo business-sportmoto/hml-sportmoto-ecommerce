@@ -218,6 +218,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (typeof adminSeoIA !== 'undefined') {
         adminSeoIA({
             tipo: 'marca',
+            alvoId: <?= (int)($m['id'] ?? 0) ?>,
 
             getContexto: () => ({
                 nome     : $('#marca-nome').val(),

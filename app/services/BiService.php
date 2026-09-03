@@ -1604,6 +1604,156 @@ final class BiService
         return ['kpi' => $k, 'funil' => $etapas];
     }
 
+    // ════════════════════════════════════════════════════
+    // PERGUNTAS DE PRODUTO E USO DE IA
+    // ════════════════════════════════════════════════════
+
+    /**
+     * KPIs de atendimento às perguntas de produto.
+     *
+     * A fila (`aguardando_ia`) é o número que mais importa aqui:
+     * pergunta sem resposta é cliente esperando na loja.
+     */
+    public function perguntasResumo(array $p): array
+    {
+        $k = $this->um(
+            "SELECT COUNT(*)                                  AS perguntas,
+                    COALESCE(SUM(respondida),0)               AS respondidas,
+                    COALESCE(SUM(respondida_por_ia),0)        AS por_ia,
+                    COALESCE(SUM(respondida_por_admin),0)     AS por_admin,
+                    COALESCE(SUM(status = 'aguardando_ia'),0)    AS fila_ia,
+                    COALESCE(SUM(status = 'aguardando_admin'),0) AS fila_admin,
+                    COALESCE(SUM(status = 'rejeitada'),0)        AS rejeitadas,
+                    COALESCE(SUM(votos_uteis),0)              AS votos_uteis,
+                    ROUND(AVG(minutos_ate_responder))         AS minutos_medio
+               FROM bi_fato_pergunta
+              WHERE data BETWEEN ? AND ?",
+            [$p['ini'], $p['fim']]
+        );
+
+        // Total FORA da janela também. Sem isto, "0 perguntas" no
+        // período fica indistinguível de "o painel não carregou" —
+        // foi exatamente a dúvida que motivou esta métrica.
+        $k['total_geral'] = (int)$this->valor("SELECT COUNT(*) FROM bi_fato_pergunta");
+        $k['primeira']    = $this->valor("SELECT MIN(data) FROM bi_fato_pergunta");
+        $k['ultima']      = $this->valor("SELECT MAX(data) FROM bi_fato_pergunta");
+
+        $resp = max(1, (int)$k['respondidas']);
+        $k['pct_ia']       = round(100 * (int)$k['por_ia'] / $resp, 1);
+        $k['pct_resposta'] = (int)$k['perguntas'] > 0
+            ? round(100 * (int)$k['respondidas'] / (int)$k['perguntas'], 1) : 0.0;
+
+        return $k;
+    }
+
+    /**
+     * Quem responde — IA e cada pessoa do time, lado a lado.
+     *
+     * `votos_uteis` é ENDOSSO, não satisfação: existe voto "útil" e
+     * não existe "não foi útil". Ausência de voto não é insatisfação,
+     * e chamar a coluna de "satisfação" faria parecer que é.
+     */
+    public function quemResponde(array $p, int $limite = 20): array
+    {
+        return $this->todos(
+            "SELECT CASE WHEN resposta_fonte = 'ia' THEN 'IA'
+                         ELSE COALESCE(respondida_por_nome, 'Admin sem identificação')
+                    END COLLATE utf8mb4_unicode_ci AS quem,
+                    COALESCE(resposta_fonte,'—') COLLATE utf8mb4_unicode_ci AS fonte,
+                    COUNT(*)                          AS respostas,
+                    COALESCE(SUM(votos_uteis),0)      AS votos_uteis,
+                    ROUND(AVG(minutos_ate_responder)) AS minutos_medio,
+                    ROUND(AVG(tam_resposta))          AS tam_medio,
+                    ROUND(COALESCE(SUM(votos_uteis),0) / NULLIF(COUNT(*),0), 2) AS uteis_por_resposta
+               FROM bi_fato_pergunta
+              WHERE respondida = 1 AND data BETWEEN ? AND ?
+              GROUP BY quem, fonte
+              ORDER BY respostas DESC
+              LIMIT " . (int)$limite,
+            [$p['ini'], $p['fim']]
+        );
+    }
+
+    /** Produtos que mais geram pergunta — sinal de descrição fraca. */
+    public function perguntasPorProduto(array $p, int $limite = 15): array
+    {
+        return $this->todos(
+            "SELECT produto_id, COALESCE(produto,'—') COLLATE utf8mb4_unicode_ci AS produto,
+                    marca_nome,
+                    COUNT(*)                              AS perguntas,
+                    COALESCE(SUM(respondida),0)           AS respondidas,
+                    COALESCE(SUM(status='aguardando_ia'),0) AS na_fila,
+                    COALESCE(SUM(votos_uteis),0)          AS votos_uteis
+               FROM bi_fato_pergunta
+              WHERE data BETWEEN ? AND ? AND produto_id IS NOT NULL
+              GROUP BY produto_id, produto, marca_nome
+              ORDER BY perguntas DESC
+              LIMIT " . (int)$limite,
+            [$p['ini'], $p['fim']]
+        );
+    }
+
+    /**
+     * Uso de IA por provedor/modelo.
+     *
+     * ⚠ NÃO cobre as respostas das perguntas de produto: aquele
+     * caminho (GeminiQAService) não registra o modelo em lugar nenhum.
+     * O que sai daqui é o que passou pelo roteador de IA — geração de
+     * conteúdo, imagens e o atendimento via CHAT.
+     *
+     * As falhas entram na conta com provedor '(não roteado)'. Contar
+     * só as concluídas esconderia exatamente o que um diagnóstico
+     * precisa mostrar.
+     */
+    public function iaPorModelo(array $p, ?string $tipo = null, int $limite = 20): array
+    {
+        $where  = 'data BETWEEN ? AND ?';
+        $params = [$p['ini'], $p['fim']];
+        if ($tipo !== null) { $where .= ' AND tipo = ?'; $params[] = $tipo; }
+
+        return $this->todos(
+            "SELECT provedor, modelo, tipo,
+                    COUNT(*)                          AS execucoes,
+                    COALESCE(SUM(concluida),0)        AS concluidas,
+                    COALESCE(SUM(falhou),0)           AS falhas,
+                    ROUND(100 * COALESCE(SUM(concluida),0) / NULLIF(COUNT(*),0), 1) AS taxa_sucesso,
+                    -- Só o custo REAL entra como gasto. Cair no estimado
+                    -- quando o real é NULL fazia geração FALHADA aparecer
+                    -- com dinheiro gasto — e falha não custou nada.
+                    ROUND(COALESCE(SUM(custo_real_usd),0), 4)      AS custo_usd,
+                    ROUND(COALESCE(SUM(custo_estimado_usd),0), 4)  AS custo_estimado_usd,
+                    COALESCE(SUM(custo_real_usd IS NOT NULL),0)    AS com_custo_real,
+                    COALESCE(SUM(tokens_in),0)        AS tokens_in,
+                    COALESCE(SUM(tokens_out),0)       AS tokens_out,
+                    ROUND(AVG(NULLIF(tempo_ms,0)))    AS ms_medio
+               FROM bi_fato_ia
+              WHERE {$where}
+              GROUP BY provedor, modelo, tipo
+              ORDER BY execucoes DESC
+              LIMIT " . (int)$limite,
+            $params
+        );
+    }
+
+    /** Uso de IA agregado por tipo de conteúdo. */
+    public function iaPorTipo(array $p): array
+    {
+        return $this->todos(
+            "SELECT COALESCE(tipo_nome, tipo, '(sem tipo)')
+                        COLLATE utf8mb4_unicode_ci AS tipo,
+                    COUNT(*)                   AS execucoes,
+                    COALESCE(SUM(concluida),0) AS concluidas,
+                    COALESCE(SUM(falhou),0)    AS falhas,
+                    ROUND(COALESCE(SUM(custo_real_usd),0), 4)     AS custo_usd,
+                    ROUND(COALESCE(SUM(custo_estimado_usd),0), 4) AS custo_estimado_usd
+               FROM bi_fato_ia
+              WHERE data BETWEEN ? AND ?
+              GROUP BY tipo
+              ORDER BY execucoes DESC",
+            [$p['ini'], $p['fim']]
+        );
+    }
+
     /**
      * Saúde do dado. Toda tela que dependa de um fato com cobertura
      * baixa deve exibir isto junto do número.

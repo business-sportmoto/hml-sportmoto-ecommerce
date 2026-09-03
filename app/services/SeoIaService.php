@@ -33,6 +33,9 @@ declare(strict_types=1);
  */
 class SeoIaService
 {
+    /** Entidades que compartilham o botão de SEO por IA. */
+    private const ENTIDADES = ['produto', 'categoria', 'marca', 'pagina'];
+
     private IAOrchestrator $orq;
     private IACustoService $custo;
 
@@ -45,12 +48,27 @@ class SeoIaService
     /**
      * Gera todos os campos SEO de uma vez.
      *
+     * Retorna os 4 campos de SEO mais a chave `_ia`, com a procedência da
+     * geração (provedor, modelo, id, custo). O contrato antigo continua
+     * valendo: quem só lê meta_title/meta_description/keywords/google_category
+     * não percebe diferença.
+     *
      * @param string $tipo     — 'produto' | 'categoria' | 'marca' | 'pagina'
      * @param array  $contexto — dados do item (nome, descricao, categoria, etc.)
      * @param string $idioma   — padrão: 'pt-BR'
+     * @param ?int   $modeloId — força um modelo específico; null usa o pino do
+     *                           tipo seo_pacote. SEMPRE revalidado aqui: o id
+     *                           vem do navegador e não pode ser confiado.
+     * @param ?array $alvo     — ['entidade' => 'produto', 'id' => 123]; liga a
+     *                           geração à entidade para a procedência depois.
      */
-    public function gerarSeo(string $tipo, array $contexto, string $idioma = 'pt-BR'): array
-    {
+    public function gerarSeo(
+        string $tipo,
+        array $contexto,
+        string $idioma = 'pt-BR',
+        ?int $modeloId = null,
+        ?array $alvo = null
+    ): array {
         if (!in_array($tipo, ['produto', 'categoria', 'marca', 'pagina'], true)) {
             throw new \InvalidArgumentException("Tipo desconhecido: {$tipo}");
         }
@@ -64,6 +82,18 @@ class SeoIaService
         if ($usuarioId <= 0) {
             throw new \RuntimeException('Sessão inválida para registrar a geração de SEO.');
         }
+
+        // Alvo (opcional): normalizado aqui, uma vez.
+        $alvoEntidade = (string) ($alvo['entidade'] ?? $tipo);
+        $alvoId       = (int) ($alvo['id'] ?? 0);
+        if (!in_array($alvoEntidade, self::ENTIDADES, true)) {
+            $alvoEntidade = $tipo;
+        }
+
+        // Modelo escolhido na tela: revalidado contra o catalogo. Um id que nao
+        // seja de um modelo de TEXTO ativo, com provedor ativo e com chave, e'
+        // descartado em silencio — cai no pino do tipo.
+        $modeloEscolhido = $modeloId !== null ? $this->validarModeloTexto($modeloId) : null;
 
         $prompt = $this->montarPrompt($tipo, $contexto, $idioma);
 
@@ -83,7 +113,10 @@ class SeoIaService
         $id   = (new IAGeracao())->criar([
             'uuid'                     => $uuid,
             'usuario_id'               => $usuarioId,
-            'produto_id'               => null,
+            // Liga ao produto quando for um: ia_geracoes tem indice em
+            // produto_id e a coluna e' especifica de produto. Categoria, marca
+            // e pagina ficam no contexto (abaixo) e na ia_seo_aplicado.
+            'produto_id'               => ($alvoEntidade === 'produto' && $alvoId > 0) ? $alvoId : null,
             'campanha_id'              => null,
             'geracao_origem_id'        => null,
             'tipo_conteudo_id'         => (int) $tipoRow['id'],
@@ -94,7 +127,8 @@ class SeoIaService
             'prompt_template_snapshot' => null,
             'prompt_final'             => $prompt,
             'contexto'                 => json_encode(
-                ['seo_tipo' => $tipo, 'dados' => $contexto, 'idioma' => $idioma],
+                ['seo_tipo' => $tipo, 'dados' => $contexto, 'idioma' => $idioma,
+                 'alvo' => $alvoId > 0 ? ['entidade' => $alvoEntidade, 'id' => $alvoId] : null],
                 JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
             ),
             'chave_dedup'              => hash('sha256', uniqid('seo|' . $tipo . '|', true)),
@@ -120,7 +154,7 @@ class SeoIaService
         $tipoArr = [
             'instrucoes_sistema' => $tipoRow['instrucoes_sistema'],
             'max_tokens'         => (int) $tipoRow['max_tokens'],
-            'modelo_id'          => $tipoRow['modelo_id'],
+            'modelo_id'          => $modeloEscolhido ?? $tipoRow['modelo_id'],
             'nome'               => $tipoRow['nome'],
             'saida'              => $tipoRow['saida'] ?? 'json',
         ];
@@ -146,7 +180,177 @@ class SeoIaService
             'meta_description' => $this->sanitizar($dados['meta_description'] ?? '', 256),
             'keywords'         => $this->sanitizarKeywords((string) ($dados['keywords'] ?? '')),
             'google_category'  => $this->sanitizar($dados['google_category']  ?? '', 200),
+            // Procedência: quem REALMENTE respondeu. Pode diferir do modelo
+            // pedido — se o escolhido falhar, o orquestrador cai no próximo da
+            // cadeia, e a tela precisa mostrar quem de fato gerou o texto.
+            '_ia' => [
+                'geracao_id' => $id,
+                'provedor'   => (string) ($r->provedorCodigo ?? ''),
+                'modelo'     => (string) ($r->modeloCodigo ?? ''),
+                'rotulo'     => $this->rotuloModelo((string) ($r->provedorCodigo ?? ''), (string) ($r->modeloCodigo ?? '')),
+                'custo_usd'  => $r->custoRealUsd,
+                'tempo_ms'   => $r->tempoMs,
+                'pedido'     => $modeloEscolhido,
+                'trocou'     => $modeloEscolhido !== null && $r->modeloId !== $modeloEscolhido,
+            ],
         ];
+    }
+
+    /* ── Catálogo, procedência e aplicação ────────────────── */
+
+    /**
+     * Modelos de TEXTO oferecidos no seletor da tela: ativos, de provedor ativo
+     * e com chave. Mesmo critério do orquestrador — oferecer um modelo que ele
+     * puxaria para fora da cadeia seria mentira.
+     */
+    public function modelosDisponiveis(): array
+    {
+        try {
+            $tipoRow = (new IATipoConteudo())->buscarPorCodigo('seo_pacote');
+            $pinado  = $tipoRow !== null ? (int) ($tipoRow['modelo_id'] ?? 0) : 0;
+
+            $sql = "SELECT m.id, m.codigo_modelo, m.nome, m.prioridade, p.codigo AS prov, p.nome AS prov_nome
+                      FROM ia_modelos m
+                INNER JOIN ia_provedores p
+                        ON p.id = m.provedor_id AND p.ativo = 1 AND p.api_key_enc IS NOT NULL
+                     WHERE m.capacidade = 'texto' AND m.ativo = 1
+                  ORDER BY m.prioridade ASC, m.id ASC";
+            $linhas = Database::getInstance()->getConnection()->query($sql)->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+            return array_map(fn ($m) => [
+                'id'       => (int) $m['id'],
+                'rotulo'   => $this->rotuloModelo((string) $m['prov'], (string) $m['codigo_modelo'], (string) $m['nome']),
+                'provedor' => (string) $m['prov_nome'],
+                'modelo'   => (string) $m['codigo_modelo'],
+                'padrao'   => (int) $m['id'] === $pinado,
+            ], $linhas);
+        } catch (Throwable $e) {
+            LogService::error('ia_seo_modelos_erro', ['erro' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /**
+     * Registra que ESTA geração virou o SEO da entidade. Chamado no clique em
+     * "Aplicar": gerar e aplicar são eventos distintos, e só o segundo torna o
+     * texto da IA o conteúdo da loja.
+     */
+    public function registrarAplicacao(int $geracaoId, string $entidade, int $entidadeId, int $usuarioId): bool
+    {
+        if (!in_array($entidade, self::ENTIDADES, true) || $geracaoId <= 0 || $entidadeId <= 0) {
+            return false;
+        }
+
+        try {
+            $db = Database::getInstance()->getConnection();
+
+            // A geração precisa existir, ser de SEO e ter concluído — sem isso a
+            // tela poderia carimbar procedência em cima de um id qualquer.
+            $chk = $db->prepare(
+                "SELECT g.id FROM ia_geracoes g
+              INNER JOIN ia_tipos_conteudo t ON t.id = g.tipo_conteudo_id
+                   WHERE g.id = :id AND t.codigo = 'seo_pacote' AND g.status = 'concluida' LIMIT 1"
+            );
+            $chk->execute([':id' => $geracaoId]);
+            if ($chk->fetchColumn() === false) {
+                return false;
+            }
+
+            $stmt = $db->prepare(
+                'INSERT INTO ia_seo_aplicado (entidade, entidade_id, geracao_id, aplicado_por)
+                 VALUES (:e, :eid, :g, :u) AS novo
+                 ON DUPLICATE KEY UPDATE
+                    geracao_id = novo.geracao_id, aplicado_por = novo.aplicado_por,
+                    aplicado_em = CURRENT_TIMESTAMP'
+            );
+            $stmt->execute([':e' => $entidade, ':eid' => $entidadeId, ':g' => $geracaoId, ':u' => $usuarioId ?: null]);
+
+            LogService::audit('ia_seo_aplicado', [
+                'entidade'   => $entidade,
+                'entidade_id' => $entidadeId,
+                'geracao_id' => $geracaoId,
+                'usuario_id' => $usuarioId,
+            ]);
+            return true;
+        } catch (Throwable $e) {
+            LogService::error('ia_seo_aplicar_erro', ['geracao_id' => $geracaoId, 'erro' => $e->getMessage()]);
+            return false;
+        }
+    }
+
+    /** Procedência do SEO de uma entidade, ou null se nunca veio de IA. */
+    public function procedencia(string $entidade, int $entidadeId): ?array
+    {
+        if (!in_array($entidade, self::ENTIDADES, true) || $entidadeId <= 0) {
+            return null;
+        }
+
+        try {
+            $stmt = Database::getInstance()->getConnection()->prepare(
+                'SELECT a.geracao_id, a.aplicado_em, g.provedor_codigo, g.modelo_codigo,
+                        g.custo_real_usd, u.nome AS usuario_nome
+                   FROM ia_seo_aplicado a
+             INNER JOIN ia_geracoes g ON g.id = a.geracao_id
+              LEFT JOIN usuarios u ON u.id = a.aplicado_por
+                  WHERE a.entidade = :e AND a.entidade_id = :id LIMIT 1'
+            );
+            $stmt->execute([':e' => $entidade, ':id' => $entidadeId]);
+            $l = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$l) {
+                return null;
+            }
+
+            return [
+                'geracao_id'  => (int) $l['geracao_id'],
+                'provedor'    => (string) $l['provedor_codigo'],
+                'modelo'      => (string) $l['modelo_codigo'],
+                'rotulo'      => $this->rotuloModelo((string) $l['provedor_codigo'], (string) $l['modelo_codigo']),
+                'aplicado_em' => (string) $l['aplicado_em'],
+                'por'         => $l['usuario_nome'] !== null ? (string) $l['usuario_nome'] : null,
+            ];
+        } catch (Throwable $e) {
+            LogService::error('ia_seo_procedencia_erro', ['entidade' => $entidade, 'id' => $entidadeId, 'erro' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /** Devolve o id só se for modelo de texto, ativo, com provedor ativo e chave. */
+    private function validarModeloTexto(int $modeloId): ?int
+    {
+        if ($modeloId <= 0) {
+            return null;
+        }
+        try {
+            $stmt = Database::getInstance()->getConnection()->prepare(
+                "SELECT m.id FROM ia_modelos m
+              INNER JOIN ia_provedores p ON p.id = m.provedor_id AND p.ativo = 1 AND p.api_key_enc IS NOT NULL
+                   WHERE m.id = :id AND m.capacidade = 'texto' AND m.ativo = 1 LIMIT 1"
+            );
+            $stmt->execute([':id' => $modeloId]);
+            $ok = $stmt->fetchColumn();
+            return $ok === false ? null : (int) $ok;
+        } catch (Throwable $e) {
+            LogService::error('ia_seo_validar_modelo_erro', ['modelo_id' => $modeloId, 'erro' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /** "Gemini · 3.1 Flash-Lite" — nome curto, para caber num badge. */
+    private function rotuloModelo(string $provedor, string $modelo, string $nome = ''): string
+    {
+        $marcas = ['openai' => 'OpenAI', 'gemini' => 'Gemini', 'claude' => 'Claude', 'replicate' => 'Replicate'];
+        $marca  = $marcas[$provedor] ?? ($provedor !== '' ? ucfirst($provedor) : 'IA');
+
+        $curto = $nome !== '' ? $nome : $modelo;
+        // Tira o prefixo da marca do nome do modelo para não repetir no badge.
+        foreach (['claude-', 'gemini-', 'gpt-', 'Claude ', 'Gemini '] as $pref) {
+            if (stripos($curto, $pref) === 0) {
+                $curto = substr($curto, strlen($pref));
+                break;
+            }
+        }
+
+        return trim($marca . ($curto !== '' ? ' · ' . $curto : ''));
     }
 
     /* ── Prompts por tipo (persona e regras vivem em instrucoes_sistema do tipo) ── */

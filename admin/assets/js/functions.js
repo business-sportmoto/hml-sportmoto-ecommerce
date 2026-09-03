@@ -1243,6 +1243,8 @@ $(function(){
     getContexto,
     campos = {},
     container = 'body',
+    alvoId = 0,          // id da entidade: sem ele, gera e aplica, mas não há
+                         // onde ancorar a procedência (cadastro ainda não salvo)
   }) {
     const containerId = 'seoai-btn-' + tipo + '-' + Math.random().toString(36).slice(2, 7);
 
@@ -1253,18 +1255,35 @@ $(function(){
     // Remove instância anterior se existir
     $container.find('.seoai-btn-wrap').remove();
 
+    // Estado da instância. `modeloId` null = usa o modelo padrão do tipo
+    // seo_pacote, definido na Central de IA.
+    const estado = { modeloId: null, modelos: [], rotuloPadrao: 'Central de IA' };
+
     const $wrap = $(`
       <div class="seoai-btn-wrap" id="${containerId}">
-        <button type="button" class="seoai-btn" id="seoai-trigger-${tipo}">
-          <span class="seoai-btn-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
-            </svg>
-          </span>
-          <span class="seoai-btn-label">Gerar SEO com IA</span>
-          <span class="seoai-btn-badge">Gemini</span>
-        </button>
+        <div class="seoai-acoes">
+          <button type="button" class="seoai-btn" id="seoai-trigger-${tipo}">
+            <span class="seoai-btn-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+              </svg>
+            </span>
+            <span class="seoai-btn-label">Gerar SEO com IA</span>
+            <span class="seoai-btn-badge" id="seoai-badge-${tipo}">Central de IA</span>
+          </button>
+          <div class="seoai-modelo">
+            <button type="button" class="seoai-modelo-toggle" id="seoai-modelo-${tipo}"
+                    aria-haspopup="listbox" aria-expanded="false" title="Escolher a IA e o modelo">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 9l6 6 6-6"/>
+              </svg>
+            </button>
+            <div class="seoai-modelo-menu" id="seoai-modelo-menu-${tipo}" role="listbox" hidden></div>
+          </div>
+        </div>
+        <div class="seoai-procedencia" id="seoai-proc-${tipo}" hidden></div>
         <div class="seoai-status" id="seoai-status-${tipo}" style="display:none;"></div>
       </div>`);
 
@@ -1276,6 +1295,32 @@ $(function(){
       $container.prepend($wrap);
     }
 
+    const $badge = $(`#seoai-badge-${tipo}`);
+    const $menu  = $(`#seoai-modelo-menu-${tipo}`);
+    const $toggle = $(`#seoai-modelo-${tipo}`);
+
+    // Catálogo + procedência numa chamada só, ao abrir a tela.
+    $.getJSON(BASE_URL + '/admin/seo-ia/modelos', { tipo, alvo_id: alvoId || 0 })
+      .done(function (res) {
+        if (!res || !res.ok) return;
+
+        estado.modelos = res.modelos || [];
+        const padrao = estado.modelos.find(m => m.padrao);
+        if (padrao) {
+          estado.rotuloPadrao = padrao.rotulo;
+          $badge.text(padrao.rotulo);
+        }
+        montarMenuModelos({ estado, $menu, $toggle, $badge, tipo });
+
+        if (res.procedencia) {
+          mostrarProcedencia(tipo, res.procedencia);
+        }
+      })
+      .fail(function () {
+        // Catálogo indisponível não impede gerar — o backend usa o padrão.
+        $toggle.prop('disabled', true).attr('title', 'Catálogo de modelos indisponível');
+      });
+
     // Trigger
     $(`#seoai-trigger-${tipo}`).on('click', function () {
       const contexto = getContexto();
@@ -1285,11 +1330,86 @@ $(function(){
         return;
       }
 
-      gerarSeoIA({ tipo, contexto, campos, btnId: `seoai-trigger-${tipo}`, statusId: `seoai-status-${tipo}` });
+      gerarSeoIA({
+        tipo, contexto, campos, alvoId,
+        modeloId: estado.modeloId,
+        btnId: `seoai-trigger-${tipo}`,
+        statusId: `seoai-status-${tipo}`,
+      });
     });
   };
 
-  function gerarSeoIA({ tipo, contexto, campos, btnId, statusId }) {
+  /** Preenche o dropdown de modelos e liga a seleção. */
+  function montarMenuModelos({ estado, $menu, $toggle, $badge, tipo }) {
+    if (!estado.modelos.length) {
+      $toggle.prop('disabled', true).attr('title', 'Nenhum modelo de texto ativo na Central de IA');
+      return;
+    }
+
+    const itens = estado.modelos.map(m => `
+      <button type="button" class="seoai-modelo-item${m.padrao ? ' ativo' : ''}"
+              role="option" aria-selected="${m.padrao ? 'true' : 'false'}" data-id="${m.id}">
+        <span class="seoai-modelo-nome">${escapeHtml(m.rotulo)}</span>
+        ${m.padrao ? '<span class="seoai-modelo-tag">padrão</span>' : ''}
+      </button>`).join('');
+
+    $menu.html(`
+      <div class="seoai-modelo-head">Gerar com</div>
+      ${itens}
+      <div class="seoai-modelo-rodape">Definido na Central de IA &rsaquo; Configurações</div>`);
+
+    $toggle.on('click', function (e) {
+      e.stopPropagation();
+      const abrindo = $menu.prop('hidden');
+      $('.seoai-modelo-menu').prop('hidden', true);
+      $('.seoai-modelo-toggle').attr('aria-expanded', 'false');
+      $menu.prop('hidden', !abrindo);
+      $toggle.attr('aria-expanded', abrindo ? 'true' : 'false');
+    });
+
+    $menu.on('click', '.seoai-modelo-item', function () {
+      const id = Number($(this).data('id'));
+      const m  = estado.modelos.find(x => x.id === id);
+      if (!m) return;
+
+      // Escolher o padrão volta ao comportamento "deixe a Central decidir",
+      // que preserva o fallback configurado.
+      estado.modeloId = m.padrao ? null : m.id;
+      $badge.text(m.rotulo);
+      $menu.find('.seoai-modelo-item').removeClass('ativo').attr('aria-selected', 'false');
+      $(this).addClass('ativo').attr('aria-selected', 'true');
+      $menu.prop('hidden', true);
+      $toggle.attr('aria-expanded', 'false');
+    });
+
+    // Fecha ao clicar fora ou com Escape
+    $(document).on('click', () => { $menu.prop('hidden', true); $toggle.attr('aria-expanded', 'false'); });
+    $menu.on('click', e => e.stopPropagation());
+    $(document).on('keydown', e => {
+      if (e.key === 'Escape') { $menu.prop('hidden', true); $toggle.attr('aria-expanded', 'false'); }
+    });
+  }
+
+  /** Faixa "este SEO foi escrito por IA" acima dos campos. */
+  function mostrarProcedencia(tipo, p) {
+    const $p = $(`#seoai-proc-${tipo}`);
+    if (!$p.length || !p) return;
+
+    const quando = p.aplicado_em ? String(p.aplicado_em).slice(0, 16).replace('T', ' ') : '';
+    $p.html(`
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+      </svg>
+      <span>SEO gerado por IA — <strong>${escapeHtml(p.rotulo || '')}</strong>${quando ? ' · ' + escapeHtml(quando) : ''}${p.por ? ' · por ' + escapeHtml(p.por) : ''}</span>
+    `).prop('hidden', false);
+  }
+
+  function escapeHtml(t) {
+    return $('<div>').text(t == null ? '' : String(t)).html();
+  }
+
+  function gerarSeoIA({ tipo, contexto, campos, btnId, statusId, alvoId = 0, modeloId = null }) {
     const $btn    = $(`#${btnId}`);
     const $status = $(`#${statusId}`);
 
@@ -1307,6 +1427,8 @@ $(function(){
     const payload = new URLSearchParams();
     payload.append('tipo',        tipo);
     payload.append('_csrf_token', CSRF_TOKEN);
+    if (alvoId)   payload.append('alvo_id',   alvoId);
+    if (modeloId) payload.append('modelo_id', modeloId);
     Object.entries(contexto).forEach(([k, v]) => {
       payload.append(`contexto[${k}]`, v);
     });
@@ -1323,6 +1445,17 @@ $(function(){
           return;
         }
 
+        // O badge passa a mostrar quem REALMENTE respondeu: se o modelo
+        // escolhido falhar, a Central cai no próximo da cadeia, e o rótulo
+        // tem de acompanhar em vez de mentir.
+        const ia = res.seo && res.seo._ia ? res.seo._ia : null;
+        if (ia && ia.rotulo) {
+          $(`#seoai-badge-${tipo}`).text(ia.rotulo);
+          if (ia.trocou) {
+            adminToast('O modelo escolhido falhou; a Central usou ' + ia.rotulo + '.', 'warning');
+          }
+        }
+
         // Preview antes de aplicar
         mostrarPreviewSeoIA({
           seo      : res.seo,
@@ -1331,6 +1464,8 @@ $(function(){
           btnId,
           tipo,
           contexto,
+          alvoId,
+          modeloId,
         });
       },
       error: function () {
@@ -1350,7 +1485,7 @@ $(function(){
       </svg>`);
   }
 
-  function mostrarPreviewSeoIA({ seo, campos, statusId, tipo, contexto }) {
+  function mostrarPreviewSeoIA({ seo, campos, statusId, tipo, contexto, alvoId = 0, modeloId = null }) {
     const $status = $(`#${statusId}`);
 
     const linhas = [
@@ -1417,6 +1552,23 @@ $(function(){
       aplicarSeoIA(seo, campos);
       $status.slideUp(200);
       adminToast('Campos SEO preenchidos!', 'success');
+
+      // Só AQUI o texto da IA vira o conteúdo da loja — é este o momento que
+      // a procedência registra. Sem id (cadastro novo), o backend responde ok
+      // e não registra; salvar e regerar resolve.
+      const gid = seo && seo._ia ? seo._ia.geracao_id : 0;
+      if (!gid || !alvoId) return;
+
+      $.post(BASE_URL + '/admin/seo-ia/aplicado', {
+        _csrf_token: CSRF_TOKEN,
+        tipo,
+        alvo_id: alvoId,
+        geracao_id: gid,
+      }, null, 'json').done(function (res) {
+        if (res && res.ok && res.procedencia) {
+          mostrarProcedencia(tipo, res.procedencia);
+        }
+      });
     });
 
     // Fechar
@@ -1424,12 +1576,12 @@ $(function(){
       $status.slideUp(200);
     });
 
-    // Regenerar
+    // Regenerar — mantém o modelo escolhido e o alvo da rodada anterior
     $status.find('.seoai-btn-regenerar').on('click', function () {
       $status.slideUp(150);
       const btnId    = `seoai-trigger-${tipo}`;
       const statusId2 = `seoai-status-${tipo}`;
-      gerarSeoIA({ tipo, contexto, campos, btnId, statusId: statusId2 });
+      gerarSeoIA({ tipo, contexto, campos, btnId, statusId: statusId2, alvoId, modeloId });
     });
   }
 

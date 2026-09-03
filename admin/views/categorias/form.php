@@ -330,6 +330,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (typeof adminSeoIA !== 'undefined') {
         adminSeoIA({
           tipo: 'categoria',
+          alvoId: <?= (int)($cat['id'] ?? 0) ?>,
           getContexto: () => ({
               nome     : $('#cat-nome').val(),
               descricao: $('#cat-descricao').val(),

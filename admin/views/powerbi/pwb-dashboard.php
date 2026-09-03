@@ -190,7 +190,7 @@ $pwb_indisponivel = $pwb_dashboard_data['indisponivel'] ?? [];
             <button class="pwb_nav_item" type="button" data-pwb-view="central"><?= pwb_icon('alert') ?><span class="pwb_nav_label">Central executiva</span></button>
             <button class="pwb_nav_item" type="button" data-pwb-view="access"><?= pwb_icon('access') ?><span class="pwb_nav_label">Funil</span></button>
             <button class="pwb_nav_item" type="button" data-pwb-view="ai"><?= pwb_icon('ai') ?><span class="pwb_nav_label">Saúde do dado</span></button>
-            <button class="pwb_nav_item" type="button" data-pwb-view="faq"><?= pwb_icon('faq') ?><span class="pwb_nav_label">Perguntas</span></button>
+            <button class="pwb_nav_item" type="button" data-pwb-view="faq"><?= pwb_icon('faq') ?><span class="pwb_nav_label">Perguntas e IA</span></button>
             <button class="pwb_nav_item" type="button" data-pwb-view="stock"><?= pwb_icon('stock') ?><span class="pwb_nav_label">Estoque</span></button>
         </nav>
 
@@ -1055,11 +1055,117 @@ $pwb_indisponivel = $pwb_dashboard_data['indisponivel'] ?? [];
         </section>
 
         <section class="pwb_view" data-pwb-panel="faq">
+            <div class="pwb_metric_grid">
+                <?php foreach (($pwb_metrics['perguntas'] ?? []) as $item): ?><?php pwb_render_metric_card($item); ?><?php endforeach; ?>
+            </div>
+
+            <div class="pwb_chart_grid">
+                <article class="pwb_panel">
+                    <div class="pwb_panel_header">
+                        <h2 class="pwb_panel_title">Quem responde</h2>
+                        <span class="pwb_panel_hint">"Útil" é endosso — não existe voto negativo</span>
+                    </div>
+                    <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                        <thead class="pwb_thead"><tr class="pwb_tr">
+                            <th class="pwb_th">Quem</th><th class="pwb_th">Tipo</th>
+                            <th class="pwb_th">Respostas</th><th class="pwb_th">Votos úteis</th>
+                            <th class="pwb_th">Úteis/resposta</th><th class="pwb_th">Tempo médio</th>
+                            <th class="pwb_th">Tamanho médio</th>
+                        </tr></thead>
+                        <tbody class="pwb_tbody">
+                        <?php if (empty($pwb_tables['quem_responde'])): ?>
+                            <tr class="pwb_tr"><td class="pwb_td" colspan="7">Nenhuma pergunta respondida no período.</td></tr>
+                        <?php else: foreach ($pwb_tables['quem_responde'] as $r): ?>
+                            <tr class="pwb_tr">
+                                <td class="pwb_td"><?= pwb_e($r['who']) ?></td>
+                                <td class="pwb_td"><span class="pwb_badge <?= $r['source'] === 'IA' ? 'pwb_badge_info' : 'pwb_badge_default' ?>"><?= pwb_e($r['source']) ?></span></td>
+                                <td class="pwb_td"><strong><?= pwb_e($r['answers']) ?></strong></td>
+                                <td class="pwb_td"><?= pwb_e($r['useful']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($r['per']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($r['time']) ?></td>
+                                <td class="pwb_td"><?= pwb_e($r['size']) ?></td>
+                            </tr>
+                        <?php endforeach; endif; ?>
+                        </tbody>
+                    </table></div>
+                </article>
+
+                <article class="pwb_panel">
+                    <h2 class="pwb_panel_title">Uso de IA por tipo</h2>
+                    <div class="pwb_chart_box"><canvas class="pwb_chart_canvas" id="pwb_chart_ia_tipos"></canvas></div>
+                </article>
+            </div>
+
             <article class="pwb_panel">
-                <div class="pwb_panel_header"><h2 class="pwb_panel_title">Perguntas Mais Frequentes</h2><span class="pwb_panel_hint">Automação, volume e satisfação</span></div>
-                <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table><thead class="pwb_thead"><tr class="pwb_tr"><th class="pwb_th">Pergunta</th><th class="pwb_th">Volume</th><th class="pwb_th">Resposta automática</th><th class="pwb_th">Satisfação</th></tr></thead><tbody class="pwb_tbody">
-                    <?php foreach (($pwb_tables['faq'] ?? []) as $row): ?><tr class="pwb_tr"><td class="pwb_td"><?= pwb_e($row['question']) ?></td><td class="pwb_td"><?= pwb_e($row['volume']) ?></td><td class="pwb_td"><?= pwb_e($row['auto']) ?></td><td class="pwb_td"><?= pwb_e($row['satisfaction']) ?></td></tr><?php endforeach; ?>
-                </tbody></table></div>
+                <div class="pwb_panel_header">
+                    <h2 class="pwb_panel_title">IA mais utilizada</h2>
+                    <span class="pwb_panel_hint">Custo = o que saiu da conta; falha não custou</span>
+                </div>
+                <?php // A resposta das perguntas de PRODUTO nao passa pelo
+                      // roteador de IA, entao nao aparece nesta tabela. Sem
+                      // este aviso, alguem leria "gpt-5.4-mini respondeu as
+                      // perguntas" — o que nao esta escrito em lugar nenhum. ?>
+                <div class="form-alert form-alert--warning" style="font-size:12.5px;margin-bottom:14px;">
+                    <strong>Qual IA respondeu cada pergunta de produto não está gravado.</strong>
+                    Esse caminho usa o <code>GeminiQAService</code>, que salva só o texto —
+                    o modelo não vai para <code>ia_geracoes</code>. A tabela abaixo cobre o
+                    que passou pelo roteador de IA: geração de conteúdo, imagens e o
+                    atendimento via <em>chat</em>.
+                </div>
+                <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                    <thead class="pwb_thead"><tr class="pwb_tr">
+                        <th class="pwb_th">Provedor</th><th class="pwb_th">Modelo</th>
+                        <th class="pwb_th">Usado para</th><th class="pwb_th">Execuções</th>
+                        <th class="pwb_th">Concluídas</th><th class="pwb_th">Falhas</th>
+                        <th class="pwb_th">Sucesso</th><th class="pwb_th">Custo real</th>
+                        <th class="pwb_th">Tempo médio</th>
+                    </tr></thead>
+                    <tbody class="pwb_tbody">
+                    <?php if (empty($pwb_tables['ia_modelos'])): ?>
+                        <tr class="pwb_tr"><td class="pwb_td" colspan="9">Nenhuma geração de IA no período.</td></tr>
+                    <?php else: foreach ($pwb_tables['ia_modelos'] as $r): ?>
+                        <tr class="pwb_tr">
+                            <td class="pwb_td"><?= pwb_e($r['provider']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['model']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['type']) ?></td>
+                            <td class="pwb_td"><strong><?= pwb_e($r['runs']) ?></strong></td>
+                            <td class="pwb_td"><?= pwb_e($r['ok']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['fails']) ?></td>
+                            <td class="pwb_td"><span class="pwb_badge <?= pwb_e(pwb_badge_class($r['level'])) ?>"><?= pwb_e($r['rate']) ?></span></td>
+                            <td class="pwb_td"><?= pwb_e($r['cost']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['ms']) ?></td>
+                        </tr>
+                    <?php endforeach; endif; ?>
+                    </tbody>
+                </table></div>
+            </article>
+
+            <article class="pwb_panel">
+                <div class="pwb_panel_header">
+                    <h2 class="pwb_panel_title">Produtos que mais geram pergunta</h2>
+                    <span class="pwb_panel_hint">Muita pergunta no mesmo produto costuma ser descrição incompleta</span>
+                </div>
+                <div class="pwb_table_wrap"><table class="pwb_table" data-pwb-table>
+                    <thead class="pwb_thead"><tr class="pwb_tr">
+                        <th class="pwb_th">Produto</th><th class="pwb_th">Marca</th>
+                        <th class="pwb_th">Perguntas</th><th class="pwb_th">Respondidas</th>
+                        <th class="pwb_th">Na fila</th><th class="pwb_th">Votos úteis</th>
+                    </tr></thead>
+                    <tbody class="pwb_tbody">
+                    <?php if (empty($pwb_tables['perguntas_produto'])): ?>
+                        <tr class="pwb_tr"><td class="pwb_td" colspan="6">Nenhuma pergunta no período.</td></tr>
+                    <?php else: foreach ($pwb_tables['perguntas_produto'] as $r): ?>
+                        <tr class="pwb_tr">
+                            <td class="pwb_td"><?= pwb_e($r['product']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['brand']) ?></td>
+                            <td class="pwb_td"><strong><?= pwb_e($r['asked']) ?></strong></td>
+                            <td class="pwb_td"><?= pwb_e($r['answered']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['queue']) ?></td>
+                            <td class="pwb_td"><?= pwb_e($r['useful']) ?></td>
+                        </tr>
+                    <?php endforeach; endif; ?>
+                    </tbody>
+                </table></div>
             </article>
         </section>
 
@@ -1241,6 +1347,11 @@ $pwb_indisponivel = $pwb_dashboard_data['indisponivel'] ?? [];
   barras('pwb_chart_geo_uf', (charts.geo_uf || []).map(function (r) {
     return { rotulo: r.local, valor: r.receita, texto: brl(r.receita) };
   }), '--pwb-g-ciano');
+
+  barras('pwb_chart_ia_tipos', (charts.ia_tipos || []).map(function (r) {
+    return { rotulo: r.tipo, valor: r.execucoes,
+             texto: r.execucoes + (Number(r.falhas) > 0 ? '  (' + r.falhas + ' falhas)' : '') };
+  }), '--pwb-g-roxo');
 
   barras('pwb_chart_clips_top', (charts.clips_top || []).map(function (r) {
     return { rotulo: r.titulo, valor: r.views_unicas, texto: r.views_unicas + ' views' };

@@ -111,6 +111,8 @@ $viewsNovas = [
     'bi_fato_clip_view'        => 'Clips (views por dia)',
     'bi_fato_clip_produto'     => 'Clips (produtos do clip)',
     'bi_fato_compartilhamento' => 'Carrinhos compartilhados',
+    'bi_fato_pergunta'         => 'Perguntas e IA',
+    'bi_fato_ia'               => 'Perguntas e IA (uso de IA)',
 ];
 
 $faltaBase = array_values(array_filter($viewsBase, fn($v) => !existeObjeto($db, $v)));
@@ -136,7 +138,7 @@ if ($faltaNovas) {
               . "estourar 500, e mostra um aviso no topo listando o que falta.";
 } else {
     linha('ok', 'as ' . count($viewsNovas) . ' views do lote novo existem'
-               . ' (clips, compartilhados, cupons)');
+               . ' (clips, compartilhados, cupons, perguntas e IA)');
 }
 
 // ────────────────────────────────────────────────────────
@@ -272,6 +274,67 @@ if (!$faltaNovas) {
     if ((int)$sh['contador'] !== (int)$sh['views'] && (int)$sh['shares'] > 0) {
         linha('aviso', "contador de visualizações divergente: {$sh['contador']} vs {$sh['views']} eventos",
               'o BI usa o EVENTO; o contador é cache');
+    }
+}
+
+// ────────────────────────────────────────────────────────
+if (!$faltaNovas) {
+    echo PHP_EOL . "ATENDIMENTO (perguntas e IA)" . PHP_EOL;
+
+    $q = $db->query(
+        "SELECT COUNT(*) total,
+                COALESCE(SUM(respondida),0)              respondidas,
+                COALESCE(SUM(respondida_por_ia),0)       por_ia,
+                COALESCE(SUM(respondida_por_admin),0)    por_admin,
+                COALESCE(SUM(status='aguardando_ia'),0)  fila,
+                COALESCE(SUM(votos_uteis),0)             uteis,
+                MIN(data) de, MAX(data) ate
+           FROM bi_fato_pergunta"
+    )->fetch();
+
+    linha((int)$q['total'] > 0 ? 'ok' : 'aviso',
+          "perguntas: {$q['total']}  ·  {$q['respondidas']} respondidas "
+          . "({$q['por_ia']} por IA, {$q['por_admin']} pelo time)  ·  {$q['uteis']} votos úteis");
+
+    // Fila parada é cliente esperando na loja — o pior número desta seção.
+    if ((int)$q['fila'] > 0) {
+        linha('bug', "{$q['fila']} pergunta(s) parada(s) em 'aguardando_ia'",
+              'a IA não respondeu e não passou para o admin — verifique o caminho '
+              . 'PerguntaController → GeminiQAService');
+        $avisos[] = "{$q['fila']} perguntas em 'aguardando_ia'. O status inicial é esse, "
+                  . "e quem sai dele é o GeminiQAService (ou marcarParaAdmin). Parada ali "
+                  . "significa que nenhum dos dois rodou.";
+    }
+
+    // O período padrão do painel é 30 dias. Pergunta antiga não aparece
+    // ali, e "painel vazio" fica indistinguível de "painel quebrado".
+    if ((int)$q['total'] > 0) {
+        $recentes = (int)$db->query(
+            "SELECT COUNT(*) FROM bi_fato_pergunta WHERE data >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)"
+        )->fetchColumn();
+        if ($recentes === 0) {
+            linha('aviso', 'nenhuma pergunta nos últimos 30 dias',
+                  "as {$q['total']} existentes são de {$q['de']} a {$q['ate']} — "
+                  . 'no painel, amplie o período para 12 meses');
+        } else {
+            linha('ok', "{$recentes} pergunta(s) nos últimos 30 dias (aparecem no período padrão)");
+        }
+    }
+
+    // Modelo de IA: existe para o roteador, NÃO para as perguntas.
+    $ia = $db->query(
+        "SELECT COUNT(*) total, COUNT(DISTINCT modelo) modelos,
+                COALESCE(SUM(falhou),0) falhas,
+                ROUND(COALESCE(SUM(custo_real_usd),0),4) custo
+           FROM bi_fato_ia"
+    )->fetch();
+    linha((int)$ia['total'] > 0 ? 'ok' : 'aviso',
+          "gerações de IA: {$ia['total']}  ·  {$ia['modelos']} modelos  ·  "
+          . "{$ia['falhas']} falhas  ·  US\$ {$ia['custo']} reais");
+
+    if ((int)$q['por_ia'] > 0) {
+        linha('aviso', 'qual modelo respondeu cada pergunta NÃO é gravado',
+              'o GeminiQAService salva só o texto; nada vai para ia_geracoes');
     }
 }
 

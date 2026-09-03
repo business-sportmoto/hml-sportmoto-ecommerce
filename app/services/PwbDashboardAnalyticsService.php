@@ -484,7 +484,54 @@ final class PwbDashboardAnalyticsService
             ];
         }
 
+        $quem = [];
+        foreach ($this->protegido(fn() => $this->bi->quemResponde($p, 20), 'bi_fato_pergunta', []) as $r) {
+            $quem[] = [
+                'who'      => $r['quem'],
+                'source'   => $r['fonte'] === 'ia' ? 'IA' : 'Pessoa',
+                'answers'  => $this->num((float)$r['respostas']),
+                'useful'   => $this->num((float)$r['votos_uteis']),
+                'per'      => number_format((float)$r['uteis_por_resposta'], 2, ',', '.'),
+                'time'     => $r['minutos_medio'] === null ? '—'
+                            : ((int)$r['minutos_medio'] === 0 ? 'imediato' : (int)$r['minutos_medio'] . ' min'),
+                'size'     => $this->num((float)$r['tam_medio']) . ' car.',
+            ];
+        }
+
+        $ia = [];
+        foreach ($this->protegido(fn() => $this->bi->iaPorModelo($p, null, 20), 'bi_fato_ia', []) as $r) {
+            $ia[] = [
+                'provider' => $r['provedor'],
+                'model'    => $r['modelo'],
+                'type'     => $r['tipo'] ?? '—',
+                'runs'     => $this->num((float)$r['execucoes']),
+                'ok'       => $this->num((float)$r['concluidas']),
+                'fails'    => $this->num((float)$r['falhas']),
+                'rate'     => number_format((float)$r['taxa_sucesso'], 1, ',', '.') . '%',
+                // Falha não custou: o real é o que saiu da conta.
+                'cost'     => 'US$ ' . number_format((float)$r['custo_usd'], 4, ',', '.'),
+                'ms'       => $r['ms_medio'] === null ? '—' : $this->num((float)$r['ms_medio']) . ' ms',
+                'level'    => (float)$r['taxa_sucesso'] >= 95 ? 'Saudável'
+                            : ((float)$r['taxa_sucesso'] >= 70 ? 'Atenção' : 'Crítico'),
+            ];
+        }
+
+        $perProduto = [];
+        foreach ($this->protegido(fn() => $this->bi->perguntasPorProduto($p, 15), 'bi_fato_pergunta', []) as $r) {
+            $perProduto[] = [
+                'product'  => $r['produto'],
+                'brand'    => $r['marca_nome'] ?? '—',
+                'asked'    => $this->num((float)$r['perguntas']),
+                'answered' => $this->num((float)$r['respondidas']),
+                'queue'    => (int)$r['na_fila'] > 0 ? $this->num((float)$r['na_fila']) : '—',
+                'useful'   => $this->num((float)$r['votos_uteis']),
+            ];
+        }
+
         return [
+            'quem_responde' => $quem,
+            'ia_modelos'    => $ia,
+            'perguntas_produto' => $perProduto,
             'clips'         => $clips,
             'compartilhadores' => $sharers,
             'marcas'        => $this->protegido(fn() => $this->dimensaoTabela($p, 'marca'), 'bi_fato_item (marca)', []),
@@ -638,7 +685,31 @@ final class PwbDashboardAnalyticsService
                       : 'uso.pedido_id nunca é gravado — ver 04-bugs'],
         ];
 
-        return ['access' => $funil, 'ai' => $saude,
+        $q = $this->protegido(fn() => $this->bi->perguntasResumo($p), 'bi_fato_pergunta', []);
+        $perguntaKpi = $q ? [
+            ['label' => 'Perguntas recebidas', 'value' => $this->num((float)$q['perguntas']),
+             // Zero no período com total geral > 0 não é painel quebrado:
+             // é filtro. Dizer isso evita a caça a um bug que não existe.
+             'hint'  => (int)$q['perguntas'] === 0 && (int)$q['total_geral'] > 0
+                      ? (int)$q['total_geral'] . ' no total, entre '
+                        . date('d/m/y', strtotime((string)$q['primeira'])) . ' e '
+                        . date('d/m/y', strtotime((string)$q['ultima']))
+                        . ' — amplie o período'
+                      : $q['pct_resposta'] . '% respondidas'],
+            ['label' => 'Respondidas por IA', 'value' => $this->num((float)$q['por_ia']),
+             'hint'  => $q['pct_ia'] . '% das respostas · ' . (int)$q['por_admin'] . ' pelo time'],
+            // A fila é o número que mais importa: pergunta sem resposta
+            // é cliente esperando na loja.
+            ['label' => 'Na fila da IA', 'value' => $this->num((float)$q['fila_ia']),
+             'hint'  => (int)$q['fila_ia'] > 0
+                      ? 'aguardando resposta — verifique o worker'
+                      : 'fila limpa'],
+            ['label' => 'Votos "útil"', 'value' => $this->num((float)$q['votos_uteis']),
+             // Não existe voto negativo, então isto NÃO é satisfação.
+             'hint'  => 'endosso, não satisfação — não existe voto negativo'],
+        ] : [];
+
+        return ['access' => $funil, 'ai' => $saude, 'perguntas' => $perguntaKpi,
                 'clips' => $clipKpi, 'share' => $shareKpi,
                 'recompra' => $recompra, 'carrinho' => $car,
                 'projecao' => $proj, 'concentracao' => $conc];
@@ -715,6 +786,7 @@ final class PwbDashboardAnalyticsService
             'by_status'      => $this->bi->porStatus($p),
             'top_brands'     => $this->bi->ranking($p, 'marca', 8),
             'marcas_share'   => $this->protegido(fn() => array_slice($this->bi->porMarca($p, 'marca', 10), 0, 10), 'bi_fato_item (marca)', []),
+            'ia_tipos'       => $this->protegido(fn() => $this->bi->iaPorTipo($p), 'bi_fato_ia', []),
             'clips_serie'    => $this->protegido(fn() => $this->bi->clipsSerie($p), 'bi_fato_clip_view', []),
             'clips_top'      => $this->protegido(fn() => $this->bi->clips($p, 8), 'bi_fato_clip', []),
             'share_funil'    => $this->protegido(fn() => $this->bi->compartilhamentos($p)['funil'], 'bi_fato_compartilhamento', []),

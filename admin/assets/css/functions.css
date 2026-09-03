@@ -65,7 +65,36 @@ to{transform:rotate(360deg)}
 .seoai-btn:disabled{opacity:.6;cursor:wait}
 .seoai-btn-icon{display:flex;align-items:center;color:#7c3aed}
 .seoai-btn-label{color:var(--text)}
-.seoai-btn-badge{font-size:10px;font-weight:800;letter-spacing:.4px;padding:2px 7px;border-radius:99px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff}
+.seoai-btn-badge{font-size:10px;font-weight:800;letter-spacing:.4px;padding:2px 7px;border-radius:99px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;white-space:nowrap}
+
+/* Botão dividido: gerar à esquerda, escolher a IA/modelo à direita. */
+.seoai-acoes{display:flex;align-items:flex-start;gap:6px}
+.seoai-modelo{position:relative}
+.seoai-modelo-toggle{display:flex;align-items:center;justify-content:center;width:34px;height:38px;margin-bottom:10px;border-radius:var(--r-lg);border:1.5px solid transparent;background:linear-gradient(var(--surface),var(--surface)) padding-box,linear-gradient(135deg,#4f46e5,#7c3aed,#a855f7) border-box;color:#7c3aed;cursor:pointer;transition:all var(--t)}
+/* A tinta do hover precisa vir SOBRE uma camada opaca de --surface: com só a
+   camada translúcida em padding-box o gradiente da borda vaza e o botão vira
+   um disco roxo sólido. */
+.seoai-modelo-toggle:hover:not(:disabled){background:linear-gradient(#7c3aed14,#7c3aed14) padding-box,linear-gradient(var(--surface),var(--surface)) padding-box,linear-gradient(135deg,#4f46e5,#7c3aed,#a855f7) border-box}
+.seoai-modelo-toggle:focus-visible{outline:2px solid #7c3aed;outline-offset:2px}
+.seoai-modelo-toggle:disabled{opacity:.45;cursor:not-allowed}
+.seoai-modelo-toggle[aria-expanded="true"] svg{transform:rotate(180deg)}
+.seoai-modelo-toggle svg{transition:transform var(--t)}
+.seoai-modelo-menu{position:absolute;z-index:60;top:calc(100% + 4px);right:0;min-width:230px;background:var(--surface);border:1.5px solid #7c3aed33;border-radius:var(--r-xl);box-shadow:0 12px 32px rgba(16,24,40,.18);overflow:hidden;padding:4px}
+.seoai-modelo-head{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);padding:8px 10px 6px}
+.seoai-modelo-item{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:38px;padding:8px 10px;border:0;border-radius:var(--r-lg);background:none;cursor:pointer;font-family:var(--font);font-size:12.5px;color:var(--text);text-align:left}
+.seoai-modelo-item:hover{background:#7c3aed14}
+.seoai-modelo-item.ativo{background:#7c3aed1f;font-weight:700}
+.seoai-modelo-nome{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.seoai-modelo-tag{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#7c3aed;background:#7c3aed1a;border-radius:99px;padding:2px 6px}
+.seoai-modelo-rodape{font-size:10.5px;color:var(--text-3);padding:6px 10px 4px;border-top:1px solid var(--border);margin-top:4px}
+
+/* Onde o preview é injetado — o preview tem estilo próprio; aqui só o respiro. */
+.seoai-status{margin-bottom:16px}
+
+/* Faixa de procedência: só aparece quando o SEO salvo veio de uma geração. */
+.seoai-procedencia{display:flex;align-items:center;gap:6px;margin:0 0 12px;padding:7px 11px;border-radius:var(--r-lg);background:#7c3aed0f;border:1px solid #7c3aed26;font-size:11.5px;color:var(--text-2);line-height:1.4}
+.seoai-procedencia svg{color:#7c3aed;flex-shrink:0}
+.seoai-procedencia strong{color:var(--text);font-weight:700}
 .seoai-preview{border:1.5px solid #7c3aed33;border-radius:var(--r-xl);overflow:hidden;background:var(--surface)}
 .seoai-preview-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:linear-gradient(135deg,#4f46e50f,#a855f70a);border-bottom:1px solid #7c3aed22}
 .seoai-preview-title{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:800;color:#7c3aed}
@@ -198,6 +227,27 @@ html[data-theme="dark"] .seoai-btn-badge {
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
   box-shadow: 0 4px 12px rgba(124,58,237,.25);
 }
+
+html[data-theme="dark"] .seoai-modelo-toggle { color: #c4b5fd; }
+html[data-theme="dark"] .seoai-modelo-toggle:hover:not(:disabled) {
+  background: linear-gradient(rgba(167,139,250,.14), rgba(167,139,250,.14)) padding-box,
+              linear-gradient(var(--surface), var(--surface)) padding-box,
+              linear-gradient(135deg, #4f46e5, #7c3aed, #a855f7) border-box;
+}
+html[data-theme="dark"] .seoai-modelo-toggle:focus-visible { outline-color: #c4b5fd; }
+html[data-theme="dark"] .seoai-modelo-menu {
+  background: var(--surface, #111821);
+  border-color: rgba(167,139,250,.30);
+  box-shadow: 0 16px 40px rgba(0,0,0,.55);
+}
+html[data-theme="dark"] .seoai-modelo-item:hover { background: rgba(167,139,250,.14); }
+html[data-theme="dark"] .seoai-modelo-item.ativo { background: rgba(167,139,250,.20); }
+html[data-theme="dark"] .seoai-modelo-tag { color: #c4b5fd; background: rgba(167,139,250,.16); }
+html[data-theme="dark"] .seoai-procedencia {
+  background: rgba(167,139,250,.10);
+  border-color: rgba(167,139,250,.26);
+}
+html[data-theme="dark"] .seoai-procedencia svg { color: #c4b5fd; }
 
 html[data-theme="dark"] .seoai-preview {
   background: var(--surface, #111821);

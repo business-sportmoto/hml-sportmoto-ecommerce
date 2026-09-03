@@ -2019,6 +2019,10 @@ document.addEventListener('DOMContentLoaded', function () {
         adminSeoIA({
             tipo: 'produto',
 
+            // Ancora a procedência: sem id (cadastro novo) gera e aplica
+            // normalmente, só não há onde registrar de qual geração veio.
+            alvoId: <?= (int)($p['id'] ?? 0) ?>,
+
             getContexto: () => ({
                 nome      : document.getElementById('pe-nome')?.value || '',
                 descricao : document.getElementById('pe-descricao')?.value || '',

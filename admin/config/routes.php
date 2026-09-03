@@ -51,6 +51,8 @@ AdminRouter::post('/icons/update',                 'IconAdminController@update')
 
 // admin/config/routes.php
 AdminRouter::post('/seo-ia/gerar', 'SeoIaController@gerar');
+AdminRouter::get ('/seo-ia/modelos',  'SeoIaController@modelos');
+AdminRouter::post('/seo-ia/aplicado', 'SeoIaController@aplicado');
 
 AdminRouter::get ('/notificacoes',                       'NotificacaoAdminController@index');
 AdminRouter::post('/notificacoes/enviar',                'NotificacaoAdminController@enviar');
