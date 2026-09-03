@@ -959,6 +959,16 @@ html[data-theme="dark"] .ch-fx-flut {
 }
 
 /* Rótulo de porta */
+/* Saída que a configuração não usa (Teste A/B com 3 dos 6 braços) */
+.ch-fx-canvas .drawflow .drawflow-node .output.ch-fx-out-off { display: none; }
+
+.ch-fx-pesos { display: flex; flex-direction: column; gap: 6px; }
+.ch-fx-peso-item {
+  display: grid; grid-template-columns: 22px 1fr 18px; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 600; color: var(--text);
+}
+.ch-fx-peso-item .ch-input { width: 100%; }
+
 .ch-fx-porta {
   position: absolute; right: calc(100% + 7px); white-space: nowrap;
   font-size: 10px; font-weight: 600; color: var(--ch-mut); pointer-events: none;

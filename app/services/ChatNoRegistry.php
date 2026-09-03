@@ -73,6 +73,14 @@ abstract class ChatNo
     /** Portas declaradas — validação do grafo e desenho do canvas. */
     abstract public function portas(): array;
 
+    /**
+     * Portas que valem para ESTA configuração. Quase sempre é `portas()`;
+     * um nó com número variável de saídas (Teste A/B com 3 braços) devolve só
+     * as que o operador ligou. O canvas desenha o máximo; o motor e o checker
+     * olham estas.
+     */
+    public function portasAtivas(array $config): array { return $this->portas(); }
+
     public function ehTrigger(): bool { return false; }
 
     /** Categoria para agrupar na paleta: trigger|mensagem|logica|condicao|acao */
@@ -615,10 +623,42 @@ class ChatNoEsperarResposta extends ChatNo
 }
 
 /** config: {"peso_a":50} */
+/**
+ * config: {"variantes":3,"pesos":[50,30,20]}   (2 a 6 braços)
+ * Compatível com o formato antigo {"peso_a":70}: vira dois braços 70/30.
+ */
 class ChatNoSplitAb extends ChatNo
 {
-    public function portas(): array { return ['a', 'b']; }
+    public const MAX = 6;
+
+    public function portas(): array { return array_slice(['a', 'b', 'c', 'd', 'e', 'f'], 0, self::MAX); }
     public function categoria(): string { return 'logica'; }
+
+    public function portasAtivas(array $config): array
+    {
+        return array_slice($this->portas(), 0, count($this->pesos($config)));
+    }
+
+    /** Pesos normalizados, um por braço ativo. Soma pode não dar 100: o sorteio é proporcional. */
+    public function pesos(array $config): array
+    {
+        $n = (int)($config['variantes'] ?? 0);
+        $pesos = array_values(array_map('intval', (array)($config['pesos'] ?? [])));
+
+        if ($n < 2) {
+            // Formato antigo, ou nada configurado: dois braços
+            $a = max(0, min(100, (int)($config['peso_a'] ?? 50)));
+            return [$a, 100 - $a];
+        }
+
+        $n = min(self::MAX, $n);
+        $pesos = array_slice(array_pad($pesos, $n, 0), 0, $n);
+        $pesos = array_map(fn($p) => max(0, $p), $pesos);
+
+        // Tudo zero seria "ninguém passa": reparte igual
+        if (array_sum($pesos) === 0) $pesos = array_fill(0, $n, 1);
+        return $pesos;
+    }
 
     public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
     {
@@ -628,8 +668,16 @@ class ChatNoSplitAb extends ChatNo
         // Decisão gravada: reprocessar o nó não pode trocar o braço
         if (!empty($c[$marca])) return (string)$c[$marca];
 
-        $pesoA = max(0, min(100, (int)($config['peso_a'] ?? 50)));
-        $porta = (random_int(1, 100) <= $pesoA) ? 'a' : 'b';
+        $pesos  = $this->pesos($config);
+        $portas = $this->portasAtivas($config);
+
+        $sorteio = random_int(1, max(1, array_sum($pesos)));
+        $acum = 0;
+        $porta = end($portas);
+        foreach ($pesos as $i => $p) {
+            $acum += $p;
+            if ($sorteio <= $acum) { $porta = $portas[$i]; break; }
+        }
 
         $c[$marca] = $porta;
         $sessao['contexto'] = $c;
@@ -1270,7 +1318,7 @@ class ChatNoIaResponder extends ChatNo
         $produtoId = (int)($config['produto_id'] ?? 0);
         if ($produtoId < 1) return 'nao_sabe';
 
-        $agente = new ChatIaAgenteService($ctx->db);
+        $agente = $this->agente($ctx);
         $campos = $this->camposDe($config['campos'] ?? null);
 
         // Produto inativo ou apagado devolve null: melhor calar que falar de
@@ -1288,24 +1336,69 @@ class ChatNoIaResponder extends ChatNo
 
         if (!$r['ok']) return 'nao_sabe';
 
-        // Resposta pública primeiro: quem comentou espera ver algo no post, e
-        // se o direct falhar (janela fechada) o comentário já foi respondido.
-        if (!empty($r['publico']) && !empty($c['_comment_id'])) {
-            $this->responderComentario($ctx, (string)$c['_comment_id'], (string)$r['publico']);
+        // ── O que o modelo escreveu vira {{var}}, junto com o produto ──
+        // A resposta crua ("R$ 499,90") é a parte que a IA controla. Saudação,
+        // convite e link são do operador, no modelo da mensagem — e ficam fora
+        // da guarda de números de propósito: a URL tem dígitos e é nossa.
+        $precoFmt = isset($ctxProd['preco']['valor'])
+            ? 'R$ ' . number_format((float)$ctxProd['preco']['valor'], 2, ',', '.') : '';
+
+        $extra = [
+            'resposta'      => (string)$r['direct'],
+            'ia_resposta'   => (string)$r['direct'],
+            'produto_nome'  => (string)($ctxProd['nome'] ?? ''),
+            'produto_url'   => (string)($ctxProd['_url'] ?? ''),
+            'produto_preco' => $precoFmt,
+        ];
+        $vars = array_merge($ctx->vars, $extra);
+
+        $direct  = $this->compor((string)($config['modelo_direct'] ?? ''), $vars);
+        $publico = null;
+        if (!empty($r['publico'])) {
+            $publico = $this->compor((string)($config['modelo_publico'] ?? ''),
+                                     array_merge($vars, ['resposta' => (string)$r['publico']]));
         }
 
-        if (trim((string)$r['direct']) !== '') {
+        // Resposta pública primeiro: quem comentou espera ver algo no post, e
+        // se o direct falhar (janela fechada) o comentário já foi respondido.
+        if ($publico !== null && trim($publico) !== '' && !empty($c['_comment_id'])) {
+            $this->responderComentario($ctx, (string)$c['_comment_id'], $publico);
+        }
+
+        if (trim($direct) !== '') {
             $ctx->envio->texto(
-                (int)$ctx->contato['id'], (string)$r['direct'],
+                (int)$ctx->contato['id'], $direct,
                 $this->opts($sessao, ['ia' => 1])
             );
         }
 
-        // Guarda a resposta no contexto — blocos seguintes podem usá-la
-        $c['ia_resposta'] = $r['direct'];
+        // Chaves públicas do contexto viram {{var}} no passo seguinte: um
+        // "Texto" depois deste bloco pode usar {{ia_resposta}} e {{produto_url}}.
+        unset($extra['resposta']);
+        $c = array_merge($c, $extra);
         $sessao['contexto'] = $c;
+        $ctx->vars = array_merge($ctx->vars, $extra);
 
         return 'respondeu';
+    }
+
+    /** Costura para o teste trocar o modelo por um dublê. */
+    protected function agente(ChatExecCtx $ctx): ChatIaAgenteService
+    {
+        return new ChatIaAgenteService($ctx->db);
+    }
+
+    /**
+     * Aplica o modelo da mensagem. Modelo vazio = só a resposta, que é o
+     * comportamento antigo; modelo sem {{resposta}} ganha ela no começo, para
+     * um operador que só escreveu a assinatura não mandar a assinatura sozinha.
+     */
+    private function compor(string $modelo, array $vars): string
+    {
+        $modelo = trim($modelo);
+        if ($modelo === '') return (string)($vars['resposta'] ?? '');
+        if (!str_contains($modelo, '{{resposta}}')) $modelo = "{{resposta}}\n\n" . $modelo;
+        return trim(ChatContatoService::interpolar($modelo, $vars));
     }
 
     /**

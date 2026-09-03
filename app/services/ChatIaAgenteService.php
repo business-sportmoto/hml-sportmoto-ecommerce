@@ -50,7 +50,14 @@ class ChatIaAgenteService
 
         if (!$p || (int)$p['ativo'] !== 1) return null;
 
-        $ctx = ['id' => (int)$p['id'], 'nome' => (string)$p['nome']];
+        $ctx = [
+            'id'   => (int)$p['id'],
+            'nome' => (string)$p['nome'],
+            // Com underscore de propósito: o modelo não precisa da URL, e o slug
+            // tem dígitos ("ff802") que a guarda de números liberaria por engano.
+            // `contextoEmTexto()` e `numerosDo()` ignoram chaves privadas.
+            '_url' => (defined('BASE_URL') ? BASE_URL : '') . '/produto/' . ((string)$p['slug'] ?: (int)$p['id']),
+        ];
 
         if (in_array('preco', $campos, true)) {
             $ctx['preco'] = $this->precoVigente($p);
@@ -191,8 +198,12 @@ class ChatIaAgenteService
     /** Todo número que o contexto autoriza, normalizado só para dígitos. */
     private function numerosDo(array $ctx): array
     {
+        // Chave privada (_url) não é dado do produto: o slug carrega dígitos que
+        // virariam "números autorizados" e afrouxariam a guarda.
+        $publico = array_filter($ctx, fn($k) => $k === '' || $k[0] !== '_', ARRAY_FILTER_USE_KEY);
+
         $planos = [];
-        array_walk_recursive($ctx, function ($v) use (&$planos) { $planos[] = (string)$v; });
+        array_walk_recursive($publico, function ($v) use (&$planos) { $planos[] = (string)$v; });
 
         $out = [];
         foreach ($planos as $v) {
@@ -633,7 +644,8 @@ class ChatIaAgenteService
              . "Se a pergunta não puder ser respondida com esses dados, responda exatamente: NAO_SEI\n"
              . "Nunca invente preço, prazo, estoque ou compatibilidade.\n"
              . "Nunca prometa desconto, frete grátis ou condição de pagamento.\n"
-             . "Este texto vai no DIRECT. Máximo 600 caracteres, direto ao ponto, "
-             . "sem saudação longa. Pode usar os valores dos dados.\n";
+             . "Este texto vai no DIRECT. Responda em uma ou duas frases completas, citando o "
+             . "produto pelo nome — nunca só o número. Sem saudação nem despedida: elas são "
+             . "adicionadas depois. Máximo 500 caracteres. Pode usar os valores dos dados.\n";
     }
 }

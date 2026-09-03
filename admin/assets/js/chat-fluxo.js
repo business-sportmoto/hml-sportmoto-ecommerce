@@ -186,9 +186,17 @@
     },
     split_ab: {
       cat: 'logica', label: 'Teste A/B', ico: '🔀',
-      desc: 'Divide o público em dois caminhos.',
-      campos: [{ k: 'peso_a', label: 'Percentual no caminho A', tipo: 'number', def: 50 }],
-      resumo: function (c) { var a = c.peso_a == null ? 50 : c.peso_a; return a + '% / ' + (100 - a) + '%'; }
+      desc: 'Divide o público em até 6 caminhos, na proporção que você definir.',
+      campos: [
+        { k: 'variantes', label: 'Quantos caminhos', tipo: 'select', def: 2,
+          ops: [[2,'2 — A/B'],[3,'3 — A/B/C'],[4,'4'],[5,'5'],[6,'6']] },
+        { k: 'pesos', label: 'Proporção de cada caminho', tipo: 'pesos',
+          ajuda: 'Não precisa somar 100 — o sorteio é proporcional. Caminho com 0 nunca recebe ninguém.' }
+      ],
+      resumo: function (c) {
+        var ps = pesosDe(c);
+        return ps.map(function (p) { return p + '%'; }).join(' / ');
+      }
     },
     encerrar: {
       cat: 'logica', label: 'Encerrar', ico: '⏹️',
@@ -359,6 +367,11 @@
                 ['so_ficha','Só ficha técnica e compatibilidade']] },
         { k: 'responder_publico', label: 'Responder também no comentário', tipo: 'checkbox', def: true,
           ajuda: 'A resposta pública varia a cada comentário e nunca traz valores — ela chama para o direct.' },
+        { k: 'modelo_direct', label: 'Modelo da mensagem no direct', tipo: 'textarea',
+          def: 'E aí, piloto! {{resposta}}\n\nVocê pode comprar no nosso site oficial:\n{{produto_url}}',
+          ajuda: '{{resposta}} é o que a IA escreveu. Também: {{produto_nome}}, {{produto_url}}, {{produto_preco}}, {{primeiro_nome}}. Vazio manda só a resposta.' },
+        { k: 'modelo_publico', label: 'Modelo do comentário público', tipo: 'textarea', def: '{{resposta}}',
+          ajuda: 'Mesmas variáveis. Cuidado com {{produto_preco}} aqui: preço em comentário aberto vira print.' },
         { k: 'tom', label: 'Tom da marca (opcional)', tipo: 'textarea', def: '',
           ajuda: 'Ex.: informal, direto, sem gíria. Não muda o que ele pode dizer.' },
         { k: 'limite_dia', label: 'Respostas por dia neste fluxo', tipo: 'number', def: '',
@@ -403,7 +416,8 @@
 
   // Rótulos amigáveis para as portas
   var PORTAS = {
-    saida: 'segue', true: 'sim', false: 'não', a: 'A', b: 'B',
+    saida: 'segue', true: 'sim', false: 'não',
+    a: 'A', b: 'B', c: 'C', d: 'D', e: 'E', f: 'F',
     timeout: 'sem resposta', resposta: 'respondeu', invalido: 'inválido',
     sucesso: 'ok', erro: 'erro', sem_cliente: 'não é cliente',
     btn_1: 'botão 1', btn_2: 'botão 2', btn_3: 'botão 3',
@@ -426,6 +440,25 @@
     var t = (CFG.tags || []).filter(function (x) { return String(x.id) === String(id); })[0];
     return t ? t.nome : 'nenhuma tag';
   }
+  /** Pesos do Teste A/B para a config atual — aceita o formato antigo {peso_a}. */
+  function pesosDe(c) {
+    c = c || {};
+    var n = parseInt(c.variantes, 10) || 0;
+    if (n < 2) {
+      var a = c.peso_a == null ? 50 : parseInt(c.peso_a, 10) || 0;
+      return [a, 100 - a];
+    }
+    n = Math.min(6, n);
+    var ps = Array.isArray(c.pesos) ? c.pesos.slice(0, n) : [];
+    while (ps.length < n) ps.push(0);
+    ps = ps.map(function (p) { return Math.max(0, parseInt(p, 10) || 0); });
+    if (ps.reduce(function (s, p) { return s + p; }, 0) === 0) {
+      var igual = Math.floor(100 / n);
+      ps = ps.map(function () { return igual; });
+    }
+    return ps;
+  }
+
   function nomeProduto(id) {
     var pid = parseInt(id, 10) || 0;
     if (!pid) return 'sem produto';
@@ -554,6 +587,38 @@
         $(this).append('<span class="ch-fx-porta">' + esc(rotuloPorta(portas[i])) + '</span>');
       }
     });
+    ajustarPortasAtivas(idDf);
+  }
+
+  /**
+   * Quantas saídas o bloco USA nesta configuração. O catálogo declara o
+   * máximo (o Teste A/B tem 6); a config diz quantas valem.
+   */
+  function portasAtivasDe(tipo, config) {
+    var todas = portasDe(tipo);
+    if (tipo === 'split_ab') return todas.slice(0, pesosDe(config).length);
+    return todas;
+  }
+
+  /** Esconde as saídas além das ativas e derruba as ligações que saíam delas. */
+  function ajustarPortasAtivas(idDf) {
+    var no = editor.getNodeFromId(idDf);
+    if (!no || !no.data || !no.data.tipo) return;
+    var ativas = portasAtivasDe(no.data.tipo, no.data.config || {}).length;
+    var $no = $('#node-' + idDf);
+
+    $no.find('.output').each(function (i) {
+      var off = i >= ativas;
+      $(this).toggleClass('ch-fx-out-off', off);
+      if (!off) return;
+      // Ligação saindo de porta escondida seria um fio invisível para um
+      // destino que nunca recebe ninguém
+      var cons = ((no.outputs || {})['output_' + (i + 1)] || {}).connections || [];
+      cons.slice().forEach(function (c) {
+        try { editor.removeSingleConnection(idDf, c.node, 'output_' + (i + 1), c.output); } catch (e) {}
+      });
+    });
+    try { editor.updateConnectionNodes('node-' + idDf); } catch (e) {}
   }
 
   // ── Paleta ──────────────────────────────────────────────────────────────
@@ -687,6 +752,15 @@
       html += renderCampo(campo, cfg);
     });
 
+    // Depois de uma Etapa de IA, o que ela escreveu e o produto viram {{var}}
+    // para qualquer bloco de texto — mas ninguém descobre isso sozinho.
+    var temTextarea = meta.campos.some(function (c) { return c.tipo === 'textarea'; });
+    if (temTextarea && tipo !== 'ia_responder' && temBlocoDeIa()) {
+      html += '<div class="ch-ajuda" style="margin-top:6px;">Este fluxo tem uma Etapa de IA. ' +
+              'Depois dela você pode usar <code>{{ia_resposta}}</code>, <code>{{produto_nome}}</code>, ' +
+              '<code>{{produto_url}}</code> e <code>{{produto_preco}}</code> aqui.</div>';
+    }
+
     // Mostra para onde cada saída vai — evita ter que seguir a linha no olho
     var portas = portasDe(tipo);
     if (portas.length) {
@@ -698,6 +772,13 @@
     }
 
     $('#ch-fx-p-campos').html(html);
+  }
+
+  function temBlocoDeIa() {
+    try {
+      var dados = editor.drawflow.drawflow[editor.module].data;
+      return Object.keys(dados).some(function (k) { return dados[k].data && dados[k].data.tipo === 'ia_responder'; });
+    } catch (e) { return false; }
   }
 
   function destinoDaPorta(idDf, idx) {
@@ -789,6 +870,16 @@
                '<input type="hidden" class="ch-fx-c" data-k="' + k + '" data-num="1" value="' + pid + '">' +
                '<div class="ch-fx-prod">' + (pid ? chipProduto(pid) : buscaProduto()) + '</div>' +
                ajuda + '</div>';
+
+      case 'pesos':
+        var ps = pesosDe(cfg);
+        var letras = ['A', 'B', 'C', 'D', 'E', 'F'];
+        return '<div class="ch-campo">' + lbl +
+               '<div class="ch-fx-pesos">' + ps.map(function (p, i) {
+                 return '<label class="ch-fx-peso-item"><span>' + letras[i] + '</span>' +
+                        '<input type="number" min="0" max="100" class="ch-input ch-fx-peso" data-idx="' + i + '" value="' + p + '">' +
+                        '<span class="ch-mut">%</span></label>';
+               }).join('') + '</div>' + ajuda + '</div>';
 
       case 'tempo':
         var t = v || {};
@@ -918,6 +1009,14 @@
       else cfg[k] = val;
     });
 
+    // Pesos do Teste A/B: um input por caminho, na ordem
+    var $pesos = $('#ch-fx-p-campos .ch-fx-peso');
+    if ($pesos.length) {
+      cfg.pesos = [];
+      $pesos.each(function () { cfg.pesos[parseInt($(this).data('idx'), 10)] = Math.max(0, parseInt($(this).val(), 10) || 0); });
+      cfg.variantes = $pesos.length;
+    }
+
     // Tempo: agrupa dias/horas/minutos
     var temposPorChave = {};
     $('#ch-fx-p-campos .ch-fx-tempo').each(function () {
@@ -967,10 +1066,23 @@
     var resumo = '';
     try { resumo = meta && meta.resumo ? String(meta.resumo(cfg) || '') : ''; } catch (e) {}
     $corpo.html(resumo ? esc(resumo.substring(0, 90)) : corpoVazio(no.data.tipo));
+    ajustarPortasAtivas(noSelecionado);
   }
 
   $(document).on('change blur', '#ch-fx-p-campos .ch-fx-c, #ch-fx-p-campos .ch-fx-tempo, ' +
-                 '#ch-fx-botoes input, #ch-fx-opcoes input', function () {
+                 '#ch-fx-p-campos .ch-fx-peso, #ch-fx-botoes input, #ch-fx-opcoes input', function () {
+    var trocouQtd = $(this).data('k') === 'variantes';
+    if (trocouQtd) {
+      // A quantidade manda nos pesos: descarta a lista velha para o painel
+      // renascer com N campos — e o canvas mostrar N saídas
+      var no = editor.getNodeFromId(noSelecionado);
+      if (no && no.data && no.data.config) {
+        no.data.config.variantes = parseInt($(this).val(), 10) || 2;
+        no.data.config.pesos = [];
+        editor.updateNodeDataFromId(noSelecionado, no.data);
+      }
+      abrirPainel(noSelecionado);
+    }
     salvarPainel();
     Hist.snap();
   });

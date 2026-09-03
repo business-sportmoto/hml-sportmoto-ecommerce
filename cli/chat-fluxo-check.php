@@ -227,7 +227,10 @@ foreach ($nos as $chave => $n) {
     if (!isset($vistos[$chave])) continue;
 
     $noObj  = ChatNoRegistry::obter($n['tipo_no']);
-    $portas = $noObj ? $noObj->portas() : [];
+    $cfgNo  = json_decode($n['config_json'] ?? '{}', true) ?: [];
+    // Só as portas que ESTA configuração usa: Teste A/B com 3 braços tem 6 no
+    // catálogo, e listar d/e/f aqui seria acusar o que o operador nunca ligou
+    $portas = $noObj ? $noObj->portasAtivas($cfgNo) : [];
     $fala   = in_array($n['tipo_no'], $falaNoDirect, true);
 
     echo '  ' . ($chave === $entrada ? $cor('▶', 'ok') : ' ')
@@ -262,7 +265,8 @@ $soltas = 0;
 foreach ($nos as $chave => $n) {
     if (!isset($vistos[$chave])) continue;   // bloco morto já foi reportado
     $no     = ChatNoRegistry::obter($n['tipo_no']);
-    $portas = $no ? $no->portas() : [];
+    $cfgNo  = json_decode($n['config_json'] ?? '{}', true) ?: [];
+    $portas = $no ? $no->portasAtivas($cfgNo) : [];
     foreach ($portas as $p) {
         $ligada = false;
         foreach ($saidas[$chave] ?? [] as $c) if ($c['porta'] === $p) { $ligada = true; break; }
