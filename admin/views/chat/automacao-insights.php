@@ -261,6 +261,134 @@ if (trim((string)$a['link_destino']) === '' && (int)$a['enviar_dm'] === 1) {
       </div>
     </div>
 
+    <?php // ── Comportamento do fluxo ─────────────────────────────────────
+    // A automação entrega a conversa e sai de cena. Daqui para frente quem
+    // decide é o grafo — e sem isto na tela, "não funcionou" não tinha onde
+    // ser investigado. ?>
+    <?php $fx = $i['fluxo'] ?? null; if ($fx): ?>
+    <div class="ch-card">
+      <div class="ch-card-head">
+        <h2>O que o fluxo fez</h2>
+        <a href="<?= $base ?>/admin/chat/fluxos/<?= (int)$fx['id'] ?>" class="ch-btn ch-btn--sm">
+          Abrir editor
+        </a>
+      </div>
+      <div class="ch-card-body">
+
+        <div class="ch-flex-sb" style="margin-bottom:14px;">
+          <div>
+            <div class="ch-b"><?= $h($fx['nome']) ?></div>
+            <div class="ch-sm ch-mut">
+              <?= $fx['publicado'] ? 'publicado · v' . (int)$fx['versao'] : 'RASCUNHO' ?>
+            </div>
+          </div>
+          <?php if (!$fx['publicado']): ?>
+            <span class="ch-badge ch-badge--erro">não roda</span>
+          <?php endif; ?>
+        </div>
+
+        <?php if (!$fx['publicado']): ?>
+          <div class="ch-aviso ch-aviso--aviso">
+            <div class="ch-aviso-tit">O fluxo não está publicado</div>
+            O motor só entra em versão publicada. Enquanto estiver em rascunho, a automação
+            responde o comentário e o direct fica mudo.
+          </div>
+        <?php endif; ?>
+
+        <?php $ss = $fx['sessoes']; if ((int)$ss['total'] === 0): ?>
+          <div class="ch-vazio" style="padding:18px 0;">
+            Nenhuma conversa entrou no fluxo neste período.
+            <div class="ch-sm ch-mut" style="margin-top:6px;">
+              Se comentários casaram com a automação e nada entrou aqui, o problema está na
+              entrega ao fluxo — não no fluxo.
+            </div>
+          </div>
+        <?php else: ?>
+
+          <div class="ch-kpis" style="margin-bottom:16px;">
+            <div class="ch-kpi">
+              <div class="ch-kpi-rot">Entraram no fluxo</div>
+              <div class="ch-kpi-val"><?= $n((int)$ss['total']) ?></div>
+            </div>
+            <div class="ch-kpi">
+              <div class="ch-kpi-rot">Concluíram</div>
+              <div class="ch-kpi-val"><?= $n((int)$ss['concluidas']) ?></div>
+            </div>
+            <div class="ch-kpi">
+              <div class="ch-kpi-rot">Em andamento</div>
+              <div class="ch-kpi-val"><?= $n((int)$ss['esperando'] + (int)$ss['ativas']) ?></div>
+            </div>
+            <?php if ((int)$ss['erro'] > 0): ?>
+            <div class="ch-kpi">
+              <div class="ch-kpi-rot">Com erro</div>
+              <div class="ch-kpi-val" style="color:var(--danger);"><?= $n((int)$ss['erro']) ?></div>
+            </div>
+            <?php endif; ?>
+          </div>
+
+          <?php if (!empty($fx['blocos'])): ?>
+            <div class="ch-fx-cat" style="margin:0 0 8px;">Onde as conversas estão</div>
+            <?php
+            $maiorB = 1;
+            foreach ($fx['blocos'] as $b) $maiorB = max($maiorB, (int)$b['qtd']);
+            foreach ($fx['blocos'] as $b):
+              $pct = round(((int)$b['qtd'] / $maiorB) * 100);
+              $corB = $b['parado'] ? 'var(--danger)' : '#0a66c2'; ?>
+              <div style="margin-bottom:11px;">
+                <div class="ch-flex-sb" style="margin-bottom:4px;">
+                  <span class="ch-sm">
+                    <?= $h($b['rotulo']) ?>
+                    <?php if ($b['parado']): ?>
+                      <span class="ch-sm" style="color:var(--danger);">· emperrou aqui</span>
+                    <?php endif; ?>
+                  </span>
+                  <span class="ch-sm ch-b"><?= $n((int)$b['qtd']) ?></span>
+                </div>
+                <div class="ch-prog"><span style="width:<?= max(3, $pct) ?>%;background:<?= $corB ?>;"></span></div>
+              </div>
+            <?php endforeach; ?>
+
+            <?php if (array_filter($fx['blocos'], fn($b) => $b['parado'])): ?>
+              <div class="ch-sm ch-mut" style="margin-top:10px;line-height:1.5;">
+                “Emperrou aqui” é conversa encerrada num bloco cuja saída não vai a lugar
+                nenhum. Não é a mesma coisa que concluir.
+              </div>
+            <?php endif; ?>
+          <?php endif; ?>
+
+          <?php $ia = $fx['ia'] ?? null; if ($ia && (int)$ia['geracoes'] > 0): ?>
+            <div class="ch-fx-cat" style="margin:18px 0 8px;">Etapa de IA</div>
+            <div class="ch-dado"><dt>Respondeu</dt><dd><?= $n((int)$ia['respondeu']) ?></dd></div>
+            <div class="ch-dado">
+              <dt>Não soube responder</dt>
+              <dd><?= $n((int)$ia['nao_sabe']) ?>
+                <?php if ((int)$ia['nao_sabe'] > 0): ?>
+                  <span class="ch-sm ch-mut">— pergunta fora do cadastro do produto</span>
+                <?php endif; ?>
+              </dd>
+            </div>
+            <?php if ((int)$ia['falhou'] > 0): ?>
+              <div class="ch-dado">
+                <dt>Falhas</dt>
+                <dd style="color:var(--danger);"><?= $n((int)$ia['falhou']) ?></dd>
+              </div>
+            <?php endif; ?>
+            <div class="ch-dado">
+              <dt>Custo no período</dt>
+              <dd>US$ <?= number_format((float)$ia['custo_usd'], 4, ',', '.') ?></dd>
+            </div>
+          <?php endif; ?>
+
+        <?php endif; ?>
+
+        <div style="margin-top:14px;">
+          <a href="<?= $base ?>/admin/chat/fluxos/atividade?fluxo_id=<?= (int)$fx['id'] ?>"
+             class="ch-btn ch-btn--sm">Ver execuções passo a passo</a>
+        </div>
+      </div>
+    </div>
+    <?php endif; ?>
+
     <div class="ch-card">
       <div class="ch-card-head">
         <h2>Últimos comentários</h2>

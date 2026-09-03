@@ -207,6 +207,55 @@ foreach ($nos as $chave => $n) {
     }
 }
 
+// ── Ligações ─────────────────────────────────────────────────────────────────
+// "Alcançável" não é "no caminho": uma condição divide o fluxo em dois, e quem
+// comenta num Reel toma sempre o mesmo lado. Só vendo o destino de cada porta
+// dá para saber se a conversa passa pelo bloco que fala no direct.
+$titulo('Ligações, porta por porta');
+
+$falaNoDirect = ['msg_texto', 'msg_midia', 'msg_botoes', 'msg_lista', 'msg_template',
+                 'msg_botao_url', 'msg_ig_card', 'esperar_resposta', 'ia_responder',
+                 'acao_cupom_produto'];
+
+$temDirect = false;
+foreach ($nos as $chave => $n) {
+    if (!isset($vistos[$chave])) continue;
+    if (in_array($n['tipo_no'], $falaNoDirect, true)) { $temDirect = true; break; }
+}
+
+foreach ($nos as $chave => $n) {
+    if (!isset($vistos[$chave])) continue;
+
+    $noObj  = ChatNoRegistry::obter($n['tipo_no']);
+    $portas = $noObj ? $noObj->portas() : [];
+    $fala   = in_array($n['tipo_no'], $falaNoDirect, true);
+
+    echo '  ' . ($chave === $entrada ? $cor('▶', 'ok') : ' ')
+       . ' ' . $cor($chave, 'forte') . " [{$n['tipo_no']}]"
+       . ($fala ? $cor('  fala no direct', 'ok') : '') . "\n";
+
+    if (!$portas) { echo "      (sem saídas)\n"; continue; }
+
+    foreach ($portas as $p) {
+        $destino = null;
+        foreach ($saidas[$chave] ?? [] as $c) if ($c['porta'] === $p) { $destino = $c['no_destino']; break; }
+
+        if ($destino === null) {
+            echo '      ' . str_pad($p, 22) . $cor('→ nada (a conversa para aqui)', 'aviso') . "\n";
+            continue;
+        }
+        $tipoDest = $nos[$destino]['tipo_no'] ?? '?';
+        echo '      ' . str_pad($p, 22) . "→ $destino [$tipoDest]\n";
+    }
+}
+
+if (!$temDirect) {
+    $problemas[] = 'Nenhum bloco alcançável fala no direct. A automação responde o comentário '
+                 . 'e a conversa morre aí. Para mandar mensagem no direct o caminho precisa '
+                 . 'passar por um bloco de mensagem ("Texto", "Pergunta com botões"…) ou pela '
+                 . '"Etapa de IA" — "Responder comentário" só escreve embaixo do post.';
+}
+
 // ── Portas soltas ────────────────────────────────────────────────────────────
 $titulo('Saídas sem ligação');
 $soltas = 0;

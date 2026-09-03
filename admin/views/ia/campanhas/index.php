@@ -25,7 +25,7 @@ if (!function_exists('ia_e')) {
   </div>
 
   <?php if (!empty($erro)): ?>
-    <p class="ia_ajuda" style="color:var(--em-erro,#c0392b)"><?= ia_e($erro) ?></p>
+    <p class="ia_ajuda ia_ajuda_erro"><?= ia_e($erro) ?></p>
   <?php endif; ?>
 
   <div class="ia_camp_cards" id="ia_camp_cards">

@@ -27,7 +27,7 @@ $rotuloGrupo = [
     'outros'   => 'Outros',
 ];
 ?>
-<div class="ia_card">
+<div class="ia_card ia_card_pad">
   <div class="ia_produto">
     <div class="ia_produto_thumb">
       <?php if (!empty($imagem['url'])): ?>
@@ -68,7 +68,7 @@ $rotuloGrupo = [
   </div>
 </div>
 
-<div class="ia_card">
+<div class="ia_card ia_card_pad">
   <p class="ia_card_titulo"><?= IconLibrary::render('wand-stars', 'ia_ico', ['aria-hidden' => 'true']) ?> Nova geração</p>
 
   <form id="ia_form_gerar" autocomplete="off">
@@ -148,7 +148,7 @@ $rotuloGrupo = [
         </select>
         <p class="ia_ajuda">Para formato exato (1920×800 etc.), use o tipo <strong>Banner do produto</strong> — ele monta no tamanho do layout.</p>
         <?php if (!empty($imagem) && !empty($imagem['url'])): ?>
-          <label class="ia_check" style="margin-top:8px">
+          <label class="ia_check ia_check_solto">
             <input type="checkbox" name="usar_referencia" value="1">
             Usar a foto do produto como referência
           </label>
@@ -163,10 +163,10 @@ $rotuloGrupo = [
             <option value="<?= ia_e($l['codigo']) ?>"><?= ia_e($l['nome']) ?></option>
           <?php endforeach; ?>
         </select>
-        <input type="text" name="banner_headline" class="ia_input" maxlength="80"
-               placeholder="Headline (vazio = nome do produto)" style="margin-top:8px">
-        <input type="text" name="banner_subtitulo" class="ia_input" maxlength="120"
-               placeholder="Subtítulo (opcional)" style="margin-top:8px">
+        <input type="text" name="banner_headline" class="ia_input ia_input_empilhado" maxlength="80"
+               placeholder="Headline (vazio = nome do produto)">
+        <input type="text" name="banner_subtitulo" class="ia_input ia_input_empilhado" maxlength="120"
+               placeholder="Subtítulo (opcional)">
         <p class="ia_ajuda">
           Foto real recortada + cena de IA + preço, montados no tamanho exato do layout.
           O preço vem do banco; a cena nunca contém o produto nem texto.
@@ -207,7 +207,7 @@ $rotuloGrupo = [
     </div>
 
     <div class="ia_form_grupo">
-      <label for="ia_g_prompt">Prompt <span style="font-weight:400;color:var(--em-texto-sub)">(opcional — em branco, montamos automaticamente)</span></label>
+      <label for="ia_g_prompt">Prompt <span class="ia_label_nota">(opcional — em branco, montamos automaticamente)</span></label>
       <textarea id="ia_g_prompt" name="prompt_custom" class="ia_input ia_input_mono" rows="5" spellcheck="false"
                 placeholder="Clique em &quot;Montar prompt&quot; para pré-visualizar e editar, ou deixe em branco."></textarea>
       <p class="ia_ajuda">
@@ -217,16 +217,16 @@ $rotuloGrupo = [
       </p>
     </div>
 
-    <div class="ia_form_rodape" style="justify-content:space-between;align-items:center">
-      <div class="ia_form_grupo" style="margin:0;display:flex;align-items:center;gap:10px">
-        <label for="ia_g_variacoes" style="margin:0">Variações</label>
-        <select id="ia_g_variacoes" name="variacoes" class="ia_input" style="width:auto">
+    <div class="ia_form_rodape ia_form_rodape_split">
+      <div class="ia_form_rodape_ctrl">
+        <label for="ia_g_variacoes">Variações</label>
+        <select id="ia_g_variacoes" name="variacoes" class="ia_input">
           <option value="1" selected>1</option>
           <option value="3">3</option>
           <option value="5">5</option>
         </select>
       </div>
-      <div style="display:flex;gap:8px">
+      <div class="ia_form_rodape_acoes">
         <button type="button" id="ia_btn_preview" class="ia_btn"><?= IconLibrary::render('zoom-in', 'ia_ico', ['aria-hidden' => 'true']) ?> Montar prompt</button>
         <button type="submit" class="ia_btn ia_btn_primario"><?= IconLibrary::render('wand-stars', 'ia_ico', ['aria-hidden' => 'true']) ?> Gerar</button>
       </div>

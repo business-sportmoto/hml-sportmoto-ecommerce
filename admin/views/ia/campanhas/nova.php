@@ -28,7 +28,7 @@ foreach ($tipos as $t) {
     </div>
   </div>
 
-  <div class="ia_card">
+  <div class="ia_card ia_card_pad">
     <h2 class="ia_secao_titulo">1 · Dados e briefing</h2>
     <div class="ia_form_linha">
       <div class="ia_form_grupo">
@@ -63,7 +63,7 @@ foreach ($tipos as $t) {
     </div>
   </div>
 
-  <div class="ia_card">
+  <div class="ia_card ia_card_pad">
     <h2 class="ia_secao_titulo">2 · Produtos <span class="ia_celula_sub">(<span id="ia_c_qtd">0</span>/60)</span></h2>
     <div class="ia_form_linha">
       <div class="ia_form_grupo">
@@ -94,7 +94,7 @@ foreach ($tipos as $t) {
     <div class="ia_chips" id="ia_c_chips"></div>
   </div>
 
-  <div class="ia_card">
+  <div class="ia_card ia_card_pad">
     <h2 class="ia_secao_titulo">3 · Tipos de conteúdo</h2>
     <?php foreach ($grupos as $grupo => $lista): ?>
       <p class="ia_grupo_rotulo"><?= ia_e(ucfirst($grupo)) ?></p>
@@ -123,7 +123,7 @@ foreach ($tipos as $t) {
     <?php endforeach; ?>
   </div>
 
-  <div class="ia_card">
+  <div class="ia_card ia_card_pad">
     <h2 class="ia_secao_titulo">4 · Revisão e custo</h2>
     <button type="button" class="ia_btn" id="ia_c_estimar"><?= IconLibrary::render('calculadora', 'ia_ico', ['aria-hidden' => 'true']) ?> Calcular estimativa</button>
     <div id="ia_c_estimativa" style="margin-top:12px"></div>
@@ -290,7 +290,7 @@ foreach ($tipos as $t) {
             ' (unit. ' + Number(pt.unitario_usd).toFixed(4) + ')').appendTo($e);
         });
         (r.avisos || []).forEach(function (a) {
-          $('<p class="ia_ajuda" style="color:var(--em-erro,#c0392b)">').text('⚠ ' + a).appendTo($e);
+          $('<p class="ia_ajuda ia_ajuda_erro">').text('⚠ ' + a).appendTo($e);
         });
       });
     });

@@ -24,7 +24,7 @@ if (!function_exists('ia_e')) {
     </div>
   </div>
 
-  <div class="ia_card">
+  <div class="ia_card ia_card_pad">
     <div id="ia_d_grade"><p class="ia_ajuda">Carregando grade…</p></div>
   </div>
 

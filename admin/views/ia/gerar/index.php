@@ -20,7 +20,7 @@ if (!function_exists('ia_e')) {
     </div>
   </div>
 
-  <div class="ia_card">
+  <div class="ia_card ia_card_pad">
     <p class="ia_card_titulo"><?= IconLibrary::render('search', 'ia_ico', ['aria-hidden' => 'true']) ?> Produto</p>
     <div class="ia_busca_wrap">
       <input type="text" id="ia_busca" class="ia_input" autocomplete="off"
@@ -173,7 +173,7 @@ jQuery(function ($) {
   });
 
   function carregarPainel(produtoId) {
-    $('#ia_painel').html('<div class="ia_card"><span class="ia_spin"></span> Carregando produto…</div>');
+    $('#ia_painel').html('<div class="ia_card ia_card_pad"><span class="ia_spin"></span> Carregando produto…</div>');
     $.getJSON(URLS.painel, { produto_id: produtoId }, function (r) {
       if (!r.ok) { $('#ia_painel').empty(); toast(r.msg || 'Erro ao carregar o produto.', false); return; }
       $('#ia_painel').html(r.html);
@@ -317,8 +317,8 @@ jQuery(function ($) {
       removerPendente(g.uuid);
     }
 
-    if (g.aprovacao === 'aprovado') { $c.css('border-color', 'var(--em-ok)'); }
-    if (g.aprovacao === 'reprovado') { $c.css('border-color', 'var(--em-erro)'); }
+    if (g.aprovacao === 'aprovado') { $c.addClass('ia_resultado_aprovado'); }
+    if (g.aprovacao === 'reprovado') { $c.addClass('ia_resultado_reprovado'); }
   }
 
   function removerPendente(uuid) {
@@ -350,7 +350,8 @@ jQuery(function ($) {
     iaPost(URLS.aprovacao, { id: $card.data('id'), acao: acao }, function (r) {
       toast(r.msg || (r.ok ? 'Curadoria atualizada.' : 'Erro.'), r.ok);
       if (r.ok) {
-        $card.css('border-color', acao === 'aprovado' ? 'var(--em-ok)' : 'var(--em-erro)');
+        $card.removeClass('ia_resultado_aprovado ia_resultado_reprovado')
+             .addClass(acao === 'aprovado' ? 'ia_resultado_aprovado' : 'ia_resultado_reprovado');
       }
     });
   });

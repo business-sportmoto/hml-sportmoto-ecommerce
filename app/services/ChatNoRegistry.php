@@ -1513,6 +1513,58 @@ class ChatNoRegistry
     }
 
     /** Catálogo consumido pelo canvas: tipo → {portas, trigger, categoria, pergunta}. */
+    /**
+     * Nome legível do bloco, para telas e relatórios do lado PHP.
+     *
+     * Os rótulos nasceram na paleta do editor (JS) e continuam lá, porque lá
+     * eles vêm acompanhados de ícone, descrição e campos. Aqui fica só o nome,
+     * que é o que o servidor precisa para dizer "a conversa parou no bloco X"
+     * sem cuspir o slug cru. Tipo sem rótulo devolve o próprio slug: é feio,
+     * mas é informativo, e não deixa a tela em branco.
+     */
+    public static function rotulo(string $tipo): string
+    {
+        static $mapa = [
+        'gatilho_palavra'               => 'Palavra-chave',
+        'gatilho_boas_vindas'           => 'Primeira mensagem',
+        'gatilho_padrao'                => 'Resposta padrão',
+        'gatilho_referencia'            => 'Link com código',
+        'gatilho_manual'                => 'Disparo manual',
+        'gatilho_evento_loja'           => 'Evento da loja',
+        'msg_texto'                     => 'Texto',
+        'msg_midia'                     => 'Imagem / arquivo',
+        'msg_botoes'                    => 'Pergunta com botões',
+        'msg_lista'                     => 'Menu em lista',
+        'msg_template'                  => 'Template aprovado',
+        'msg_botao_url'                 => 'Botão com link',
+        'esperar'                       => 'Esperar',
+        'esperar_resposta'              => 'Perguntar',
+        'split_ab'                      => 'Teste A/B',
+        'encerrar'                      => 'Encerrar',
+        'ir_para_fluxo'                 => 'Ir para outro fluxo',
+        'cond_tem_tag'                  => 'Tem a tag?',
+        'cond_campo'                    => 'Valor do campo',
+        'cond_na_janela'                => 'Janela 24h aberta?',
+        'cond_eh_cliente'               => 'É cliente da loja?',
+        'cond_comprou'                  => 'Quanto já comprou',
+        'cond_horario'                  => 'Horário / dia',
+        'acao_tag'                      => 'Marcar com tag',
+        'acao_campo'                    => 'Gravar campo',
+        'acao_humano'                   => 'Chamar atendente',
+        'acao_webhook'                  => 'Chamar webhook',
+        'acao_notificar_admin'          => 'Avisar a equipe',
+        'acao_cupom'                    => 'Gerar cupom',
+        'acao_optout'                   => 'Descadastrar',
+        'cond_canal'                    => 'Qual canal?',
+        'cond_ig_segue'                 => 'Segue o perfil?',
+        'msg_ig_card'                   => 'Card com botão',
+        'ia_responder'                  => 'Etapa de IA',
+        'acao_cupom_produto'            => 'Oferecer cupom',
+        'acao_ig_responder_comentario'  => 'Responder comentário',
+        ];
+        return $mapa[$tipo] ?? $tipo;
+    }
+
     public static function catalogo(): array
     {
         $out = [];

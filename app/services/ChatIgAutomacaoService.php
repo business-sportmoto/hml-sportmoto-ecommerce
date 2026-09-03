@@ -819,6 +819,7 @@ class ChatIgAutomacaoService
             'serie'    => [],
             'comentarios' => ['total' => 0, 'com_dm' => 0, 'publicos' => 0, 'falhas' => 0],
             'ultimos'  => [],
+            'fluxo'    => null,
         ];
 
         try {
@@ -871,7 +872,140 @@ class ChatIgAutomacaoService
             $out['ultimos'] = $stU->fetchAll(PDO::FETCH_ASSOC);
         } catch (Throwable $e) {}
 
+        if (!empty($a['fluxo_id'])) {
+            $out['fluxo'] = $this->insightsDoFluxo((int)$a['fluxo_id'], $desde);
+        }
+
         return $out;
+    }
+
+    /**
+     * O que o fluxo fez com as conversas que a automação entregou a ele.
+     *
+     * A automação termina no "entreguei para o fluxo"; daí para frente quem
+     * decide é o grafo, e isso não aparecia em lugar nenhum. As três perguntas
+     * que quem opera faz — quantas entraram, onde estão agora, e onde
+     * emperraram — são as três seções daqui.
+     *
+     * `parado` é o julgamento que importa: sessão encerrada num bloco cuja
+     * porta não vai a lugar nenhum não é conversa concluída, é conversa
+     * abandonada. Na tela as duas se pareciam.
+     */
+    private function insightsDoFluxo(int $fluxoId, string $desde): ?array
+    {
+        try {
+            $st = $this->db->prepare(
+                "SELECT id, nome, status, versao_publicada FROM chat_fluxos WHERE id = :f LIMIT 1"
+            );
+            $st->execute([':f' => $fluxoId]);
+            $f = $st->fetch(PDO::FETCH_ASSOC);
+            if (!$f) return null;
+
+            $out = [
+                'id'       => (int)$f['id'],
+                'nome'     => (string)$f['nome'],
+                'status'   => (string)$f['status'],
+                'versao'   => (int)$f['versao_publicada'],
+                'publicado'=> $f['status'] === 'publicado' && (int)$f['versao_publicada'] >= 1,
+                'sessoes'  => ['total' => 0, 'ativas' => 0, 'esperando' => 0,
+                               'concluidas' => 0, 'erro' => 0],
+                'blocos'   => [],
+                'ia'       => null,
+            ];
+
+            // ── Sessões por estado ──
+            $st = $this->db->prepare(
+                "SELECT status, COUNT(*) qtd FROM chat_sessoes
+                 WHERE fluxo_id = :f AND criado_em >= :d GROUP BY status"
+            );
+            $st->execute([':f' => $fluxoId, ':d' => $desde]);
+            foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $q = (int)$r['qtd'];
+                $out['sessoes']['total'] += $q;
+                $out['sessoes'][match ((string)$r['status']) {
+                    'ativo', 'dormindo'     => 'ativas',
+                    'aguardando_resposta'   => 'esperando',
+                    'concluido'             => 'concluidas',
+                    default                 => 'erro',
+                }] += $q;
+            }
+
+            // ── Onde as conversas estão / pararam ──
+            // Junta com os nós da versão para saber o tipo do bloco, e com as
+            // conexões para saber se ali existe saída.
+            $st = $this->db->prepare(
+                // O fluxo vai por parâmetro nas subqueries, não por
+                // correlação: `s.fluxo_id` fora do GROUP BY é recusado pelo
+                // only_full_group_by, ainda que o WHERE já o fixe num valor só.
+                "SELECT s.no_atual, s.versao, COUNT(*) qtd,
+                        SUM(s.status = 'concluido') encerradas,
+                        (SELECT n.tipo_no FROM chat_fluxo_nos n
+                          WHERE n.fluxo_id = :f2 AND n.versao = s.versao
+                            AND n.chave = s.no_atual LIMIT 1) tipo_no,
+                        (SELECT COUNT(*) FROM chat_fluxo_conexoes c
+                          WHERE c.fluxo_id = :f3 AND c.versao = s.versao
+                            AND c.no_origem = s.no_atual) saidas
+                 FROM chat_sessoes s
+                 WHERE s.fluxo_id = :f AND s.criado_em >= :d AND s.no_atual IS NOT NULL
+                 GROUP BY s.no_atual, s.versao
+                 ORDER BY qtd DESC"
+            );
+            $st->execute([':f' => $fluxoId, ':f2' => $fluxoId, ':f3' => $fluxoId, ':d' => $desde]);
+
+            // As classes de nó vivem todas dentro do registry, num arquivo só —
+            // o autoloader por nome de classe não acha as internas.
+            if (!class_exists('ChatNoRegistry', false)) {
+                $base = defined('ROOT_PATH') ? ROOT_PATH : dirname(__DIR__, 2);
+                require_once $base . '/app/services/ChatNoRegistry.php';
+            }
+
+            foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $tipo = (string)($r['tipo_no'] ?? '');
+                $out['blocos'][] = [
+                    'chave'  => (string)$r['no_atual'],
+                    'tipo'   => $tipo,
+                    'rotulo' => $tipo !== '' ? ChatNoRegistry::rotulo($tipo) : (string)$r['no_atual'],
+                    'versao' => (int)$r['versao'],
+                    'qtd'    => (int)$r['qtd'],
+                    // Encerrou num bloco sem saída ligada: emperrou, não concluiu
+                    'parado' => (int)$r['saidas'] === 0 && (int)$r['encerradas'] > 0,
+                ];
+            }
+
+            // ── O que a IA fez, se o fluxo tem bloco de IA ──
+            $temIa = (int)$this->db->query(
+                "SELECT COUNT(*) FROM chat_fluxo_nos
+                 WHERE fluxo_id = " . (int)$fluxoId . " AND tipo_no = 'ia_responder'"
+            )->fetchColumn();
+
+            if ($temIa > 0) {
+                $st = $this->db->prepare(
+                    "SELECT COUNT(*) geracoes,
+                            SUM(status = 'concluida' AND resultado_texto NOT LIKE '%NAO_SEI%') respondeu,
+                            SUM(resultado_texto LIKE '%NAO_SEI%') nao_sabe,
+                            SUM(status = 'falhou') falhou,
+                            COALESCE(SUM(custo_real_usd), 0) custo
+                     FROM ia_geracoes
+                     WHERE formato IN ('ig_comentario','ig_direct')
+                       AND criado_em >= :d
+                       AND CAST(JSON_EXTRACT(contexto, '$.fluxo_id') AS UNSIGNED) = :f"
+                );
+                $st->execute([':f' => $fluxoId, ':d' => $desde]);
+                $r = $st->fetch(PDO::FETCH_ASSOC) ?: [];
+
+                $out['ia'] = [
+                    'geracoes'  => (int)($r['geracoes'] ?? 0),
+                    'respondeu' => (int)($r['respondeu'] ?? 0),
+                    'nao_sabe'  => (int)($r['nao_sabe'] ?? 0),
+                    'falhou'    => (int)($r['falhou'] ?? 0),
+                    'custo_usd' => round((float)($r['custo'] ?? 0), 4),
+                ];
+            }
+
+            return $out;
+        } catch (Throwable $e) {
+            return null;
+        }
     }
 
     /** Agentes que podem receber uma automação transferida. */

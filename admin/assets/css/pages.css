@@ -2159,6 +2159,33 @@ html[data-theme="dark"] .toggle-slider::after { background: #f8fafc; }
   --ia-r-md: 12px;
   --ia-r-lg: 16px;
 
+  /* Escala de tipo alinhada ao Material 3, mantendo os tokens do painel.
+     O modulo vinha com corpo em 13,5px, label 12,5px e ajuda 11,5px — abaixo
+     do confortavel para leitura prolongada. Aqui: Title Medium para titulo de
+     secao, Label Large para rotulo, Body Medium para campo (nao Body Large:
+     16px infla demais um painel denso) e Body Small para texto de apoio. */
+  --ia-t-secao:  16px;   /* Title Medium  · 500 */
+  --ia-t-label:  14px;   /* Label Large   · 500 */
+  --ia-t-campo:  14px;   /* Body Medium   · 400 */
+  --ia-t-apoio:  12px;   /* Body Small    · 400 */
+  --ia-t-grupo:  12px;   /* Label Medium  · 500 + tracking */
+
+  /* Grade de 8dp: espacamento deixa de ser numero solto por regra. */
+  --ia-e-1:  4px;
+  --ia-e-2:  8px;
+  --ia-e-3: 16px;
+  --ia-e-4: 24px;
+  --ia-e-5: 32px;
+
+  /* Alvo de toque minimo do MD3 — campos vinham com 37px de altura. */
+  --ia-toque: 48px;
+
+  /* Borda de campo: --border2 (#cbd5e1) rende 1,48:1 sobre branco, e o MD3
+     conta a borda do text field como componente de UI — precisa de 3:1.
+     Este tom da 3,47:1 e continua discreto. No escuro herda --border2, que
+     ja e claro sobre fundo escuro (12:1). */
+  --ia-borda-campo: #7c8b9e;
+
   max-width: 1180px;
   margin: 0 auto;
   padding: 8px 4px 56px;
@@ -2173,6 +2200,7 @@ html[data-theme="dark"] .toggle-slider::after { background: #f8fafc; }
 html[data-theme="dark"] .ia_pagina,
 html[data-theme="dark"] .ia_wrap {
   --ia-azul-txt: #0b1220;
+  --ia-borda-campo: var(--border2, #263244);
   /* No escuro os pares do admin.css já passam (5,6–8,7:1) — devolve o token. */
   --ia-ok-tx:    var(--success);
   --ia-aviso-tx: var(--warning);
@@ -2284,15 +2312,27 @@ html[data-theme="dark"] .ia_wrap {
   border-bottom: 1px solid var(--ia-borda);
 }
 .ia_card_titulo {
-  font-size: 15px;
-  font-weight: 700;
+  font-size: var(--ia-t-secao);
+  font-weight: 600;
+  line-height: 24px;
+  letter-spacing: .01em;
   margin: 0;
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: var(--ia-e-2);
 }
 .ia_card_titulo .ia_ico { color: var(--ia-azul); }
-.ia_card_corpo { padding: 18px 20px; }
+.ia_card_corpo { padding: var(--ia-e-4) var(--ia-e-4); }
+
+/* Card que contem FORMULARIO, nao cabecalho+tabela: precisa de padding
+   proprio. Os cards de config/historico sao head+tabela e vao de borda a
+   borda de proposito; por isso o padding nao pode vir do .ia_card. */
+.ia_card_pad { padding: var(--ia-e-4); }
+/* Quando o card ja tem padding, o titulo nao acrescenta o seu — senao o
+   respiro dobra no topo. O padding por-filho era o padrao antigo e deixava
+   os IRMAOS do titulo colados na borda; e o que fazia a tela de gerar
+   parecer sem design. */
+.ia_card_pad > .ia_card_titulo:first-child { padding: 0; margin-bottom: var(--ia-e-3); }
 .ia_card > .ia_card_titulo:first-child { padding: 18px 20px 0; }
 .ia_hint { font-size: 12.5px; color: var(--ia-txt2); }
 
@@ -2305,11 +2345,12 @@ html[data-theme="dark"] .ia_wrap {
   background: var(--ia-card);
   color: var(--ia-txt);
   border-radius: 999px;
-  padding: 9px 16px;
-  font-size: 13px;
-  font-weight: 600;
+  min-height: 40px;
+  padding: var(--ia-e-2) var(--ia-e-3);
+  font-size: var(--ia-t-label);
+  font-weight: 500;
   font-family: inherit;
-  line-height: 1.2;
+  line-height: 1.4;
   cursor: pointer;
   text-decoration: none;
   transition: background .15s, border-color .15s, color .15s;
@@ -2389,58 +2430,112 @@ html[data-theme="dark"] .ia_wrap {
 }
 
 /* ==== formulários ========================================================== */
-.ia_form_grupo { margin-bottom: 16px; }
+.ia_form_grupo { margin-bottom: var(--ia-e-4); }
 .ia_form_grupo label {
   display: block;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--ia-txt2);
-  margin-bottom: 6px;
+  font-size: var(--ia-t-label);
+  font-weight: 500;
+  color: var(--ia-txt);
+  margin-bottom: var(--ia-e-2);
 }
-.ia_form_linha { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.ia_form_linha { display: grid; grid-template-columns: 1fr 1fr; gap: var(--ia-e-3) var(--ia-e-4); }
 .ia_form_linha_compacta { display: flex; gap: 8px; }
 .ia_form_linha_compacta select { flex: 1; }
+/* Variante OUTLINED (a recomendada do MD3 para a maioria dos casos).
+   O campo vinha "filled" com fundo cinza sobre card branco, o que lia como
+   desabilitado. Aqui: fundo da propria superficie, borda de contorno mais
+   firme (o MD3 usa `outline`, nao `outline-variant`, na borda de campo) e
+   foco de 2px na cor primaria em vez de halo difuso.
+   Altura minima segue o alvo de toque de 48dp. */
 .ia_input {
   width: 100%;
   box-sizing: border-box;
-  background: var(--ia-fundo);
-  border: 1px solid var(--ia-borda);
+  min-height: var(--ia-toque);
+  background: var(--ia-card);
+  border: 1px solid var(--ia-borda-campo);
   border-radius: var(--ia-r-sm);
   color: var(--ia-txt);
-  padding: 9px 12px;
-  font-size: 13.5px;
+  padding: 12px var(--ia-e-3);
+  font-size: var(--ia-t-campo);
   font-family: inherit;
+  line-height: 1.4;
   transition: border-color .15s, box-shadow .15s;
 }
+.ia_input:hover:not(:focus) { border-color: var(--ia-txt2); }
 .ia_input:focus {
   outline: none;
   border-color: var(--ia-azul);
-  box-shadow: 0 0 0 3px var(--ia-azul-anel);
+  box-shadow: inset 0 0 0 1px var(--ia-azul);
 }
-textarea.ia_input { resize: vertical; min-height: 88px; line-height: 1.5; }
+.ia_input::placeholder { color: var(--ia-txt3); }
+select.ia_input { cursor: pointer; }
+textarea.ia_input { resize: vertical; min-height: 96px; line-height: 1.5; }
 .ia_input_mono,
 .ia_mono { font-family: 'DM Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
-.ia_ajuda { font-size: 11.5px; color: var(--ia-txt2); margin: 6px 0 0; line-height: 1.45; }
+.ia_ajuda { font-size: var(--ia-t-apoio); color: var(--ia-txt2); margin: var(--ia-e-2) 0 0; line-height: 1.5; }
+/* Complemento dentro do <label>: mesmo tamanho, peso normal, cor de apoio.
+   Vinha como style inline apontando para --em-texto-sub, token legado que o
+   modulo nao usa mais (ficou no :root apenas porque o fluxo-canvas depende). */
+.ia_label_nota { font-weight: 400; color: var(--ia-txt2); }
+/* Texto de apoio em estado de erro. */
+.ia_ajuda_erro { color: var(--ia-erro-tx); }
+/* Borda do card de resultado apos a curadoria — era $.css() com token
+   legado --em-ok/--em-erro direto do JS. */
+.ia_resultado_aprovado  { border-color: var(--ia-ok); }
+.ia_resultado_reprovado { border-color: var(--ia-erro); }
+/* Campo/controle que se empilha sob o anterior, no lugar de margin inline. */
+.ia_input_empilhado { margin-top: var(--ia-e-2); }
+.ia_check_solto { margin-top: var(--ia-e-2); }
 .ia_ajuda code { font-family: 'DM Mono', ui-monospace, monospace; font-size: 11px; background: var(--ia-fundo); border: 1px solid var(--ia-borda); border-radius: 5px; padding: 1px 5px; }
 .ia_obrigatorio { color: var(--ia-erro-tx); font-weight: 700; }
+/* A linha inteira e clicavel e tem 40px de altura: a caixinha de 18px
+   sozinha fica muito abaixo do alvo de toque, e o MD3 conta o alvo do
+   checkbox como 48dp incluindo o rotulo. */
 .ia_check {
   display: flex;
   align-items: center;
-  gap: 9px;
-  font-size: 13px;
-  font-weight: 600;
+  gap: var(--ia-e-2);
+  min-height: 40px;
+  padding: 0 var(--ia-e-1);
+  margin-left: calc(var(--ia-e-1) * -1);
+  border-radius: var(--ia-r-sm);
+  font-size: var(--ia-t-campo);
+  font-weight: 400;
+  color: var(--ia-txt);
   cursor: pointer;
   user-select: none;
+  transition: background .15s;
 }
-.ia_check input { width: 17px; height: 17px; accent-color: var(--ia-azul); cursor: pointer; }
+.ia_check:hover { background: var(--ia-azul-suave); }
+.ia_check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--ia-azul);
+  cursor: pointer;
+  flex-shrink: 0;
+}
 .ia_form_rodape {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
-  margin-top: 20px;
-  padding-top: 16px;
+  align-items: center;
+  gap: var(--ia-e-2);
+  margin-top: var(--ia-e-4);
+  padding-top: var(--ia-e-3);
   border-top: 1px solid var(--ia-borda);
+  flex-wrap: wrap;
 }
+/* Rodape com um controle a esquerda (ex.: "Variacoes") e as acoes a direita.
+   Vinha como quatro style= inline na view. */
+.ia_form_rodape_split { justify-content: space-between; }
+.ia_form_rodape_ctrl {
+  display: flex;
+  align-items: center;
+  gap: var(--ia-e-2);
+  margin: 0;
+}
+.ia_form_rodape_ctrl label { margin: 0; white-space: nowrap; }
+.ia_form_rodape_ctrl .ia_input { width: auto; min-width: 72px; }
+.ia_form_rodape_acoes { display: flex; gap: var(--ia-e-2); flex-wrap: wrap; }
 .ia_aviso_seguro {
   display: flex;
   gap: 9px;
@@ -2504,9 +2599,11 @@ td.ia_num { text-align: right; font-variant-numeric: tabular-nums; white-space: 
 .ia_busca_item {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--ia-e-3);
   align-items: center;
-  padding: 10px 14px;
+  min-height: 44px;
+  padding: var(--ia-e-2) var(--ia-e-3);
+  font-size: var(--ia-t-campo);
   cursor: pointer;
   border-bottom: 1px solid var(--ia-borda);
 }
@@ -2516,11 +2613,11 @@ td.ia_num { text-align: right; font-variant-numeric: tabular-nums; white-space: 
 .ia_busca_item small { color: var(--ia-txt2); white-space: nowrap; }
 
 /* ==== painel do produto ==================================================== */
-.ia_produto { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+.ia_produto { display: flex; gap: var(--ia-e-3); align-items: flex-start; flex-wrap: wrap; }
 .ia_produto_thumb {
-  width: 64px;
-  height: 64px;
-  border-radius: 14px;
+  width: 72px;
+  height: 72px;
+  border-radius: var(--ia-r-md);
   background: var(--ia-fundo);
   border: 1px solid var(--ia-borda);
   display: flex;
@@ -2532,8 +2629,21 @@ td.ia_num { text-align: right; font-variant-numeric: tabular-nums; white-space: 
 }
 .ia_produto_thumb img { width: 100%; height: 100%; object-fit: cover; }
 .ia_produto_info { flex: 1; min-width: 240px; }
-.ia_produto_nome { font-size: 15px; font-weight: 700; margin: 0 0 4px; }
-.ia_produto_meta { display: flex; gap: 6px 10px; flex-wrap: wrap; margin-top: 8px; align-items: center; font-size: 12.5px; color: var(--ia-txt2); }
+.ia_produto_nome {
+  font-size: var(--ia-t-secao);
+  font-weight: 600;
+  line-height: 22px;
+  margin: 0 0 var(--ia-e-2);
+}
+.ia_produto_meta {
+  display: flex;
+  gap: var(--ia-e-2) var(--ia-e-3);
+  flex-wrap: wrap;
+  margin-top: var(--ia-e-2);
+  align-items: center;
+  font-size: var(--ia-t-apoio);
+  color: var(--ia-txt2);
+}
 .ia_produto_meta .ia_ico { color: var(--ia-txt3); }
 .ia_preco { font-variant-numeric: tabular-nums; font-weight: 700; }
 .ia_preco_de { color: var(--ia-txt2); text-decoration: line-through; font-weight: 500; margin-right: 6px; }
@@ -2541,23 +2651,26 @@ td.ia_num { text-align: right; font-variant-numeric: tabular-nums; white-space: 
 /* Faixa da foto do produto (recorte / referência — Fase 2B) */
 .ia_foto_strip {
   display: flex;
-  gap: 14px;
+  gap: var(--ia-e-3);
   align-items: center;
   background: var(--ia-fundo);
   border: 1px solid var(--ia-borda);
   border-radius: var(--ia-r-md);
-  padding: 12px 14px;
-  margin-bottom: 16px;
+  padding: var(--ia-e-3);
+  margin-bottom: var(--ia-e-4);
 }
 .ia_foto_strip img {
-  width: 72px;
-  height: 72px;
+  width: 80px;
+  height: 80px;
   object-fit: cover;
   border-radius: var(--ia-r-sm);
   border: 1px solid var(--ia-borda);
   background: #fff;
+  flex-shrink: 0;
 }
-.ia_foto_titulo { font-weight: 600; font-size: 14px; margin: 0 0 2px; }
+.ia_foto_strip > div { display: flex; flex-direction: column; align-items: flex-start; gap: var(--ia-e-1); }
+.ia_foto_strip .ia_btn { margin-top: var(--ia-e-1); }
+.ia_foto_titulo { font-weight: 600; font-size: var(--ia-t-label); margin: 0; }
 
 /* ==== cards de resultado =================================================== */
 .ia_resultado {
@@ -2635,14 +2748,27 @@ td.ia_num { text-align: right; font-variant-numeric: tabular-nums; white-space: 
 .ia_grade_celula { cursor: pointer; border: 0; background: none; padding: 0; }
 
 /* Wizard: seções, chips de produto e grade de tipos */
-.ia_secao_titulo { font-size: 15px; font-weight: 700; margin: 0 0 12px; }
-.ia_grupo_rotulo {
-  font-size: 11.5px;
-  text-transform: uppercase;
-  letter-spacing: .05em;
-  color: var(--ia-txt2);
-  margin: 12px 0 6px;
+.ia_secao_titulo {
+  font-size: var(--ia-t-secao);
+  font-weight: 600;
+  line-height: 24px;
+  letter-spacing: .01em;
+  margin: 0 0 var(--ia-e-3);
+  display: flex;
+  align-items: baseline;
+  gap: var(--ia-e-2);
 }
+.ia_grupo_rotulo {
+  font-size: var(--ia-t-grupo);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--ia-txt2);
+  margin: var(--ia-e-4) 0 var(--ia-e-2);
+  padding-bottom: var(--ia-e-1);
+  border-bottom: 1px solid var(--ia-borda);
+}
+.ia_grupo_rotulo:first-child { margin-top: 0; }
 .ia_tipos_grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px 14px; }
 .ia_tipo_item select { margin-top: 6px; width: 100%; }
 .ia_chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }

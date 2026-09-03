@@ -53,7 +53,7 @@ $paginas = max(1, (int) ceil(($total ?? 0) / ($por_pagina ?? 25)));
     </div>
   </div>
 
-  <div class="ia_card">
+  <div class="ia_card ia_card_pad">
     <form id="ia_filtros" autocomplete="off">
       <div class="ia_form_linha" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
         <div class="ia_form_grupo">
