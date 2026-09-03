@@ -166,6 +166,14 @@ try {
             }
         }
 
+        // Campanhas em lote (3A): o driver só ENFILEIRA, no ritmo definido.
+        // Roda antes do reivindicarLote de propósito — o que ele criar, esta
+        // mesma iteração já despacha, sem esperar o próximo minuto.
+        $msgCampanhas = (new IACampanhaService())->processarCampanhas();
+        if ($msgCampanhas !== '') {
+            $log($msgCampanhas);
+        }
+
         $lote = $geracoes->reivindicarLote($tamanhoLote);
 
         if (empty($lote)) {

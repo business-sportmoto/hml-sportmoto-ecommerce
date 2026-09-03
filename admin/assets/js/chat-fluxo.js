@@ -414,6 +414,14 @@
   for (var i = 1; i <= 10; i++) PORTAS['op_' + i] = 'opção ' + i;
 
   function rotuloPorta(p) { return PORTAS[p] || p; }
+
+  /** Rodapé do bloco no canvas quando não há resumo para mostrar. */
+  function corpoVazio(tipo) {
+    var meta = UI[tipo];
+    return (meta && meta.campos && meta.campos.length)
+      ? '<span class="ch-fx-no-vazio">clique para configurar</span>'
+      : '<span class="ch-fx-no-vazio">sem ajustes</span>';
+  }
   function nomeTag(id) {
     var t = (CFG.tags || []).filter(function (x) { return String(x.id) === String(id); })[0];
     return t ? t.nome : 'nenhuma tag';
@@ -511,7 +519,7 @@
           '<span>' + meta.ico + '</span><span>' + esc(meta.label) + '</span>' +
         '</div>' +
         '<div class="ch-fx-no-corpo">' +
-          (resumo ? esc(resumo) : '<span class="ch-fx-no-vazio">clique para configurar</span>') +
+          (resumo ? esc(resumo) : corpoVazio(tipo)) +
         '</div>' +
         '<div class="ch-fx-no-stat" data-stat="' + esc(chave) + '" style="display:none;"></div>' +
       '</div>';
@@ -958,7 +966,7 @@
     var meta = UI[no.data.tipo];
     var resumo = '';
     try { resumo = meta && meta.resumo ? String(meta.resumo(cfg) || '') : ''; } catch (e) {}
-    $corpo.html(resumo ? esc(resumo.substring(0, 90)) : '<span class="ch-fx-no-vazio">clique para configurar</span>');
+    $corpo.html(resumo ? esc(resumo.substring(0, 90)) : corpoVazio(no.data.tipo));
   }
 
   $(document).on('change blur', '#ch-fx-p-campos .ch-fx-c, #ch-fx-p-campos .ch-fx-tempo, ' +

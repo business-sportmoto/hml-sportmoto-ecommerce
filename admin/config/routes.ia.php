@@ -34,6 +34,27 @@ AdminRouter::get ('/ia/arquivo',                    'IAGeracaoController@arquivo
 // ── IA · Compositor de banners (Fase 2C) ──────────────────
 AdminRouter::post('/ia/banner/publicar',            'IAGeracaoController@bannerPublicar');
 
+// ── IA · Campanhas em lote (Fase 3B) ──────────────────────
+AdminRouter::get ('/ia/campanhas',                  'IACampanhaController@index');
+AdminRouter::get ('/ia/campanhas/nova',             'IACampanhaController@nova');
+AdminRouter::get ('/ia/campanhas/listar',           'IACampanhaController@listar');
+AdminRouter::get ('/ia/campanha',                   'IACampanhaController@detalhe');
+AdminRouter::get ('/ia/campanha/dados',             'IACampanhaController@dados');
+AdminRouter::get ('/ia/campanha/estimativa',        'IACampanhaController@estimativa');
+AdminRouter::get ('/ia/campanha/grade',             'IACampanhaController@grade');
+AdminRouter::get ('/ia/campanha/produtos-filtro',   'IACampanhaController@produtosPorFiltro');
+AdminRouter::post('/ia/campanha/criar',             'IACampanhaController@criar');
+AdminRouter::post('/ia/campanha/atualizar',         'IACampanhaController@atualizar');
+AdminRouter::post('/ia/campanha/produtos',          'IACampanhaController@produtos');
+AdminRouter::post('/ia/campanha/tipos',             'IACampanhaController@tipos');
+AdminRouter::post('/ia/campanha/iniciar',           'IACampanhaController@iniciar');
+AdminRouter::post('/ia/campanha/pausar',            'IACampanhaController@pausar');
+AdminRouter::post('/ia/campanha/retomar',           'IACampanhaController@retomar');
+AdminRouter::post('/ia/campanha/cancelar',          'IACampanhaController@cancelar');
+AdminRouter::post('/ia/campanha/arquivar',          'IACampanhaController@arquivar');
+AdminRouter::post('/ia/campanha/refazer-falhas',    'IACampanhaController@refazerFalhas');
+AdminRouter::post('/ia/campanha/aprovar-concluidas','IACampanhaController@aprovarConcluidas');
+
 // ── IA · Histórico e curadoria (Fase 1) ───────────────────
 AdminRouter::get ('/ia/historico',                  'IAGeracaoController@historico');
 AdminRouter::get ('/ia/historico/linhas',           'IAGeracaoController@historicoLinhas');

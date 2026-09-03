@@ -280,18 +280,44 @@ final class BlingProdutoImportService
             return ['ok' => false, 'msg' => 'Erro ao gravar: ' . $e->getMessage()];
         }
 
+        // ── Saldo, já ─────────────────────────────────────────
+        // Sem isto o produto nasce com estoque 0 e só receberia número no
+        // próximo pulso horário — e, se tiver variação, só depois do cron
+        // DIÁRIO de vínculo. Até lá seria um rascunho mentindo o saldo.
+        //
+        // Usa o sincronizarProduto() e NÃO o estoque.saldoVirtualTotal que
+        // vem no detalhe: são números diferentes. O espelho do site é o
+        // saldoFisicoTotal do depósito padrão; gravar o virtual aqui criaria
+        // uma divergência que o próximo cron desfaria sozinho.
+        //
+        // Fora da transação e sem propagar exceção: o produto já está
+        // gravado, e falha de rede no Bling não pode desfazer a importação.
+        $saldo = null;
+        try {
+            $r = (new BlingEstoqueService())->sincronizarProduto($produtoId);
+            $saldo = $r['ok'] ? (int)($r['atualizados'] ?? 0) : null;
+        } catch (\Throwable $e) {
+            LogService::exception($e, 'warning', 'bling', [
+                'produto_id' => $produtoId, 'acao' => 'saldo pos-importacao',
+            ]);
+        }
+
         LogService::audit('Produto importado do Bling', [
             'produto_id' => $produtoId, 'bling_id' => $blingId,
             'codigo' => $codigo, 'skus' => $nSkus,
+            'saldos_sincronizados' => $saldo,
             'usuario_id' => AuthHelper::usuarioId(),
         ]);
 
         $msg = "Produto importado como rascunho";
         if ($nSkus) $msg .= " com {$nSkus} variação(ões)";
-        $msg .= ". Complete URL, SEO, categoria e fotos antes de publicar.";
+        $msg .= $saldo === null
+            ? '. Estoque não pôde ser consultado agora — o cron horário resolve.'
+            : ". Estoque sincronizado.";
+        $msg .= " Complete URL, SEO, categoria e fotos antes de publicar.";
 
         return ['ok' => true, 'produto_id' => $produtoId, 'produto_ativo' => 0,
-                'skus' => $nSkus, 'msg' => $msg];
+                'skus' => $nSkus, 'saldos' => $saldo, 'msg' => $msg];
     }
 
     /**
@@ -348,10 +374,18 @@ final class BlingProdutoImportService
      */
     private function importarVariacoes(int $produtoId, array $variacoes): int
     {
+        // bling_id da variação é OBRIGATÓRIO aqui, não um extra.
+        //
+        // Sem ele o SKU fica invisível para o sincronizarEstoque() (que só
+        // monta o mapa com bling_id preenchido) e, pior, o item do pedido
+        // vai ao Bling como linha de texto livre — o pedido entra, o site
+        // marca sincronizado, e o estoque NÃO baixa em canal nenhum.
+        // O id vem pronto no payload da variação; deixar de gravar era
+        // criar produto já quebrado.
         $ins = $this->db->prepare(
             "INSERT INTO produto_skus
-             (produto_id, sku, ean, preco, custo, estoque, ativo, ordenacao)
-             VALUES (?,?,?,?,?,0,1,?)"
+             (produto_id, sku, bling_id, ean, preco, custo, estoque, ativo, ordenacao)
+             VALUES (?,?,?,?,?,?,0,1,?)"
         );
         $n = 0;
 
@@ -383,7 +417,9 @@ final class BlingProdutoImportService
             }
 
             $ins->execute([
-                $produtoId, $sku, $ean,
+                $produtoId, $sku,
+                (string)($v['id'] ?? '') ?: null,
+                $ean,
                 max(0.01, (float)($v['preco'] ?? 0)),
                 $this->custoDaVariacao($v),
                 $i,

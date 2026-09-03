@@ -169,7 +169,10 @@ class IAGeracaoService
                 'uuid'                     => $this->uuidV4(),
                 'usuario_id'               => $usuarioId,
                 'produto_id'               => $produtoId,
-                'campanha_id'              => null,
+                // Vínculo com a campanha (3A): é por ele que o driver conta
+                // o que já foi gerado e sabe o que ainda falta do cross join.
+                'campanha_id'              => (isset($entrada['campanha_id']) && (int) $entrada['campanha_id'] > 0)
+                                                  ? (int) $entrada['campanha_id'] : null,
                 'geracao_origem_id'        => $origemId > 0 ? $origemId : null,
                 'tipo_conteudo_id'         => $tipoId,
                 'capacidade'               => $capacidade,
@@ -179,7 +182,11 @@ class IAGeracaoService
                 'prompt_template_snapshot' => $template !== null ? (string) $template['corpo'] : null,
                 'prompt_final'             => $prompt,
                 'contexto'                 => $contextoJson,
-                'chave_dedup'              => $dedup,
+                // A campanha manda a própria chave: determinística por par
+                // (campanha|produto|tipo|tentativa), o que torna re-rodar o
+                // driver idempotente. Fora dela, vale o dedup por minuto.
+                'chave_dedup'              => !empty($entrada['chave_dedup'])
+                                                  ? (string) $entrada['chave_dedup'] : $dedup,
                 'custo_estimado_usd'       => $custoUnitario,
             ]);
 
