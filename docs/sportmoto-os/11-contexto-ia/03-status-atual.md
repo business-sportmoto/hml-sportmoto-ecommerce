@@ -12,6 +12,10 @@ atualizado_em: 2026-09-03
 
 ## Em desenvolvimento
 
+- **Chat — log de chamadas do webhook** em `/admin/chat/config`: filtro por
+  data, canal, evento e resultado, paginação e o conteúdo de cada chamada num
+  drawer. Ver [[../12-decisoes-tecnicas/chat-log-de-chamadas]].
+
 - **Painel — conteúdo editável.** Rodapé (`/admin/configuracoes/rodape`) e
   criador de páginas (`/admin/paginas`). Ver
   [[../12-decisoes-tecnicas/conteudo-editavel-rodape-e-paginas]].

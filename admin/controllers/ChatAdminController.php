@@ -72,7 +72,8 @@ class ChatAdminController extends Controller
 
     public function config(): void
     {
-        $base = defined('BASE_URL') ? BASE_URL : '';
+        $base   = defined('BASE_URL') ? BASE_URL : '';
+        $logSvc = new ChatWebhookLogService();
 
         $this->render('chat/config', [
             'titulo'      => 'Chat — Configuração',
@@ -81,7 +82,13 @@ class ChatAdminController extends Controller
             'webhookUrl'  => $base . '/webhooks/whatsapp',
             'verifyToken' => ChatMetaClient::verifyToken(),
             'temSecret'   => ChatMetaClient::temAppSecret(),
-            'ultimosWebhooks' => $this->ultimosWebhooks(),
+            // A tabela é pintada pelo JS inclusive na primeira carga: a
+            // página 1 vem resolvida daqui. Dois templates — um em PHP e
+            // outro em JS — divergem no primeiro ajuste.
+            'logInicial'  => $logSvc->listar([], 1),
+            'logResumo'   => $logSvc->resumo([]),
+            'logEventos'  => $logSvc->eventos(),
+            'logRetencao' => ChatWebhookService::RETENCAO_DIAS,
             // Prévia da assinatura com um nome real, não um exemplo genérico
             'meuNome'     => (string)(AuthHelper::adminDisplay()['nome'] ?? 'Maria Souza'),
         ], 'admin');
@@ -177,18 +184,33 @@ class ChatAdminController extends Controller
         }
     }
 
-    private function ultimosWebhooks(int $limite = 15): array
+    /** GET /admin/chat/config/webhook-logs — listagem filtrada e paginada. */
+    public function webhookLogs(): void
     {
-        try {
-            $db = Database::getInstance()->getConnection();
-            $st = $db->query(
-                "SELECT id, evento, wamid, assinatura_ok, processado, erro, criado_em
-                 FROM chat_webhook_log ORDER BY id DESC LIMIT " . (int)$limite
-            );
-            return $st->fetchAll(PDO::FETCH_ASSOC);
-        } catch (Throwable $e) {
-            return [];
-        }
+        $filtros = [
+            'de'     => SecurityHelper::sanitizeString($_GET['de']     ?? ''),
+            'ate'    => SecurityHelper::sanitizeString($_GET['ate']    ?? ''),
+            'evento' => SecurityHelper::sanitizeString($_GET['evento'] ?? ''),
+            'canal'  => SecurityHelper::sanitizeString($_GET['canal']  ?? ''),
+            'estado' => SecurityHelper::sanitizeString($_GET['estado'] ?? ''),
+            'busca'  => SecurityHelper::sanitizeSearch((string)($_GET['busca'] ?? '')),
+        ];
+
+        $svc = new ChatWebhookLogService();
+        $r   = $svc->listar($filtros, (int)($_GET['pagina'] ?? 1));
+
+        // O resumo acompanha o filtro de período/canal/evento, mas ignora o de
+        // estado — senão "recusado: 12 de 12" não informaria nada.
+        $this->json(['ok' => true, 'resumo' => $svc->resumo($filtros)] + $r);
+    }
+
+    /** GET /admin/chat/config/webhook-logs/{id} — a chamada inteira. */
+    public function webhookLogDetalhe($id): void
+    {
+        $log = (new ChatWebhookLogService())->detalhe(SecurityHelper::sanitizeInt($id));
+        if (!$log) { $this->json(['ok' => false, 'erro' => 'Chamada não encontrada.'], 404); return; }
+
+        $this->json(['ok' => true, 'log' => $log]);
     }
 
     // =========================================================================

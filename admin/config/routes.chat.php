@@ -15,6 +15,8 @@ AdminRouter::get ('/chat/dados',                  'ChatAdminController@dados');
 AdminRouter::get ('/chat/config',                 'ChatAdminController@config');
 AdminRouter::post('/chat/config/salvar',          'ChatAdminController@configSalvar');
 AdminRouter::post('/chat/config/testar',          'ChatAdminController@configTestar');
+AdminRouter::get ('/chat/config/webhook-logs',            'ChatAdminController@webhookLogs');
+AdminRouter::get ('/chat/config/webhook-logs/{id:\d+}',   'ChatAdminController@webhookLogDetalhe');
 
 // ── Templates HSM ────────────────────────────────────────────
 AdminRouter::get ('/chat/templates',              'ChatAdminController@templates');

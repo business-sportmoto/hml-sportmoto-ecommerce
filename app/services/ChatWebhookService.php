@@ -19,6 +19,14 @@
  */
 class ChatWebhookService
 {
+    /**
+     * Dias que o log de chamadas guarda; o worker apaga o que passar disso.
+     *
+     * É constante porque a TELA precisa dizer o período. Sem isso, filtrar uma
+     * data de três semanas atrás devolve vazio e parece defeito do filtro.
+     */
+    public const RETENCAO_DIAS = 15;
+
     private PDO $db;
     private ChatContatoService  $contatos;
     private ChatConversaService $conversas;
@@ -725,7 +733,7 @@ class ChatWebhookService
     // =========================================================================
 
     /** Limpa log antigo — o payload cru é volumoso e só serve para depurar. */
-    public function limparLogAntigo(int $dias = 15): int
+    public function limparLogAntigo(int $dias = self::RETENCAO_DIAS): int
     {
         try {
             $st = $this->db->prepare(

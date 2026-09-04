@@ -290,6 +290,10 @@ include __DIR__ . '/../partials/_sprite.php';
   <?php if (str_contains($_SERVER['REQUEST_URI'] ?? '', '/admin/chat/automacoes')): ?>
   <script src="<?= PerformanceHelper::assetVersion('js/chat-automacao.js', true) ?>"></script>
   <?php endif; ?>
+  <?php // Log de chamadas do webhook: so na tela de configuracao ?>
+  <?php if (str_contains($_SERVER['REQUEST_URI'] ?? '', '/admin/chat/config')): ?>
+  <script src="<?= PerformanceHelper::assetVersion('js/chat-webhook-log.js', true) ?>"></script>
+  <?php endif; ?>
 <script src="<?= PerformanceHelper::assetVersion('js/chat.js', true) ?>"></script>
 <?php } ?>
 </body>

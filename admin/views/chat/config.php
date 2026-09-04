@@ -3,8 +3,10 @@
  * admin/views/chat/config.php
  *
  * @var array $config @var array $saude @var string $webhookUrl
- * @var string $verifyToken @var bool $temSecret @var array $ultimosWebhooks
+ * @var string $verifyToken @var bool $temSecret
  * @var string $meuNome
+ * @var array $logInicial @var array $logResumo @var array $logEventos
+ * @var int $logRetencao
  */
 $base = defined('BASE_URL') ? BASE_URL : '';
 $h    = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
@@ -438,44 +440,92 @@ $on   = fn(string $k, bool $d = false) => in_array(strtolower((string)($config[$
     </div>
   </form>
 
-  <?php // ── Diagnóstico ───────────────────────────────────────────────── ?>
-  <div class="ch-card">
+  <?php /* ── Log de chamadas do webhook ──────────────────────────────
+       A tabela é desenhada pelo JS, inclusive na primeira carga: o servidor
+       manda a página 1 já resolvida em CHAT_WH_LOG.inicial e o mesmo template
+       pinta o filtro e a paginação depois. Dois templates — um em PHP e outro
+       em JS — divergem no primeiro ajuste. */ ?>
+  <div class="ch-card" id="ch-wh">
     <div class="ch-card-head">
-      <h2>Últimas chamadas do webhook</h2>
-      <span class="ch-sm ch-mut"><?= (int)$saude['webhooks_24h'] ?> nas últimas 24h</span>
+      <h2>Chamadas do webhook</h2>
+      <span class="ch-sm ch-mut" id="ch-wh-total"></span>
     </div>
-    <?php if (!$ultimosWebhooks): ?>
-      <div class="ch-vazio">
-        <strong>Nenhuma chamada ainda</strong>
-        Depois de cadastrar a URL no painel da Meta, mande uma mensagem para o número
-        da loja — ela deve aparecer aqui em segundos.
+
+    <?php // Resumo por estado: a divisão do período, não da seleção ?>
+    <div class="ch-wh-resumo" id="ch-wh-resumo"></div>
+
+    <form class="ch-filtros" id="ch-wh-filtros" onsubmit="return false;">
+      <div class="ch-campo">
+        <label class="ch-label" for="ch-wh-de">De</label>
+        <input type="date" id="ch-wh-de" name="de" class="ch-input">
       </div>
-    <?php else: ?>
-      <div class="ch-tabela-wrap">
-        <table class="ch-tabela">
-          <thead><tr><th>Quando</th><th>Evento</th><th>Assinatura</th><th>Processado</th><th>Erro</th></tr></thead>
-          <tbody>
-            <?php foreach ($ultimosWebhooks as $w): ?>
-            <tr>
-              <td class="ch-sm ch-mut"><?= date('d/m H:i:s', strtotime((string)$w['criado_em'])) ?></td>
-              <td class="ch-sm"><?= $h($w['evento'] ?: '—') ?></td>
-              <td>
-                <?= (int)$w['assinatura_ok']
-                      ? '<span class="ch-badge ch-badge--ok">válida</span>'
-                      : '<span class="ch-badge ch-badge--erro">inválida</span>' ?>
-              </td>
-              <td>
-                <?= (int)$w['processado']
-                      ? '<span class="ch-badge ch-badge--ok">sim</span>'
-                      : '<span class="ch-badge ch-badge--neutro">não</span>' ?>
-              </td>
-              <td class="ch-sm ch-mut"><?= $h(mb_substr((string)$w['erro'], 0, 70)) ?></td>
-            </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
+      <div class="ch-campo">
+        <label class="ch-label" for="ch-wh-ate">Até</label>
+        <input type="date" id="ch-wh-ate" name="ate" class="ch-input">
       </div>
-    <?php endif; ?>
+      <div class="ch-campo">
+        <label class="ch-label" for="ch-wh-canal">Canal</label>
+        <select id="ch-wh-canal" name="canal" class="ch-select">
+          <option value="">Todos</option>
+          <option value="whatsapp">WhatsApp</option>
+          <option value="instagram">Instagram</option>
+          <option value="entrada">Recusadas na entrada</option>
+        </select>
+      </div>
+      <div class="ch-campo">
+        <label class="ch-label" for="ch-wh-evento">Evento</label>
+        <select id="ch-wh-evento" name="evento" class="ch-select">
+          <option value="">Todos</option>
+          <?php foreach ($logEventos as $ev): ?>
+            <option value="<?= $h($ev['evento']) ?>">
+              <?= $h(ChatWebhookLogService::rotulo((string)$ev['evento'])) ?> (<?= (int)$ev['n'] ?>)
+            </option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <div class="ch-campo">
+        <label class="ch-label" for="ch-wh-estado">Resultado</label>
+        <select id="ch-wh-estado" name="estado" class="ch-select">
+          <option value="">Todos</option>
+          <option value="ok">Processada</option>
+          <option value="sem_acao">Sem ação</option>
+          <option value="ignorado">Só registrada</option>
+          <option value="recusado">Recusada</option>
+        </select>
+      </div>
+      <div class="ch-campo">
+        <label class="ch-label" for="ch-wh-busca">Busca</label>
+        <input type="text" id="ch-wh-busca" name="busca" class="ch-input"
+               placeholder="ID da mensagem ou IP">
+      </div>
+      <div class="ch-filtros-acoes">
+        <button type="button" class="ch-btn ch-btn--pri ch-btn--sm" id="ch-wh-filtrar">Filtrar</button>
+        <button type="button" class="ch-btn ch-btn--sm" id="ch-wh-limpar">Limpar</button>
+      </div>
+    </form>
+
+    <div class="ch-tabela-wrap">
+      <table class="ch-tabela ch-wh-tabela">
+        <thead>
+          <tr>
+            <th style="width:150px">Quando</th>
+            <th style="width:190px">Evento</th>
+            <th>O que aconteceu</th>
+            <th style="width:130px">Resultado</th>
+            <th style="width:28px"></th>
+          </tr>
+        </thead>
+        <tbody id="ch-wh-corpo"></tbody>
+      </table>
+    </div>
+
+    <div class="ch-wh-paginacao" id="ch-wh-paginacao"></div>
+
+    <p class="ch-sm ch-mut" style="padding:0 20px 16px;margin:0;">
+      O log guarda os últimos <strong><?= (int)$logRetencao ?> dias</strong> — o worker
+      apaga o que passa disso. A busca cobre o ID da mensagem e o IP; para achar
+      pelo conteúdo, filtre por data e evento e abra a chamada.
+    </p>
   </div>
 
   <div class="ch-aviso ch-aviso--info ch-mt">
@@ -489,6 +539,15 @@ $on   = fn(string $k, bool $d = false) => in_array(strtolower((string)($config[$
   </div>
 </div>
 
+<?php // A página 1 sai daqui já resolvida; o mesmo template do
+       // chat-webhook-log.js serve para o filtro depois. ?>
+<script>
+  window.CHAT_WH_LOG = {
+    base:    '<?= $base ?>/admin/chat/config/webhook-logs',
+    inicial: <?= json_encode($logInicial, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+    resumo:  <?= json_encode($logResumo,  JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>
+  };
+</script>
 <script>
 (function ($) {
   var BASE = window.BASE_URL || '<?= $base ?>';

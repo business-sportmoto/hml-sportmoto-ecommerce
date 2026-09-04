@@ -870,6 +870,94 @@ html[data-theme="dark"] .ch-fx-flut {
 .ch-fx-prod-item .ch-sm { display: block; margin-top: 1px; }
 .ch-fx-prod-vazio { padding: 12px; font-size: 13px; color: var(--ch-mut); }
 
+/* ── Log de chamadas do webhook (/admin/chat/config) ─────────────────────── */
+
+/* Resumo por estado. Clicável: filtra por aquele estado — é o gesto que a
+   pessoa tenta assim que vê o número. */
+.ch-wh-resumo { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 20px 14px; }
+.ch-wh-resumo:empty { display: none; }
+.ch-wh-chip {
+  display: inline-flex; align-items: baseline; gap: 6px; cursor: pointer;
+  font-family: inherit; font-size: 13px; color: var(--ch-mut);
+  padding: 5px 12px; border-radius: 999px;
+  border: 1px solid var(--ch-line); background: var(--surface);
+  transition: border-color .12s, background .12s;
+}
+.ch-wh-chip strong { font-size: 14px; font-weight: 700; color: var(--text); }
+.ch-wh-chip:hover { border-color: var(--ch-line2); background: var(--ch-chip); }
+.ch-wh-chip--ok     strong { color: var(--success); }
+.ch-wh-chip--aviso  strong { color: var(--warning); }
+.ch-wh-chip--erro   strong { color: var(--danger); }
+
+.ch-filtros-acoes { display: flex; align-items: flex-end; gap: 8px; margin-left: auto; }
+
+.ch-wh-tabela tbody tr { cursor: pointer; }
+.ch-wh-tabela tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+.ch-wh-data    { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ch-wh-evento  { font-weight: 600; color: var(--text); }
+.ch-wh-motivo  { color: var(--ch-mut); }
+.ch-wh-id      { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; color: var(--ch-mut); }
+.ch-wh-tam     { font-size: 11.5px; color: var(--ch-mut); white-space: nowrap; }
+.ch-wh-seta    { color: var(--ch-mut); text-align: right; font-size: 18px; }
+.ch-wh-vazio   { padding: 40px 20px; text-align: center; color: var(--ch-mut); }
+#ch-wh-corpo.is-carregando { opacity: .45; transition: opacity .12s; }
+
+.ch-wh-paginacao {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; padding: 12px 20px;
+  border-top: 1px solid var(--ch-line);
+}
+.ch-wh-paginacao:empty { display: none; }
+.ch-wh-intervalo { font-size: 13px; color: var(--ch-mut); font-variant-numeric: tabular-nums; }
+.ch-wh-nav { display: flex; align-items: center; gap: 4px; }
+.ch-wh-atual { font-size: 13px; color: var(--ch-mut); padding: 0 8px; font-variant-numeric: tabular-nums; }
+.ch-wh-pag {
+  min-width: 30px; height: 30px; padding: 0 8px; cursor: pointer;
+  border: 1px solid var(--ch-line); border-radius: 7px;
+  background: var(--surface); color: var(--text); font-size: 14px; line-height: 1;
+}
+.ch-wh-pag:hover:not(.is-off) { border-color: var(--ch-line2); background: var(--ch-chip); }
+.ch-wh-pag.is-off { opacity: .35; cursor: default; }
+
+/* ── Detalhe da chamada (dentro do adminDrawer) ──────────────────────────── */
+.chwd_topo {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding-bottom: 14px; margin-bottom: 16px; border-bottom: 1px solid var(--ch-line);
+}
+.chwd_data { margin-left: auto; font-size: 13px; color: var(--ch-mut); }
+.chwd_grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
+.chwd_bloco { min-width: 0; }
+.chwd_rotulo {
+  font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ch-mut); margin-bottom: 4px;
+}
+.chwd_valor { font-size: 13.5px; color: var(--text); overflow-wrap: anywhere; }
+.chwd_json {
+  margin: 0; padding: 12px 14px; max-height: 420px; overflow: auto;
+  background: var(--ch-chip); border: 1px solid var(--ch-line); border-radius: 8px;
+  font-family: var(--font-mono, ui-monospace, monospace); font-size: 12.5px; line-height: 1.6;
+  white-space: pre; color: var(--text);
+}
+.chwd_bloco:has(.chwd_json) { grid-column: 1 / -1; margin-top: 16px; }
+
+.chwd_motivo {
+  margin-top: 16px; padding: 12px 14px; border-radius: 8px;
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning) 24%, transparent);
+  font-size: 13.5px; color: var(--text);
+}
+.chwd_motivo.is-erro {
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 24%, transparent);
+}
+
+.chwd_resumo { margin-top: 16px; }
+.chwd_resumo dl {
+  margin: 0; display: grid; grid-template-columns: minmax(70px, auto) 1fr; gap: 4px 14px;
+}
+.chwd_resumo dt { font-size: 13px; color: var(--ch-mut); }
+.chwd_resumo dd { margin: 0; font-size: 13.5px; color: var(--text); overflow-wrap: anywhere; }
+
 /* ── Avisos ──────────────────────────────────────────────────────────────── */
 /* Flutuam no rodapé: erro de publicação não pode empurrar o canvas. */
 .ch-fx-msg {
