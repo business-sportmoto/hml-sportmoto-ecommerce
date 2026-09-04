@@ -76,6 +76,27 @@ class CarrinhoAbandonado {
             'hint'  => 'Espera até oferecer cupom no direct a quem veio de um link do chat.',
             'min' => 1, 'max' => 144, 'step' => 1, 'default' => 20,
         ],
+        // O divisor entre vendedor e robô. Carrinho DESTE valor para cima não
+        // vira automação: fica na Central para um humano trabalhar, porque
+        // receita grande merece o toque de um vendedor. Abaixo dele, o fluxo
+        // cuida — é o volume que hoje ninguém toca.
+        //
+        // POR QUE VALOR E NÃO SCORE: o score do pontuarNovos() mede sobretudo
+        // se dá para FALAR com a pessoa (30 pontos só por ter cliente_id e
+        // telefone, que é o pré-requisito para ser elegível) mais lealdade
+        // (+20 para quem já comprou). O piso de um carrinho alcançável é 40 e
+        // um cliente recorrente começa em 70 — medido em 04/09, com corte 55
+        // a automação recebia 0 de 17 carrinhos. Valor é a tradução direta de
+        // "receita grande", sem misturar alcançabilidade.
+        //
+        // R$ 500 ancora na faixa que o próprio pontuarNovos() já trata como
+        // alto valor. É ponto de partida: acompanhe `eventos=` e `humanos=`
+        // no log do cron e ajuste aqui.
+        'evento_loja_valor_corte' => [
+            'label' => 'Valor do carrinho para atendimento humano (R$)',
+            'hint'  => 'Carrinho deste valor para cima fica para um vendedor; abaixo disso vai para a automação.',
+            'min' => 0, 'max' => 100000, 'step' => 0.01, 'default' => 500,
+        ],
     ];
 
     /** Whitelist de ordenação — nunca interpolar input do usuário em ORDER BY */

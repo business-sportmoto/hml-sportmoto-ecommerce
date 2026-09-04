@@ -45,7 +45,15 @@ Fases por rodada:
      ausências, e ausência não dispara webhook. O resto do sino do
      atendimento (mensagem nova, atribuição, campanha concluída) sai do
      próprio evento e não depende do worker.
-  E) limpa chat_webhook_log com mais de 15 dias (1x/hora, no minuto :03)
+  E) cupom para carrinho parado de quem veio do direct (ChatCupomCarrinhoService)
+  F) eventos da loja: consome chat_eventos_loja e inicia os fluxos cuja hora
+     chegou (ChatEventoLojaService — ver [[evento-loja-como-porta-unica]])
+  G) limpa chat_webhook_log com mais de 15 dias (1x/hora, no minuto :03)
+
+Por que a fase F mora AQUI e não no cron do carrinho: iniciar fluxo carrega o
+motor inteiro, incluindo os blocos de IA em `app/services/ia/`. O cron do
+carrinho tem outro autoloader, que não conhece essa pasta — lá daria
+`Class not found`. O carrinho só enfileira; quem processa é este worker.
 
 Uso:
   php cli/chat-worker.php
@@ -261,3 +269,49 @@ php ia-worker.php --loop=55       # varre por 55s e sai (para cron de 1 min)
 **todos** os admins. Três variações de imagem = três avisos por admin, por
 clique. As alternativas naturais são avisar só o autor
 (`ia_geracoes.usuario_id`) ou uma vez por lote.
+
+# Carrinhos abandonados
+
+Ciclo de vida da Central de Recuperação. Estado-based: nada depende de um
+envio ter dado certo.
+
+Por rodada:
+  1. detectarAbandonados()       marca carrinho inativo (INSERT…SELECT idempotente)
+  2. reconciliarRecuperados()    pedido aprovado após o abandono = recuperado
+  3. liberarCapturasExpiradas()  claim sem interação volta ao pool
+  4. emitirEventosDeAbandono()   ENFILEIRA `carrinho_abandonado` em chat_eventos_loja
+                                 (so carrinho com valor ABAIXO de
+                                  evento_loja_valor_corte, R$ 500; do corte
+                                  para cima fica na Central para um vendedor)
+  5. contarSugestaoPerdidos()    só conta, não age
+
+O passo 4 só faz INSERT — não resolve contato, não inicia fluxo, não toca em
+API externa. Quem consome é a fase F do chat-worker.
+
+**Janela de frescor:** só carrinho abandonado nas últimas
+`recuperacao_config.evento_loja_emitir_ate_h` horas (padrão 6) vira evento.
+Sem isso, o primeiro deploy enfileiraria o histórico inteiro — e no dia em que
+um fluxo fosse publicado, a loja mandaria mensagem para todo mundo que
+abandonou carrinho desde sempre.
+
+Uso:
+  php bin/carrinhos-abandonados-processar.php
+
+Cron (Ploi Scheduler, a cada 30 minutos):
+  php /home/ploi/SITE/bin/carrinhos-abandonados-processar.php
+
+Saída de uma rodada:
+  [carrinhos-cron] ok liberados=0 novos=8 recuperados=15 eventos=3 humanos=2 sugerir_perdido=0 dur=115ms
+
+`eventos` = foram para a automacao. `humanos` = ficaram para um vendedor.
+
+Sem lock próprio: as operações são idempotentes por construção (NOT EXISTS na
+detecção, UNIQUE na fila) e a janela de 30 min é folgada.
+
+Instalador do fluxo-modelo (roda uma vez, nao e cron):
+  php cli/carrinho-seed.php            -> cria "Carrinho abandonado (modelo)" como RASCUNHO
+  php cli/carrinho-seed.php --forcar   -> recria do zero (descarta edicoes)
+
+Nasce em rascunho de proposito: o bloco msg_template precisa do nome de um HSM
+aprovado na Meta, e o validador do publicar() recusa enquanto estiver em branco.
+Enquanto e rascunho o despachante nao o encontra e nenhum evento dispara.

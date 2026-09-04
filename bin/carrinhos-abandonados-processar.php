@@ -1,11 +1,18 @@
-<!-- /* ════════════════════════════════════════════════════════
-   bin/carrinhos-abandonados-processar.php  (ARQUIVO SEPARADO)
-   Ploi Scheduler → Command: php /home/ploi/SITE/bin/carrinhos-abandonados-processar.php
-                    Frequency: Every 30 minutes
-   ════════════════════════════════════════════════════════
-  -->
-
 <?php
+/**
+ * bin/carrinhos-abandonados-processar.php
+ *
+ * Ploi Scheduler -> Command: php /home/ploi/SITE/bin/carrinhos-abandonados-processar.php
+ *                   Frequency: Every 30 minutes
+ *
+ * O cabecalho era um bloco HTML ANTES do <?php: no CLI isso era impresso como
+ * saida e sujava o log do agendador a cada 30 minutos.
+ *
+ * Este cron NAO carrega o motor de fluxos. `emitirEventosDeAbandono()` apenas
+ * enfileira; quem processa e o `cli/chat-worker.php`, que tem o autoloader
+ * completo. Por isso a lista de diretorios abaixo nao precisa de
+ * `app/services/ia/`.
+ */
 
  
 if (PHP_SAPI !== 'cli') { exit(1); }
@@ -48,11 +55,17 @@ try {
     $recuperados = $svc->reconciliarRecuperados();
     $liberados = $svc->liberarCapturasExpiradas();
 
+    // Enfileira os recem-detectados para o motor de fluxos. So INSERT --
+    // nada aqui inicia fluxo nem toca em API externa.
+    $rota        = $svc->emitirEventosDeAbandono(200);
+    $eventos     = $rota['enfileirados'];
+    $humanos     = $rota['para_humano'];
+
     $sugestoes   = $svc->contarSugestaoPerdidos();
  
     echo (sprintf(
-        '[carrinhos-cron] ok liberados=%d novos=%d recuperados=%d sugerir_perdido=%d dur=%dms',
-        $liberados, $novos, $recuperados, $sugestoes,
+        '[carrinhos-cron] ok liberados=%d novos=%d recuperados=%d eventos=%d humanos=%d sugerir_perdido=%d dur=%dms',
+        $liberados, $novos, $recuperados, $eventos, $humanos, $sugestoes,
         (int)round((microtime(true) - $inicio) * 1000)
     ));
     exit(0);

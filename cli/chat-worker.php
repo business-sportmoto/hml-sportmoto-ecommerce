@@ -11,7 +11,8 @@
  *   C) Campanhas       — consome a fila respeitando ritmo_por_minuto
  *   D) Sino            — cliente esperando resposta, canal falhando
  *   E) Cupom           — carrinho parado há N horas de quem veio do direct
- *   F) Limpeza         — log de webhook antigo (1x por hora)
+ *   F) Eventos da loja — fila do site que virou hora de iniciar fluxo
+ *   G) Limpeza         — log de webhook antigo (1x por hora)
  *
  * Cron (crontab -u www-data -e):
  *   * * * * * cd /caminho/do/projeto && php cli/chat-worker.php --verbose >> storage/logs/chat-worker.log 2>&1
@@ -129,7 +130,17 @@ do {
         $cupons = (new ChatCupomCarrinhoService())->enviarPendentes(30);
         if ($cupons > 0) $log("cupons de carrinho enviados: $cupons");
 
-        // ── F. Limpeza (1x por hora) ──
+        // ── F. Eventos da loja ──
+        // A loja enfileira (carrinho abandonado, pedido...) e a espera até o
+        // disparo mora na fila, não num bloco `esperar`: sessão dormindo horas
+        // seria morta pelo encerrarSessoesAbertas() do próximo fluxo que o
+        // contato acionasse. Ver [[evento-loja-como-porta-unica]].
+        $ev = (new ChatEventoLojaService())->processarPendentes(50);
+        if (array_sum($ev) > 0) {
+            $log('eventos da loja: ' . json_encode($ev, JSON_UNESCAPED_UNICODE));
+        }
+
+        // ── G. Limpeza (1x por hora) ──
         if ((int)date('i') === 3) {
             $apagados = (new ChatWebhookService())->limparLogAntigo(15);
             if ($apagados > 0) $log("log de webhook: $apagados linha(s) antiga(s) removida(s)");

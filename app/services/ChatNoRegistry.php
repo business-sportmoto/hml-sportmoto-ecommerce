@@ -1474,7 +1474,16 @@ class ChatNoAcaoCupomProduto extends ChatNo
         }
 
         // ── 1ª passada: procura e oferece ──
-        $produtoId = (int)($config['produto_id'] ?? 0);
+        //
+        // O produto pode vir fixo (o caso original: automação de um reel sobre
+        // um produto) ou por variável — `{{carrinho_produto_id}}` no fluxo de
+        // carrinho abandonado, onde o produto muda a cada evento.
+        //
+        // Interpolar antes do cast é retrocompatível: um número cru interpola
+        // para ele mesmo, então as automações que já existem não mudam.
+        $produtoId = (int) ChatContatoService::interpolar(
+            (string)($config['produto_id'] ?? ''), $ctx->vars
+        );
         if ($produtoId < 1) return 'sem_cupom';
 
         $cupom = (new ChatCupomCarrinhoService($ctx->db))->cupomParaProduto($produtoId);

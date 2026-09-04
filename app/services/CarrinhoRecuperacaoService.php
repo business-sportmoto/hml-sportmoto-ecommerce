@@ -70,6 +70,12 @@ class CarrinhoRecuperacaoService {
             'sugerir_whatsapp_h'   => 24,
             'sugerir_email_h'      => 48,
             'dias_sugerir_perdido' => 5,
+            // Janela de frescor da emissão de evento: carrinho mais velho que
+            // isto não vira `carrinho_abandonado`. O cron roda de 30 em 30 min,
+            // então 6h cobre com folga qualquer detecção nova — e barra o
+            // histórico acumulado no primeiro deploy.
+            'evento_loja_emitir_ate_h' => 6,
+            'evento_loja_valor_corte'   => 500,
         ];
         return self::$configCache[$chave] ?? (float)($defaults[$chave] ?? 0);
     }
@@ -219,6 +225,140 @@ class CarrinhoRecuperacaoService {
             );
         }
         return $n;
+    }
+
+    // ══════════════════════════════════════════════════
+    // EVENTOS PARA O MOTOR DE FLUXOS
+    // ══════════════════════════════════════════════════
+
+    /**
+     * Enfileira `carrinho_abandonado` para os carrinhos recém-detectados.
+     *
+     * Só ENFILEIRA — não resolve contato, não inicia fluxo, não carrega o
+     * motor. O processamento é do chat-worker, que tem o autoloader completo;
+     * este cron não conhece `app/services/ia/` e um fluxo com bloco de IA
+     * morreria aqui com `Class not found`. Ver [[evento-loja-como-porta-unica]].
+     *
+     * JANELA DE FRESCOR: só carrinho abandonado nas últimas N horas vira
+     * evento. Sem isso, o primeiro deploy enfileiraria o histórico inteiro de
+     * uma vez — e no dia em que um fluxo fosse publicado, a loja mandaria
+     * mensagem para todo mundo que abandonou carrinho desde sempre.
+     *
+     * ROTEAMENTO POR VALOR: só carrinho ABAIXO do corte vira automação.
+     * Do corte para cima fica na Central, para um vendedor trabalhar —
+     * receita grande merece o toque de um humano, e o pior desfecho possível
+     * é o robô queimar um carrinho grande.
+     *
+     * O corte era por `score` até 04/09. Não funcionava: o score mede
+     * sobretudo alcançabilidade (30 pontos só por ter cliente_id e telefone)
+     * mais lealdade (+20 por já ter comprado), então todo cliente recorrente
+     * ficava acima de qualquer corte razoável — 0 de 17 carrinhos chegavam à
+     * automação. Ver §7 de [[evento-loja-como-porta-unica]].
+     *
+     * @return array{enfileirados:int, para_humano:int}
+     */
+    public function emitirEventosDeAbandono(int $limite = 100): array
+    {
+        $out = ['enfileirados' => 0, 'para_humano' => 0];
+        if (!class_exists('ChatEventoLojaService')) return $out;
+
+        $frescor = (int)$this->config('evento_loja_emitir_ate_h');
+        $corte   = $this->config('evento_loja_valor_corte');
+        $limite  = max(1, min(500, $limite));
+
+        // Quantos ficaram para o vendedor nesta janela. Contado, não estimado:
+        // sem este número o roteamento é invisível e ninguém percebe se o
+        // corte está deixando a automação sem nada para fazer.
+        $stH = $this->db->prepare(
+            "SELECT COUNT(*)
+             FROM carrinho_recuperacao cr
+             JOIN clientes c ON c.id = cr.cliente_id
+             WHERE cr.status IN ('novo', 'abandonado')
+               AND cr.abandonado_em > DATE_SUB(NOW(), INTERVAL ? HOUR)
+               AND cr.valor_snapshot >= ?
+               AND COALESCE(NULLIF(c.telefone, ''), NULLIF(c.celular, '')) IS NOT NULL"
+        );
+        $stH->execute([$frescor, $corte]);
+        $out['para_humano'] = (int)$stH->fetchColumn();
+
+        $stmt = $this->db->prepare(
+            "SELECT cr.id, cr.carrinho_id, cr.cliente_id, cr.valor_snapshot,
+                    cr.itens_snapshot, cr.score, cr.prioridade,
+                    COALESCE(NULLIF(c.telefone, ''), NULLIF(c.celular, '')) AS telefone
+             FROM carrinho_recuperacao cr
+             JOIN clientes c ON c.id = cr.cliente_id
+             WHERE cr.status IN ('novo', 'abandonado')
+               AND cr.abandonado_em > DATE_SUB(NOW(), INTERVAL ? HOUR)
+               AND cr.valor_snapshot < ?
+               AND COALESCE(NULLIF(c.telefone, ''), NULLIF(c.celular, '')) IS NOT NULL
+               AND NOT EXISTS (
+                     SELECT 1 FROM chat_eventos_loja e
+                     WHERE e.evento      = 'carrinho_abandonado'
+                       AND e.origem_tipo = 'carrinho_recuperacao'
+                       AND e.origem_id   = cr.id
+                   )
+             ORDER BY cr.abandonado_em ASC
+             LIMIT {$limite}"
+        );
+        $stmt->execute([$frescor, $corte]);
+        $linhas = $stmt->fetchAll();
+        if (!$linhas) return $out;
+
+        $svc   = new ChatEventoLojaService($this->db);
+        $model = new CarrinhoAbandonado();
+
+        foreach ($linhas as $r) {
+            $res = $svc->emitir('carrinho_abandonado', 'carrinho_recuperacao', (int)$r['id'], [
+                'cliente_id' => (int)$r['cliente_id'],
+                'telefone'   => (string)$r['telefone'],
+                'contexto'   => $this->contextoDoCarrinho($r, $model),
+            ]);
+
+            if (!empty($res['ok'])) $out['enfileirados']++;
+        }
+
+        return $out;
+    }
+
+    /**
+     * O que o fluxo precisa saber sobre este carrinho.
+     *
+     * Chaves com prefixo `carrinho_` de propósito: no motor, o contexto da
+     * sessão sobrescreve as variáveis do contato no array_merge. Um `nome`
+     * vindo daqui apagaria o nome de quem está do outro lado da conversa.
+     *
+     * Nenhuma chave começa com `_` — o motor filtra essas como internas e
+     * elas não virariam {{variavel}} nas mensagens.
+     */
+    private function contextoDoCarrinho(array $r, CarrinhoAbandonado $model): array
+    {
+        $itens = $model->getItens((int)$r['carrinho_id']);
+        $nomes = array_column($itens, 'produto_nome');
+
+        // Item mais caro decide a oferta — mesma regra do ChatCupomCarrinhoService
+        $principal = '';
+        $maior     = -1.0;
+        $produtoId = 0;
+        foreach ($itens as $i) {
+            $sub = (float)($i['subtotal'] ?? 0);
+            if ($sub > $maior) {
+                $maior     = $sub;
+                $principal = (string)($i['produto_nome'] ?? '');
+                $produtoId = (int)($i['produto_id'] ?? 0);
+            }
+        }
+
+        return [
+            'recuperacao_id'     => (int)$r['id'],
+            'carrinho_valor'     => PriceHelper::format((float)$r['valor_snapshot']),
+            'carrinho_itens'     => (int)$r['itens_snapshot'],
+            'carrinho_produto'   => $principal,
+            'carrinho_produto_id'=> $produtoId,
+            'carrinho_produtos'  => implode(', ', array_slice($nomes, 0, 3)),
+            'carrinho_link'      => BASE_URL . '/carrinho/recuperar/' . (string)$this->gerarToken((int)$r['id']),
+            'carrinho_score'     => (int)$r['score'],
+            'carrinho_prioridade'=> (string)$r['prioridade'],
+        ];
     }
 
     /** Sugere próxima ação: carrinhos parados com tentativas esgotadas. */
