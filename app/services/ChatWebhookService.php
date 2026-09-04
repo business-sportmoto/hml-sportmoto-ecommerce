@@ -53,7 +53,8 @@ class ChatWebhookService
      */
     public function processar(string $corpoBruto, ?string $assinatura, ?string $ip = null): array
     {
-        $assinaturaOk = ChatMetaClient::assinaturaValida($corpoBruto, $assinatura);
+        $segredo      = ChatMetaClient::qualSegredoAssinou($corpoBruto, $assinatura);
+        $assinaturaOk = $segredo !== null;
         $exigir       = ChatConfig::bool('assinatura_obrigatoria', true);
 
         // Sem app secret configurado a validação nunca passa. Recusar é o
@@ -61,11 +62,7 @@ class ChatWebhookService
         // disparar fluxo em nome de um número arbitrário.
         if (!$assinaturaOk && $exigir) {
             $this->logWebhook('recusado', null, $corpoBruto, false,
-                ChatMetaClient::temAppSecret()
-                    ? 'assinatura inválida'
-                    : 'META_APP_SECRET não configurado',
-                $ip
-            );
+                $this->motivoDaRecusa($corpoBruto), $ip);
             return ['ok' => false, 'processadas' => 0, 'detalhe' => 'assinatura inválida'];
         }
 
@@ -698,6 +695,38 @@ class ChatWebhookService
             if ($wa !== '') $out[$wa] = (string)($c['profile']['name'] ?? '');
         }
         return $out;
+    }
+
+    /**
+     * Por que a assinatura não bateu — em palavras que apontam a correção.
+     *
+     * O `object` do payload diz o canal antes de qualquer validação. Usá-lo
+     * aqui é seguro: ele não decide nada, só escolhe a explicação. A recusa em
+     * si já aconteceu.
+     *
+     * O caso que mais custa tempo: o Instagram configurado por "Casos de uso"
+     * assina com a chave do PRÓPRIO produto, não com a do app. Quem só tem
+     * `META_APP_SECRET` vê o WhatsApp entrar e o Instagram ser descartado sem
+     * nenhuma pista.
+     */
+    private function motivoDaRecusa(string $corpoBruto): string
+    {
+        if (!ChatMetaClient::temAppSecret()) {
+            return 'META_APP_SECRET não configurado';
+        }
+
+        $payload = json_decode($corpoBruto, true);
+        $ehIg    = is_array($payload) && ($payload['object'] ?? '') === 'instagram';
+
+        if ($ehIg && !ChatMetaClient::temAppSecretIg()) {
+            return 'assinatura inválida — esta chamada é do Instagram, e o Instagram '
+                 . 'configurado por "Casos de uso" assina com a chave própria dele. '
+                 . 'Configure META_APP_SECRET_IG.';
+        }
+
+        return $ehIg
+            ? 'assinatura inválida — confira META_APP_SECRET_IG (chave do produto Instagram)'
+            : 'assinatura inválida — confira META_APP_SECRET (app → Básico)';
     }
 
     private function logWebhook(

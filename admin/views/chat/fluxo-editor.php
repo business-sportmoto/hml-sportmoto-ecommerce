@@ -147,6 +147,12 @@ $config = json_decode($fluxo['config_json'] ?? '{}', true) ?: [];
     catalogo:  <?= json_encode($catalogo, JSON_UNESCAPED_UNICODE) ?>,
     tags:      <?= json_encode($tags, JSON_UNESCAPED_UNICODE) ?>,
     templates: <?= json_encode($templates, JSON_UNESCAPED_UNICODE) ?>,
+    tplRecup: <?= json_encode(array_map(fn($t) => [
+        'id'    => (int)$t['id'],
+        'nome'  => $t['nome'],
+        'canal' => $t['canal'],
+        'ativo' => (int)$t['ativo'],
+    ], $tplRecup ?? []), JSON_UNESCAPED_UNICODE) ?>,
     fluxos:    <?= json_encode($fluxos, JSON_UNESCAPED_UNICODE) ?>,
     agentes:   <?= json_encode($agentes, JSON_UNESCAPED_UNICODE) ?>,
     campos:    <?= json_encode($campos, JSON_UNESCAPED_UNICODE) ?>,

@@ -220,13 +220,13 @@ do impasse do Mercado Pago.
 - **Cartão pela Cielo muda o escopo PCI da loja** (SAQ A → SAQ A-EP/D): a API
   3.0 recebe o PAN no corpo da requisição, sem tokenização no navegador.
   Decisão de negócio ainda aberta. Pix e boleto não têm essa implicação.
-- **Cartão salvo em várias adquirentes — decidido e implementado (04/09):**
-  o navegador tokeniza o mesmo cartão no Mercado Pago e na Cielo ao salvar
-  (SAQ A-EP; o número passa pela página, nunca pelo servidor). **Bloqueio:**
-  o Silent Order Post da Cielo devolve 500 para o nosso MerchantId de
-  sandbox — precisa de habilitação pela Cielo/Braspag. Até lá salva só no
-  MP. Migration `migration-cartao-multi-adquirente.sql` pendente em
-  hml/prod. Ver
+- **Cartão salvo em várias adquirentes — decisão reaberta (04/09, à noite):**
+  o multi-cofre no navegador (SAQ A-EP) está implementado, mas o dono
+  contestou (salvar em N cofres é lento e deixa estado parcial). Alternativa
+  levantada: **cofre externo com proxy** (Basis Theory / VGS / cofre da
+  Malga) — uma tokenização, qualquer adquirente, SAQ A. Aguardando decisão.
+  Requisito novo: salvar o cartão precisa ser opcional. O bloqueio do SOP
+  (500 no MerchantId) continua. Ver
   [[../12-decisoes-tecnicas/pagamentos-cartao-multi-adquirente]].
 - **Sem o cron da ClearSale, pedido retido fica retido** indefinidamente.
 - **Credenciais em texto puro** no banco (Mercado Pago e Cielo). O

@@ -61,6 +61,12 @@ class ChatFluxoController extends Controller
             'catalogo'  => ChatNoRegistry::catalogo(),
             'tags'      => $contatos->listarTags(),
             'templates' => (new ChatTemplateService())->aprovados(),
+            // Templates de conteúdo da Central de Recuperação — o texto que a
+            // equipe escreve e edita em /admin/carrinhos-abandonados/templates.
+            // Diferente dos `templates` acima, que são os HSM sincronizados da
+            // Meta: aqueles são obrigatórios FORA da janela de 24h; estes são o
+            // conteúdo livre de dentro dela, e servem também e-mail e Instagram.
+            'tplRecup'  => (new CarrinhoAbandonado())->templatesListar(),
             'fluxos'    => $this->outrosFluxos($id),
             'agentes'   => (new ChatConversaService())->agentesDisponiveis(),
             'campos'    => $contatos->chavesDeCampoConhecidas(),

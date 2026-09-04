@@ -390,6 +390,113 @@ class CarrinhoAbandonado {
         '{telefone_loja}' => 'Telefone da loja',
     ];
  
+    /**
+     * Pontos de partida para o operador, na ordem em que a régua costuma
+     * escalar: lembrete → escassez → desconto → última chance → despedida.
+     *
+     * Não são "os textos da loja": são rascunhos para clonar e reescrever. O
+     * valor deles é tirar a página em branco da frente de quem vai escrever —
+     * e mostrar, pelo exemplo, quais variáveis existem e como soam num texto.
+     *
+     * A despedida existe por um motivo comercial: quem sinaliza que vai parar
+     * de insistir preserva o contato para a próxima campanha. Insistir até o
+     * silêncio queima o número.
+     */
+    public const PRESETS = [
+        'whatsapp' => [
+            'lembrete' => [
+                'rotulo'   => 'Recuperação 01 — Lembrete',
+                'uso'      => 'Primeiro contato, até 24h após o abandono',
+                'conteudo' => "Oi, {primeiro_nome}! 👋\n\n"
+                            . "Vi que você deixou {produtos} no carrinho — {valor} no total.\n\n"
+                            . "Ainda dá tempo de finalizar:\n{link}",
+            ],
+            'escassez' => [
+                'rotulo'   => 'Recuperação 02 — Escassez',
+                'uso'      => 'Segundo contato, 24–48h, quando o item tem giro alto',
+                'conteudo' => "{primeiro_nome}, o estoque de {produtos} está baixo por aqui.\n\n"
+                            . "Não dá para segurar por muito tempo — peça é o que é.\n\n"
+                            . "Se ainda quiser, o carrinho está salvo:\n{link}",
+            ],
+            'desconto' => [
+                'rotulo'   => 'Recuperação 03 — Desconto',
+                'uso'      => 'Terceiro contato — só quando já houve silêncio nos anteriores',
+                'conteudo' => "{primeiro_nome}, separei uma condição para fechar hoje. 😄\n\n"
+                            . "Seu carrinho de {valor} continua aqui, e eu consigo melhorar "
+                            . "o preço se você finalizar agora.\n\n"
+                            . "{link}\n\n"
+                            . "Qualquer dúvida, é só responder aqui. — {vendedor}",
+            ],
+            'ultima_chance' => [
+                'rotulo'   => 'Recuperação 04 — Última chance',
+                'uso'      => 'Quarto contato, 72h+, antes de encerrar a régua',
+                'conteudo' => "{primeiro_nome}, seu carrinho expira em breve.\n\n"
+                            . "Depois disso os itens voltam para o estoque e o preço "
+                            . "pode mudar.\n\n"
+                            . "Última chance de garantir:\n{link}",
+            ],
+            'despedida' => [
+                'rotulo'   => 'Recuperação 05 — Despedida',
+                'uso'      => 'Encerramento — sinaliza que a loja vai parar de insistir',
+                'conteudo' => "{primeiro_nome}, não vou insistir mais. 🙂\n\n"
+                            . "Se mudou de ideia, tudo bem — o link fica valendo enquanto "
+                            . "houver estoque:\n{link}\n\n"
+                            . "E se precisar de ajuda para escolher, é só chamar. "
+                            . "Estamos no {telefone_loja}.",
+            ],
+        ],
+        'email' => [
+            'lembrete' => [
+                'rotulo'   => 'Recuperação 01 — Lembrete',
+                'uso'      => 'Primeiro contato, até 24h após o abandono',
+                'assunto'  => '{primeiro_nome}, seu carrinho está salvo',
+                'conteudo' => "<p>Oi, {primeiro_nome}!</p>\n"
+                            . "<p>Seu carrinho ainda está aqui, guardadinho:</p>\n"
+                            . "{produtos_html}\n"
+                            . "<p><strong>Total: {valor}</strong></p>\n"
+                            . '<p><a href="{link}">Voltar ao carrinho</a></p>',
+            ],
+            'escassez' => [
+                'rotulo'   => 'Recuperação 02 — Escassez',
+                'uso'      => 'Segundo contato, 24–48h',
+                'assunto'  => 'Estoque baixo: {produtos}',
+                'conteudo' => "<p>{primeiro_nome}, o estoque destes itens está acabando:</p>\n"
+                            . "{produtos_html}\n"
+                            . "<p>Se ainda quiser, é melhor garantir agora.</p>\n"
+                            . '<p><a href="{link}">Finalizar compra</a></p>',
+            ],
+            'desconto' => [
+                'rotulo'   => 'Recuperação 03 — Desconto',
+                'uso'      => 'Terceiro contato — só depois do silêncio nos anteriores',
+                'assunto'  => 'Uma condição especial para o seu carrinho',
+                'conteudo' => "<p>{primeiro_nome}, consigo melhorar o preço se você fechar hoje.</p>\n"
+                            . "{produtos_html}\n"
+                            . "<p>Total atual: <strong>{valor}</strong></p>\n"
+                            . '<p><a href="{link}">Aproveitar a condição</a></p>' . "\n"
+                            . "<p>— {vendedor}, {loja}</p>",
+            ],
+            'ultima_chance' => [
+                'rotulo'   => 'Recuperação 04 — Última chance',
+                'uso'      => 'Quarto contato, 72h+, antes de encerrar a régua',
+                'assunto'  => 'Seu carrinho expira em breve',
+                'conteudo' => "<p>{primeiro_nome}, seu carrinho está prestes a expirar.</p>\n"
+                            . "<p>Depois disso os itens voltam para o estoque.</p>\n"
+                            . "{produtos_html}\n"
+                            . '<p><a href="{link}">Garantir agora</a></p>',
+            ],
+            'despedida' => [
+                'rotulo'   => 'Recuperação 05 — Despedida',
+                'uso'      => 'Encerramento — sinaliza que a loja vai parar de insistir',
+                'assunto'  => 'Último e-mail sobre o seu carrinho',
+                'conteudo' => "<p>{primeiro_nome}, este é o último e-mail sobre esse carrinho.</p>\n"
+                            . "<p>Se mudou de ideia, tudo bem. O link fica valendo enquanto "
+                            . "houver estoque:</p>\n"
+                            . '<p><a href="{link}">Ver meu carrinho</a></p>' . "\n"
+                            . "<p>Qualquer dúvida, estamos no {telefone_loja}.</p>",
+            ],
+        ],
+    ];
+
     /** Exclusiva de e-mail: tabela HTML com os produtos. */
     public const VARIAVEIS_EMAIL = [
         '{produtos_html}' => 'Tabela HTML com produtos e valores',

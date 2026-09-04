@@ -3,7 +3,7 @@
  * admin/views/chat/config.php
  *
  * @var array $config @var array $saude @var string $webhookUrl
- * @var string $verifyToken @var bool $temSecret
+ * @var string $verifyToken @var bool $temSecret @var bool $temSecretIg
  * @var string $meuNome
  * @var array $logInicial @var array $logResumo @var array $logEventos
  * @var int $logRetencao
@@ -59,6 +59,12 @@ $on   = fn(string $k, bool $d = false) => in_array(strtolower((string)($config[$
             <tr>
               <td class="ch-mono">META_APP_SECRET</td>
               <td><?= $temSecret ? '<span class="ch-badge ch-badge--ok">definida</span>' : '<span class="ch-badge ch-badge--erro">faltando</span>' ?></td>
+            </tr>
+            <tr>
+              <td class="ch-mono">META_APP_SECRET_IG</td>
+              <td><?= $temSecretIg
+                    ? '<span class="ch-badge ch-badge--ok">definida</span>'
+                    : '<span class="ch-badge ch-badge--neutro">opcional</span>' ?></td>
               <td class="ch-sm ch-mut">Painel do App → Configurações → Básico → “Chave Secreta do App”</td>
             </tr>
             <tr>
@@ -135,7 +141,12 @@ $on   = fn(string $k, bool $d = false) => in_array(strtolower((string)($config[$
         <div class="ch-aviso ch-aviso--aviso" style="margin-bottom:0;">
           <div>
             <strong class="ch-aviso-tit"><?= (int)$saude['webhooks_recusados_24h'] ?> chamada(s) recusada(s) nas últimas 24h</strong>
-            Assinatura inválida. Confira se a <code>META_APP_SECRET</code> é a do MESMO app
+            Assinatura inválida. Se as chamadas recusadas forem do <strong>Instagram</strong>,
+            é quase certo que ele esteja configurado por <strong>Casos de uso</strong> — nesse
+            modo ele assina com a chave do <em>próprio produto</em>, não com a do app. Copie
+            a chave secreta que aparece dentro do produto Instagram para
+            <code>META_APP_SECRET_IG</code>. O log abaixo diz o motivo de cada recusa.
+            Fora esse caso: confira se a <code>META_APP_SECRET</code> é a do MESMO app
             que envia o webhook.
           </div>
         </div>

@@ -10,12 +10,25 @@
  *   php cli/carrinho-seed.php --forcar    recria do zero
  *
  * ────────────────────────────────────────────────────────────────────────────
+ * A CASCATA
+ *
+ *   Instagram  →  e-mail  →  e-mail  →  WhatsApp (com cupom)
+ *
+ * Nessa ordem por um motivo: o Instagram é o canal mais barato e o menos
+ * invasivo; o e-mail não tem janela nem custo por mensagem; o WhatsApp é o
+ * mais caro e o mais fácil de irritar, então vem por último — e é o único que
+ * leva desconto, porque é a última tentativa.
+ *
+ * Antes de CADA envio o fluxo pergunta se a pessoa já comprou o produto.
+ * Não é zelo: entre uma etapa e outra passam-se dias, e insistir com quem já
+ * comprou é o tipo de mensagem que faz bloquear a loja.
+ *
+ * ────────────────────────────────────────────────────────────────────────────
  * NASCE COMO RASCUNHO, DE PROPÓSITO.
  *
  * O bloco `msg_template` precisa do NOME de um template HSM aprovado na Meta,
- * e esse nome só quem tem é você. Publicar com o campo em branco faria o fluxo
- * falhar em silêncio para todo mundo fora da janela de 24h — que é quase todo
- * mundo, já que o contato de um carrinho abandonado nunca escreveu para a loja.
+ * e esse nome só quem tem é você. O validador do `publicar()` recusa enquanto
+ * estiver em branco — então o fluxo não sobe pela metade.
  *
  * Enquanto está em rascunho, o `fluxoParaEvento()` não o encontra e nenhum
  * evento dispara. Publicar é o interruptor.
@@ -23,9 +36,21 @@
  * PASSOS DEPOIS DE RODAR:
  *   1. abra /admin/chat/fluxos e edite "Carrinho abandonado (modelo)"
  *   2. no bloco "Template aprovado", ponha o nome do HSM
- *   3. revise os textos e o percentual do cupom
+ *   3. revise os textos, as esperas e o percentual do cupom
  *   4. publique
+ *
  * ────────────────────────────────────────────────────────────────────────────
+ * O QUE SABER ANTES DE MEXER NAS ESPERAS
+ *
+ * A cascata inteira leva ~3 dias, e uma sessão dormindo é encerrada por
+ * QUALQUER outro fluxo que a pessoa acione no intervalo (o
+ * `encerrarSessoesAbertas()` do motor). Na prática: se ela comentar num reel
+ * e cair noutra automação, a cascata do carrinho para ali.
+ *
+ * Isso é aceitável — e até desejável: quem está conversando com a loja por
+ * outro caminho não precisa da régua de recuperação em cima. Mas é
+ * comportamento, não acidente: esperas mais longas aumentam a chance de a
+ * cascata não chegar ao fim.
  */
 
 if (PHP_SAPI !== 'cli') { fwrite(STDERR, "Só roda em CLI.\n"); exit(1); }
@@ -71,61 +96,97 @@ if ($atual && $forcar) {
     echo "Fluxo anterior removido (id {$atual['id']}).\n";
 }
 
-// ── O grafo ─────────────────────────────────────────────────────────────────
-$fluxoId = $svc->criar(
-    $NOME,
-    'Modelo gerado pelo instalador. Entra pelo evento carrinho_abandonado; '
-  . 'lembra do carrinho, espera e oferece cupom. Ajuste os textos antes de publicar.'
-);
+// ── Constantes do desenho ───────────────────────────────────────────────────
+
+// Janela das checagens de compra. Cobre a cascata inteira (~3 dias) mais as
+// 20h que o evento espera na fila, com folga. Bounded de propósito: quem
+// comprou a peça há seis meses e abandonou de novo agora quer outra — e
+// merece a mensagem.
+$OLHAR_HORAS = 168;   // 7 dias
+
+$ESPERA = ['horas' => 24];
 
 $grafo = [
     'nos' => [
         // ── Entrada ─────────────────────────────────────────────────────────
         // O `evento` casa com o que o ChatEventoLojaService emite. Trocar aqui
         // sem trocar lá é a forma mais fácil de o fluxo nunca rodar.
-        ['chave' => 'entrada', 'tipo' => 'gatilho_evento_loja', 'pos' => [40, 300], 'config' => [
+        ['chave' => 'entrada', 'tipo' => 'gatilho_evento_loja', 'pos' => [40, 420], 'config' => [
             'evento' => 'carrinho_abandonado',
         ]],
 
-        // ── Por onde dá para falar ──────────────────────────────────────────
-        // Fora da janela de 24h a Meta só aceita template aprovado. Um contato
-        // de carrinho abandonado quase nunca escreveu para a loja, então o
-        // caminho de baixo é o normal — o de cima é a exceção feliz.
-        ['chave' => 'janela', 'tipo' => 'cond_na_janela', 'pos' => [300, 300], 'config' => []],
+        // ═══════════════ 1ª TENTATIVA — INSTAGRAM ═══════════════
+        ['chave' => 'checa_1', 'tipo' => 'cond_produto_comprado', 'pos' => [280, 420], 'config' => [
+            'produto_id'  => '{{carrinho_produto_id}}',
+            'desde_horas' => $OLHAR_HORAS,
+        ]],
 
-        ['chave' => 'lembrete_livre', 'tipo' => 'msg_texto', 'pos' => [580, 160], 'config' => [
+        // Olha TODOS os canais da pessoa, não só o desta conversa: o contato
+        // do Instagram é outra linha em chat_contatos, costurada pelo cliente_id.
+        ['chave' => 'tem_insta', 'tipo' => 'cond_canal_disponivel', 'pos' => [520, 340], 'config' => [
+            'canal'         => 'instagram',
+            'exigir_janela' => true,
+        ]],
+
+        ['chave' => 'insta', 'tipo' => 'msg_canal', 'pos' => [760, 260], 'config' => [
+            'canal' => 'instagram',
             'texto' => "Oi, {{primeiro_nome}}! 👋\n\n"
                      . "Vi que você deixou *{{carrinho_produto}}* no carrinho "
                      . "({{carrinho_valor}}).\n\n"
-                     . "Ainda dá tempo — é só voltar por aqui:\n{{carrinho_link}}",
-            'preview_url' => true,
+                     . "Ainda dá tempo de finalizar:\n{{carrinho_link}}",
         ]],
 
-        // O nome do template fica em branco DE PROPÓSITO: só você tem o nome
-        // aprovado na Meta. Preencher é o passo 2 do cabeçalho deste arquivo.
-        ['chave' => 'lembrete_hsm', 'tipo' => 'msg_template', 'pos' => [580, 440], 'config' => [
-            'nome'   => '',
-            'idioma' => 'pt_BR',
-            'componentes' => [],
+        ['chave' => 'espera_1', 'tipo' => 'esperar', 'pos' => [1000, 420], 'config' => $ESPERA],
+
+        // ═══════════════ 2ª TENTATIVA — E-MAIL ═══════════════
+        ['chave' => 'checa_2', 'tipo' => 'cond_produto_comprado', 'pos' => [1240, 420], 'config' => [
+            'produto_id'  => '{{carrinho_produto_id}}',
+            'desde_horas' => $OLHAR_HORAS,
         ]],
 
-        // ── A espera antes do desconto ──────────────────────────────────────
-        // Cupom na primeira mensagem desconta quem compraria pelo preço cheio.
-        // Seis horas dão tempo de a pessoa voltar sozinha — e quem voltou já
-        // saiu da faixa 'abandonado' antes de o cupom sair.
-        //
-        // Esta espera é curta por um motivo: sessão dormindo é encerrada por
-        // qualquer outro fluxo que o contato acione no intervalo. A espera
-        // longa (as 20h até o lembrete) mora na fila de eventos, não aqui.
-        ['chave' => 'respira', 'tipo' => 'esperar', 'pos' => [860, 300], 'config' => [
-            'horas' => 6,
+        // E-mail não passa por chat_contatos nem por janela: o endereço vem
+        // de `usuarios`, alcançado por `clientes.usuario_id`.
+        ['chave' => 'email_1', 'tipo' => 'msg_canal', 'pos' => [1480, 340], 'config' => [
+            'canal'       => 'email',
+            'assunto'     => 'Você esqueceu {{carrinho_produto}} no carrinho',
+            'texto'       => "Oi, {{primeiro_nome}}!\n\n"
+                           . "Seu carrinho ainda está aqui, com {{carrinho_produto}} "
+                           . "e mais itens — {{carrinho_valor}} no total.\n\n"
+                           . "Guardamos tudo para você. É só continuar de onde parou.",
+            'botao_texto' => 'Voltar ao carrinho',
+            'botao_url'   => '{{carrinho_link}}',
         ]],
 
-        // ── O cupom ─────────────────────────────────────────────────────────
-        // Nominal, código único, um uso só, amarrado ao cliente. A porta
-        // `sem_cliente` cobre o contato que existe mas não está vinculado a
-        // um cadastro — aí cai no cupom divulgável, que não precisa de conta.
-        ['chave' => 'cupom_proprio', 'tipo' => 'acao_cupom', 'pos' => [1140, 220], 'config' => [
+        ['chave' => 'espera_2', 'tipo' => 'esperar', 'pos' => [1720, 420], 'config' => $ESPERA],
+
+        // ═══════════════ 3ª TENTATIVA — E-MAIL (2º toque) ═══════════════
+        ['chave' => 'checa_3', 'tipo' => 'cond_produto_comprado', 'pos' => [1960, 420], 'config' => [
+            'produto_id'  => '{{carrinho_produto_id}}',
+            'desde_horas' => $OLHAR_HORAS,
+        ]],
+
+        ['chave' => 'email_2', 'tipo' => 'msg_canal', 'pos' => [2200, 340], 'config' => [
+            'canal'       => 'email',
+            'assunto'     => 'Última chamada: {{carrinho_produto}}',
+            'texto'       => "{{primeiro_nome}}, seu carrinho está prestes a expirar.\n\n"
+                           . "{{carrinho_produto}} continua reservado, mas não por muito tempo — "
+                           . "estoque de peça é o que é.\n\n"
+                           . "Se mudou de ideia, tudo bem. Se não, o link está abaixo.",
+            'botao_texto' => 'Finalizar compra',
+            'botao_url'   => '{{carrinho_link}}',
+        ]],
+
+        ['chave' => 'espera_3', 'tipo' => 'esperar', 'pos' => [2440, 420], 'config' => $ESPERA],
+
+        // ═══════════════ 4ª TENTATIVA — WHATSAPP + CUPOM ═══════════════
+        ['chave' => 'checa_4', 'tipo' => 'cond_produto_comprado', 'pos' => [2680, 420], 'config' => [
+            'produto_id'  => '{{carrinho_produto_id}}',
+            'desde_horas' => $OLHAR_HORAS,
+        ]],
+
+        // O desconto só aqui: é a última tentativa. Dar cupom na primeira
+        // mensagem desconta também quem compraria pelo preço cheio.
+        ['chave' => 'cupom', 'tipo' => 'acao_cupom', 'pos' => [2920, 340], 'config' => [
             'pct'           => 10,
             'dias_validade' => 7,
             'prefixo'       => 'VOLTA',
@@ -133,52 +194,98 @@ $grafo = [
             'valor_minimo'  => 0,
         ]],
 
-        ['chave' => 'oferta', 'tipo' => 'msg_texto', 'pos' => [1420, 220], 'config' => [
-            'texto' => "Separei um cupom pra você fechar: *{{cupom_codigo}}* "
-                     . "({{cupom_valor}} OFF, vale até {{cupom_validade}}).\n\n"
+        ['chave' => 'tem_wa', 'tipo' => 'cond_canal_disponivel', 'pos' => [3160, 340], 'config' => [
+            'canal'         => 'whatsapp',
+            'exigir_janela' => true,
+        ]],
+
+        // Dentro da janela de 24h: texto livre, com o cupom no corpo.
+        ['chave' => 'wa_livre', 'tipo' => 'msg_canal', 'pos' => [3400, 240], 'config' => [
+            'canal' => 'whatsapp',
+            'texto' => "{{primeiro_nome}}, última tentativa — e com desconto. 😄\n\n"
+                     . "*{{cupom_codigo}}* dá {{cupom_valor}} OFF em {{carrinho_produto}}, "
+                     . "vale até {{cupom_validade}}.\n\n"
                      . "É só aplicar no carrinho:\n{{carrinho_link}}",
-            'preview_url' => true,
         ]],
 
-        // Sem cadastro vinculado: oferece um cupom já existente e divulgável
-        // que sirva no produto do carrinho. O produto vem por VARIÁVEL — cada
-        // carrinho tem o seu.
-        ['chave' => 'cupom_divulgavel', 'tipo' => 'acao_cupom_produto', 'pos' => [1140, 460], 'config' => [
-            'produto_id'   => '{{carrinho_produto_id}}',
-            'texto'        => 'Tenho um cupom que serve pra esse item 👀',
-            'rotulo_botao' => 'Quero o cupom',
-            'timeout'      => ['horas' => 24],
+        // Fora da janela, a Meta só aceita template aprovado. Nome em branco
+        // de propósito — é o passo 2 do cabeçalho deste arquivo.
+        ['chave' => 'wa_hsm', 'tipo' => 'msg_template', 'pos' => [3400, 440], 'config' => [
+            'nome'        => '',
+            'idioma'      => 'pt_BR',
+            'componentes' => [],
         ]],
 
-        // ── Saídas ──────────────────────────────────────────────────────────
-        ['chave' => 'fim', 'tipo' => 'encerrar', 'pos' => [1700, 300], 'config' => []],
+        // ── Saída ───────────────────────────────────────────────────────────
+        ['chave' => 'fim', 'tipo' => 'encerrar', 'pos' => [3680, 420], 'config' => []],
     ],
 
     'conexoes' => [
-        ['de' => 'entrada', 'porta' => 'saida', 'para' => 'janela'],
+        ['de' => 'entrada', 'porta' => 'saida', 'para' => 'checa_1'],
 
-        ['de' => 'janela', 'porta' => 'true',  'para' => 'lembrete_livre'],
-        ['de' => 'janela', 'porta' => 'false', 'para' => 'lembrete_hsm'],
+        // ── Instagram ──
+        ['de' => 'checa_1', 'porta' => 'comprou',     'para' => 'fim'],
+        ['de' => 'checa_1', 'porta' => 'nao_comprou', 'para' => 'tem_insta'],
 
-        ['de' => 'lembrete_livre', 'porta' => 'saida', 'para' => 'respira'],
-        ['de' => 'lembrete_hsm',   'porta' => 'saida', 'para' => 'respira'],
+        ['de' => 'tem_insta', 'porta' => 'true',  'para' => 'insta'],
+        // Sem Instagram alcançável, pula direto para o e-mail — sem esperar
+        // um dia por uma mensagem que não saiu.
+        ['de' => 'tem_insta', 'porta' => 'false', 'para' => 'checa_2'],
 
-        ['de' => 'respira', 'porta' => 'saida', 'para' => 'cupom_proprio'],
+        ['de' => 'insta', 'porta' => 'enviado',   'para' => 'espera_1'],
+        ['de' => 'insta', 'porta' => 'sem_canal', 'para' => 'checa_2'],
+        ['de' => 'insta', 'porta' => 'falhou',    'para' => 'checa_2'],
 
-        ['de' => 'cupom_proprio', 'porta' => 'saida',       'para' => 'oferta'],
-        ['de' => 'cupom_proprio', 'porta' => 'sem_cliente', 'para' => 'cupom_divulgavel'],
+        ['de' => 'espera_1', 'porta' => 'saida', 'para' => 'checa_2'],
 
-        ['de' => 'oferta', 'porta' => 'saida', 'para' => 'fim'],
+        // ── E-mail 1 ──
+        ['de' => 'checa_2', 'porta' => 'comprou',     'para' => 'fim'],
+        ['de' => 'checa_2', 'porta' => 'nao_comprou', 'para' => 'email_1'],
 
-        ['de' => 'cupom_divulgavel', 'porta' => 'pegou',      'para' => 'fim'],
-        ['de' => 'cupom_divulgavel', 'porta' => 'recusou',    'para' => 'fim'],
-        ['de' => 'cupom_divulgavel', 'porta' => 'sem_cupom',  'para' => 'fim'],
+        ['de' => 'email_1', 'porta' => 'enviado',   'para' => 'espera_2'],
+        ['de' => 'email_1', 'porta' => 'sem_canal', 'para' => 'checa_4'],
+        ['de' => 'email_1', 'porta' => 'falhou',    'para' => 'espera_2'],
+
+        ['de' => 'espera_2', 'porta' => 'saida', 'para' => 'checa_3'],
+
+        // ── E-mail 2 ──
+        ['de' => 'checa_3', 'porta' => 'comprou',     'para' => 'fim'],
+        ['de' => 'checa_3', 'porta' => 'nao_comprou', 'para' => 'email_2'],
+
+        ['de' => 'email_2', 'porta' => 'enviado',   'para' => 'espera_3'],
+        ['de' => 'email_2', 'porta' => 'sem_canal', 'para' => 'espera_3'],
+        ['de' => 'email_2', 'porta' => 'falhou',    'para' => 'espera_3'],
+
+        ['de' => 'espera_3', 'porta' => 'saida', 'para' => 'checa_4'],
+
+        // ── WhatsApp + cupom ──
+        ['de' => 'checa_4', 'porta' => 'comprou',     'para' => 'fim'],
+        ['de' => 'checa_4', 'porta' => 'nao_comprou', 'para' => 'cupom'],
+
+        // Sem cadastro não há a quem amarrar cupom nominal — segue sem ele
+        ['de' => 'cupom', 'porta' => 'saida',       'para' => 'tem_wa'],
+        ['de' => 'cupom', 'porta' => 'sem_cliente', 'para' => 'tem_wa'],
+
+        ['de' => 'tem_wa', 'porta' => 'true',  'para' => 'wa_livre'],
+        ['de' => 'tem_wa', 'porta' => 'false', 'para' => 'wa_hsm'],
+
+        ['de' => 'wa_livre', 'porta' => 'enviado',   'para' => 'fim'],
+        ['de' => 'wa_livre', 'porta' => 'sem_canal', 'para' => 'fim'],
+        ['de' => 'wa_livre', 'porta' => 'falhou',    'para' => 'wa_hsm'],
+
+        ['de' => 'wa_hsm', 'porta' => 'saida', 'para' => 'fim'],
     ],
 ];
 
+$fluxoId = $svc->criar(
+    $NOME,
+    'Modelo gerado pelo instalador. Cascata Instagram → e-mail (2x) → WhatsApp '
+  . 'com cupom, checando antes de cada envio se a pessoa já comprou o produto.'
+);
+
 // `reentrada: uma_vez` — a mesma pessoa abandonando carrinho toda semana não
-// deve receber a mesma sequência toda semana. Quem quiser o contrário troca
-// no painel; o padrão protege o contato.
+// deve receber a mesma cascata toda semana. Quem quiser o contrário troca no
+// painel; o padrão protege o contato.
 $r = $svc->salvarRascunho($fluxoId, $grafo, ['config' => ['reentrada' => 'uma_vez']]);
 
 if (!$r['ok']) {
@@ -189,15 +296,18 @@ if (!empty($r['erros'])) {
     echo "Avisos do validador:\n  - " . implode("\n  - ", $r['erros']) . "\n\n";
 }
 
+$cfg = (new CarrinhoAbandonado())->configListar();
+
 echo "Fluxo \"{$NOME}\" criado como RASCUNHO (id {$fluxoId}).\n\n";
+echo "A cascata:  Instagram → e-mail → e-mail → WhatsApp (com cupom)\n";
+echo "            {$ESPERA['horas']}h entre cada etapa, checando compra antes de cada envio.\n\n";
 echo "Antes de publicar:\n";
 echo "  1. /admin/chat/fluxos/{$fluxoId} — abra o editor\n";
 echo "  2. bloco \"Template aprovado\": ponha o nome do HSM aprovado na Meta\n";
-echo "  3. revise os textos e o percentual do cupom (hoje 10%, 7 dias)\n";
+echo "  3. revise os textos, as esperas e o cupom (hoje 10%, 7 dias)\n";
 echo "  4. publique — enquanto for rascunho, nenhum evento dispara\n\n";
-echo "Quem chega aqui: carrinho abaixo de R\$ "
-   . number_format((float)((new CarrinhoAbandonado())->configListar()['evento_loja_valor_corte'] ?? 500), 2, ',', '.')
-   . ", com telefone, "
-   . (int)((new CarrinhoAbandonado())->configListar()['evento_loja_atraso_h'] ?? 20)
+echo 'Quem chega aqui: carrinho abaixo de R$ '
+   . number_format((float)($cfg['evento_loja_valor_corte'] ?? 500), 2, ',', '.')
+   . ', com telefone, ' . (int)($cfg['evento_loja_atraso_h'] ?? 20)
    . "h depois do abandono.\n";
 exit(0);

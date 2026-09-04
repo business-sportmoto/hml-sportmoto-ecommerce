@@ -82,6 +82,7 @@ class ChatAdminController extends Controller
             'webhookUrl'  => $base . '/webhooks/whatsapp',
             'verifyToken' => ChatMetaClient::verifyToken(),
             'temSecret'   => ChatMetaClient::temAppSecret(),
+            'temSecretIg' => ChatMetaClient::temAppSecretIg(),
             // A tabela é pintada pelo JS inclusive na primeira carga: a
             // página 1 vem resolvida daqui. Dois templates — um em PHP e
             // outro em JS — divergem no primeiro ajuste.

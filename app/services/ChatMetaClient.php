@@ -13,7 +13,9 @@
  * .env:
  *   META_PHONE_NUMBER_ID · META_CLOUD_API_TOKEN · META_WABA_ID
  *   META_API_VERSION (opcional, padrão v21.0)
- *   META_APP_SECRET  (validação de assinatura do webhook)
+ *   META_APP_SECRET     (assinatura do webhook do WhatsApp — app → Básico)
+ *   META_APP_SECRET_IG  (opcional: assinatura do Instagram quando ele é
+ *                        configurado por "Casos de uso" e tem chave própria)
  *
  * REGRA DE OURO DA JANELA DE 24H:
  *   Fora da janela, a Meta SÓ aceita `template`. Qualquer texto/mídia/interativo
@@ -478,19 +480,73 @@ class ChatMetaClient
      */
     public static function assinaturaValida(string $corpoBruto, ?string $header, ?string $appSecret = null): bool
     {
-        $secret = $appSecret ?? trim(self::cfg('META_APP_SECRET'));
-        if ($secret === '' || !$header) return false;
+        return self::qualSegredoAssinou($corpoBruto, $header, $appSecret) !== null;
+    }
+
+    /**
+     * Qual segredo assinou esta chamada — 'whatsapp', 'instagram' ou null.
+     *
+     * Um app da Meta pode ter DOIS segredos, e os dois webhooks chegam no mesmo
+     * endpoint:
+     *
+     *   · WhatsApp  → chave secreta do app (Configurações do app → Básico)
+     *   · Instagram → quando configurado por "Casos de uso" (Instagram API com
+     *                 login do Instagram), o produto tem chave PRÓPRIA e assina
+     *                 com ela.
+     *
+     * Validar com um só faz o outro canal ser sempre recusado — e o sintoma é
+     * mudo: o webhook chega, a assinatura não bate, a chamada é descartada.
+     *
+     * Tentar os dois não enfraquece nada: continua sendo preciso conhecer um
+     * dos segredos reais. Devolver QUAL casou é o que torna o problema
+     * diagnosticável em vez de invisível.
+     */
+    public static function qualSegredoAssinou(
+        string $corpoBruto, ?string $header, ?string $appSecret = null
+    ): ?string {
+        if (!$header) return null;
 
         $header = trim($header);
-        if (!str_starts_with($header, 'sha256=')) return false;
+        if (!str_starts_with($header, 'sha256=')) return null;
+        $recebida = substr($header, 7);
 
-        $esperado = hash_hmac('sha256', $corpoBruto, $secret);
-        return hash_equals($esperado, substr($header, 7));
+        $candidatos = $appSecret !== null
+            ? ['whatsapp' => $appSecret]
+            : self::segredos();
+
+        foreach ($candidatos as $canal => $secret) {
+            if ($secret === '') continue;
+            if (hash_equals(hash_hmac('sha256', $corpoBruto, $secret), $recebida)) {
+                return $canal;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Segredos configurados, por canal.
+     *
+     * `META_APP_SECRET_IG` é opcional: quem usa o Instagram pela API antiga
+     * (login do Facebook) assina com o segredo do app mesmo, e não precisa de
+     * uma segunda chave.
+     */
+    public static function segredos(): array
+    {
+        return array_filter([
+            'whatsapp'  => trim(self::cfg('META_APP_SECRET')),
+            'instagram' => trim(self::cfg('META_APP_SECRET_IG')),
+        ], fn($v) => $v !== '');
     }
 
     public static function temAppSecret(): bool
     {
-        return trim(self::cfg('META_APP_SECRET')) !== '';
+        return self::segredos() !== [];
+    }
+
+    /** Há segredo próprio do Instagram configurado? */
+    public static function temAppSecretIg(): bool
+    {
+        return trim(self::cfg('META_APP_SECRET_IG')) !== '';
     }
 
     public static function verifyToken(): string

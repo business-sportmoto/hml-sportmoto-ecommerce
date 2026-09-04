@@ -92,6 +92,11 @@ sem mudar escopo PCI.
 que é além do SAQ A-EP decidido. O cartão salvo continua caindo só entre
 Mercado Pago e Cielo.
 
+> **Atualização 04/09 (noite):** isso vale para o multi-cofre. Com um cofre
+> externo com proxy (ver a *Contestação* na decisão), a Safra entra também
+> para cartão salvo: o proxy chama `POST /v2/temporary/card` com o alias, e
+> o PAN continua sem tocar o servidor.
+
 ## Não verificado
 
 - Nenhuma chamada foi feita — IP bloqueado (`216.238.113.56`, ref. Akamai

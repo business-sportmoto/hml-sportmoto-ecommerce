@@ -406,6 +406,49 @@
           ajuda: 'Separe variações com | para o perfil não ficar com respostas idênticas. Ex.: Te chamei no direct! | Mandei no seu direct 😉' }
       ],
       resumo: function (c) { return c.texto || ''; }
+    },
+
+    // ── Multicanal ──────────────────────────────────────────────────────────
+    // A mesma pessoa costuma ter WhatsApp, Instagram e e-mail. O chat guarda
+    // um contato POR CANAL; o que costura os três é o cadastro do cliente.
+    cond_canal_disponivel: {
+      cat: 'condicao', label: 'Canal disponível?', ico: '📡',
+      desc: 'Olha todos os canais desta pessoa (não só o desta conversa) e diz se dá para falar por ali agora.',
+      campos: [
+        { k: 'canal', label: 'Canal', tipo: 'select', def: 'instagram',
+          ops: [['instagram', 'Instagram'], ['whatsapp', 'WhatsApp'], ['email', 'E-mail']] },
+        { k: 'exigir_janela', label: 'Exigir janela aberta', tipo: 'checkbox', def: true,
+          ajuda: 'Ligado: só passa se der para mandar mensagem livre agora. No Instagram vale a janela de 24h ou os 7 dias da tag de atendimento. E-mail não tem janela.' }
+      ],
+      resumo: function (c) { return c.canal || 'instagram'; }
+    },
+    cond_produto_comprado: {
+      cat: 'condicao', label: 'Já comprou o produto?', ico: '🧾',
+      desc: 'Sai pela porta "comprou" se já existe pedido aprovado com esse produto. Use antes de cada mensagem da régua.',
+      campos: [
+        { k: 'produto_id', label: 'Produto', tipo: 'text', def: '{{carrinho_produto_id}}',
+          ajuda: 'Aceita o id fixo ou uma variável. No carrinho abandonado, {{carrinho_produto_id}} traz o item mais caro do carrinho.' },
+        { k: 'desde_horas', label: 'Olhar só as últimas N horas', tipo: 'numero', def: 0,
+          ajuda: '0 = qualquer época. Use, por exemplo, 72 para perguntar "comprou depois de abandonar?".' }
+      ],
+      resumo: function (c) { return c.produto_id || ''; }
+    },
+    msg_canal: {
+      cat: 'mensagem', label: 'Mensagem por canal', ico: '📨',
+      desc: 'Manda por um canal específico — inclusive um diferente do desta conversa. E-mail sai por e-mail, não pelo chat.',
+      campos: [
+        { k: 'canal', label: 'Mandar por', tipo: 'select', def: 'whatsapp',
+          ops: [['instagram', 'Instagram'], ['whatsapp', 'WhatsApp'], ['email', 'E-mail']] },
+        { k: 'template_id', label: 'Usar um template pronto', tipo: 'tpl_recup', def: 0,
+          ajuda: 'Escolhendo um template, o texto abaixo é ignorado — o conteúdo vem da Central de Recuperação e edita-se lá, num lugar só.' },
+        { k: 'texto', label: 'Mensagem', tipo: 'textarea', def: '',
+          ajuda: 'Aceita {{primeiro_nome}}, {{carrinho_produto}}, {{carrinho_valor}}, {{carrinho_link}} e qualquer campo do contato.' },
+        { k: 'assunto', label: 'Assunto (só e-mail)', tipo: 'text', def: '' },
+        { k: 'botao_texto', label: 'Texto do botão (só e-mail)', tipo: 'text', def: '' },
+        { k: 'botao_url', label: 'Link do botão (só e-mail)', tipo: 'text', def: '',
+          ajuda: 'Ex.: {{carrinho_link}}' }
+      ],
+      resumo: function (c) { return (c.canal || '') + ' · ' + (c.texto || ''); }
     }
   };
 
@@ -854,6 +897,16 @@
         return '<div class="ch-campo">' + lbl +
                '<select class="ch-select ch-fx-c" data-k="' + k + '">' + otpl + '</select>' +
                '<div class="ch-ajuda">Só aparecem templates aprovados. Sincronize em Chat → Templates.</div></div>';
+
+      case 'tpl_recup':
+        var otr = '<option value="0">— escrever aqui embaixo —</option>' +
+          (CFG.tplRecup || []).filter(function (t) { return t.ativo; }).map(function (t) {
+            return '<option value="' + t.id + '"' + (String(v) === String(t.id) ? ' selected' : '') +
+                   '>' + esc(t.nome) + ' (' + esc(t.canal) + ')</option>';
+          }).join('');
+        return '<div class="ch-campo">' + lbl +
+               '<select class="ch-select ch-fx-c" data-k="' + k + '" data-num="1">' + otr + '</select>' +
+               ajuda + '</div>';
 
       case 'campo':
         var lista = (CFG.campos || []).map(function (c) {

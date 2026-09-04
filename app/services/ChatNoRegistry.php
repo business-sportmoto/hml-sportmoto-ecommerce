@@ -1536,6 +1536,233 @@ class ChatNoAcaoCupomProduto extends ChatNo
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// MULTICANAL — a mesma pessoa, vários caminhos
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * O canal está utilizável para esta PESSOA agora?
+ *
+ * Uma sessão roda amarrada a um contato, mas a pessoa pode ter WhatsApp,
+ * Instagram e e-mail. Este nó olha para todos (via cliente_id) e responde se
+ * aquele caminho específico está aberto — existe, tem opt-in e, quando a
+ * janela importa, está dentro dela.
+ *
+ * config: {"canal":"instagram|whatsapp|email","exigir_janela":true}
+ * portas: true | false  (herdadas de ChatNoCondicao)
+ */
+class ChatNoCondCanalDisponivel extends ChatNoCondicao
+{
+    public function categoria(): string { return 'condicao'; }
+
+    protected function avaliar(array $sessao, array $config, ChatExecCtx $ctx): bool
+    {
+        $canal = (string)($config['canal'] ?? '');
+        if (!in_array($canal, ChatCanalPessoaService::CANAIS, true)) return false;
+
+        // Padrão true: no Instagram, fora da janela a Meta simplesmente
+        // recusa, então "existe o canal" sem "dá para falar" seria uma
+        // resposta que engana quem desenhou o fluxo.
+        $exigir = !isset($config['exigir_janela']) || (bool)$config['exigir_janela'];
+
+        return (new ChatCanalPessoaService($ctx->db))
+            ->alcancavel((int)$sessao['contato_id'], $canal, $exigir);
+    }
+}
+
+/**
+ * A pessoa já comprou este produto?
+ *
+ * O freio de mão da cascata de recuperação: insistir com quem já comprou não
+ * é só inútil, é o tipo de mensagem que faz bloquear a loja. Vai ANTES de
+ * cada envio, não só no começo — entre uma etapa e outra passam-se dias.
+ *
+ * config: {"produto_id":"{{carrinho_produto_id}}","desde_horas":0}
+ * portas: comprou | nao_comprou
+ */
+class ChatNoCondProdutoComprado extends ChatNo
+{
+    public function portas(): array { return ['comprou', 'nao_comprou']; }
+    public function categoria(): string { return 'condicao'; }
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        // Aceita id fixo ou variável — no carrinho abandonado o produto muda
+        // a cada evento, e vem em {{carrinho_produto_id}}.
+        $produtoId = (int) ChatContatoService::interpolar(
+            (string)($config['produto_id'] ?? ''), $ctx->vars
+        );
+        if ($produtoId < 1) return 'nao_comprou';
+
+        $st = $ctx->db->prepare("SELECT cliente_id FROM chat_contatos WHERE id = :id LIMIT 1");
+        $st->execute([':id' => (int)$sessao['contato_id']]);
+        $clienteId = (int)$st->fetchColumn();
+        if ($clienteId < 1) return 'nao_comprou';
+
+        $desde = max(0, (int)($config['desde_horas'] ?? 0));
+
+        return (new ChatCanalPessoaService($ctx->db))
+            ->comprouProduto($clienteId, $produtoId, $desde)
+            ? 'comprou' : 'nao_comprou';
+    }
+}
+
+/**
+ * Manda a mensagem por um canal escolhido — inclusive um que NÃO é o da sessão.
+ *
+ * WhatsApp e Instagram saem pelo ChatEnvioService, endereçados ao contato
+ * daquele canal. E-mail sai pelo MailHelper, que não passa por contato nenhum:
+ * o endereço vem de `usuarios`, via `clientes.usuario_id`.
+ *
+ * POR QUE UM BLOCO SÓ E NÃO TRÊS: o operador desenha "tente aqui, senão ali".
+ * Três blocos com a mesma forma e nomes diferentes espalhariam a mesma decisão
+ * por três lugares. Aqui o canal é um campo.
+ *
+ * config: {"canal":"instagram|whatsapp|email","texto":"...",
+ *          "assunto":"(e-mail)","botao_texto":"...","botao_url":"..."}
+ * portas: enviado | sem_canal | falhou
+ */
+class ChatNoMsgCanal extends ChatNo
+{
+    public function portas(): array { return ['enviado', 'sem_canal', 'falhou']; }
+    public function categoria(): string { return 'mensagem'; }
+
+    public function executar(array &$sessao, array $config, ChatExecCtx $ctx): string
+    {
+        $canal = (string)($config['canal'] ?? '');
+        if (!in_array($canal, ChatCanalPessoaService::CANAIS, true)) {
+            $sessao['erro_detalhe'] = 'canal inválido: ' . $canal;
+            return self::ERRO;
+        }
+
+        // Reprocessar a sessão não pode remandar o que já saiu
+        if ($this->jaEnviou($sessao)) return 'enviado';
+
+        $pessoa  = new ChatCanalPessoaService($ctx->db);
+        $destino = $pessoa->destino((int)$sessao['contato_id'], $canal);
+        if (!$destino) return 'sem_canal';
+
+        // Template escolhido vence o texto solto: o conteúdo mora na Central
+        // de Recuperação e edita-se num lugar só, sem caçar a mesma frase
+        // dentro de cinco fluxos diferentes.
+        $tpl = $this->template($config, $ctx);
+        if ($tpl !== null) {
+            $texto  = $tpl['conteudo'];
+            $config = array_merge($config, array_filter([
+                'assunto' => $tpl['assunto'],
+            ], fn($v) => $v !== null && $v !== ''));
+        } else {
+            $texto = trim($this->texto($config, 'texto', $ctx));
+        }
+
+        if ($texto === '') {
+            $sessao['erro_detalhe'] = 'mensagem sem texto';
+            return self::ERRO;
+        }
+
+        $ok = $canal === 'email'
+            ? $this->porEmail($destino, $config, $texto, $ctx)
+            : $this->porChat($destino, $sessao, $texto, $ctx);
+
+        if (!$ok) return 'falhou';
+
+        $this->marcarEnviado($sessao);
+        return 'enviado';
+    }
+
+    /**
+     * O template de conteúdo escolhido, já renderizado — ou null.
+     *
+     * Os templates da Central falam `{variavel}` (chave simples); o motor de
+     * fluxos fala `{{variavel}}`. Traduzir aqui, e não mudar um dos dois lados,
+     * mantém os textos servindo TAMBÉM o envio manual do operador — que é a
+     * razão de eles existirem.
+     *
+     * @return array{conteudo:string, assunto:?string}|null
+     */
+    private function template(array $config, ChatExecCtx $ctx): ?array
+    {
+        $id = (int)($config['template_id'] ?? 0);
+        if ($id < 1) return null;
+
+        try {
+            $st = $ctx->db->prepare(
+                "SELECT conteudo, assunto FROM recuperacao_templates
+                 WHERE id = :id AND ativo = 1 LIMIT 1"
+            );
+            $st->execute([':id' => $id]);
+            $t = $st->fetch(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            return null;
+        }
+        if (!$t) return null;   // apagado ou desativado → cai no texto solto
+
+        // O vocabulário da Central mapeado no contexto do fluxo. Sem isto,
+        // {valor} e {link} sairiam literais na mensagem.
+        $v = $ctx->vars;
+        $de = [
+            '{nome}'          => $v['nome']              ?? '',
+            '{primeiro_nome}' => $v['primeiro_nome']     ?? '',
+            '{loja}'          => $v['site_nome']         ?? '',
+            '{valor}'         => $v['carrinho_valor']    ?? '',
+            '{produtos}'      => $v['carrinho_produtos'] ?? '',
+            '{link}'          => $v['carrinho_link']     ?? '',
+            '{vendedor}'      => $v['site_nome']         ?? '',
+            '{telefone_loja}' => defined('LOJA_TELEFONE') ? LOJA_TELEFONE : '',
+            // Só o e-mail do operador monta a tabela HTML; num fluxo não há
+            // de onde tirá-la, e deixar a chave crua na mensagem seria pior.
+            '{produtos_html}' => $v['carrinho_produtos'] ?? '',
+        ];
+
+        return [
+            // strtr para o vocabulário da Central; interpolar para o do fluxo —
+            // um template pode usar os dois, e os dois resolvem.
+            'conteudo' => ChatContatoService::interpolar(strtr((string)$t['conteudo'], $de), $v),
+            'assunto'  => $t['assunto'] !== null && $t['assunto'] !== ''
+                          ? ChatContatoService::interpolar(strtr((string)$t['assunto'], $de), $v)
+                          : null,
+        ];
+    }
+
+    /** WhatsApp e Instagram: sempre endereçado ao contato DAQUELE canal. */
+    private function porChat(array $destino, array $sessao, string $texto, ChatExecCtx $ctx): bool
+    {
+        $r = $ctx->envio->texto((int)$destino['contato_id'], $texto, $this->opts($sessao));
+        return !empty($r['ok']);
+    }
+
+    /**
+     * E-mail não passa por chat_contatos nem por janela. O botão é opcional
+     * e serve ao link de retorno do carrinho.
+     */
+    private function porEmail(array $destino, array $config, string $texto, ChatExecCtx $ctx): bool
+    {
+        if (!class_exists('MailHelper')) return false;
+
+        $assunto = trim($this->texto($config, 'assunto', $ctx)) ?: 'Uma mensagem da loja';
+        $opcoes  = [];
+
+        $btTexto = trim($this->texto($config, 'botao_texto', $ctx));
+        $btUrl   = trim($this->texto($config, 'botao_url', $ctx));
+        if ($btTexto !== '' && $btUrl !== '') {
+            $opcoes['botao_texto'] = $btTexto;
+            $opcoes['botao_url']   = $btUrl;
+        }
+
+        try {
+            return MailHelper::sendSimples(
+                (string)$destino['identidade'],
+                (string)($destino['nome'] ?? ''),
+                $assunto,
+                nl2br(htmlspecialchars($texto, ENT_QUOTES, 'UTF-8')),
+                $opcoes
+            );
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // REGISTRY
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -1586,6 +1813,10 @@ class ChatNoRegistry
         // ia
         'ia_responder'                => ChatNoIaResponder::class,
         'acao_cupom_produto'          => ChatNoAcaoCupomProduto::class,
+        // multicanal
+        'cond_canal_disponivel'       => ChatNoCondCanalDisponivel::class,
+        'cond_produto_comprado'       => ChatNoCondProdutoComprado::class,
+        'msg_canal'                   => ChatNoMsgCanal::class,
     ];
 
     /** @var array<string,ChatNo> instâncias stateless reutilizáveis */
@@ -1663,6 +1894,9 @@ class ChatNoRegistry
         'ia_responder'                  => 'Etapa de IA',
         'acao_cupom_produto'            => 'Oferecer cupom',
         'acao_ig_responder_comentario'  => 'Responder comentário',
+        'cond_canal_disponivel'         => 'Canal disponível?',
+        'cond_produto_comprado'         => 'Já comprou o produto?',
+        'msg_canal'                     => 'Mensagem por canal',
         ];
         return $mapa[$tipo] ?? $tipo;
     }
