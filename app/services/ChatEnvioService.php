@@ -199,15 +199,25 @@ class ChatEnvioService
         if (empty($opts['ignorar_janela'])) {
             if ($canal === 'instagram') {
                 if (!$this->contatos->naJanela($contato)) {
-                    $ateHumano = $contato['janela_humana_ate'] ?? null;
-                    $podeHumano = $ateHumano !== null && strtotime((string)$ateHumano) > time();
+                    // Comentário NÃO abre janela de mensagem. Para quem só
+                    // comentou, a private reply é o único caminho — e ela não
+                    // precisa de janela nem de tag. Por isso vem antes: pedir
+                    // HUMAN_AGENT aqui exige App Review aprovado, e sem ele a
+                    // Meta recusa com "(#10) sem acesso de marcação de agente
+                    // humano" mesmo tendo um caminho legítimo disponível.
+                    if ($this->comentarioUsavel($opts, $spec)) {
+                        $opts['_via_comentario'] = (string)$opts['ig_comment_id'];
+                    } else {
+                        $ateHumano  = $contato['janela_humana_ate'] ?? null;
+                        $podeHumano = $ateHumano !== null && strtotime((string)$ateHumano) > time();
 
-                    if (!$podeHumano) {
-                        return $this->falha(self::MOTIVO_FORA_JANELA,
-                            'janela do Instagram encerrada — passaram-se mais de 7 dias desde a última mensagem do contato');
+                        if (!$podeHumano) {
+                            return $this->falha(self::MOTIVO_FORA_JANELA,
+                                'janela do Instagram encerrada — passaram-se mais de 7 dias desde a última mensagem do contato');
+                        }
+                        // Dentro dos 7 dias: segue com a tag de atendimento humano
+                        $opts['_tag_ig'] = ChatInstagramClient::TAG_HUMAN_AGENT;
                     }
-                    // Dentro dos 7 dias: segue com a tag de atendimento humano
-                    $opts['_tag_ig'] = ChatInstagramClient::TAG_HUMAN_AGENT;
                 }
             } else {
                 $ehTemplate = ($spec['tipo'] ?? '') === 'template';
@@ -249,10 +259,9 @@ class ChatEnvioService
         $wamid = null; $erro = null; $erroCodigo = null;
 
         try {
-            // Private reply só na PRIMEIRA mensagem da conversa: a Meta aceita
-            // uma por comentário, e depois dela a janela de 24h está aberta.
-            $viaComentario = !empty($opts['ig_comment_id']) && $this->conversaMuda((int)$conversa['id'])
-                ? (string)$opts['ig_comment_id'] : null;
+            // A decisão foi tomada na checagem de janela (§2): dentro das 24h
+            // o envio é normal; fora dela, a private reply é o caminho sem tag.
+            $viaComentario = $opts['_via_comentario'] ?? null;
 
             $r = $canal === 'instagram'
                 ? $this->despacharInstagram($contato, $spec, $opts['_tag_ig'] ?? null, $viaComentario)
@@ -291,6 +300,9 @@ class ChatEnvioService
             'origem'           => $opts['origem'] ?? 'inbox',
             'origem_id'        => $opts['origem_id'] ?? null,
             'autor_usuario_id' => $opts['autor_usuario_id'] ?? null,
+            // Só quando a private reply foi de fato usada: é isso que impede
+            // gastar duas vezes o mesmo comentário.
+            'comment_id'       => $erro === null ? $viaComentario : null,
         ]);
 
         if ($erro) {
@@ -327,15 +339,39 @@ class ChatEnvioService
      *   · template→ recusado com mensagem clara (não existe no IG)
      */
     /**
-     * Conversa ainda sem nenhuma mensagem — ou seja, a porta do direct nunca
-     * foi aberta. É o que decide se a primeira mensagem sai como private reply.
+     * Dá para responder este envio como private reply?
+     *
+     * Três condições: veio de um comentário, o tipo de mensagem cabe numa
+     * private reply, e aquele comentário ainda não foi usado.
+     *
+     * A regra da Meta é uma private reply **por comentário** — não por
+     * conversa. A versão anterior exigia conversa sem nenhuma mensagem, e com
+     * isso quem já tinha conversado antes e comentou de novo caía na tag
+     * HUMAN_AGENT sem precisar.
      */
-    private function conversaMuda(int $conversaId): bool
+    private function comentarioUsavel(array $opts, array $spec): bool
     {
-        if ($conversaId < 1) return false;
-        $st = $this->db->prepare("SELECT 1 FROM chat_mensagens WHERE conversa_id = :c LIMIT 1");
-        $st->execute([':c' => $conversaId]);
-        return !$st->fetchColumn();
+        $cmt = trim((string)($opts['ig_comment_id'] ?? ''));
+        if ($cmt === '') return false;
+
+        // Private reply aceita texto e respostas rápidas. Não aceita template
+        // com botão nem, com segurança, mídia — ver despacharInstagram().
+        if (!in_array((string)($spec['tipo'] ?? 'texto'), ['texto', 'botoes', 'cta_url'], true)) {
+            return false;
+        }
+
+        try {
+            $st = $this->db->prepare(
+                "SELECT 1 FROM chat_mensagens
+                  WHERE comment_id = :c AND direcao = 'saida' AND status <> 'falhou' LIMIT 1"
+            );
+            $st->execute([':c' => $cmt]);
+            return !$st->fetchColumn();
+        } catch (Throwable $e) {
+            // Sem conseguir consultar, não arrisca gastar duas vezes o mesmo
+            // comentário: a Meta devolveria 10903 e a mensagem se perderia.
+            return false;
+        }
     }
 
     /**
@@ -399,6 +435,19 @@ class ChatEnvioService
                 return $cli->enviarRespostasRapidas($igsid, (string)$spec['corpo'], $ops, $tag);
 
             case 'cta_url':
+                // Private reply não tem botão — é o mesmo achado que já vale
+                // para o direct da automação (ver anexarLink()). O link vai no
+                // corpo, que é melhor que não mandar mensagem nenhuma.
+                if ($commentId) {
+                    $corpo = trim((string)($spec['corpo'] ?? ''));
+                    $linhas = array_filter([
+                        $corpo !== '' ? $corpo : 'Confira',
+                        (string)$spec['url'],
+                        trim((string)($spec['rodape'] ?? '')) ?: null,
+                    ]);
+                    return $cli->responderNoDirect($commentId, implode("\n\n", $linhas));
+                }
+
                 return $cli->enviarCard(
                     $igsid,
                     (string)($spec['corpo'] ?: 'Confira'),

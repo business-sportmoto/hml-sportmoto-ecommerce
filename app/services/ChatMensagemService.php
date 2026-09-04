@@ -41,12 +41,12 @@ class ChatMensagemService
                   (conversa_id, contato_id, direcao, tipo, texto,
                    midia_id, midia_url, midia_mime, midia_nome, midia_tamanho,
                    payload_json, wamid, resposta_a, status, erro_codigo, erro_detalhe,
-                   origem, origem_id, autor_usuario_id, criado_em)
+                   origem, origem_id, autor_usuario_id, comment_id, criado_em)
                 VALUES
                   (:cv, :ct, :dir, :tipo, :texto,
                    :mid, :murl, :mmime, :mnome, :mtam,
                    :pl, :wamid, :resp, :status, :ecod, :edet,
-                   :origem, :oid, :autor, :criado)";
+                   :origem, :oid, :autor, :cmt, :criado)";
 
         $st = $this->db->prepare($sql);
         $st->execute([
@@ -69,6 +69,10 @@ class ChatMensagemService
             ':origem' => mb_substr((string)($m['origem'] ?? 'inbox'), 0, 30),
             ':oid'    => !empty($m['origem_id']) ? (int)$m['origem_id'] : null,
             ':autor'  => !empty($m['autor_usuario_id']) ? (int)$m['autor_usuario_id'] : null,
+            // Comentário que esta mensagem respondeu em privado. É o que diz
+            // que a private reply daquele comentário já foi gasta — a Meta só
+            // deixa uma por comentário.
+            ':cmt'    => !empty($m['comment_id']) ? mb_substr((string)$m['comment_id'], 0, 100) : null,
             // permite reidratar histórico com o timestamp real da Meta
             ':criado' => $m['criado_em'] ?? date('Y-m-d H:i:s'),
         ]);

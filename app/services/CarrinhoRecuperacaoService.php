@@ -365,8 +365,10 @@ class CarrinhoRecuperacaoService {
         $stmt->execute([$adminId, $id]);
  
         if ($stmt->rowCount() === 0 && empty($rec['responsavel_id'])) {
-            // Race perdida: outro operador capturou entre o SELECT e o UPDATE
-            return ['ok' => false, 'msg' => 'Este carrinho acabou de ser capturado por outro atendente.','teste'=>$rec];
+            // Race perdida: outro operador capturou entre o SELECT e o UPDATE.
+            // A resposta não carrega $rec: quem PERDEU a corrida não fica com
+            // o carrinho e não pode receber nome, telefone e e-mail do cliente.
+            return ['ok' => false, 'msg' => 'Este carrinho acabou de ser capturado por outro atendente.'];
         }
  
         if (empty($rec['responsavel_id'])) {

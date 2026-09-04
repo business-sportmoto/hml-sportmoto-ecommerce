@@ -161,8 +161,11 @@ class AdminCarrinhoAbandonadoController extends Controller {
     // ── POST /admin/carrinhos-abandonados/{id}/email ──────
     public function email(int $id): void {
         $this->verifyCsrf();
+        // 4º argumento (override de gestor) espelha o whatsapp(): sem ele,
+        // gerente destravava carrinho alheio num canal e não no outro.
         $this->json($this->service->enviarEmail(
-            $id, (int)($_POST['template_id'] ?? 0), (int)Session::get('usuario_id')
+            $id, (int)($_POST['template_id'] ?? 0), (int)Session::get('usuario_id'),
+            $this->ehGestor()
         ));
     }
 
@@ -404,16 +407,23 @@ class AdminCarrinhoAbandonadoController extends Controller {
     }
 
     /**
-     * Gerente/super têm visão total; atendimento vê pool + seus.
-     * Se AuthHelper::hasLevel() não existir no seu projeto, crie:
-     *   public static function hasLevel(string ...$niveis): bool {
-     *       return in_array(Session::get('admin_nivel'), $niveis, true);
-     *   }
-     * (ajuste 'admin_nivel' à chave real de sessão do seu RBAC)
+     * Gerente/super têm visão total; vendedor vê pool + seus.
+     *
+     * Estava devolvendo `true` fixo, com a chamada real comentada — o que
+     * desligava a visibilidade por linha inteira (CLAUDE.md §4.7): todo
+     * admin via e operava todo carrinho, e o podeAcessar() nunca bloqueava.
+     *
+     * `super` passa por bypass do próprio hasLevel(), então não precisa
+     * estar na lista — está por legibilidade.
+     *
+     * ATENÇÃO NO DEPLOY: se o ambiente ainda tiver admins com o nível
+     * legado 'admin' (pré migration-cargos), eles deixam de ser gestores
+     * aqui e passam a ver só o pool + os próprios. Falha para o lado
+     * restritivo, que é o certo — mas confira `SELECT nivel, COUNT(*)
+     * FROM admins GROUP BY nivel` antes de subir.
      */
     private function ehGestor(): bool {
-        // return AuthHelper::hasLevel('super', 'gerente');
-        return true;
+        return AuthHelper::hasLevel('super', 'gerente');
     }
  
     /**

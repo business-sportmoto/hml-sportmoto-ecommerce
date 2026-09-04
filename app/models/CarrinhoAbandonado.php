@@ -64,6 +64,18 @@ class CarrinhoAbandonado {
             'hint'  => 'Carrinho capturado sem nenhuma ação neste prazo volta ao pool geral.',
             'min' => 1, 'max' => 30, 'step' => 1, 'default' => 3,
         ],
+        // A chave já existia em recuperacao_config (seed da migration
+        // chat-ia-cupom) e o ChatCupomCarrinhoService a lê — mas faltava
+        // aqui, então não aparecia na tela e o configSalvar() a descartava.
+        // Ajustar as 20h exigia UPDATE na mão.
+        //
+        // Teto de 144h (6 dias) não é estético: fora dos 7 dias da tag de
+        // atendimento humano o Instagram recusa a mensagem.
+        'chat_cupom_h' => [
+            'label' => 'Cupom pelo chat após (horas)',
+            'hint'  => 'Espera até oferecer cupom no direct a quem veio de um link do chat.',
+            'min' => 1, 'max' => 144, 'step' => 1, 'default' => 20,
+        ],
     ];
 
     /** Whitelist de ordenação — nunca interpolar input do usuário em ORDER BY */
@@ -123,9 +135,13 @@ class CarrinhoAbandonado {
         $stmt->execute($params);
         $rows = $stmt->fetchAll();
 
+        // O mesmo JOIN do SELECT: o WHERE referencia `uc` (nome e e-mail
+        // do cliente moram em `usuarios`, não em `clientes`), e sem o join
+        // aqui o COUNT quebra em toda busca.
         $stmtCount = $this->db->prepare(
             "SELECT COUNT(*) FROM carrinho_recuperacao cr
-             LEFT JOIN clientes c ON c.id = cr.cliente_id {$where}"
+             LEFT JOIN clientes c  ON c.id = cr.cliente_id
+             LEFT JOIN usuarios uc ON uc.id = c.usuario_id {$where}"
         );
         $stmtCount->execute($params);
 
@@ -138,7 +154,9 @@ class CarrinhoAbandonado {
 
         if (!empty($f['q'])) {
             // Busca por nome/telefone/email/cpf do cliente ou produto no carrinho
-            $w[] = "(c.nome LIKE ? OR c.email LIKE ? OR c.telefone LIKE ? OR c.cpf LIKE ?
+            // nome/email vêm de `usuarios` (uc); telefone/cpf de `clientes` (c).
+            // Estavam os quatro em `c.` — 1054 em toda busca digitada.
+            $w[] = "(uc.nome LIKE ? OR uc.email LIKE ? OR c.telefone LIKE ? OR c.cpf LIKE ?
                      OR EXISTS (SELECT 1 FROM carrinho_itens ci
                                 JOIN produtos pr ON pr.id = ci.produto_id
                                 WHERE ci.carrinho_id = cr.carrinho_id
@@ -182,9 +200,9 @@ class CarrinhoAbandonado {
         if (!empty($f['contato'])) {
             $w[] = match ($f['contato']) {
                 'com_telefone' => "c.telefone IS NOT NULL AND c.telefone != ''",
-                'com_email'    => "c.email IS NOT NULL AND c.email != ''",
+                'com_email'    => "uc.email IS NOT NULL AND uc.email != ''",
                 'sem_contato'  => "(c.id IS NULL OR ((c.telefone IS NULL OR c.telefone='')
-                                    AND (c.email IS NULL OR c.email='')))",
+                                    AND (uc.email IS NULL OR uc.email='')))",
                 default        => '1=1',
             };
         }
