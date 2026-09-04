@@ -39,8 +39,69 @@ class PowerBIController extends Controller {
                 'api_url'       => BASE_URL . '/admin/power-bi/dados',
                 'settings_url'  => BASE_URL . '/admin/bi/metas',
                 'user_initials' => $this->iniciais(),
+                'ia'            => $this->configIa(),
             ],
         ], 'admin');
+    }
+
+    /**
+     * O que o botão "Analisar com IA" precisa saber: qual agente atende
+     * cada página, o que sugerir, e se existe modelo de agente
+     * configurado — sem isso o botão avisa em vez de falhar no clique.
+     */
+    private function configIa(): array {
+        $disponivel = false;
+        try {
+            $disponivel = (new IAOrchestrator())->modelosDaCapacidade('agente', null) !== [];
+        } catch (\Throwable $e) { /* catálogo ausente = indisponível */ }
+
+        return [
+            'perguntar_url' => BASE_URL . '/admin/power-bi/ia/perguntar',
+            'conversa_url'  => BASE_URL . '/admin/power-bi/ia/conversa',
+            'paginas'       => IAAgenteGateway::mapaPaginas(),
+            'agentes'       => IAAgenteService::catalogoParaTela(),
+            'disponivel'    => $disponivel,
+            'permitido'     => (new IAPermissaoService())->pode('marketing_ia'),
+            // "Resumo Executivo de Hoje": a última rodada agendada de cada
+            // agente. Leitura pura — abrir o painel nunca chama IA.
+            'resumos'       => (new IAAgenteService())->resumosParaTela(),
+        ];
+    }
+
+    // ── POST /admin/power-bi/ia/perguntar ─────────────────
+    // Uma pergunta ao agente da página. Síncrono: o drawer espera.
+    public function iaPerguntar(): void {
+        $this->verifyCsrf();
+        if (!(new IAPermissaoService())->pode('marketing_ia')) {
+            $this->json(['ok' => false, 'msg' => 'Sem permissão para consultar a IA.'], 403);
+        }
+        // Autoria e dono da conversa são a PESSOA (usuarios.id), nunca
+        // admins.id — CLAUDE.md §4.1. Admin sem vínculo não conversa.
+        $usuarioId = AuthHelper::usuarioId();
+        if ($usuarioId <= 0) {
+            $this->json(['ok' => false, 'msg' => 'Acesso não vinculado a um usuário do sistema.'], 403);
+        }
+
+        $agente   = preg_replace('/[^a-z_]/', '', (string)($_POST['agente'] ?? ''));
+        $pergunta = (string)($_POST['pergunta'] ?? '');
+        $conversa = preg_replace('/[^0-9a-f-]/', '', (string)($_POST['conversa'] ?? '')) ?: null;
+        $ctx = [
+            'pagina'  => preg_replace('/[^a-z_]/', '', (string)($_POST['pagina'] ?? '')),
+            'periodo' => $this->periodoValido((string)($_POST['periodo'] ?? '30d')),
+        ];
+
+        $this->json((new IAAgenteService())->perguntar($agente, $pergunta, $ctx, $conversa, $usuarioId));
+    }
+
+    // ── GET /admin/power-bi/ia/conversa?uuid= ─────────────
+    // Reabre uma conversa. 404 uniforme para conversa alheia.
+    public function iaConversa(): void {
+        $uuid = preg_replace('/[^0-9a-f-]/', '', (string)($_GET['uuid'] ?? ''));
+        $h = $uuid !== '' ? (new IAAgenteService())->historico($uuid, AuthHelper::usuarioId()) : null;
+        if ($h === null) {
+            $this->json(['ok' => false, 'msg' => 'Conversa não encontrada.'], 404);
+        }
+        $this->json(['ok' => true] + $h);
     }
 
     // ── GET /admin/power-bi/dados ─────────────────────────

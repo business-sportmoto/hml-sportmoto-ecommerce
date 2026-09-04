@@ -23,6 +23,9 @@ atualizado: 2026-09-03
 
 ### Em desenvolvimento
 
+- **SportMoto AI — agentes sobre o BI** (Financeiro, Estoque, Analytics).
+  Código pronto e testado; **aguarda a chave da Anthropic** para responder.
+  [[../12-decisoes-tecnicas/ia-agentes-bi|→]]
 - **Painel — conteúdo editável.** Rodapé e criador de páginas.
   [[../12-decisoes-tecnicas/conteudo-editavel-rodape-e-paginas|→]]
 - **Log de operações do Bling** com filtro, paginação e detalhe.

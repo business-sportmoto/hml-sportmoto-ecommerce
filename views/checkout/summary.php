@@ -296,19 +296,26 @@ $isBoleto = $metodo === 'boleto';
   $cvvNecessario = false;
   $cvvCardRef    = '';
   $cvvPublicKey  = '';
+  $cvvCielo      = false;   // cartao so na Cielo: CVV vai em input comum
 
-  if ($cardSalvo && !empty($cardSalvo['card_ref'])) {
+  if ($cardSalvo) {
       try {
-          $gw = Database::getInstance()->getConnection()->prepare(
-              'SELECT codigo FROM pgto_gateways WHERE id = ? AND ativo = 1 LIMIT 1'
-          );
-          $gw->execute([(int) ($cardSalvo['gateway_id'] ?? 0)]);
+          // O cartao pode existir em VARIAS adquirentes. O CVV do Mercado
+          // Pago e iframe (vira token); o da Cielo vai no corpo da venda
+          // junto com o CardToken. Quando ha MP, o iframe atende os dois:
+          // o mesmo codigo digitado la nao chega a nos — entao para a Cielo
+          // usamos o input comum SO quando nao ha MP.
+          $refs = (new CartaoSalvo())->refsDoCartao((int) $cardSalvo['id'], $clienteId);
 
-          if ($gw->fetchColumn() === 'mercadopago') {
+          if (isset($refs['mercadopago'])) {
               $cred          = PagamentoCredencialService::para('mercadopago');
               $cvvPublicKey  = $cred['public_key'];
-              $cvvCardRef    = (string) $cardSalvo['card_ref'];
+              $cvvCardRef    = (string) $refs['mercadopago']['card_ref'];
               $cvvNecessario = $cvvPublicKey !== '';
+          }
+          if (isset($refs['cielo'])) {
+              $cvvCielo      = true;
+              $cvvNecessario = true;
           }
       } catch (\Throwable $e) {
           // Sem o CVV o pagamento falha adiante com mensagem clara; derrubar
@@ -454,16 +461,34 @@ $isBoleto = $metodo === 'boleto';
     </div>
   </div>
 
-  <?php if ($cvvNecessario): ?>
-  <!-- ════════ CVV do cartao salvo ════════
-       Campo hospedado do Mercado Pago: o codigo e digitado dentro de um
-       iframe deles e vira token. Nao passa pelo nosso DOM nem pelo POST. -->
+  <?php if ($cvvNecessario && $cvvPublicKey !== ''): ?>
+  <!-- ════════ CVV do cartao salvo (Mercado Pago) ════════
+       Campo hospedado: o codigo e digitado dentro de um iframe deles e
+       vira token. Nao passa pelo nosso DOM nem pelo POST. -->
   <div class="form-group" id="cvv-salvo-bloco">
     <label for="card-cvv-salvo">
       Código de segurança
       <span class="label-opt">3 dígitos no verso · 4 no Amex</span>
     </label>
     <div id="card-cvv-salvo" class="form-control hosted-field" data-placeholder="000"></div>
+    <span class="field-error" id="err-cvv-salvo"></span>
+    <small class="form-help">
+      Pedimos a cada compra para proteger seu cartão salvo.
+    </small>
+  </div>
+  <?php elseif ($cvvNecessario && $cvvCielo): ?>
+  <!-- ════════ CVV do cartao salvo (so Cielo) ════════
+       A Cielo cobra pelo CardToken + SecurityCode no corpo da venda. O
+       codigo passa pelo POST ate o servidor e dali para a Cielo; nao e
+       gravado em lugar nenhum. So aparece quando o cartao NAO existe no
+       Mercado Pago — la o iframe atende os dois. -->
+  <div class="form-group" id="cvv-salvo-bloco">
+    <label for="cvv-cielo-input">
+      Código de segurança
+      <span class="label-opt">3 dígitos no verso · 4 no Amex</span>
+    </label>
+    <input type="password" id="cvv-cielo-input" name="cvv_cielo" class="form-control"
+           inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="000">
     <span class="field-error" id="err-cvv-salvo"></span>
     <small class="form-help">
       Pedimos a cada compra para proteger seu cartão salvo.
@@ -485,7 +510,7 @@ $isBoleto = $metodo === 'boleto';
   </p>
 </div>
 
-<?php if ($cvvNecessario): ?>
+<?php if ($cvvNecessario && $cvvPublicKey !== ''): ?>
 <script src="<?= PerformanceHelper::assetVersion('js/checkout-mercadopago.js') ?>" defer></script>
 <script>
   // Monta so o campo de CVV, amarrado ao cartao salvo. O `card_ref` diz ao

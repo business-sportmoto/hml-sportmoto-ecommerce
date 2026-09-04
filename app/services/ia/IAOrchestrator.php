@@ -119,6 +119,239 @@ class IAOrchestrator
         return $ultimo ?? IAResultado::falha('todos_falharam', 'Todos os modelos da capacidade falharam.', false);
     }
 
+    /* ------------------------------------------------------------------ */
+    /* Agente (tool use)                                                   */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * Rodadas máximas de tool_use numa pergunta. Na penúltima o adapter
+     * recebe `sem_ferramentas` e a última chamada é forçada a texto —
+     * o usuário sempre recebe uma resposta, mesmo que o modelo quisesse
+     * consultar mais.
+     */
+    private const AGENTE_MAX_RODADAS = 6;
+
+    /**
+     * Executa uma conversa com ferramentas (capacidade `agente`).
+     *
+     * Mesmo esqueleto de executarTexto() — candidatos por capacidade,
+     * teto do provedor, fallback, log de roteamento, custo real — com o
+     * miolo trocado por um loop: o modelo pede ferramenta, o callback
+     * executa, o resultado volta como tool_result, até o modelo encerrar.
+     *
+     * $geracao: id, capacidade ('agente'), prompt_final (a pergunta).
+     * $tipo:    instrucoes_sistema, max_tokens, modelo_id (override),
+     *           mensagens (histórico + turno atual, formato da API),
+     *           ferramentas (definições no formato `tools`).
+     * $executarFerramenta(string $nome, array $params): array — o gateway.
+     *           Devolve ['ok'=>true,'dados'=>..] ou ['ok'=>false,'mensagem'=>..].
+     *           Nunca lança: erro vira tool_result com is_error e o modelo lê.
+     *
+     * Só adapters com suportaFerramentas() entram; os demais são
+     * registrados como "pulado" — é o que faz OpenAI/Gemini não serem
+     * candidatos mesmo que alguém os cadastre nesta capacidade.
+     */
+    public function executarAgente(array $geracao, array $tipo, callable $executarFerramenta): IAResultado
+    {
+        $candidatos = $this->modelosDaCapacidade('agente', isset($tipo['modelo_id']) ? (int) $tipo['modelo_id'] : null);
+
+        if (empty($candidatos)) {
+            return IAResultado::falha('sem_modelos', 'Nenhum modelo de agente ativo com provedor configurado.', false);
+        }
+
+        $ultimo = null;
+
+        foreach ($candidatos as $m) {
+            $limiteProv = ($m['prov_limite'] !== null) ? (float) $m['prov_limite'] : null;
+            if ($limiteProv !== null) {
+                $gastoProv = $this->custo->gastoProvedorHoje($m['prov_codigo']);
+                if ($gastoProv >= $limiteProv) {
+                    $this->logRoteamento((int) $geracao['id'], $m, 'pulado', 'limite_provedor',
+                        'Teto diário do provedor atingido (US$ ' . number_format($gastoProv, 4, '.', '') . ')', 0);
+                    continue;
+                }
+            }
+
+            $adapter = $this->fabricarAdapter($m);
+            if ($adapter === null) {
+                $this->logRoteamento((int) $geracao['id'], $m, 'pulado', 'sem_adapter',
+                    'Adapter indisponível ou chave não decifrável.', 0);
+                continue;
+            }
+            if (!$adapter->suportaFerramentas()) {
+                $this->logRoteamento((int) $geracao['id'], $m, 'pulado', 'sem_ferramentas',
+                    'Adapter não implementa tool use.', 0);
+                continue;
+            }
+
+            $resultado = $this->loopAgente($adapter, $m, $geracao, $tipo, $executarFerramenta);
+
+            $this->atualizarEstatisticas((int) $m['id'], $resultado->ok, $resultado->tempoMs);
+            $this->logRoteamento(
+                (int) $geracao['id'],
+                $m,
+                $resultado->ok ? 'ok' : (($resultado->erroCodigo === 'rede') ? 'timeout' : 'falha'),
+                $resultado->erroCodigo,
+                $resultado->erro,
+                $resultado->tempoMs
+            );
+
+            if ($resultado->ok) {
+                $resultado->modeloId       = (int) $m['id'];
+                $resultado->provedorCodigo = (string) $m['prov_codigo'];
+                $resultado->modeloCodigo   = (string) $m['codigo_modelo'];
+                // Tokens somados de TODAS as rodadas: o custo é da pergunta,
+                // não da última chamada. E o cache de prompt entra na conta:
+                // usage.input_tokens EXCLUI o que veio do cache — na primeira
+                // chamada real, 2 tokens plenos contra 4.663 lidos do cache.
+                // Leitura custa 10% do preço de entrada, gravação 125%. Deixar
+                // de fora subestimaria o teto próprio dos agentes.
+                $cfg = $this->decodificarJson($m['custo_config']);
+                $resultado->custoRealUsd   = $this->custo->custoRealTexto($cfg, $resultado->tokensIn, $resultado->tokensOut);
+                if ($resultado->custoRealUsd !== null && ($cfg['tipo'] ?? '') === 'por_token') {
+                    $usdIn = (float) ($cfg['usd_in_1m'] ?? 0);
+                    $resultado->custoRealUsd = round($resultado->custoRealUsd
+                        + ((int) $resultado->tokensCacheLeitura * $usdIn * 0.10
+                        +  (int) $resultado->tokensCacheCriacao * $usdIn * 1.25) / 1000000, 6);
+                }
+                return $resultado;
+            }
+
+            $ultimo = $resultado;
+
+            if (!$resultado->retryable) {
+                LogService::warning('ia_agente_fallback_interrompido', [
+                    'geracao_id' => (int) $geracao['id'],
+                    'modelo'     => $m['codigo_modelo'],
+                    'erro'       => $resultado->erroCodigo,
+                ], 'ia');
+                return $resultado;
+            }
+
+            LogService::warning('ia_agente_fallback_proximo_modelo', [
+                'geracao_id' => (int) $geracao['id'],
+                'falhou'     => $m['codigo_modelo'],
+                'erro'       => $resultado->erroCodigo,
+            ], 'ia');
+        }
+
+        return $ultimo ?? IAResultado::falha('todos_falharam', 'Todos os modelos de agente falharam.', false);
+    }
+
+    /**
+     * O loop de um modelo. Falha no meio (rede, 429) volta como falha do
+     * modelo inteiro e o chamador decide o fallback — que recomeça do
+     * histórico original; as ferramentas já executadas estão no cache do
+     * gateway, então a repetição é barata.
+     */
+    private function loopAgente(IAProviderBase $adapter, array $m, array $geracao, array $tipo, callable $executarFerramenta): IAResultado
+    {
+        $mensagens = array_values(is_array($tipo['mensagens'] ?? null) ? $tipo['mensagens'] : []);
+        $jobBase   = [
+            'instrucoes'    => $tipo['instrucoes_sistema'] ?? null,
+            'max_tokens'    => isset($tipo['max_tokens']) ? (int) $tipo['max_tokens'] : null,
+            'modelo_codigo' => (string) $m['codigo_modelo'],
+            'timeout_s'     => (int) $m['timeout_s'],
+            // O catálogo dá o padrão (effort medium para tempo real); o
+            // chamador pode sobrepor por modo — o agendado roda com high,
+            // porque ali ninguém espera na tela e a análise vale mais.
+            'params'        => (is_array($tipo['params_override'] ?? null) ? $tipo['params_override'] : [])
+                             + IAModelo::paramsApi($m['params_padrao'] ?? null),
+            'ferramentas'   => is_array($tipo['ferramentas'] ?? null) ? $tipo['ferramentas'] : [],
+        ];
+
+        $novas = [];   // mensagens produzidas nesta pergunta (auditoria/persistência)
+        $usadas = [];
+        $tIn = 0; $tOut = 0; $cacheR = 0; $cacheC = 0; $ms = 0;
+
+        for ($rodada = 1; $rodada <= self::AGENTE_MAX_RODADAS; $rodada++) {
+            $r = $adapter->conversar($jobBase + ['mensagens' => $mensagens]);
+            $ms += $r->tempoMs;
+
+            if (!$r->ok) {
+                $r->tempoMs = $ms;
+                $r->rodadas = $rodada;
+                return $r;
+            }
+
+            $tIn   += (int) $r->tokensIn;
+            $tOut  += (int) $r->tokensOut;
+            $cacheR += (int) $r->tokensCacheLeitura;
+            $cacheC += (int) $r->tokensCacheCriacao;
+
+            LogService::info('ia_agente_rodada', [
+                'geracao_id' => (int) $geracao['id'], 'rodada' => $rodada,
+                'stop' => $r->stopReason, 'in' => $r->tokensIn, 'out' => $r->tokensOut,
+                'cache_leitura' => $r->tokensCacheLeitura, 'ms' => $r->tempoMs,
+            ], 'ia');
+
+            $novas[] = ['role' => 'assistant', 'content' => $r->blocos];
+
+            if ($r->stopReason !== 'tool_use') {
+                $r->tokensIn           = $tIn;
+                $r->tokensOut          = $tOut;
+                $r->tokensCacheLeitura = $cacheR;
+                $r->tokensCacheCriacao = $cacheC;
+                $r->tempoMs            = $ms;
+                $r->rodadas            = $rodada;
+                $r->mensagens          = $novas;
+                $r->ferramentasUsadas  = $usadas;
+                return $r;
+            }
+
+            // Executa TODAS as chamadas do turno e devolve numa ÚNICA
+            // mensagem user, na mesma ordem — regra da API para paralelismo.
+            $mensagens[] = ['role' => 'assistant', 'content' => $r->blocos];
+            $resultados  = [];
+            foreach ($r->blocos as $b) {
+                if (($b['type'] ?? '') !== 'tool_use') continue;
+
+                $ex = $executarFerramenta((string) $b['name'], (array) $b['input']);
+                $ok = (bool) ($ex['ok'] ?? false);
+
+                $bloco = [
+                    'type'        => 'tool_result',
+                    'tool_use_id' => (string) $b['id'],
+                    'content'     => $ok
+                        ? json_encode($ex['dados'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                        : (string) ($ex['mensagem'] ?? 'A ferramenta falhou.'),
+                ];
+                if (!$ok) $bloco['is_error'] = true;
+                $resultados[] = $bloco;
+
+                $usadas[] = [
+                    'nome'       => (string) $b['name'],
+                    'parametros' => $ex['parametros'] ?? (array) $b['input'],
+                    'ok'         => $ok,
+                    'ms'         => (int) ($ex['ms'] ?? 0),
+                    'cache'      => (bool) ($ex['cache'] ?? false),
+                    'dados'      => $ok ? ($ex['dados'] ?? null) : null,
+                    'erro'       => $ok ? null : (string) ($ex['erro'] ?? 'execucao'),
+                ];
+            }
+
+            if ($resultados === []) {
+                // stop_reason tool_use sem bloco tool_use: resposta malformada.
+                $f = IAResultado::falha('resposta_malformada', 'Provedor sinalizou tool_use sem chamada de ferramenta.', true);
+                $f->tempoMs = $ms; $f->rodadas = $rodada;
+                return $f;
+            }
+
+            $mensagens[] = ['role' => 'user', 'content' => $resultados];
+            $novas[]     = ['role' => 'user', 'content' => $resultados];
+
+            if ($rodada === self::AGENTE_MAX_RODADAS - 1) {
+                $jobBase['sem_ferramentas'] = true;
+            }
+        }
+
+        $f = IAResultado::falha('rodadas_esgotadas',
+            'O agente esgotou ' . self::AGENTE_MAX_RODADAS . ' rodadas sem concluir a resposta.', false);
+        $f->tempoMs = $ms; $f->rodadas = self::AGENTE_MAX_RODADAS;
+        $f->mensagens = $novas; $f->ferramentasUsadas = $usadas;
+        return $f;
+    }
+
     /**
      * Executa uma geração de MÍDIA (imagem | remocao_fundo) — Fase 2 A/B.
      * Síncrono (OpenAI): devolve ok com binários. Assíncrono (Replicate):

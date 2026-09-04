@@ -52,6 +52,11 @@ spl_autoload_register(function (string $class): void {
         ROOT_PATH . '/app/services/logistica/',
         ROOT_PATH . '/app/services/logistica/transportadoras/',
         ROOT_PATH . '/app/services/conversion/',
+        // Faltavam aqui, embora estejam no admin/index.php: qualquer CLI
+        // que toque o orquestrador de IA (worker dos agentes de BI,
+        // diagnóstico) morria com "class not found".
+        ROOT_PATH . '/app/services/ia/',
+        ROOT_PATH . '/app/services/ia/providers/',
     ];
     foreach ($paths as $path) {
         $file = $path . $class . '.php';

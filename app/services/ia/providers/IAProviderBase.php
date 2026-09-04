@@ -60,6 +60,29 @@ abstract class IAProviderBase
         return IAResultado::falha('nao_suportado', 'Capacidade remoção de fundo não suportada por ' . $this->codigo() . '.', true);
     }
 
+    /**
+     * Tool use (capacidade agente). O orquestrador pergunta ANTES de
+     * chamar: adapter sem suporte é registrado como "pulado" e o
+     * fallback segue — não é falha, é ausência de capacidade.
+     */
+    public function suportaFerramentas(): bool
+    {
+        return false;
+    }
+
+    /**
+     * Um turno de conversa com ferramentas. $job:
+     *  mensagens (array no formato da API do provedor), ferramentas (array
+     *  de definições), instrucoes (?string), max_tokens (?int),
+     *  modelo_codigo, timeout_s, params, sem_ferramentas (bool: força
+     *  resposta em texto mesmo com ferramentas definidas).
+     * Devolve stopReason + blocos + texto; quem itera é o orquestrador.
+     */
+    public function conversar(array $job): IAResultado
+    {
+        return IAResultado::falha('nao_suportado', 'Tool use não suportado por ' . $this->codigo() . '.', true);
+    }
+
     /* ------------------------------------------------------------------ */
     /* Download binário (URLs de entrega — expiram; baixar IMEDIATAMENTE)  */
     /* ------------------------------------------------------------------ */

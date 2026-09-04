@@ -17,7 +17,10 @@ declare(strict_types=1);
  * Faturamento SEMPRE por `venda_valida` (derivado de
  * pedido_status.classe_bi). Nenhum slug de status é escrito aqui.
  */
-final class BiService
+// Não é final de propósito: o gateway dos agentes de IA recebe o
+// BiService por injeção, e os testes passam um dublê que estende esta
+// classe para simular view ausente e dado sintético sem tocar no banco.
+class BiService
 {
     private PDO $db;
 
@@ -381,6 +384,41 @@ final class BiService
             $anterior = (int)$l['pessoas'];
         }
         return $linhas;
+    }
+
+    /**
+     * O mesmo funil, aberto por dispositivo.
+     *
+     * Conversão contra a etapa anterior DENTRO de cada dispositivo. A
+     * pergunta que responde é "mobile converte pior que desktop, e em
+     * qual etapa?" — o corte que mais muda decisão de UX.
+     *
+     * `dispositivo` vem do user-agent gravado no evento; sem user-agent
+     * cai em 'desconhecido' e continua na conta, porque sumir com ele
+     * inflaria as taxas dos outros dois.
+     */
+    public function funilPorDispositivo(array $p): array
+    {
+        $linhas = $this->todos(
+            "SELECT dispositivo, etapa, ordem_funil, COUNT(*) AS eventos,
+                    COUNT(DISTINCT COALESCE(visitante_token, CONCAT('c', cliente_id))) AS pessoas
+               FROM bi_fato_funil
+              WHERE data BETWEEN ? AND ?
+              GROUP BY dispositivo, etapa, ordem_funil
+              ORDER BY dispositivo, ordem_funil",
+            [$p['ini'], $p['fim']]
+        );
+
+        $out = [];
+        foreach ($linhas as $l) {
+            $d = $l['dispositivo'];
+            $anterior = isset($out[$d]) ? (int)end($out[$d])['pessoas'] : null;
+            $l['conversao'] = ($anterior !== null && $anterior > 0)
+                ? round(100 * $l['pessoas'] / $anterior, 1) : null;
+            unset($l['dispositivo']);
+            $out[$d][] = $l;
+        }
+        return $out;
     }
 
     /** Metas do período com o realizado ao lado. */
@@ -1655,8 +1693,13 @@ final class BiService
      */
     public function quemResponde(array $p, int $limite = 20): array
     {
+        // A IA aparece POR MODELO quando a procedência existe
+        // (respostas via Central, desde 03/09/2026). As antigas
+        // caem em 'modelo não registrado' — separadas de propósito,
+        // para o número novo não herdar o passado sem origem.
         return $this->todos(
-            "SELECT CASE WHEN resposta_fonte = 'ia' THEN 'IA'
+            "SELECT CASE WHEN resposta_fonte = 'ia'
+                         THEN CONCAT('IA · ', COALESCE(ia_modelo, 'modelo não registrado'))
                          ELSE COALESCE(respondida_por_nome, 'Admin sem identificação')
                     END COLLATE utf8mb4_unicode_ci AS quem,
                     COALESCE(resposta_fonte,'—') COLLATE utf8mb4_unicode_ci AS fonte,

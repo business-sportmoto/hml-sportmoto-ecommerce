@@ -109,6 +109,12 @@ class PagamentoAdquirente extends Model
             ['chave' => 'boleto_dias', 'rotulo' => 'Boleto vence em (dias)', 'tipo' => 'numero', 'padrao' => 3],
             ['chave' => 'boleto_instrucoes', 'rotulo' => 'Boleto — instruções', 'tipo' => 'texto',
              'padrao' => 'Não receber após o vencimento.'],
+            ['chave' => 'sop_provider', 'rotulo' => 'Silent Order Post — host do cartão', 'tipo' => 'select',
+             'opcoes' => ['braspag' => 'Braspag (pagador.com.br)', 'cielo' => 'Cielo (cieloecommerce.cielo.com.br)'],
+             'padrao' => 'braspag',
+             'ajuda'  => 'Para onde o navegador manda o cartão ao salvar. No sandbox só o host da '
+                       . 'Braspag responde; confirme com a Cielo antes de trocar em produção. '
+                       . 'O par OAuth2 vai no .env (CIELO_SOP_CLIENT_ID / CIELO_SOP_CLIENT_SECRET).'],
         ],
         'mercadopago' => [
             ['chave' => 'pix_expira_min', 'rotulo' => 'Pix expira em (min)', 'tipo' => 'numero', 'padrao' => 30],

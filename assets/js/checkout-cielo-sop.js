@@ -80,7 +80,10 @@
             window.bpSop_silentOrderPost({
               accessToken:      cfg.accessToken,
               environment:      cfg.environment || 'production',
-              provider:         cfg.provider || 'cielo',
+              // 'braspag' posta em *.pagador.com.br — o unico host que
+              // respondeu no sandbox (o da Cielo nem resolve). O servidor
+              // decide via config_extra.sop_provider; aqui so obedece.
+              provider:         cfg.provider || 'braspag',
               language:         'PT',
               cvvrequired:      true,
               mod10required:    true,

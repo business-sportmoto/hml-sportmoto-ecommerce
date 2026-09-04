@@ -64,6 +64,33 @@ Instalador do atendimento inicial (roda uma vez, não é cron):
 
 ---
 
+## ia-agentes-worker — agentes de BI (04/09/2026)
+
+`cli/ia-agentes-worker.php`. Dois modos, lock por modo em `storage/locks/`.
+
+| Linha de cron | O que faz | Custo |
+|---|---|---|
+| `0 6 * * * … --agente=agente_financeiro` | resumo executivo do dia (uma rodada por agente por dia; repetir não gasta) | ≈ US$ 0,10 |
+| `0 7 * * * … --agente=agente_estoque` | idem | ≈ US$ 0,10 |
+| `0 8 * * * … --agente=agente_analytics` | idem | ≈ US$ 0,10 |
+| `0,30 * * * * … --modo=evento` | só dispara quando `BiService::alertas()` tem alerta **crítico** ainda não tratado hoje | zero sem alerta |
+
+Prioridade **Alta** em qualquer modo → sino de todos os admins
+(`NotificacaoService::criarBroadcast`, categoria financeiro/estoque/sistema).
+
+Sai com **0** quando não há o que fazer — já rodou hoje, sem alerta, provedor
+Claude inativo/sem chave — e **1** só em erro de execução. Antes de ativar no
+cron, `php cli/bi-diagnostico.php` (bloco AGENTES DE IA) tem que estar sem
+`[FALTA]`.
+
+`--todos --forcar --verbose` roda os três agora, ignorando a dedup — uso manual.
+`--simular` resolve tudo (agente, pré-carga, dedup, teto) **sem chamar o modelo**
+— para conferir o cron sem gastar. Os testes usam só esse modo.
+
+→ [[../12-decisoes-tecnicas/ia-agentes-bi]]
+
+---
+
 ## Crons que deveriam existir e não existem
 
 Levantado durante o projeto de BI (03/09/2026). Nenhum destes tem entrada no

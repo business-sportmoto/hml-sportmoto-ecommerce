@@ -1,154 +1,98 @@
----
-tipo: contexto-ia
-status: ativo
-atualizado_em: 2026-09-03
----
+# Arquitetura atual — o mapa em uma página
 
-# Arquitetura atual
-
-MVC próprio, PHP 8.3, **sem framework e sem namespaces**. Classes são resolvidas
-por autoloader que varre uma lista fixa de diretórios.
-
-> Este documento descreve o que está **no código hoje**. Convenções e armadilhas
-> em [[02-convencoes]].
+**Atualizado:** 04/09/2026
+**Propósito:** contexto obrigatório para assistentes de IA (`CLAUDE.md` §2).
+Este arquivo estava com **0 byte** desde a criação do Vault; esta é a primeira
+versão, escrita a partir do que foi verificado no código durante os projetos de
+BI e de agentes. Corrija o que estiver desatualizado — é melhor errar aqui e
+ser corrigido do que cada sessão redescobrir a arquitetura lendo código.
 
 ---
 
-## As três entradas
+## 1. Forma geral
 
-| Entrada | Serve | Rotas |
-|---|---|---|
-| `index.php` | loja | `config/routes.php` (~253) |
-| `admin/index.php` | painel | `admin/config/routes.php` (~353) |
-| `cli/` | workers e crons | 33 scripts |
-
-Cada entrada registra **o próprio autoloader**, e as listas **não são iguais**.
-Essa diferença já causou dois fatais — ver
-[[02-convencoes#Os dois autoloaders]].
-
----
-
-## Diretórios
+PHP 8.3, MVC próprio, MySQL 8.4, jQuery 4. Sem framework.
 
 ```
-core/           8 arquivos — Router, AppRouter, Controller, Model,
-                Session, View, ErrorHandler, HandlesStreamVideo
-config/         defines, config, database, env, rotas (loja / app / e-mail mkt)
+index.php (loja)  ─┐
+admin/index.php   ─┼─► autoloader por LISTA DE PASTAS (3 cópias: loja, admin, CLI)
+bootstrap-cli.php ─┘      → classe nova em pasta nova exige adicionar a pasta nas 3
 
-app/
-  controllers/  71  — apenas a LOJA (o painel não os carrega)
-  models/       58  — acesso a dados
-  services/    112  — lógica de domínio, + subpastas:
-                       payment/{adquirentes,antifraude}, email/{providers},
-                       sms/{providers}, ia/{providers},
-                       logistica/{transportadoras}, conversion/, app/
-  helpers/      19  — AuthHelper, SecurityHelper, ConfigHelper,
-                       HtmlHelper, IconLibrary, PerformanceHelper…
-  presenters/   29  — formatação para a view
-  views/
-
-admin/
-  controllers/  89  — painel
-  config/routes.php
-  views/
-  assets/{css,js}
-
-views/          loja
-assets/         loja
-cli/            33  — workers e crons
-sql/            migrations (IGNORADAS pelo git — ver 04-bugs)
-storage/logs/
-docs/sportmoto-os/   este Vault
+app/controllers · app/models · app/services (+ subpastas) · app/helpers · core/
+admin/controllers · admin/views · admin/assets
+cli/*.php — workers e crons (lock em storage/locks/, padrão do chat-worker)
+sql/ — migrations soltas (*.sql é gitignored) · sql/ia/ — migrations datadas
+       da Central de IA, aplicadas por cli/ia-migrar.php
+docs/sportmoto-os/ — este Vault (Obsidian; /docs/ é gitignored)
 ```
+
+**Regra de ouro dos IDs:** `admins.id ≠ usuarios.id ≠ clientes.id`. Autoria e
+dono de qualquer coisa = `AuthHelper::usuarioId()` (a pessoa), nunca
+`Session::get('admin_id')`. Ver `CLAUDE.md` §4.1.
 
 ---
 
-## Camadas
+## 2. Camadas que atravessam o sistema
 
-**Controller** recebe a requisição, valida CSRF, exige nível de acesso, delega e
-responde (`render()` ou `json()`). Não contém regra de negócio.
+### 2.1 Pagamento, logística, chat — os módulos grandes
+Cada um tem services em subpasta (`payment/`, `logistica/`, chat na raiz de
+`services/`), adapters por provedor e worker próprio. Não estão documentados
+aqui em detalhe; ver [[../02-arquitetura/arquitetura-atual]] quando existir, e
+[[../07-workers-cron/mapa-workers-cron]] para os crons.
 
-**Service** é onde a regra mora. Injetado no construtor como dependência, nunca
-trait. Lógica que loja e painel compartilham mora **obrigatoriamente** aqui — é o
-único lugar que os dois autoloaders alcançam.
+### 2.2 BI — a camada `bi_*` (setembro/2026)
+30 views + 2 tabelas físicas em MySQL, prefixo `bi_`, servindo o painel interno
+(`/admin/power-bi`) **e** o Power BI Desktop pelo mesmo usuário read-only.
+Uma regra de negócio escrita uma vez. `BiService` lê só views `bi_*`;
+`PwbDashboardAnalyticsService` formata; a view renderiza.
 
-**Model** encapsula SQL. PDO com prepared statement, emulação desligada.
+- Definição única de "venda": `pedido_status.classe_bi`.
+- Custo é snapshot em `pedido_itens.custo_unitario` — NULL, nunca 0.
+- Deploy incompleto se explica sozinho: `cli/bi-diagnostico.php`.
 
-**Presenter** formata para exibição.
+→ [[../12-decisoes-tecnicas/bi-indice]] · [[../09-banco-de-dados/camada-bi-dicionario]]
+
+### 2.3 Central de Marketing IA — `app/services/ia/` (julho/2026)
+Porta única `IAOrchestrator`: escolhe modelo por **capacidade + prioridade**,
+faz fallback entre modelos, respeita teto diário por provedor e `ia_limites`,
+registra `ia_roteamento_log`, calcula custo real por token. Adapters em
+`ia/providers/` (OpenAI, Gemini, Replicate, Claude). Chaves cifradas em
+`ia_provedores.api_key_enc` (`IACriptoService`, `IA_CRYPTO_KEY` no `.env`).
+Cada chamada = uma linha em `ia_geracoes`. Tipos de conteúdo em
+`ia_tipos_conteudo` (persona em `instrucoes_sistema`, editável na tela).
+
+Quem usa: geração de conteúdo/imagens (Central), SEO (`SeoIaService`), Q&A de
+produto (`GeminiQAService`, desde 03/09), chat/Instagram (`ChatIaAgenteService`).
+
+### 2.4 Agentes de BI — sobre as duas anteriores (setembro/2026)
+Tool use sobre a camada `bi_*`, via o orquestrador. `IAAgenteGateway`
+(ferramentas = wrappers do `BiService`, whitelist por agente, schema fechado,
+cache, LGPD), `IAAgenteService` (conversa, pré-carga, guarda de números),
+`IAOrchestrator::executarAgente()` (o loop), `ClaudeAdapter::conversar()`.
+Capacidade `agente` só tem modelos Claude. Três modos: botão no BI, cron
+agendado, por evento sobre `BiService::alertas()`.
+
+→ [[../12-decisoes-tecnicas/ia-agentes-bi]]
 
 ---
 
-## Autenticação e permissão
+## 3. Convenções que mais pegam
 
-Uma pessoa é uma linha em `usuarios`; os papéis penduram nela (`admins`,
-`vendedores`, `clientes`). `admins.id ≠ usuarios.id ≠ clientes.id`.
-
-API em `AuthHelper`: `requireAdmin()`, `requireAdminLevel(...$niveis)`,
-`hasLevel(...)`, `usuarioId()`, `adminDisplay()`, `requirePermission()`.
-Cargos em `app/helpers/Cargos.php` — fonte única.
-
-Detalhamento completo (os 5 cargos, o bypass do `super`, visibilidade por linha,
-receitas): **`CLAUDE.md` §4**.
+- **Services, não traits.** Injeção por construtor; testes injetam dublês.
+- **Não colocar SQL em views.** (Há uma exceção conhecida em
+  `pwb-dashboard.php` — contagem de respostas sem procedência — herdada.)
+- **Prepared statements sempre.** Nome de coluna interpolado só via whitelist.
+- **Vault primeiro.** `04-bugs` para o que se achou quebrado, `12-decisoes-tecnicas`
+  para decisão, `07-workers-cron` para cron.
+- **Aplicar `.sql` sempre com `--default-character-set=utf8mb4`.**
+- **Distinguir NULL de zero.** "Sem dado" ≠ "indisponível" ≠ "zero" — a tela
+  mostra `—` com o motivo, nunca `R$ 0,00` quando não sabe.
 
 ---
 
-## Serviços transversais
+## 4. Onde está o que ainda não está documentado
 
-| Serviço | Papel |
-|---|---|
-| `LogService` | log em banco + arquivo, com redação de segredo, dedup por fingerprint e `request_id`. `CLAUDE.md` §5 |
-| `NotificacaoService` | notificações in-app, cliente e admin. `CLAUDE.md` §6 |
-| `ImageUploadService` / `StreamService` | mídia — imagem pelo servidor, vídeo direto do browser. `CLAUDE.md` §7 |
-| `ConfigHelper` | chave/valor em `configuracoes`, por grupo |
-| `SecurityHelper` | CSRF (`CSRF_TOKEN_NAME`), sanitização |
-| `HtmlHelper::sanitizeRich()` | HTML Purifier, para conteúdo vindo de RTE |
-
-## Front-end
-
-jQuery 4 (`$.trim` não existe mais) com plugins internos: Toast, Lightbox,
-`adminDrawer` (`CLAUDE.md` §8), wrappers de AJAX. Ícones por `IconLibrary` +
-sprite.
-
-## Módulo Chat — visão de 1 minuto
-
-Motor **próprio**, separado da automação v2 de propósito
-([[modulo-chat-whatsapp#2. Motor próprio em vez de reusar o `FluxoMotor` (automação v2)|§2]]).
-Contexto vivo em [[04-sessao-chat-ia-instagram]]; índice em [[chat-indice]].
-
-```
-webhook (index.php) ──► ChatWebhookService / ChatInstagramService
-                              │  casa automação (chat_ig_regras)
-                              │  cria o contato · responde o comentário
-                              ▼
-                        ChatFluxoMotor::iniciar()  ──► chat_sessoes
-                              │  anda pelo grafo publicado (chat_fluxo_nos/conexoes)
-                              ▼
-                        ChatNoRegistry  (36 tipos de bloco, um arquivo só)
-                              │  ia_responder ─► ChatIaAgenteService ─► IAOrchestrator
-                              ▼
-                        ChatEnvioService  (janela 24h, assinatura, private reply)
-```
-
-- **Private reply** é o único jeito de mandar direct para quem só comentou:
-  sai na primeira mensagem da conversa, uma vez por comentário.
-- **O contato nasce quando a automação precisa dele** (DM, tag ou fluxo).
-- **A IA só fala do produto fixo no bloco**, com guarda de números; a
-  mensagem final é composta por um modelo do operador (`{{resposta}}`).
-- **`portas()` é o máximo declarado; `portasAtivas($config)` é o que vale.**
-- `app/services/ia/` e `ia/providers/` precisam estar nos **três** autoloaders
-  — faltavam no `index.php` (webhook) e no `chat-worker` até 02/09/2026.
-
-| Preciso de… | Arquivo |
-|---|---|
-| tipos de bloco | `app/services/ChatNoRegistry.php` (+ `rotulo()`) |
-| paleta / painel do editor | `admin/assets/js/chat-fluxo.js` |
-| entrada do Instagram | `app/services/ChatInstagramService.php` |
-| envio (WA e IG) | `app/services/ChatEnvioService.php` |
-| agente de IA | `app/services/ChatIaAgenteService.php` |
-| diagnóstico | `cli/chat-ig-check.php` · `cli/chat-fluxo-check.php` · `cli/chat-ia-teste.php` |
-| testes | `tests/chat/` (17 suítes, 569 asserções) |
-
-## Infra
-
-Cloudflare (WAF, CDN, R2, Stream) na frente. O Nginx reescreve `REMOTE_ADDR`
-com o IP real — sem isso o log registraria o IP da Cloudflare.
+- `02-arquitetura/arquitetura-atual.md` e `11-contexto-ia/02-convencoes.md`
+  continuam com **0 byte**.
+- Inventário de tabelas (240+) nunca foi escrito em `09-banco-de-dados/`; só a
+  camada `bi_*` está lá.

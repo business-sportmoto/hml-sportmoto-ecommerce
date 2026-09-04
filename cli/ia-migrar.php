@@ -94,6 +94,13 @@ $migrations = [
     ['2026-09-03_ia_qa_produto.sql', 'Q&A de produto pela Central (procedência da resposta)',
         fn () => $temColuna('produto_perguntas', 'ia_geracao_id')],
     ['2026-09-03_ia_seo_aplicado.sql', 'Procedência do SEO aplicado por entidade', fn () => $temTabela('ia_seo_aplicado')],
+    // Detector: a última tabela que a migration cria. Os ALTERs de ENUM
+    // são idempotentes (repetir a mesma lista é no-op) e os INSERTs são
+    // IGNORE sobre chaves únicas, então um falso "pendente" não duplica.
+    // DEPENDÊNCIA EXTERNA: o provedor `claude` (migration anterior) — os
+    // modelos de capacidade `agente` apontam para ele por código.
+    ['2026-09-04_ia_agentes_bi.sql', 'Agentes de BI — capacidade agente, 3 tipos, conversas, teto próprio',
+        fn () => $temTabela('ia_agente_mensagens')],
 ];
 
 /* ------------------------------------------------------------------ */

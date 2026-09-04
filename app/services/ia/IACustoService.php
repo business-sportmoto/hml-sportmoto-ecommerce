@@ -231,6 +231,41 @@ class IACustoService
         return $this->somaRollup('`data` = CURDATE() AND provedor_codigo = :p', [':p' => $provedorCodigo]);
     }
 
+    public function gastoCapacidadeHoje(string $capacidade): float
+    {
+        return $this->somaRollup('`data` = CURDATE() AND capacidade = :c', [':c' => $capacidade]);
+    }
+
+    public function gastoCapacidadeMes(string $capacidade): float
+    {
+        return $this->somaRollup("`data` >= DATE_FORMAT(CURDATE(), '%Y-%m-01') AND capacidade = :c", [':c' => $capacidade]);
+    }
+
+    /**
+     * Limites dos agentes de BI: TODOS os limites gerais (podeGerar) E o
+     * teto próprio do escopo `agentes_bi`, medido pela capacidade
+     * `agente` no rollup. O escopo existe porque o global é dividido
+     * com a Central de Marketing — sem ele, uma campanha de imagens
+     * esvazia o orçamento dos agentes sem ninguém perceber.
+     *
+     * Sem linha `agentes_bi` ativa, só os limites gerais valem.
+     */
+    public function podeGerarAgente(int $usuarioId, float $custoEstimado): array
+    {
+        $chk = $this->podeGerar($usuarioId, $custoEstimado, 1);
+        if (!$chk['ok']) { return $chk; }
+
+        $escopo = $this->limite('agentes_bi', 0);
+        if ($escopo === null) { return ['ok' => true]; }
+
+        $chk = $this->checarTeto($this->gastoCapacidadeHoje('agente'), $custoEstimado,
+                                 $escopo['limite_diario_usd'], 'o limite diário dos agentes de BI');
+        if (!$chk['ok']) { return $chk; }
+
+        return $this->checarTeto($this->gastoCapacidadeMes('agente'), $custoEstimado,
+                                 $escopo['limite_mensal_usd'], 'o limite mensal dos agentes de BI');
+    }
+
     /* ------------------------------------------------------------------ */
     /* Internos                                                            */
     /* ------------------------------------------------------------------ */

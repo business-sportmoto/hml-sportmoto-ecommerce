@@ -199,7 +199,11 @@
     const method = $('input[name="forma_pagamento"]:checked').val() || 'pix';
     CK.formAlertClear($err);
 
-    if (method === 'cartao') {
+    // Pre-flight do cartao DIGITADO (inputs legados #numero_cartao etc).
+    // Cartao salvo nao tem esses inputs na tela: sem a guarda, luhnValid('')
+    // devolve false, o erro e mostrado e o handler morre num
+    // $('#card-panel').offset() indefinido — pagamento nunca sai.
+    if (method === 'cartao' && $('#numero_cartao').length) {
       const numeroCartao = $('#numero_cartao').val() || '';
       const digits = numeroCartao.replace(/\D/g, '');
       // const digits   = $('#numero_cartao').val().replace(/\D/g, '');
@@ -237,7 +241,11 @@
         salvar_cartao:   $('input[name="salvar_cartao"]').is(':checked') ? 1 : 0,
         // Token gerado agora a partir do cartao salvo + CVV. Vazio quando a
         // forma de pagamento nao precisa (pix, boleto, cartao novo).
-        gateway_token:   tokenSalvo || ''
+        gateway_token:   tokenSalvo || '',
+        // Cartao salvo SO na Cielo: o CVV vai no POST e dali para a venda
+        // (CardToken + SecurityCode). Input comum, presente apenas quando
+        // nao ha iframe do Mercado Pago na tela.
+        cvv_cielo:       $('#cvv-cielo-input').val() || ''
       })
       .done(function (res) {
         // O emissor pediu autenticacao: nao da para mandar o cliente para a

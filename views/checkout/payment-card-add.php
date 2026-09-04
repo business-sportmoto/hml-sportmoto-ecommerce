@@ -79,6 +79,10 @@ $cpfCliente = $cpfCliente ?? '';
     <input type="hidden" name="gateway_token" id="gateway_token">
     <input type="hidden" name="bandeira"      id="card-brand-value">
     <input type="hidden" name="ultimos_4"     id="card-last4-value">
+    <!-- Um token por adquirente: o navegador tokeniza o mesmo cartao em
+         cada cofre e o servidor grava uma referencia por adquirente. -->
+    <input type="hidden" name="tokens[mercadopago]" id="token-mercadopago">
+    <input type="hidden" name="tokens[cielo]"       id="token-cielo">
 
     <!-- ════════ NÚMERO ════════ -->
     <div class="form-group">
@@ -87,7 +91,13 @@ $cpfCliente = $cpfCliente ?? '';
         <span class="card-brand-detected" id="card-brand-detected"></span>
       </label>
       <!-- Container vazio: a Malga injeta um iframe AQUI -->
-      <div id="card-number" class="form-control hosted-field" data-placeholder=""></div>
+      <!-- Input NOSSO, nao iframe: o mesmo numero vai para o Mercado Pago
+           (createCardToken) e para a Cielo (Silent Order Post) com uma
+           digitacao. Classe bp-sop-* e o que o script da Cielo procura.
+           Numero na pagina, nunca no servidor — SAQ A-EP, decisao no Vault. -->
+      <input type="text" id="card-number" class="form-control bp-sop-cardnumber"
+             inputmode="numeric" autocomplete="cc-number" maxlength="23"
+             placeholder="0000 0000 0000 0000" data-pci="pan">
       <span class="field-error" id="err-numero"></span>
     </div>
 
@@ -118,7 +128,8 @@ $cpfCliente = $cpfCliente ?? '';
       <!-- ════════ VALIDADE ════════ -->
       <div class="form-group form-col">
         <label for="card-expiration-date">Validade</label>
-        <div id="card-expiration-date" class="form-control hosted-field" data-placeholder=""></div>
+        <input type="text" id="card-expiration-date" class="form-control bp-sop-cardexpirationdate"
+               inputmode="numeric" autocomplete="cc-exp" maxlength="5" placeholder="MM/AA">
         <span class="field-error" id="err-validade"></span>
       </div>
 
@@ -135,7 +146,8 @@ $cpfCliente = $cpfCliente ?? '';
             </svg>
           </span>
         </label>
-        <div id="card-cvv" class="form-control hosted-field" data-placeholder=""></div>
+        <input type="password" id="card-cvv" class="form-control bp-sop-cardcvv"
+               inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="000">
         <span class="field-error" id="err-cvv"></span>
       </div>
     </div>
@@ -347,15 +359,31 @@ $cpfCliente = $cpfCliente ?? '';
 }
 </style>
 <?php
-// Qual adquirente tokeniza nesta pagina. O controller resolveu pela lista de
-// gateways ativos com chave publica; aqui so escolhemos qual glue carregar.
+// Qual adquirente tokeniza nesta pagina.
+//
+// CHECKOUT_ADQUIRENTES (JSON) e o conjunto novo: TODAS as adquirentes ativas
+// em que o navegador consegue tokenizar, cada uma com o que o seu script
+// precisa. Quando ele existe e nao esta vazio, a tela usa inputs proprios e
+// manda o mesmo cartao para cada cofre — e o desenho multi-adquirente do
+// Vault (pagamentos-cartao-multi-adquirente). As constantes antigas ficam
+// para o caminho legado da Malga.
 $adq       = defined('CHECKOUT_ADQUIRENTE') ? CHECKOUT_ADQUIRENTE : 'malga';
 $publicKey = defined('CHECKOUT_PUBLIC_KEY') ? CHECKOUT_PUBLIC_KEY : '';
 $clientId  = defined('CHECKOUT_CLIENT_ID')  ? CHECKOUT_CLIENT_ID  : '';
 $sandbox   = defined('CHECKOUT_SANDBOX')    ? CHECKOUT_SANDBOX    : true;
 
+$conjunto  = defined('CHECKOUT_ADQUIRENTES') ? (json_decode(CHECKOUT_ADQUIRENTES, true) ?: []) : [];
+$multi     = $conjunto !== [];
 ?>
-<?php if ($adq === 'mercadopago'): ?>
+<?php if ($multi): ?>
+  <!--
+    Inputs proprios + tokenizacao em paralelo. O numero passa pela pagina
+    (JS), nunca pelo servidor. Os dois glues sao carregados; cada um so e
+    usado se a adquirente dele estiver no conjunto.
+  -->
+  <script src="<?= PerformanceHelper::assetVersion('js/checkout-mercadopago.js') ?>" defer></script>
+  <script src="<?= PerformanceHelper::assetVersion('js/checkout-cielo-sop.js') ?>" defer></script>
+<?php elseif ($adq === 'mercadopago'): ?>
   <!--
     Mercado Pago: numero, validade e CVV ficam em iframes do proprio MP.
     O SDK e carregado pelo glue, que espera o global aparecer em vez de
@@ -379,6 +407,147 @@ $sandbox   = defined('CHECKOUT_SANDBOX')    ? CHECKOUT_SANDBOX    : true;
   // mesmas callbacks e onSubmit com o mesmo objeto —, entao daqui para baixo
   // nada sabe qual adquirente esta em uso.
   $(function () {
+    var MULTI = <?= json_encode($multi) ?>;
+    var COFRES = <?= json_encode($conjunto, JSON_UNESCAPED_SLASHES) ?>;
+
+    // ══════════════════════════════════════════════════════════════
+    //  MULTI-COFRE: o cliente digita uma vez, o cartao vai para cada
+    //  adquirente ativa. Falhar numa nao impede as outras — o servidor
+    //  grava onde deu certo e responde onde nao deu.
+    // ══════════════════════════════════════════════════════════════
+    if (MULTI) {
+      var MP    = window.SportMotoMercadoPagoCheckout;
+      var CIELO = window.SportMotoCieloSop;
+      var $err  = $('#card-add-error');
+      var $btn  = $('#btn-save-card');
+      var enviando = false;
+
+      function erro(msg) { $err.text(msg).show(); }
+      function limpar()  { $err.hide().text(''); }
+      function digitos(v) { return String(v || '').replace(/\D/g, ''); }
+
+      // Titular: input comum, com a classe que o script da Cielo procura.
+      (function montarTitular() {
+        var $div = $('#card-holder-name');
+        if (!$div.length || $div.find('input').length) return;
+        var $i = $('<input>', {
+          type: 'text', id: 'card-holder-input', autocomplete: 'cc-name', maxlength: 60,
+          'class': 'bp-sop-cardholdername',
+          placeholder: $div.data('placeholder') || 'Como está no cartão',
+          css: { border: 0, outline: 0, width: '100%', height: '100%',
+                 background: 'transparent', font: 'inherit', color: 'inherit' }
+        });
+        $i.on('input', function () {
+          var v = $(this).val().toUpperCase(); $(this).val(v);
+          $('#card-prev-holder').text(v || 'NOME COMPLETO');
+        });
+        $div.empty().append($i);
+      })();
+
+      // Mascaras e previa. Nada aqui sai da pagina.
+      $('#card-number').on('input', function () {
+        var d = digitos($(this).val()).slice(0, 19);
+        $(this).val(d.replace(/(\d{4})(?=\d)/g, '$1 '));
+        $('#card-prev-number').text((d + '••••••••••••••••').slice(0, 16).replace(/(.{4})/g, '$1 ').trim());
+      });
+      $('#card-expiration-date').on('input', function () {
+        var d = digitos($(this).val()).slice(0, 4);
+        $(this).val(d.length > 2 ? d.slice(0, 2) + '/' + d.slice(2) : d);
+        $('#card-prev-expiry').text(d.length === 4 ? d.slice(0, 2) + '/' + d.slice(2) : 'MM/AA');
+      });
+
+      var promessas = [];
+      if (COFRES.mercadopago && MP) {
+        promessas.push(MP.initCore({ publicKey: COFRES.mercadopago.publicKey })
+          .then(function () { return 'mercadopago'; })
+          .catch(function (e) { console.warn('[MP] init:', e); return null; }));
+      }
+      if (COFRES.cielo && CIELO) {
+        CIELO.init(COFRES.cielo);
+        promessas.push(Promise.resolve('cielo'));
+      }
+
+      Promise.all(promessas).then(function (prontas) {
+        prontas = prontas.filter(Boolean);
+        if (!prontas.length) { erro('Pagamento por cartão indisponível no momento.'); return; }
+        $btn.prop('disabled', false);
+      });
+
+      $('#form-card-add').on('submit', function (e) {
+        e.preventDefault();
+        if (enviando) return;
+
+        var dados = {
+          numero:    $('#card-number').val(),
+          validade:  $('#card-expiration-date').val(),
+          cvv:       $('#card-cvv').val(),
+          titular:   $('#card-holder-input').val(),
+          documento: digitos($('#cpf_titular').val())
+        };
+
+        if (dados.documento.length !== 11 && dados.documento.length !== 14) {
+          $('#err-cpf').text('Informe o CPF ou CNPJ do titular.'); $('#cpf_titular').trigger('focus'); return;
+        }
+        if (digitos(dados.numero).length < 13) { erro('Número do cartão inválido.'); return; }
+        if (digitos(dados.validade).length !== 4) { erro('Validade inválida (MM/AA).'); return; }
+        if (digitos(dados.cvv).length < 3) { erro('Código de segurança inválido.'); return; }
+        if (String(dados.titular || '').trim().length < 3) { erro('Informe o nome como está no cartão.'); return; }
+
+        limpar();
+        enviando = true;
+        $btn.prop('disabled', true).addClass('is-loading');
+
+        // Os dois cofres em paralelo. allSettled: um pode falhar sem
+        // derrubar o outro — e o servidor decide o que fazer com o parcial.
+        var tarefas = [];
+        if (COFRES.mercadopago && MP) {
+          tarefas.push(MP.tokenizarCampos(dados).then(function (t) { return { cofre: 'mercadopago', t: t }; }));
+        }
+        if (COFRES.cielo && CIELO) {
+          tarefas.push(CIELO.tokenizar().then(function (t) { return { cofre: 'cielo', t: t }; }));
+        }
+
+        Promise.allSettled(tarefas).then(function (res) {
+          var ok = 0, brand = null, last4 = null, motivos = [];
+          $('#token-mercadopago').val(''); $('#token-cielo').val('');
+
+          res.forEach(function (r) {
+            if (r.status !== 'fulfilled') { motivos.push(r.reason && r.reason.message); return; }
+            ok++;
+            var v = r.value;
+            if (v.cofre === 'mercadopago') { $('#token-mercadopago').val(v.t.tokenId); brand = brand || v.t.brand; last4 = last4 || v.t.last4; }
+            if (v.cofre === 'cielo')       { $('#token-cielo').val(v.t.cardToken);   brand = brand || v.t.brand; last4 = last4 || v.t.last4; }
+          });
+
+          if (!ok) {
+            enviando = false; $btn.prop('disabled', false).removeClass('is-loading');
+            erro(motivos.filter(Boolean)[0] || 'Não foi possível validar o cartão.');
+            return;
+          }
+
+          $('#card-brand-value').val(brand || $('#card-brand-value').val() || '');
+          $('#card-last4-value').val(last4 || digitos(dados.numero).slice(-4));
+
+          // O NUMERO NAO VAI NO POST. So os tokens, a bandeira e o final.
+          $('#card-number, #card-expiration-date, #card-cvv').prop('disabled', true);
+
+          $.post('<?= BASE_URL ?>/checkout/payment/card/add', $('#form-card-add').serialize())
+            .done(function (resp) {
+              if (resp.ok) { window.location.href = resp.redirect || '<?= BASE_URL ?>/checkout/payment'; return; }
+              erro(resp.msg || 'Não foi possível salvar o cartão.');
+            })
+            .fail(function () { erro('Erro de comunicação. Tente novamente.'); })
+            .always(function () {
+              enviando = false;
+              $('#card-number, #card-expiration-date, #card-cvv').prop('disabled', false);
+              $btn.prop('disabled', false).removeClass('is-loading');
+            });
+        });
+      });
+
+      return;   // o caminho legado abaixo nao roda
+    }
+
     var ADQ = <?= json_encode($adq) ?>;
     var SDK = ADQ === 'mercadopago'
       ? window.SportMotoMercadoPagoCheckout

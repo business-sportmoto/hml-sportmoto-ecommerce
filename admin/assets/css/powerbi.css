@@ -22,7 +22,9 @@
 /* `.admin-content` entra aqui junto porque é ELE que pinta o fundo
    ambiente (ver "Sangria" abaixo) — e variável CSS só desce, então o
    pai não conseguiria ler um token declarado no filho. */
-.pwb_dashboard, .admin-content {
+/* `.pwb_ia_drawer` também: o adminDrawer é anexado ao <body>, fora do
+   painel, e sem os tokens aqui o drawer dos agentes ficaria sem cor. */
+.pwb_dashboard, .admin-content, .pwb_ia_drawer {
   /* Superfícies — azul-marinho quase preto → marinho intermediário */
   --pwb-canvas:    #0a0e17;
   --pwb-panel:     #101725;
@@ -82,7 +84,8 @@
 
 /* ── Tokens: LIGHT ────────────────────────────────────────────── */
 html[data-theme="light"] .pwb_dashboard,
-html[data-theme="light"] .admin-content {
+html[data-theme="light"] .admin-content,
+html[data-theme="light"] .pwb_ia_drawer {
   --pwb-canvas:    #eef1f7;
   --pwb-panel:     #ffffff;
   --pwb-card:      #f7f9fc;
@@ -554,7 +557,140 @@ html[data-theme="light"] .admin-content {
   .pwb_kpi_value { font-size: 23px; }
 }
 
+/* ── Agentes de IA: botão e drawer ─────────────────────────────── */
+/* O botão herda .pwb_icon_button (redondo, 38px) e vira uma pílula
+   com rótulo: é a ação mais valiosa do topo, não um ícone entre
+   ícones. Gradiente só no aro, não no fundo — o brief pede acento,
+   não outdoor. */
+.pwb_ia_button {
+  width: auto; height: 38px; padding: 0 14px 0 10px; gap: 8px;
+  display: inline-flex; align-items: center; border-radius: 999px;
+  color: var(--pwb-t0); font-size: 12.5px; font-weight: 700; letter-spacing: .01em;
+  background:
+    linear-gradient(var(--pwb-panel), var(--pwb-panel)) padding-box,
+    var(--pwb-g-roxo) border-box;
+  border: 1px solid transparent;
+  box-shadow: 0 0 0 0 rgba(139, 92, 246, 0);
+  transition: box-shadow .18s ease, transform .18s ease, color .16s ease;
+}
+.pwb_ia_button:hover { box-shadow: 0 0 0 4px rgba(139, 92, 246, .16); transform: translateY(-1px); }
+.pwb_ia_button:disabled { opacity: .45; cursor: not-allowed; transform: none; box-shadow: none; }
+.pwb_ia_button .pwb_icon_svg { width: 17px; height: 17px; color: var(--pwb-lilac); }
+.pwb_ia_button_label { white-space: nowrap; }
+@media (max-width: 720px) {
+  .pwb_ia_button { padding: 0; width: 38px; }
+  .pwb_ia_button_label { display: none; }
+}
+
+/* O drawer vive fora do painel: as cores vêm dos tokens replicados em
+   .pwb_ia_drawer (topo do arquivo), nos dois temas. */
+.pwb_ia_drawer .admin-drawer-body { background: var(--pwb-canvas); color: var(--pwb-t0); }
+.pwb_ia { display: flex; flex-direction: column; gap: 14px; min-height: 100%; font-size: 13.5px; }
+
+.pwb_ia_contexto {
+  display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center;
+  padding: 10px 14px; border-radius: var(--pwb-r-md);
+  background: var(--pwb-panel); border: 1px solid var(--pwb-line);
+  font-size: 12.5px; color: var(--pwb-t1);
+}
+.pwb_ia_contexto strong { color: var(--pwb-t0); font-weight: 700; }
+.pwb_ia_contexto_dica { color: var(--pwb-t2); font-size: 11.5px; margin-left: auto; }
+
+.pwb_ia_bloqueio {
+  padding: 12px 14px; border-radius: var(--pwb-r-md);
+  background: var(--pwb-a-amber); color: var(--pwb-tc-amber);
+  border: 1px solid color-mix(in srgb, var(--pwb-amber) 35%, transparent);
+  font-size: 12.5px; line-height: 1.5;
+}
+
+.pwb_ia_thread { display: flex; flex-direction: column; gap: 12px; }
+.pwb_ia_msg {
+  max-width: 100%; padding: 12px 14px; border-radius: var(--pwb-r-md);
+  line-height: 1.55; word-wrap: break-word;
+}
+.pwb_ia_msg_user {
+  align-self: flex-end; max-width: 85%;
+  background: var(--pwb-a-blue); color: var(--pwb-t0);
+  border: 1px solid color-mix(in srgb, var(--pwb-blue) 30%, transparent);
+}
+.pwb_ia_msg_agente {
+  background: var(--pwb-card); border: 1px solid var(--pwb-line);
+  box-shadow: var(--pwb-shadow-sm);
+}
+.pwb_ia_msg_erro { background: var(--pwb-a-red); color: var(--pwb-tc-red); border: 1px solid color-mix(in srgb, var(--pwb-red) 35%, transparent); }
+
+.pwb_ia_secao + .pwb_ia_secao { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--pwb-line); }
+.pwb_ia_secao_titulo {
+  margin: 0 0 4px; font-size: 10.5px; font-weight: 800; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--pwb-t2);
+}
+.pwb_ia_secao_texto { margin: 0; color: var(--pwb-t0); }
+.pwb_ia_secao_texto .pwb_badge { margin-right: 6px; vertical-align: middle; }
+
+.pwb_ia_aviso {
+  margin: 12px 0 0; padding: 8px 10px; border-radius: var(--pwb-r-sm);
+  background: var(--pwb-a-amber); color: var(--pwb-tc-amber); font-size: 12px; line-height: 1.45;
+}
+.pwb_ia_procedencia {
+  display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 12px;
+  font-size: 11px; color: var(--pwb-t2); font-variant-numeric: tabular-nums;
+}
+.pwb_ia_ferramentas { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.pwb_ia_ferramenta {
+  font-size: 10.5px; padding: 2px 8px; border-radius: 999px;
+  background: var(--pwb-a-neutral); color: var(--pwb-t1); border: 1px solid var(--pwb-line);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Resumo Executivo de Hoje (overview): um card por agente, lido do banco. */
+.pwb_ia_resumo { margin-bottom: 18px; }
+.pwb_ia_resumo_grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px;
+}
+.pwb_ia_resumo_card {
+  min-width: 0; padding: 14px; border-radius: var(--pwb-r-md);
+  background: var(--pwb-card); border: 1px solid var(--pwb-line);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.pwb_ia_resumo_topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pwb_ia_resumo_nome { font-size: 12.5px; font-weight: 800; color: var(--pwb-t0); }
+.pwb_ia_resumo_texto { margin: 0; font-size: 13px; line-height: 1.5; color: var(--pwb-t1); }
+.pwb_ia_resumo_quando { font-size: 11px; color: var(--pwb-t2); font-variant-numeric: tabular-nums; }
+
+/* "Consultando os dados…" — três pontos que respiram. */
+.pwb_ia_pensando { color: var(--pwb-t1); font-style: italic; }
+.pwb_ia_dots::after { content: '…'; animation: pwb_ia_dots 1.2s steps(4, end) infinite; }
+@keyframes pwb_ia_dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '…'; } }
+
+.pwb_ia_sugestoes { display: flex; flex-wrap: wrap; gap: 6px; }
+.pwb_ia_sugestao {
+  font: inherit; font-size: 12px; padding: 6px 11px; border-radius: 999px; cursor: pointer;
+  background: var(--pwb-panel); color: var(--pwb-t1); border: 1px solid var(--pwb-line);
+  transition: border-color .16s ease, color .16s ease;
+}
+.pwb_ia_sugestao:hover { color: var(--pwb-t0); border-color: var(--pwb-lilac); }
+
+.pwb_ia_form {
+  display: flex; gap: 8px; align-items: flex-end; margin-top: auto;
+  position: sticky; bottom: 0; padding-top: 8px; background: var(--pwb-canvas);
+}
+.pwb_ia_input {
+  flex: 1; min-width: 0; resize: vertical; font: inherit; font-size: 13.5px; line-height: 1.45;
+  padding: 10px 12px; border-radius: var(--pwb-r-md);
+  background: var(--pwb-panel); color: var(--pwb-t0); border: 1px solid var(--pwb-line); outline: none;
+}
+.pwb_ia_input:focus { border-color: var(--pwb-lilac); box-shadow: 0 0 0 3px rgba(139, 92, 246, .14); }
+.pwb_ia_input::placeholder { color: var(--pwb-t2); }
+.pwb_ia_enviar {
+  font: inherit; font-size: 13px; font-weight: 700; padding: 10px 16px; border-radius: var(--pwb-r-md);
+  background: var(--pwb-g-roxo); color: #fff; border: 0; cursor: pointer; white-space: nowrap;
+  transition: transform .16s ease, opacity .16s ease;
+}
+.pwb_ia_enviar:hover { transform: translateY(-1px); }
+.pwb_ia_form_ocupado .pwb_ia_enviar { opacity: .5; pointer-events: none; }
+
 /* Quem prefere menos movimento não recebe a animação da barra. */
 @media (prefers-reduced-motion: reduce) {
-  .pwb_bar_fill, .pwb_nav_item, .pwb_tbody .pwb_tr, .pwb_icon_button { transition: none; }
+  .pwb_bar_fill, .pwb_nav_item, .pwb_tbody .pwb_tr, .pwb_icon_button, .pwb_ia_button, .pwb_ia_enviar { transition: none; }
+  .pwb_ia_dots::after { animation: none; content: '…'; }
 }

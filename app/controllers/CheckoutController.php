@@ -1961,26 +1961,34 @@ class CheckoutController extends Controller {
             $tokenCartao   = null;
             $cartaoSalvo   = null;
             $adquirenteFix = '';
+            $permitidas    = [];   // adquirentes em que ESTE cartao existe
+            $cartaoRefs    = [];   // codigo => [customer_ref, card_ref]
+            $cvvCielo      = '';
 
             if ($metodo === 'cartao') {
                 if ($cartaoSalvoId) {
-                    $cartaoSalvo = $this->cartaoSalvoParaCobranca((int) $cartaoSalvoId, $clienteId);
-                    if (!$cartaoSalvo) {
+                    // O CARTAO PODE EXISTIR EM VARIAS ADQUIRENTES. Cada uma
+                    // tem a sua referencia (cartoes_salvos_adquirentes), e o
+                    // roteador so apresenta o cartao a quem o conhece — e
+                    // pode cair de uma para outra sem pedir nada ao cliente.
+                    $modelo     = new CartaoSalvo();
+                    $cartaoRefs = $modelo->refsDoCartao((int) $cartaoSalvoId, $clienteId);
+                    $dono       = $modelo->findOwned((int) $cartaoSalvoId, $clienteId);
+
+                    if (!$dono || $cartaoRefs === []) {
+                        LogService::warning('Cartao salvo sem adquirente ativa', [
+                            'cartao_id' => $cartaoSalvoId, 'cliente_id' => $clienteId,
+                        ], 'pagamento');
                         $this->json(['ok' => false, 'msg' => 'Cartão indisponível. Escolha outro.']);
                     }
 
-                    // O token so vale na adquirente que o emitiu: prende o
-                    // roteamento a ela. Ver PagamentoRoteador::tentarAdquirente.
-                    $adquirenteFix = $cartaoSalvo['adquirente'];
+                    $permitidas  = array_keys($cartaoRefs);
+                    $cartaoSalvo = ['bandeira' => (string) ($dono['bandeira'] ?? '')];
 
-                    // TOKEN FRESCO TEM PRECEDENCIA sobre o que esta guardado.
-                    //
-                    // No Mercado Pago o `card_ref` nao serve para cobrar: a
-                    // Orders API so aceita `token`, e um token novo so nasce
-                    // com o CVV. O navegador acabou de gerar um a partir do
-                    // cartao salvo — e ele que vale.
+                    // MERCADO PAGO: o card_id nao cobra — a Orders API so
+                    // aceita `token`, e um novo so nasce com o CVV. O
+                    // navegador acabou de gerar um a partir do cartao salvo.
                     $tokenFresco = trim((string) ($_POST['gateway_token'] ?? ''));
-
                     if ($tokenFresco !== '') {
                         if (!preg_match('/^[0-9a-f]{32,33}$/i', $tokenFresco)
                             && !preg_match('/^[0-9a-f-]{36}$/i', $tokenFresco)) {
@@ -1988,8 +1996,19 @@ class CheckoutController extends Controller {
                                 'Código de segurança inválido. Tente novamente.']);
                         }
                         $tokenCartao = $tokenFresco;
-                    } else {
-                        $tokenCartao = $cartaoSalvo['token'];
+                    }
+
+                    // CIELO: cobra pelo CardToken + CVV no corpo da venda. O
+                    // CVV e transitorio — vai para a adquirente e nao e
+                    // gravado por ninguem.
+                    $cvvCielo = preg_replace('/\D/', '', (string) ($_POST['cvv_cielo'] ?? '')) ?? '';
+
+                    // Sem token fresco do MP e sem CVV da Cielo nao ha como
+                    // cobrar em lugar nenhum — melhor dizer agora.
+                    if ($tokenCartao === null && $cvvCielo === '') {
+                        // Ainda assim, se so a Cielo existir e vier sem CVV,
+                        // o adapter recusa com mensagem clara; segue.
+                        $tokenCartao = (string) ($cartaoRefs['mercadopago']['card_ref'] ?? '') ?: null;
                     }
                 } elseif ($cartaoTemp) {
                     $tokenCartao = $cartaoTemp['gateway_token'] ?? $cartaoTemp['token'] ?? null;
@@ -2009,7 +2028,11 @@ class CheckoutController extends Controller {
                     $adquirenteFix = $donaDoToken['codigo'] ?? '';
                 }
 
-                if (empty($tokenCartao)) {
+                // Um cartao salvo so na Cielo nao tem token do MP — e nao
+                // precisa: cobra pelo CardToken + CVV. So e erro quando nao
+                // ha NENHUM caminho.
+                $temCielo = isset($cartaoRefs['cielo']) && $cvvCielo !== '';
+                if (empty($tokenCartao) && !$temCielo) {
                     $this->json(['ok' => false, 'msg' => 'Cartão sem token. Adicione o cartão novamente.']);
                 }
             }
@@ -2028,6 +2051,12 @@ class CheckoutController extends Controller {
                 'descricao_fatura'  => 'SportMoto ' . $codigo,
                 'token_temporario'  => $tokenCartao,
                 'adquirente_fixa'   => $adquirenteFix,
+                // Cartao salvo: em quais adquirentes ele existe e com qual
+                // referencia em cada uma. O roteador so tenta nessas.
+                'adquirentes_permitidas' => $permitidas,
+                'cartao_refs'       => $cartaoRefs,
+                // CVV transitorio da Cielo (CardToken exige). Nunca gravado.
+                'cvv'               => $cvvCielo,
                 'bandeira'          => $cartaoSalvo['bandeira'] ?? ($cartaoTemp['bandeira'] ?? null),
                 'cliente'           => $cliente,
                 'entrega'           => $cliente['endereco'] ?? [],
@@ -3390,21 +3419,27 @@ class CheckoutController extends Controller {
             $cliente['cpf'] = $docTitular;
         }
 
-        // ── Guarda o cartao NA ADQUIRENTE ────────────────────────────
+        // ── Guarda o cartao EM CADA ADQUIRENTE que devolveu token ─────
         //
-        // Um cartao salvo pertence a UMA adquirente: o token so vale em quem
-        // o emitiu. Por isso o registro guarda de quem e — e por isso este
-        // trecho ramifica em vez de assumir a Malga.
-        $adq = $this->adquirenteDoCartao();
-        $codigoAdq = $adq['codigo'] ?? '';
+        // O token so vale em quem o emitiu, entao o cartao existe em tantos
+        // cofres quantas adquirentes o navegador conseguiu tokenizar. Cada uma
+        // vira uma linha em cartoes_salvos_adquirentes; o cartao em si e um
+        // so. Falhar numa NAO derruba as outras: o cartao fica utilizavel
+        // onde deu certo, e a resposta diz onde.
+        //
+        // Ver Vault, pagamentos-cartao-multi-adquirente.
+        $gatewayIds = [];
+        $st = $db->query('SELECT id, codigo FROM pgto_gateways WHERE ativo = 1');
+        foreach (($st ? $st->fetchAll(\PDO::FETCH_ASSOC) : []) as $g) {
+            $gatewayIds[(string) $g['codigo']] = (int) $g['id'];
+        }
 
-        $cardId       = null;
-        $customerRef  = null;
-        $gatewayId    = null;
-        // Nulos ate a adquirente responder. O modelo tem fallback proprio;
+        // Nulos ate uma adquirente responder. O modelo tem fallback proprio;
         // o que nao pode e cravar um valor falso antes de perguntar.
-        $nomeTitular  = null;
-        $validade     = null;
+        $nomeTitular = null;
+        $validade    = null;
+        $vinculos    = [];   // [{codigo, gateway_id, customer_ref, card_ref}]
+        $falhas      = [];   // codigo => motivo
 
         $dadosCliente = [
             'nome'      => $cliente['nome']     ?? 'Cliente',
@@ -3419,64 +3454,104 @@ class CheckoutController extends Controller {
             // salvar. O documento do titular vai dentro do token.
         ];
 
-        try {
-            if ($codigoAdq === 'mercadopago') {
-                $mp = new MercadoPagoAdapter();
-                $res = $mp->salvarCartao($dadosCliente, $tokenId);
-
-                if (!$res['ok']) {
-                    // NAO cai para "guarda o token mesmo assim": no Mercado
-                    // Pago o token e de uso unico, entao um cartao salvo com
-                    // token funcionaria uma vez e depois recusaria sem
-                    // explicacao. Melhor recusar agora, enquanto o cliente
-                    // ainda esta na tela e pode tentar de novo.
-                    $this->json(['ok' => false, 'msg' =>
-                        'Não foi possível salvar o cartão. Tente novamente ou use outro cartão.']);
-                }
-
-                $customerRef = $res['customer_ref'];
-                $cardId      = $res['card_ref'];
-                if (!empty($res['bandeira'])) $bandeira = $res['bandeira'];
-                if (!empty($res['ultimos4'])) $ultimos4 = $res['ultimos4'];
-                // A adquirente e quem sabe: ela leu o token. Preferir o que
-                // ela devolveu evita gravar o placeholder da era hosted fields.
-                if (!empty($res['nome_titular'])) $nomeTitular = $res['nome_titular'];
-                if (!empty($res['validade']))     $validade    = $res['validade'];
-
-            } else {
-                $malgaSvc        = MalgaService::fromCodigo('malga');
-                $malgaCustomerId = $cliente['malga_customer_id'] ?? null;
-
-                $customerRef = $malgaSvc->buscarOuCriarCustomerPorCliente(
-                    $dadosCliente, $malgaCustomerId
-                );
-
-                if ($customerRef && $customerRef !== $malgaCustomerId) {
-                    $db->prepare("UPDATE clientes SET malga_customer_id = :cid WHERE id = :id")
-                       ->execute([':cid' => $customerRef, ':id' => $clienteId]);
-                }
-
-                $vault  = $malgaSvc->criarCartaoVault($tokenId);
-                $cardId = $vault['cardId'];
-                if (!empty($vault['bandeira'])) $bandeira = $vault['bandeira'];
-                if (!empty($vault['last4']))    $ultimos4 = $vault['last4'];
-
-                if (!empty($customerRef)) {
-                    $malgaSvc->associarCartaoAoCustomer($customerRef, $cardId);
-                }
+        foreach ($tokens as $codigoAdq => $tk) {
+            if (!isset($gatewayIds[$codigoAdq])) {
+                $falhas[$codigoAdq] = 'adquirente inativa';
+                continue;
             }
 
-            $st = $db->prepare('SELECT id FROM pgto_gateways WHERE codigo = ? LIMIT 1');
-            $st->execute([$codigoAdq]);
-            $gatewayId = (int) ($st->fetchColumn() ?: 0) ?: null;
+            try {
+                if ($codigoAdq === 'mercadopago') {
+                    // Token de uso unico → vira customer_id + card_id no MP.
+                    // Sem isso o cartao funcionaria uma vez e depois
+                    // recusaria sem explicacao.
+                    $res = (new MercadoPagoAdapter())->salvarCartao($dadosCliente, $tk);
+                    if (!$res['ok']) { $falhas[$codigoAdq] = (string) ($res['erro'] ?? 'recusado'); continue; }
 
-        } catch (\Throwable $e) {
-            LogService::exception($e, 'error', 'pagamento', [
-                'acao' => 'salvar_cartao', 'adquirente' => $codigoAdq, 'cliente_id' => $clienteId,
-            ]);
-            $this->json(['ok' => false, 'msg' =>
-                'Não foi possível salvar o cartão agora. Tente novamente em instantes.']);
+                    $vinculos[] = [
+                        'codigo'       => 'mercadopago',
+                        'gateway_id'   => $gatewayIds['mercadopago'],
+                        'customer_ref' => $res['customer_ref'],
+                        'card_ref'     => $res['card_ref'],
+                    ];
+                    if (!empty($res['bandeira']))     $bandeira    = $res['bandeira'];
+                    if (!empty($res['ultimos4']))     $ultimos4    = $res['ultimos4'];
+                    // A adquirente e quem sabe: ela leu o token.
+                    if (!empty($res['nome_titular'])) $nomeTitular = $res['nome_titular'];
+                    if (!empty($res['validade']))     $validade    = $res['validade'];
+
+                } elseif ($codigoAdq === 'cielo') {
+                    // O Silent Order Post com enableTokenize JA guardou o
+                    // cartao no Cartao Protegido: o que chegou aqui e o
+                    // CardToken reutilizavel. Nao ha chamada a fazer.
+                    $vinculos[] = [
+                        'codigo'       => 'cielo',
+                        'gateway_id'   => $gatewayIds['cielo'],
+                        'customer_ref' => null,
+                        'card_ref'     => $tk,
+                    ];
+
+                } elseif ($codigoAdq === 'malga') {
+                    $malgaSvc        = MalgaService::fromCodigo('malga');
+                    $malgaCustomerId = $cliente['malga_customer_id'] ?? null;
+
+                    $customerRef = $malgaSvc->buscarOuCriarCustomerPorCliente(
+                        $dadosCliente, $malgaCustomerId
+                    );
+                    if ($customerRef && $customerRef !== $malgaCustomerId) {
+                        $db->prepare("UPDATE clientes SET malga_customer_id = :cid WHERE id = :id")
+                           ->execute([':cid' => $customerRef, ':id' => $clienteId]);
+                    }
+
+                    $vault = $malgaSvc->criarCartaoVault($tk);
+                    if (!empty($vault['bandeira'])) $bandeira = $vault['bandeira'];
+                    if (!empty($vault['last4']))    $ultimos4 = $vault['last4'];
+                    if (!empty($customerRef)) $malgaSvc->associarCartaoAoCustomer($customerRef, $vault['cardId']);
+
+                    $vinculos[] = [
+                        'codigo'       => 'malga',
+                        'gateway_id'   => $gatewayIds['malga'],
+                        'customer_ref' => $customerRef,
+                        'card_ref'     => $vault['cardId'],
+                    ];
+
+                } else {
+                    $falhas[$codigoAdq] = 'sem cofre para esta adquirente';
+                }
+            } catch (\Throwable $e) {
+                LogService::exception($e, 'error', 'pagamento', [
+                    'acao' => 'salvar_cartao', 'adquirente' => $codigoAdq, 'cliente_id' => $clienteId,
+                ]);
+                $falhas[$codigoAdq] = 'erro';
+            }
         }
+
+        if ($vinculos === []) {
+            LogService::warning('Cartao nao salvou em nenhuma adquirente', [
+                'cliente_id' => $clienteId, 'falhas' => $falhas,
+            ], 'pagamento');
+            $this->json(['ok' => false, 'msg' =>
+                'Não foi possível salvar o cartão. Tente novamente ou use outro cartão.']);
+        }
+
+        if ($falhas !== []) {
+            // Salvou em parte. Nao e erro: e informacao que o cliente e o
+            // suporte precisam ter — este cartao nao cai para a adquirente
+            // que falhou.
+            LogService::warning('Cartao salvou em parte das adquirentes', [
+                'cliente_id' => $clienteId,
+                'salvou_em'  => array_column($vinculos, 'codigo'),
+                'falhas'     => $falhas,
+            ], 'pagamento');
+        }
+
+        // Legado: as colunas antigas do cartao guardam a PRIMEIRA adquirente,
+        // para quem ainda le de la. A fonte de verdade e a tabela filha.
+        $primeiro    = $vinculos[0];
+        $codigoAdq   = $primeiro['codigo'];
+        $gatewayId   = $primeiro['gateway_id'];
+        $customerRef = $primeiro['customer_ref'];
+        $cardId      = $primeiro['card_ref'];
 
         try {
             $cartaoModel = new CartaoSalvo();
@@ -3492,6 +3567,8 @@ class CheckoutController extends Controller {
                 'validade'     => $validade,
                 'apelido'      => $apelido,
                 'principal'    => $principal,
+                // Uma linha filha por adquirente onde o cartao existe.
+                'adquirentes'  => $vinculos,
             ]);
 
             Session::set('checkout_cartao_id', $cartaoId);
@@ -3501,11 +3578,16 @@ class CheckoutController extends Controller {
                 'cliente_id'  => $clienteId,
                 'cartao_id'   => $cartaoId,
                 'bandeira'    => $bandeira,
-                'vault_ok'    => ($cardId !== $tokenId),
-                'customer_id' => $malgaCustomerId ?? null,
+                'adquirentes' => array_column($vinculos, 'codigo'),
+                'falhas'      => $falhas,
             ]);
 
-            $this->json(['ok' => true, 'redirect' => BASE_URL . '/checkout/payment']);
+            $this->json([
+                'ok'          => true,
+                'redirect'    => BASE_URL . '/checkout/payment',
+                'adquirentes' => array_column($vinculos, 'codigo'),
+                'falhas'      => array_keys($falhas),
+            ]);
 
         } catch (\InvalidArgumentException $e) {
             $this->json(['ok' => false, 'msg' => $e->getMessage()]);

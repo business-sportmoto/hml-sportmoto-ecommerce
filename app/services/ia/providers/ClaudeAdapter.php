@@ -82,19 +82,7 @@ class ClaudeAdapter extends IAProviderBase
         }
 
         if ($resp['status'] !== 200 || !is_array($resp['corpo'])) {
-            [$tipo, $msg] = $this->extrairErro($resp['corpo'], (int) $resp['status']);
-            // Tabela da API: 429/500/529 retentáveis; 400/401/403/404/413 não.
-            $codigo = match (true) {
-                $resp['status'] === 429                     => 'rate_limit',
-                in_array($resp['status'], [401, 403], true) => 'chave_invalida',
-                $resp['status'] === 529                     => 'sobrecarga',
-                default                                     => 'claude_' . $resp['status'],
-            };
-            $retryable = in_array($resp['status'], [429, 500, 529], true) || $resp['status'] >= 500;
-            $r = IAResultado::falha($codigo, 'Claude (' . $tipo . '): ' . $msg, $retryable);
-            $r->tempoMs = $resp['tempo_ms'];
-            $r->respostaBruta = $resp['corpo_bruto'];
-            return $r;
+            return $this->falhaHttp($resp);
         }
 
         $corpo = $resp['corpo'];
@@ -134,6 +122,162 @@ class ClaudeAdapter extends IAProviderBase
         $r->tempoMs       = $resp['tempo_ms'];
         $r->respostaBruta = $resp['corpo_bruto'];
         return $r;
+    }
+
+    /** HTTP ≠ 200 → IAResultado, com a tabela de retentáveis da API. */
+    private function falhaHttp(array $resp): IAResultado
+    {
+        [$tipo, $msg] = $this->extrairErro($resp['corpo'], (int) $resp['status']);
+        // Tabela da API: 429/500/529 retentáveis; 400/401/403/404/413 não.
+        $codigo = match (true) {
+            $resp['status'] === 429                     => 'rate_limit',
+            in_array($resp['status'], [401, 403], true) => 'chave_invalida',
+            $resp['status'] === 529                     => 'sobrecarga',
+            default                                     => 'claude_' . $resp['status'],
+        };
+        $retryable = in_array($resp['status'], [429, 500, 529], true) || $resp['status'] >= 500;
+        $r = IAResultado::falha($codigo, 'Claude (' . $tipo . '): ' . $msg, $retryable);
+        $r->tempoMs = $resp['tempo_ms'];
+        $r->respostaBruta = $resp['corpo_bruto'];
+        return $r;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Tool use — capacidade agente                                        */
+    /* ------------------------------------------------------------------ */
+
+    public function suportaFerramentas(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Um turno com ferramentas. Quem itera (executa tool_use, monta
+     * tool_result, chama de novo) é o orquestrador; aqui é UMA chamada
+     * ao /v1/messages devolvendo stop_reason + blocos crus.
+     *
+     * O que muda em relação a gerarTexto():
+     *  - `messages` vem pronto do job (multi-turno, com tool_use/tool_result);
+     *  - `tools` com strict:true — o modelo não consegue inventar parâmetro;
+     *  - cache de prompt: um breakpoint no `system` (cobre tools + system,
+     *    que são estáveis por agente) e outro no último bloco da última
+     *    mensagem (a conversa cresce por prefixo — cada rodada reaproveita
+     *    a anterior). usage.cache_read_input_tokens diz se pegou;
+     *  - `tool_choice: none` quando o loop esgotou as rodadas — força a
+     *    resposta em texto sem tirar as definições (a API exige que as
+     *    ferramentas dos tool_use do histórico continuem declaradas).
+     */
+    public function conversar(array $job): IAResultado
+    {
+        $payload = $this->montarPayloadConversa($job);
+
+        $resp = $this->httpJson('POST', '/messages', $payload, (int) ($job['timeout_s'] ?? 120));
+
+        if ($resp['status'] === 0) {
+            $r = IAResultado::falha('rede', 'Sem resposta do provedor: ' . ($resp['erro'] ?? 'falha de rede'), true);
+            $r->tempoMs = $resp['tempo_ms'];
+            return $r;
+        }
+        if ($resp['status'] !== 200 || !is_array($resp['corpo'])) {
+            return $this->falhaHttp($resp);
+        }
+
+        $corpo = $resp['corpo'];
+
+        if (($corpo['stop_reason'] ?? '') === 'refusal') {
+            $categoria = (string) ($corpo['stop_details']['category'] ?? 'não informada');
+            $r = IAResultado::falha('content_filter', 'Claude recusou a solicitação (categoria: ' . $categoria . ').', false);
+            $r->tempoMs = $resp['tempo_ms'];
+            $r->respostaBruta = $resp['corpo_bruto'];
+            return $r;
+        }
+
+        $blocos = [];
+        $texto  = '';
+        foreach (($corpo['content'] ?? []) as $bloco) {
+            $tipo = (string) ($bloco['type'] ?? '');
+            if ($tipo === 'text') {
+                $texto .= (string) ($bloco['text'] ?? '');
+                $blocos[] = ['type' => 'text', 'text' => (string) ($bloco['text'] ?? '')];
+            } elseif ($tipo === 'tool_use') {
+                // input pode vir como objeto vazio; normaliza para array.
+                $blocos[] = ['type' => 'tool_use', 'id' => (string) ($bloco['id'] ?? ''),
+                             'name' => (string) ($bloco['name'] ?? ''),
+                             'input' => is_array($bloco['input'] ?? null) ? $bloco['input'] : []];
+            }
+            // thinking fica de fora: não é reenviado nem exibido.
+        }
+
+        $r = IAResultado::sucesso(trim($texto));
+        $r->stopReason         = (string) ($corpo['stop_reason'] ?? 'end_turn');
+        $r->blocos             = $blocos;
+        $r->tokensIn           = isset($corpo['usage']['input_tokens'])  ? (int) $corpo['usage']['input_tokens']  : null;
+        $r->tokensOut          = isset($corpo['usage']['output_tokens']) ? (int) $corpo['usage']['output_tokens'] : null;
+        $r->tokensCacheLeitura = isset($corpo['usage']['cache_read_input_tokens'])     ? (int) $corpo['usage']['cache_read_input_tokens']     : null;
+        $r->tokensCacheCriacao = isset($corpo['usage']['cache_creation_input_tokens']) ? (int) $corpo['usage']['cache_creation_input_tokens'] : null;
+        $r->tempoMs            = $resp['tempo_ms'];
+        $r->respostaBruta      = $resp['corpo_bruto'];
+        return $r;
+    }
+
+    /** Payload do turno com ferramentas. Separado para ser testável sem rede. */
+    protected function montarPayloadConversa(array $job): array
+    {
+        $maxTokens = (int) ($job['max_tokens'] ?? 0);
+        if ($maxTokens <= 0) {
+            $maxTokens = self::MAX_TOKENS_PADRAO;
+        }
+
+        $mensagens = is_array($job['mensagens'] ?? null) ? array_values($job['mensagens']) : [];
+
+        // Breakpoint de cache no último bloco da última mensagem: a
+        // próxima rodada (ou a próxima pergunta) reaproveita tudo até aqui.
+        $ultima = count($mensagens) - 1;
+        if ($ultima >= 0) {
+            $c = $mensagens[$ultima]['content'];
+            if (is_string($c)) {
+                $mensagens[$ultima]['content'] = [['type' => 'text', 'text' => $c, 'cache_control' => ['type' => 'ephemeral']]];
+            } elseif (is_array($c) && $c !== []) {
+                $mensagens[$ultima]['content'][count($c) - 1]['cache_control'] = ['type' => 'ephemeral'];
+            }
+        }
+
+        $payload = [
+            'model'      => (string) $job['modelo_codigo'],
+            'max_tokens' => max(64, min($maxTokens, self::MAX_TOKENS_TETO)),
+            'messages'   => $mensagens,
+        ];
+
+        $sistema = trim((string) ($job['instrucoes'] ?? ''));
+        if ($sistema !== '') {
+            // Bloco com cache_control: cobre tools + system (render order
+            // tools → system → messages), o prefixo estável do agente.
+            $payload['system'] = [['type' => 'text', 'text' => $sistema, 'cache_control' => ['type' => 'ephemeral']]];
+        }
+
+        $ferramentas = is_array($job['ferramentas'] ?? null) ? array_values($job['ferramentas']) : [];
+        if ($ferramentas !== []) {
+            $payload['tools'] = $ferramentas;
+            if (!empty($job['sem_ferramentas'])) {
+                $payload['tool_choice'] = ['type' => 'none'];
+            }
+        }
+
+        $params = is_array($job['params'] ?? null) ? $job['params'] : [];
+        if (isset($params['effort'])) {
+            $effort = strtolower((string) $params['effort']);
+            if (in_array($effort, self::EFFORTS, true)) {
+                $payload['output_config'] = ['effort' => $effort];
+            }
+            unset($params['effort']);
+        }
+        foreach ($params as $chave => $valor) {
+            if (!array_key_exists($chave, $payload)) {
+                $payload[$chave] = $valor;
+            }
+        }
+
+        return $payload;
     }
 
     /**

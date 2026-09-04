@@ -71,6 +71,7 @@ if (!function_exists('pwb_icon')) {
     {
         $icons = [
             'dashboard' => '<svg class="pwb_icon_svg" viewBox="0 0 24 24" fill="none"><path d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+            'spark' => '<svg class="pwb_icon_svg" viewBox="0 0 24 24" fill="none"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15ZM5 14l.6 1.4L7 16l-1.4.6L5 18l-.6-1.4L3 16l1.4-.6L5 14Z" fill="currentColor"/></svg>',
             'cart' => '<svg class="pwb_icon_svg" viewBox="0 0 24 24" fill="none"><path d="M3 4h2l2.2 11.2a2 2 0 0 0 2 1.6h7.9a2 2 0 0 0 2-1.5L21 8H6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 21a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm8 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" fill="currentColor"/></svg>',
             'box' => '<svg class="pwb_icon_svg" viewBox="0 0 24 24" fill="none"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M4.5 7.7 12 12l7.5-4.3M12 12v8.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
             'users' => '<svg class="pwb_icon_svg" viewBox="0 0 24 24" fill="none"><path d="M16 19a4 4 0 0 0-8 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM20 18a3.4 3.4 0 0 0-4-3.3M16.5 5.6a2.5 2.5 0 0 1 0 4.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
@@ -162,7 +163,14 @@ $pwb_indisponivel = $pwb_dashboard_data['indisponivel'] ?? [];
 ?>
 
 <div class="pwb_dashboard" data-pwb-api-url="<?= pwb_e($pwb_dashboard_config['api_url']) ?>">
-    <script type="application/json" id="pwb_dashboard_payload"><?= json_encode($pwb_dashboard_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?></script>
+    <?php // JSON_HEX_TAG: um "</script>" dentro de um nome de produto (ou de
+          // um texto de agente) fecharia o bloco e quebraria a página. ?>
+    <script type="application/json" id="pwb_dashboard_payload"><?= json_encode($pwb_dashboard_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?></script>
+    <?php // Config dos agentes: página → agente, sugestões, endpoints. Os
+          // resumos agendados ficam de fora: são texto do modelo, e o
+          // bloco do overview os renderiza em PHP, escapados. ?>
+    <?php $pwb_ia_cfg = $pwb_dashboard_config['ia'] ?? []; unset($pwb_ia_cfg['resumos']); ?>
+    <script type="application/json" id="pwb_ia_config"><?= json_encode($pwb_ia_cfg ?: new stdClass(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?></script>
 
     <aside class="pwb_sidebar">
         <div class="pwb_brand">
@@ -234,7 +242,10 @@ $pwb_indisponivel = $pwb_dashboard_data['indisponivel'] ?? [];
                 </label>
 
                 <button class="pwb_icon_button" type="button" data-pwb-refresh aria-label="Atualizar dashboard"><?= pwb_icon('refresh') ?></button>
-                <button class="pwb_icon_button pwb_notification_button" type="button" aria-label="Notificações"><?= pwb_icon('bell') ?><span class="pwb_notification_count">3</span></button>
+                <?php // Era o sino com um "3" fixo — decorativo. Virou o
+                      // botão dos agentes: abre o drawer do agente da página
+                      // ativa, com o período do painel já no contexto. ?>
+                <button class="pwb_icon_button pwb_ia_button" type="button" data-pwb-ia aria-label="Analisar com IA" title="Analisar com IA"><?= pwb_icon('spark') ?><span class="pwb_ia_button_label">Analisar com IA</span></button>
                 <span class="pwb_avatar"><?= pwb_e($pwb_dashboard_config['user_initials']) ?></span>
             </div>
         </header>
@@ -245,6 +256,33 @@ $pwb_indisponivel = $pwb_dashboard_data['indisponivel'] ?? [];
                     <?php pwb_render_kpi($pwb_kpi); ?>
                 <?php endforeach; ?>
             </div>
+
+            <?php // Resumo Executivo de Hoje — a última rodada AGENDADA de cada
+                  // agente (spec §16). Vem do banco: abrir o painel não chama IA.
+                  // Sem rodada ainda, o bloco não aparece: um card vazio
+                  // "aguardando IA" só ensinaria a ignorar o bloco. ?>
+            <?php $pwb_resumos = $pwb_dashboard_config['ia']['resumos'] ?? []; ?>
+            <?php if (!empty($pwb_resumos)): ?>
+            <article class="pwb_panel pwb_ia_resumo">
+                <div class="pwb_panel_header">
+                    <h2 class="pwb_panel_title">Resumo Executivo de Hoje</h2>
+                    <span class="pwb_panel_hint">Análise agendada dos agentes · sem custo ao abrir</span>
+                </div>
+                <div class="pwb_ia_resumo_grid">
+                    <?php foreach ($pwb_resumos as $pwb_agente => $pwb_r): ?>
+                    <div class="pwb_ia_resumo_card" data-pwb-ia-resumo="<?= pwb_e($pwb_agente) ?>">
+                        <div class="pwb_ia_resumo_topo">
+                            <span class="pwb_ia_resumo_nome"><?= pwb_e($pwb_r['nome']) ?></span>
+                            <?php $pwb_cls = ['Alta' => 'pwb_badge_danger', 'Média' => 'pwb_badge_warning', 'Baixa' => 'pwb_badge_success'][$pwb_r['prioridade'] ?? ''] ?? 'pwb_badge_default'; ?>
+                            <span class="pwb_badge <?= $pwb_cls ?>"><?= pwb_e($pwb_r['prioridade'] ?? '—') ?></span>
+                        </div>
+                        <p class="pwb_ia_resumo_texto"><?= nl2br(pwb_e($pwb_r['resumo'])) ?></p>
+                        <span class="pwb_ia_resumo_quando"><?= pwb_e(date('d/m H:i', strtotime((string) $pwb_r['quando']))) ?></span>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </article>
+            <?php endif; ?>
 
             <div class="pwb_chart_grid pwb_chart_grid_overview">
                 <article class="pwb_panel pwb_panel_wide">
@@ -1454,5 +1492,193 @@ $pwb_indisponivel = $pwb_dashboard_data['indisponivel'] ?? [];
 
   var refresh = raiz.querySelector('[data-pwb-refresh]');
   if (refresh) refresh.addEventListener('click', function () { window.location.reload(); });
+
+
+  // ── Analisar com IA ───────────────────────────────────
+  // O botao abre o adminDrawer (CLAUDE.md §8) com o agente da pagina
+  // ativa. O contexto (pagina + periodo) vai automaticamente: o usuario
+  // nao repete o filtro. Resposta sincrona — o projeto nao tem SSE — e
+  // renderizada por secao (RESUMO ... PRIORIDADE), com a procedencia
+  // (modelo, custo, ferramentas) no rodape de cada resposta.
+  var iaBtn = raiz.querySelector('[data-pwb-ia]');
+  var iaCfgEl = document.getElementById('pwb_ia_config');
+  var iaCfg = {};
+  try { iaCfg = JSON.parse(iaCfgEl ? iaCfgEl.textContent : '{}') || {}; } catch (e) { iaCfg = {}; }
+
+  if (iaBtn && iaCfg.perguntar_url) {
+    var conversas = {}; // agente -> uuid: uma conversa por agente nesta visita
+
+    function paginaAtual() {
+      var a = raiz.querySelector('.pwb_nav_active[data-pwb-view]');
+      return a ? a.getAttribute('data-pwb-view') : 'overview';
+    }
+    function periodoAtual() {
+      var s = raiz.querySelector('[data-pwb-period]');
+      return s ? s.value : '30d';
+    }
+    function agenteDe(pagina) { return (iaCfg.paginas || {})[pagina] || null; }
+    function rotuloPeriodo(p) {
+      return { '7d': 'Últimos 7 dias', '30d': 'Últimos 30 dias', '90d': 'Últimos 90 dias', '12m': 'Últimos 12 meses' }[p] || p;
+    }
+    function badgePrioridade(p) {
+      var cls = { 'Alta': 'pwb_badge_danger', 'Média': 'pwb_badge_warning', 'Baixa': 'pwb_badge_success' }[p] || 'pwb_badge_default';
+      return '<span class="pwb_badge ' + cls + '">' + esc(p || '—') + '</span>';
+    }
+    function textoHtml(t) { return esc(t).replace(/\n/g, '<br>'); }
+
+    // O botao diz qual agente atende a pagina ativa (e desliga na Central).
+    function atualizarBotao() {
+      var ag = agenteDe(paginaAtual());
+      var info = ag ? (iaCfg.agentes || {})[ag] : null;
+      iaBtn.disabled = !info;
+      var rotulo = info ? 'Analisar com IA — ' + info.nome : 'Sem agente nesta página';
+      iaBtn.setAttribute('aria-label', rotulo);
+      iaBtn.title = rotulo;
+      var lbl = iaBtn.querySelector('.pwb_ia_button_label');
+      if (lbl) lbl.textContent = info ? info.curto : 'IA';
+    }
+    raiz.addEventListener('click', function (ev) {
+      if (ev.target.closest('[data-pwb-view]')) setTimeout(atualizarBotao, 0);
+    });
+    atualizarBotao();
+
+    function renderResposta(r) {
+      var h = '<div class="pwb_ia_msg pwb_ia_msg_agente">';
+      var secoes = r.secoes || {};
+      var ordem = ['RESUMO', 'INDICADORES', 'CAUSAS PROVÁVEIS', 'IMPACTO', 'RECOMENDAÇÕES', 'PRIORIDADE'];
+      var achou = false;
+      ordem.forEach(function (s) {
+        if (!secoes[s]) return;
+        achou = true;
+        h += '<div class="pwb_ia_secao"><h4 class="pwb_ia_secao_titulo">' + esc(s) + '</h4>';
+        if (s === 'PRIORIDADE') {
+          h += '<p class="pwb_ia_secao_texto">' + badgePrioridade(r.prioridade) + ' ' + textoHtml(secoes[s].replace(/^\W*(alta|m[eé]dia|baixa)\b\s*[—:-]?\s*/i, '')) + '</p>';
+        } else {
+          h += '<p class="pwb_ia_secao_texto">' + textoHtml(secoes[s]) + '</p>';
+        }
+        h += '</div>';
+      });
+      if (!achou) h += '<p class="pwb_ia_secao_texto">' + textoHtml(r.resposta || '') + '</p>';
+
+      if (r.numeros_sem_origem && r.numeros_sem_origem.length) {
+        h += '<p class="pwb_ia_aviso">' + r.numeros_sem_origem.length + ' número(s) sem origem direta nos dados consultados: '
+           + esc(r.numeros_sem_origem.slice(0, 6).join(', ')) + '. Podem ser cálculos do agente — confira antes de usar.</p>';
+      }
+
+      var p = r.procedencia || {};
+      h += '<div class="pwb_ia_procedencia">'
+         + '<span>' + esc(p.provedor || '') + ' · ' + esc(p.modelo || '') + '</span>'
+         + (p.custo_usd != null ? '<span>US$ ' + Number(p.custo_usd).toFixed(4) + '</span>' : '')
+         + (p.rodadas ? '<span>' + p.rodadas + ' rodada(s)</span>' : '')
+         + (p.cache_leitura ? '<span>cache ' + p.cache_leitura + ' tokens</span>' : '')
+         + '</div>';
+      if (p.ferramentas && p.ferramentas.length) {
+        h += '<div class="pwb_ia_ferramentas">' + p.ferramentas.map(function (f) {
+          return '<span class="pwb_ia_ferramenta">' + esc(f.replace(/^consultar_/, '')) + '</span>';
+        }).join('') + '</div>';
+      }
+      return h + '</div>';
+    }
+
+    iaBtn.addEventListener('click', function () {
+      var pagina = paginaAtual();
+      var agente = agenteDe(pagina);
+      if (!agente) return;
+      var info = (iaCfg.agentes || {})[agente] || { nome: 'Agente', sugestoes: [] };
+      var periodo = periodoAtual();
+
+      if (typeof window.adminDrawer !== 'function') {
+        window.alert('O componente de painel lateral não está disponível nesta página.');
+        return;
+      }
+
+      var corpo = document.createElement('div');
+      corpo.className = 'pwb_ia';
+      var aviso = '';
+      if (iaCfg.permitido === false) {
+        aviso = '<div class="pwb_ia_bloqueio">Seu cargo não tem acesso aos agentes de IA.</div>';
+      } else if (iaCfg.disponivel === false) {
+        aviso = '<div class="pwb_ia_bloqueio">Nenhum modelo de agente está configurado. Ative o provedor Claude e a chave em <strong>Central de IA → Configurações</strong>.</div>';
+      }
+      corpo.innerHTML =
+          '<div class="pwb_ia_contexto"><span>Página: <strong>' + esc(pagina) + '</strong></span><span>Período: <strong>' + esc(rotuloPeriodo(periodo)) + '</strong></span><span class="pwb_ia_contexto_dica">O agente já recebe estes filtros.</span></div>'
+        + aviso
+        + '<div class="pwb_ia_thread" data-pwb-ia-thread></div>'
+        + '<div class="pwb_ia_sugestoes">' + (info.sugestoes || []).map(function (s) {
+            return '<button type="button" class="pwb_ia_sugestao">' + esc(s) + '</button>';
+          }).join('') + '</div>'
+        + '<form class="pwb_ia_form"><textarea class="pwb_ia_input" rows="2" maxlength="1000" placeholder="Pergunte ao ' + esc(info.nome) + '…"></textarea>'
+        + '<button type="submit" class="pwb_ia_enviar">Perguntar</button></form>';
+
+      var drawer = adminDrawer({
+        titulo: info.nome,
+        subtitulo: 'Página: ' + pagina + ' · ' + rotuloPeriodo(periodo),
+        conteudo: corpo,
+        tamanho: 'lg',
+        classe: 'pwb_ia_drawer',
+        focoInicial: '.pwb_ia_input'
+      });
+
+      var thread = corpo.querySelector('[data-pwb-ia-thread]');
+      var input  = corpo.querySelector('.pwb_ia_input');
+      var form   = corpo.querySelector('.pwb_ia_form');
+      var ocupado = false;
+
+      function enviar(texto) {
+        if (ocupado || !texto) return;
+        if (aviso) { return; }
+        ocupado = true;
+        form.classList.add('pwb_ia_form_ocupado');
+        thread.insertAdjacentHTML('beforeend', '<div class="pwb_ia_msg pwb_ia_msg_user">' + textoHtml(texto) + '</div>');
+        thread.insertAdjacentHTML('beforeend', '<div class="pwb_ia_msg pwb_ia_msg_agente pwb_ia_pensando" data-pwb-ia-pensando>Consultando os dados<span class="pwb_ia_dots"></span></div>');
+        thread.scrollTop = thread.scrollHeight;
+        input.value = '';
+
+        var fd = new FormData();
+        fd.append('_csrf_token', (typeof CSRF_TOKEN !== 'undefined') ? CSRF_TOKEN : '');
+        fd.append('agente', agente);
+        fd.append('pergunta', texto);
+        fd.append('pagina', pagina);
+        fd.append('periodo', periodoAtual());
+        if (conversas[agente]) fd.append('conversa', conversas[agente]);
+
+        fetch(iaCfg.perguntar_url, { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+          .then(function (resp) { return resp.json().catch(function () { return { ok: false, msg: 'Resposta inválida do servidor (' + resp.status + ').' }; }); })
+          .then(function (r) {
+            var pensando = thread.querySelector('[data-pwb-ia-pensando]');
+            if (pensando) pensando.remove();
+            if (r && r.ok) {
+              conversas[agente] = r.conversa_uuid;
+              thread.insertAdjacentHTML('beforeend', renderResposta(r));
+            } else {
+              thread.insertAdjacentHTML('beforeend', '<div class="pwb_ia_msg pwb_ia_msg_erro">' + esc((r && r.msg) || 'O agente não respondeu.') + '</div>');
+            }
+            thread.scrollTop = thread.scrollHeight;
+          })
+          .catch(function () {
+            var pensando = thread.querySelector('[data-pwb-ia-pensando]');
+            if (pensando) pensando.remove();
+            thread.insertAdjacentHTML('beforeend', '<div class="pwb_ia_msg pwb_ia_msg_erro">Falha de rede ao consultar o agente.</div>');
+          })
+          .finally(function () {
+            ocupado = false;
+            form.classList.remove('pwb_ia_form_ocupado');
+            input.focus();
+          });
+      }
+
+      drawer.escutar('click', '.pwb_ia_sugestao', function (ev) {
+        var b = ev.target.closest('.pwb_ia_sugestao');
+        if (b) enviar(b.textContent.trim());
+      });
+      drawer.escutar('submit', '.pwb_ia_form', function (ev) {
+        ev.preventDefault();
+        enviar(input.value.trim());
+      });
+      drawer.escutar('keydown', '.pwb_ia_input', function (ev) {
+        if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); enviar(input.value.trim()); }
+      });
+    });
+  }
 })();
 </script>

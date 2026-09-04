@@ -353,6 +353,68 @@ if (!$faltaNovas) {
 }
 
 // ────────────────────────────────────────────────────────
+// Agentes de IA sobre o BI. A pergunta aqui é a mesma do painel:
+// "por que o botão de IA não responde?" — e a resposta quase sempre é
+// um destes: provedor inativo, sem chave, migration não aplicada, teto.
+echo PHP_EOL . "AGENTES DE IA (sql/ia/2026-09-04_ia_agentes_bi.sql)" . PHP_EOL;
+
+$temAgente = existeObjeto($db, 'ia_agente_mensagens');
+linha($temAgente ? 'ok' : 'falta', 'tabelas ia_agente_conversas / ia_agente_mensagens',
+      $temAgente ? '' : 'rode: php cli/ia-migrar.php --aplicar');
+
+if ($temAgente) {
+    $capAgente = str_contains((string)$db->query(
+        "SELECT COLUMN_TYPE FROM information_schema.columns
+          WHERE table_schema = DATABASE() AND table_name = 'ia_modelos' AND column_name = 'capacidade'"
+    )->fetchColumn(), "'agente'");
+    linha($capAgente ? 'ok' : 'falta', "capacidade 'agente' no ENUM de ia_modelos");
+
+    $tipos = (int)$db->query("SELECT COUNT(*) FROM ia_tipos_conteudo WHERE capacidade='agente' AND ativo=1")->fetchColumn();
+    linha($tipos === 3 ? 'ok' : 'falta', "{$tipos} de 3 agentes ativos em ia_tipos_conteudo");
+
+    $prov = $db->query("SELECT ativo, api_key_enc IS NOT NULL tem_chave FROM ia_provedores WHERE codigo='claude'")->fetch();
+    if (!$prov) {
+        linha('falta', 'provedor claude não cadastrado', 'sql/ia/2026-09-03_ia_provedor_claude.sql');
+    } elseif ((int)$prov['ativo'] !== 1 || (int)$prov['tem_chave'] !== 1) {
+        linha('aviso', 'provedor claude ' . ((int)$prov['tem_chave'] ? 'inativo' : 'sem chave'),
+              'cole a chave da Anthropic em /admin/ia/config, teste e ative — até lá o botão avisa e não gasta');
+        $avisos[] = 'Os agentes de BI só respondem com o provedor Claude ATIVO e com chave. '
+                  . 'A tela mostra "Nenhum modelo de agente está configurado" até isso acontecer.';
+    } else {
+        $modelos = (int)$db->query(
+            "SELECT COUNT(*) FROM ia_modelos m JOIN ia_provedores p ON p.id=m.provedor_id
+              WHERE m.capacidade='agente' AND m.ativo=1 AND p.ativo=1 AND p.api_key_enc IS NOT NULL"
+        )->fetchColumn();
+        linha($modelos > 0 ? 'ok' : 'falta', "{$modelos} modelo(s) de agente prontos (Opus 5 primário, Sonnet 5 fallback)");
+    }
+
+    $teto = $db->query("SELECT limite_diario_usd, limite_mensal_usd, ativo FROM ia_limites WHERE escopo='agentes_bi'")->fetch();
+    if ($teto && (int)$teto['ativo'] === 1) {
+        $gasto = (float)$db->query("SELECT COALESCE(SUM(total_usd),0) FROM ia_custos_diarios WHERE capacidade='agente' AND `data`=CURDATE()")->fetchColumn();
+        linha($gasto < (float)$teto['limite_diario_usd'] ? 'ok' : 'aviso',
+              sprintf('teto próprio: US$ %.2f/dia (hoje: US$ %.4f) · US$ %.2f/mês', $teto['limite_diario_usd'], $gasto, $teto['limite_mensal_usd']));
+    } else {
+        linha('aviso', 'sem teto próprio (escopo agentes_bi)', 'os agentes dividem o global com a Central de Marketing');
+    }
+
+    $conv = $db->query(
+        "SELECT modo, COUNT(*) n, MAX(criado_em) ultima FROM ia_agente_conversas GROUP BY modo"
+    )->fetchAll(PDO::FETCH_ASSOC);
+    if (!$conv) {
+        linha('aviso', 'nenhuma conversa ainda', 'o "Resumo Executivo de Hoje" aparece após a primeira rodada agendada');
+    } else {
+        foreach ($conv as $c) {
+            linha('ok', sprintf('%-10s %4d conversa(s), última em %s', $c['modo'], $c['n'], $c['ultima']));
+        }
+        $hoje = (int)$db->query("SELECT COUNT(DISTINCT agente) FROM ia_agente_conversas WHERE modo='agendado' AND DATE(criado_em)=CURDATE()")->fetchColumn();
+        if ($hoje < 3) {
+            linha('aviso', "{$hoje} de 3 agentes rodaram a análise agendada hoje",
+                  'cron: php cli/ia-agentes-worker.php --agente=… (6h, 7h, 8h)');
+        }
+    }
+}
+
+// ────────────────────────────────────────────────────────
 // Marca é quase obrigatória no cadastro, então produto sem marca
 // derruba a página de Marcas em silêncio.
 if (!$faltaBase) {

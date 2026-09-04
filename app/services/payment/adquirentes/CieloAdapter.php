@@ -150,10 +150,20 @@ class CieloAdapter implements AdquirenteInterface
             return null;
         }
 
+        // PROVIDER DO SCRIPT: decide para onde o navegador posta o cartao.
+        //   braspag → transaction(sandbox).pagador.com.br        (padrao)
+        //   cielo   → transaction(sandbox).cieloecommerce.cielo.com.br
+        //
+        // Verificado em 04/09/2026: no sandbox o host da Cielo nem resolve
+        // (HTTP 0) — so o da Braspag responde, e e nele que o accesstoken
+        // nasce. Por isso o padrao e braspag. Troque por config_extra
+        // `sop_provider` quando a Cielo confirmar o host de producao.
+        $provider = strtolower((string) ($this->opcao('sop_provider') ?: 'braspag'));
+
         return [
             'accessToken' => $token,
             'environment' => $sandbox ? 'sandbox' : 'production',
-            'provider'    => 'cielo',
+            'provider'    => $provider === 'cielo' ? 'cielo' : 'braspag',
         ];
     }
 

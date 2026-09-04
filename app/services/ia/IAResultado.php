@@ -41,6 +41,25 @@ class IAResultado
      */
     public array $imagens = [];
 
+    /* ---- Conversa com ferramentas (capacidade agente) ---------------- */
+
+    /** end_turn | tool_use | max_tokens | refusal — o loop decide por ele. */
+    public ?string $stopReason = null;
+
+    /** content[] cru da resposta (text + tool_use), para reenviar como turno assistant. */
+    public array $blocos = [];
+
+    /** Tokens lidos/gravados no cache de prompt — informativos (o rollup é por token pleno). */
+    public ?int $tokensCacheLeitura = null;
+    public ?int $tokensCacheCriacao = null;
+
+    /** Preenchidos pelo orquestrador ao fim do loop. */
+    public int $rodadas = 0;
+    /** Transcrição completa da rodada (mensagens novas: assistant + tool_result). */
+    public array $mensagens = [];
+    /** Cada item: ['nome'=>, 'parametros'=>, 'ok'=>, 'ms'=>, 'cache'=>, 'dados'=>|'erro'=>] */
+    public array $ferramentasUsadas = [];
+
     public static function sucesso(string $texto): self
     {
         $r = new self();
