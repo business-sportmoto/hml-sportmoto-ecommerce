@@ -424,12 +424,18 @@ class ChatInstagramService
 
         // ── Acha a regra ──
         $tipoMidia = (string)($c['media']['media_product_type'] ?? '');
-        $regra = $this->acharRegra(
-            $texto, $mediaId, $contaId, $parentId !== '', $fromId, $evento, $tipoMidia
+        $porQue = null;
+        $regra  = $this->acharRegra(
+            $texto, $mediaId, $contaId, $parentId !== '', $fromId, $evento, $tipoMidia, $porQue
         );
         if (!$regra) {
             $this->marcarProcessado($registroId);
-            return ['ok' => false, 'motivo' => 'nenhuma regra casou'];
+            // Duas regras já bastam para apontar a correção; a coluna do log
+            // tem 400 caracteres e a lista inteira não caberia.
+            $motivo = $porQue
+                ? 'nenhuma regra casou — ' . implode(' · ', array_slice($porQue, 0, 2))
+                : 'nenhuma automação ativa para comentário';
+            return ['ok' => false, 'motivo' => mb_substr($motivo, 0, 380)];
         }
 
         $this->db->prepare("UPDATE chat_ig_comentarios SET regra_id = :r WHERE id = :id")
@@ -448,10 +454,21 @@ class ChatInstagramService
      * @param string $evento    comments | live_comments | story_reply | mentions
      * @param string $tipoMidia FEED | REELS | VIDEO — distingue post de reel
      */
+    /**
+     * @param array|null $porQue Preenchido com o motivo de cada regra recusada.
+     *        Sem isto o log diz só "nenhuma regra casou", e quem investiga não
+     *        sabe se marcou o Reel errado, se a palavra não bateu ou se aquela
+     *        pessoa já tinha sido atendida.
+     */
     private function acharRegra(
         string $texto, string $mediaId, ?int $contaId, bool $ehResposta, string $fromId,
-        string $evento = 'comments', string $tipoMidia = ''
+        string $evento = 'comments', string $tipoMidia = '', ?array &$porQue = null
     ): ?array {
+        $porQue = [];
+        $anota = function (array $r, string $motivo) use (&$porQue): void {
+            $porQue[] = '#' . (int)$r['id'] . ' ' . mb_substr((string)$r['nome'], 0, 40) . ': ' . $motivo;
+        };
+
         $gat = new ChatGatilhoService($this->db);
 
         // Sem tipo informado, descobre pelo cache de mídias — é o que separa
@@ -463,23 +480,40 @@ class ChatInstagramService
         foreach ($this->regras(true) as $regra) {
             // Conta específica
             if ($regra['conta_id'] !== null && $contaId !== null
-                && (int)$regra['conta_id'] !== $contaId) continue;
+                && (int)$regra['conta_id'] !== $contaId) {
+                $anota($regra, 'é de outra conta do Instagram');
+                continue;
+            }
 
             // Tipo de gatilho: uma automação de live não responde post comum
             $gatilho = (string)($regra['gatilho_tipo'] ?? 'comentario');
-            if (!ChatIgReceitaService::gatilhoAceita($gatilho, $evento, $tipoMidia)) continue;
+            if (!ChatIgReceitaService::gatilhoAceita($gatilho, $evento, $tipoMidia)) {
+                $anota($regra, "gatilho é “{$gatilho}”, e isto é {$evento}"
+                             . ($tipoMidia !== '' ? " em {$tipoMidia}" : ''));
+                continue;
+            }
 
-            if ($ehResposta && (int)$regra['ignorar_respostas'] === 1) continue;
+            if ($ehResposta && (int)$regra['ignorar_respostas'] === 1) {
+                $anota($regra, 'é resposta dentro de uma thread, e a automação ignora essas');
+                continue;
+            }
 
             // Escopo por mídia
             if ($regra['escopo'] === 'midia') {
                 $midias = json_decode($regra['midias_json'] ?? '[]', true) ?: [];
-                if (!in_array($mediaId, array_map('strval', $midias), true)) continue;
+                if (!in_array($mediaId, array_map('strval', $midias), true)) {
+                    $anota($regra, $midias
+                        ? 'a publicação ' . ($mediaId ?: '(sem id)') . ' não está entre as '
+                          . count($midias) . ' marcadas no escopo'
+                        : 'escopo é "uma publicação específica" e nenhuma foi marcada');
+                    continue;
+                }
             }
 
             // Palavras: vazio = qualquer comentário serve
             $palavras = trim((string)($regra['palavras'] ?? ''));
             if ($palavras !== '' && !$gat->casa($texto, $palavras, (string)$regra['modo_match'])) {
+                $anota($regra, "o texto não casa com “{$palavras}” ({$regra['modo_match']})");
                 continue;
             }
 
@@ -490,7 +524,10 @@ class ChatInstagramService
                      WHERE regra_id = :r AND from_ig_id = :f AND dm_enviado = 1 LIMIT 1"
                 );
                 $st->execute([':r' => (int)$regra['id'], ':f' => $fromId]);
-                if ($st->fetchColumn()) continue;
+                if ($st->fetchColumn()) {
+                    $anota($regra, 'esta pessoa já foi atendida e a automação é "só uma vez por pessoa"');
+                    continue;
+                }
             }
 
             return $regra;
