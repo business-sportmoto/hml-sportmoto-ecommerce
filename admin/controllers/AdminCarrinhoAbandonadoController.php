@@ -342,6 +342,173 @@ class AdminCarrinhoAbandonadoController extends Controller {
             'conteudo'        => trim((string)($_POST['conteudo'] ?? '')),
             'uso_recomendado' => SecurityHelper::sanitizeString($_POST['uso_recomendado'] ?? ''),
             'ativo'           => isset($_POST['ativo']) ? 1 : 0,
+
+            // Cabeçalho, rodapé e botões — só WhatsApp, e só em mensagem
+            // interativa. O model zera tudo isso quando o canal é e-mail.
+            'cabecalho_tipo'  => SecurityHelper::sanitizeString($_POST['cabecalho_tipo']  ?? 'nenhum'),
+            // O valor NÃO passa por sanitizeString: quando é mídia, é uma URL,
+            // e escapar & de query string quebraria o endereço. O model valida
+            // com FILTER_VALIDATE_URL, e a saída escapa na view.
+            'cabecalho_valor' => trim((string)($_POST['cabecalho_valor'] ?? '')),
+            'rodape'          => SecurityHelper::sanitizeString($_POST['rodape'] ?? ''),
+            'botoes'          => $this->coletarBotoes(),
+        ];
+    }
+
+    /**
+     * Limites e formatos do cabeçalho, por tipo.
+     *
+     * São da Meta, não nossos. Barrar aqui dá mensagem clara; deixar passar dá
+     * erro genérico da API depois de o arquivo já estar no disco.
+     */
+    private const CABECALHO_FORMATOS = [
+        'imagem'    => ['exts' => ['jpg', 'jpeg', 'png'],
+                        'mb'   => 5,   'rotulo' => 'Imagem'],
+        'video'     => ['exts' => ['mp4', '3gp'],
+                        'mb'   => 16,  'rotulo' => 'Vídeo'],
+        'documento' => ['exts' => ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt'],
+                        'mb'   => 100, 'rotulo' => 'Documento'],
+    ];
+
+    /** Conteúdo que nunca pode ficar público no nosso domínio. */
+    private const MIME_PERIGOSO = [
+        'text/html', 'application/xhtml+xml', 'image/svg+xml',
+        'application/x-msdownload', 'application/x-executable',
+        'application/x-dosexec', 'application/x-sh', 'text/x-php',
+        'application/x-httpd-php',
+    ];
+
+    // ── POST /admin/carrinhos-abandonados/templates/upload-cabecalho ──
+    /**
+     * Recebe a mídia do cabeçalho e devolve a URL pública.
+     *
+     * A Meta BUSCA o arquivo nessa URL na hora do envio — ela não recebe os
+     * bytes de nós. Por isso o endereço precisa ser alcançável pela internet:
+     * num ambiente local o upload funciona e o envio falha, e o motivo não é
+     * óbvio. O aviso está na tela.
+     */
+    public function templatesUploadCabecalho(): void {
+        AuthHelper::requireAdminLevel('super', 'gerente');
+        $this->verifyCsrf();
+
+        $tipo = SecurityHelper::sanitizeString($_POST['tipo'] ?? '');
+        if (!isset(self::CABECALHO_FORMATOS[$tipo])) {
+            $this->json(['ok' => false, 'msg' => 'Escolha o tipo do cabeçalho antes de enviar.']);
+            return;
+        }
+        $regra = self::CABECALHO_FORMATOS[$tipo];
+
+        $f = $_FILES['arquivo'] ?? null;
+        if (!is_array($f) || ($f['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            $this->json(['ok' => false, 'msg' => $this->erroUpload((int)($f['error'] ?? UPLOAD_ERR_NO_FILE))]);
+            return;
+        }
+        // Só o arquivo que veio no POST — barra caminho forjado
+        if (!is_uploaded_file((string)$f['tmp_name'])) {
+            $this->json(['ok' => false, 'msg' => 'Upload inválido.']);
+            return;
+        }
+
+        // O FORMATO vem da extensão; o sniff decide SEGURANÇA. mime_content_type
+        // erra demais para servir de whitelist de formato, mas é confiável para
+        // dizer "isto é HTML" — que é o que não pode ficar público aqui.
+        $ext = strtolower(pathinfo((string)$f['name'], PATHINFO_EXTENSION));
+        if (!in_array($ext, $regra['exts'], true)) {
+            $this->json(['ok' => false, 'msg' => $regra['rotulo'] . ': aceita apenas '
+                . implode(', ', $regra['exts']) . '.']);
+            return;
+        }
+
+        $sniff = function_exists('mime_content_type')
+            ? strtolower(trim(explode(';', (string)mime_content_type((string)$f['tmp_name']))[0]))
+            : '';
+        if ($sniff !== '' && in_array($sniff, self::MIME_PERIGOSO, true)) {
+            $this->json(['ok' => false,
+                'msg' => "O conteúdo do arquivo não confere com .{$ext} ({$sniff}). Envio bloqueado."]);
+            return;
+        }
+
+        if ((int)$f['size'] > $regra['mb'] * 1024 * 1024) {
+            $this->json(['ok' => false,
+                'msg' => $regra['rotulo'] . " pode ter no máximo {$regra['mb']} MB."]);
+            return;
+        }
+
+        $rel = 'uploads/templates/' . date('Y/m');
+        $dir = (defined('ROOT_PATH') ? ROOT_PATH : dirname(__DIR__, 2)) . '/' . $rel;
+        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+            $this->json(['ok' => false, 'msg' => 'Não foi possível criar a pasta de upload.']);
+            return;
+        }
+
+        // Nome aleatório: o nome que o usuário deu nunca vira caminho no disco
+        $nome    = bin2hex(random_bytes(16)) . '.' . $ext;
+        $destino = $dir . '/' . $nome;
+        if (!move_uploaded_file((string)$f['tmp_name'], $destino)) {
+            $this->json(['ok' => false, 'msg' => 'Falha ao gravar o arquivo.']);
+            return;
+        }
+
+        $url = (defined('BASE_URL') ? BASE_URL : '') . '/' . $rel . '/' . $nome;
+
+        LogService::audit('recuperacao_template_upload', [
+            'tipo' => $tipo, 'arquivo' => $nome, 'bytes' => (int)$f['size'],
+        ]);
+
+        $this->json(['ok' => true, 'url' => $url, 'nome' => (string)$f['name']]);
+    }
+
+    /** Mensagem para o código de erro do PHP, em vez de "erro 1". */
+    private function erroUpload(int $codigo): string {
+        return match ($codigo) {
+            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'Arquivo maior que o limite do servidor.',
+            UPLOAD_ERR_PARTIAL    => 'O envio foi interrompido. Tente de novo.',
+            UPLOAD_ERR_NO_FILE    => 'Nenhum arquivo escolhido.',
+            UPLOAD_ERR_NO_TMP_DIR,
+            UPLOAD_ERR_CANT_WRITE => 'O servidor não conseguiu gravar o arquivo.',
+            default               => 'Falha no envio do arquivo.',
+        };
+    }
+
+    /**
+     * Botões do template, no shape que o model normaliza.
+     *
+     * O formulário manda linhas paralelas (`botao_titulo[]`, `botao_link[]`,
+     * `botao_url[]`); aqui elas viram uma lista de itens. O destino pode ser
+     * uma variável pronta (`{link}`) ou um endereço digitado — quando é
+     * `personalizado`, vale o campo livre.
+     */
+    private function coletarBotoes(): ?array {
+        $tipo = SecurityHelper::sanitizeString($_POST['botoes_tipo'] ?? 'nenhum');
+        if (!in_array($tipo, ['botoes', 'lista'], true)) return null;
+
+        $titulos = (array)($_POST['botao_titulo'] ?? []);
+        $links   = (array)($_POST['botao_link']   ?? []);
+        $urls    = (array)($_POST['botao_url']    ?? []);
+        $descs   = (array)($_POST['botao_desc']   ?? []);
+
+        $itens = [];
+        foreach ($titulos as $i => $titulo) {
+            $titulo = SecurityHelper::sanitizeString((string)$titulo);
+            if (trim($titulo) === '') continue;
+
+            $escolha = SecurityHelper::sanitizeString((string)($links[$i] ?? '{link}'));
+            $destino = $escolha === 'personalizado'
+                ? trim((string)($urls[$i] ?? ''))
+                : $escolha;
+
+            $itens[] = [
+                'titulo'    => $titulo,
+                'url'       => $destino,
+                'descricao' => SecurityHelper::sanitizeString((string)($descs[$i] ?? '')),
+            ];
+        }
+        if (!$itens) return null;
+
+        return [
+            'tipo'        => $tipo,
+            'itens'       => $itens,
+            'texto_botao' => SecurityHelper::sanitizeString($_POST['botoes_texto_botao'] ?? ''),
         ];
     }
 

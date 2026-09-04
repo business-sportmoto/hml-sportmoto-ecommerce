@@ -3170,6 +3170,16 @@ html[data-theme="dark"] .adq-page{--adq-aviso-tx:#fcd34d;--adq-aviso-bd:#f59e0b4
    Escopado em pg- para nao colidir com o editor de marketing (fx-), que usa o
    mesmo Drawflow na mesma instalacao.
 
+   TELA CHEIA: mesmo desenho do editor de fluxo do chat (chat.css, .ch-fx-tela).
+   O canvas ocupa a area de conteudo inteira e barra, paleta, painel, legenda e
+   avisos flutuam sobre ele. Antes o canvas era uma moldura de altura fixa
+   (100vh - 250px) dentro de um .admin-page, que traz max-width e
+   `padding: 24px 28px` — num monitor grande sobrava faixa cinza dos dois lados
+   e o canvas ficava com menos de metade da tela. A view **nao usa mais
+   .admin-page**: pendura .pg-editor direto no .admin-content, como o editor do
+   chat faz com .ch. O modo so liga quando .pg-tela esta na pagina; nenhuma
+   outra pagina do admin muda.
+
    TEMA POR TOKEN: as cores moram nas variaveis abaixo e sao trocadas em bloco
    no escuro. Antes cada regra trazia a cor no corpo, e adicionar o tema
    escuro exigiria reescrever todas — agora e um bloco so. */
@@ -3184,28 +3194,123 @@ html[data-theme="dark"] .adq-page{--adq-aviso-tx:#fcd34d;--adq-aviso-bd:#f59e0b4
   --pg-grade:var(--pgto-border);
   --pg-sombra:var(--pgto-shadow-sm);
   --pg-sombra-no:var(--pgto-shadow);
+  --pg-flut-sombra:0 1px 2px rgba(16,24,40,.06),0 8px 24px -8px rgba(16,24,40,.16);
+  /* Onde comeca tudo que fica sob a barra. Vira 2 linhas no celular, e ai
+     este numero cresce — por isso e token e nao valor solto em 4 regras. */
+  --pg-topo:70px;
 }
 
-/* Barra */
-.pg-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap}
-.pg-titulo{margin:0;font-size:18px;font-weight:700;color:var(--pg-texto);letter-spacing:-.01em}
-.pg-selo{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.02em}
-.pg-zoom{display:inline-flex;border:1px solid var(--pg-borda);border-radius:8px;overflow:hidden}
+/* ── Modo tela cheia ─────────────────────────────────────────────────────── */
+/* A pagina inteira para de rolar: quem rola sao a paleta e o painel, por
+   dentro. Sem isto o arrasto do canvas puxa a barra de rolagem do documento. */
+body:has(.pg-tela){overflow:hidden}
+body:has(.pg-tela) .admin-content{
+  padding:0;
+  /* flex:none e obrigatorio: o .admin-content nasce flex:1, ou seja
+     flex-basis:0%, e num container em coluna o flex-basis vence a altura — a
+     area de conteudo colapsava para a altura do conteudo (48px) e o canvas
+     sumia. */
+  flex:none;
+  height:calc(100vh - var(--topbar-h,60px));
+  overflow:hidden;
+  animation:none;  /* o fadeSlideUp do admin arrastava o canvas na entrada */
+}
+/* O .pg-editor e filho direto do .admin-content e nao tem altura propria — sem
+   esta linha o height:100% da .pg-tela resolveria para zero e o canvas sumiria.
+   Mesmo detalhe que o chat resolve com `.admin-content > .ch { height: 100% }`. */
+body:has(.pg-tela) .admin-content>.pg-editor{height:100%}
+
+.pg-tela{position:relative;width:100%;height:100%;overflow:hidden}
+
+/* ── Canvas: o fundo de tudo ─────────────────────────────────────────────── */
+#pg-canvas{position:absolute;inset:0;
+  background-color:var(--pg-fundo);
+  background-image:radial-gradient(var(--pg-grade) 1px,transparent 1px);
+  background-size:18px 18px}
+#pg-canvas .drawflow{width:100%;height:100%}
+
+/* ── Peca flutuante ──────────────────────────────────────────────────────── */
+/* Uma sombra so para tudo que flutua: duas camadas curtas, sem borrao gigante. */
+.pg-flut{background:var(--pg-superficie);border:1px solid var(--pg-borda);
+  border-radius:12px;box-shadow:var(--pg-flut-sombra)}
+html[data-theme="dark"] .pg-editor{
+  --pg-flut-sombra:0 1px 2px rgba(0,0,0,.4),0 8px 24px -8px rgba(0,0,0,.55)}
+@media (prefers-color-scheme: dark){
+  html:not([data-theme="light"]) .pg-editor{
+    --pg-flut-sombra:0 1px 2px rgba(0,0,0,.4),0 8px 24px -8px rgba(0,0,0,.55)}
+}
+
+/* ── Barra superior ──────────────────────────────────────────────────────── */
+/* Sai do fluxo do documento mas continua acima do canvas. O pointer-events
+   devolvido so aos grupos deixa o espaco vazio entre eles arrastavel. */
+.pg-barra{position:absolute;top:14px;left:14px;right:14px;z-index:7;
+  display:flex;align-items:flex-start;justify-content:space-between;
+  gap:12px;flex-wrap:wrap;pointer-events:none}
+.pg-barra>*{pointer-events:auto}
+.pg-grupo{display:flex;align-items:center;gap:8px;padding:6px 10px;
+  max-width:100%;min-width:0;flex-wrap:wrap}
+.pg-sep{width:1px;height:20px;background:var(--pg-borda);flex:none;margin:0 2px}
+
+.pg-voltar{display:grid;place-items:center;width:30px;height:30px;flex:none;
+  border-radius:8px;border:0;background:none;color:var(--pg-texto2);
+  text-decoration:none;font-size:15px;line-height:1;cursor:pointer;
+  transition:background .14s,color .14s}
+.pg-voltar:hover{background:var(--pg-recuo);color:var(--pg-texto)}
+
+.pg-titulo{margin:0;font-size:15px;font-weight:700;color:var(--pg-texto);
+  letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  min-width:0;max-width:340px}
+.pg-selo{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;
+  letter-spacing:.02em;flex:none;white-space:nowrap}
+
+.pg-zoom{display:inline-flex;align-items:center;border:1px solid var(--pg-borda);
+  border-radius:8px;overflow:hidden;flex:none}
 .pg-zoom button{border:0;background:var(--pg-superficie);color:var(--pg-texto2);
   padding:7px 11px;font-size:12.5px;font-weight:600;cursor:pointer;line-height:1;
-  border-right:1px solid var(--pg-borda);transition:background .14s,color .14s}
+  border-right:1px solid var(--pg-borda);transition:background .14s,color .14s;
+  font-family:inherit}
 .pg-zoom button:last-child{border-right:0}
-.pg-zoom button:hover{background:var(--pg-fundo);color:var(--pg-texto)}
+.pg-zoom button:hover{background:var(--pg-recuo);color:var(--pg-texto)}
 
-/* Moldura */
-.pg-wrap{display:grid;grid-template-columns:206px 1fr 310px;
-  height:calc(100vh - 250px);min-height:480px;
-  border:1px solid var(--pg-borda);border-radius:12px;overflow:hidden;
-  background:var(--pg-superficie);box-shadow:var(--pg-sombra)}
+/* Botao de ajuda: abre a caixa com as regras de ligacao. */
+.pg-ajuda-btn{width:30px;height:30px;flex:none;border-radius:8px;
+  border:1px solid var(--pg-borda);background:var(--pg-superficie);
+  color:var(--pg-texto2);font-size:13px;font-weight:700;cursor:pointer;
+  display:grid;place-items:center;font-family:inherit;transition:background .14s,color .14s}
+.pg-ajuda-btn:hover,.pg-ajuda-btn.aberto{background:var(--pg-recuo);color:var(--pg-texto)}
 
-/* Paleta */
-#pg-paleta{border-right:1px solid var(--pg-borda);background:var(--pg-recuo);
-  overflow-y:auto;padding:12px 11px}
+/* ── Caixa de ajuda (flutuante, fechada por padrao) ──────────────────────── */
+.pg-ajuda{position:absolute;top:var(--pg-topo);right:14px;z-index:8;
+  width:380px;max-width:calc(100% - 28px);display:none;padding:16px 18px;
+  font-size:12.5px;line-height:1.6;color:var(--pg-texto2)}
+.pg-ajuda.aberta{display:block}
+.pg-ajuda strong{color:var(--pg-texto)}
+.pg-ajuda p{margin:0 0 10px}
+.pg-ajuda p:last-child{margin-bottom:0}
+/* Com o painel do no aberto a caixa colidiria com ele. */
+.pg-tela:has(#pg-painel.aberto) .pg-ajuda{right:358px}
+
+/* ── Selo de somente leitura ─────────────────────────────────────────────── */
+/* Explica por que os botoes de salvar sumiram. Como paragrafo ele empurrava a
+   barra para duas linhas, e a segunda passava por baixo do painel do no — que
+   comeca logo abaixo da primeira. O texto inteiro esta na caixa "?". */
+.pg-somente-leitura{display:inline-flex;align-items:center;gap:5px;flex:none;
+  padding:3px 10px;border-radius:20px;white-space:nowrap;
+  font-size:11px;font-weight:700;letter-spacing:.02em;
+  background:var(--pgto-amber-soft);color:#b45309;border:1px solid #f59e0b4d}
+@media (prefers-color-scheme: dark){
+  html:not([data-theme="light"]) .pg-somente-leitura{color:#fcd34d}
+}
+html[data-theme="dark"] .pg-somente-leitura{color:#fcd34d}
+
+/* ── Paleta ──────────────────────────────────────────────────────────────── */
+.pg-paleta-box{position:absolute;left:14px;top:var(--pg-topo);bottom:14px;z-index:6;
+  width:214px;display:flex;flex-direction:column;overflow:hidden}
+.pg-paleta-cab{flex:none;padding:11px 14px;border-bottom:1px solid var(--pg-borda);
+  font-size:12.5px;font-weight:700;color:var(--pg-texto);letter-spacing:-.01em}
+.pg-paleta-cab span{display:block;font-size:11px;font-weight:500;
+  color:var(--pg-texto2);margin-top:2px;letter-spacing:0}
+#pg-paleta{flex:1;overflow-y:auto;padding:10px 11px 16px;background:transparent}
 .pg-paleta-grupo{font-size:10px;font-weight:700;text-transform:uppercase;
   color:var(--pg-texto2);margin:14px 0 7px;letter-spacing:.07em}
 .pg-paleta-grupo:first-child{margin-top:2px}
@@ -3221,17 +3326,22 @@ html[data-theme="dark"] .adq-page{--adq-aviso-tx:#fcd34d;--adq-aviso-bd:#f59e0b4
   box-shadow:var(--pg-sombra)}
 .pg-paleta-item:active{cursor:grabbing}
 
-/* Canvas */
-#pg-canvas{position:relative;background-color:var(--pg-fundo);
-  background-image:radial-gradient(var(--pg-grade) 1px,transparent 1px);
-  background-size:18px 18px}
-
-.drawflow .drawflow-node{border-radius:10px;border:1px solid var(--pg-borda);
+/* ── No ──────────────────────────────────────────────────────────────────── */
+/* TUDO daqui para baixo e prefixado com #pg-canvas de proposito.
+   O drawflow.min.css vem do CDN por um <link> que mora na view, dentro do
+   <body> — ou seja, e aplicado DEPOIS deste arquivo. Com a mesma
+   especificidade quem vence e ele, e o que a tela mostrava era o tema cru da
+   biblioteca: no ciano de borda preta, entrada amarela, saida branca e traco
+   azul de 5px. As cores das portas nunca apareceram. O editor de fluxo do
+   chat ja resolvia assim (.ch-fx-canvas .drawflow ...). */
+#pg-canvas .drawflow .drawflow-node{border-radius:10px;border:1px solid var(--pg-borda);
   box-shadow:var(--pg-sombra-no);padding:0;background:var(--pg-superficie);
+  color:var(--pg-texto);width:auto;min-height:0;
   transition:box-shadow .16s,border-color .16s}
-.drawflow .drawflow-node:hover{border-color:var(--pg-borda2)}
-.drawflow .drawflow-node.selected{border-color:#2563eb;
-  box-shadow:0 0 0 2px rgba(37,99,235,.28),var(--pg-sombra-no)}
+#pg-canvas .drawflow .drawflow-node:hover{border-color:var(--pg-borda2)}
+/* O padrao da biblioteca para o no selecionado e background:red. */
+#pg-canvas .drawflow .drawflow-node.selected{background:var(--pg-superficie);
+  border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.28),var(--pg-sombra-no)}
 
 .pg-no{padding:10px 13px;min-width:158px}
 .pg-no-titulo{font-weight:700;font-size:12.5px;letter-spacing:-.01em}
@@ -3242,53 +3352,101 @@ html[data-theme="dark"] .adq-page{--adq-aviso-tx:#fcd34d;--adq-aviso-bd:#f59e0b4
    retentar. Verde aprova, vermelho e recusa do emissor (nunca retenta), ambar
    e falha tecnica (pode cair para outra adquirente). Com tudo cinza, so
    lendo rotulo a rotulo se enxerga um fluxo mal ligado. */
-.drawflow .output{background:#94a3b8;width:11px;height:11px;
+#pg-canvas .drawflow .drawflow-node .output{background:#94a3b8;width:11px;height:11px;
   border:2px solid var(--pg-superficie);transition:transform .14s}
-.drawflow .output:hover{transform:scale(1.25)}
-.drawflow .output.pg-p-ok{background:#16a34a}
-.drawflow .output.pg-p-espera{background:#0891b2}
-.drawflow .output.pg-p-nega{background:#dc2626}
-.drawflow .output.pg-p-tec{background:#d97706}
-.drawflow .input{width:11px;height:11px;border:2px solid var(--pg-superficie);background:#64748b}
+#pg-canvas .drawflow .drawflow-node .output:hover{transform:scale(1.25)}
+#pg-canvas .drawflow .drawflow-node .output.pg-p-ok{background:#16a34a}
+#pg-canvas .drawflow .drawflow-node .output.pg-p-espera{background:#0891b2}
+#pg-canvas .drawflow .drawflow-node .output.pg-p-nega{background:#dc2626}
+#pg-canvas .drawflow .drawflow-node .output.pg-p-tec{background:#d97706}
+/* A entrada nasce amarela (#ff0) e deslocada 27px na biblioteca. */
+#pg-canvas .drawflow .drawflow-node .input{width:11px;height:11px;
+  border:2px solid var(--pg-superficie);background:#64748b;left:-22px}
 
 .pg-porta-lbl{position:absolute;left:16px;top:-6px;font-size:9.5px;
   color:var(--pg-texto2);white-space:nowrap;background:var(--pg-superficie);
   padding:0 4px;border-radius:3px;border:1px solid var(--pg-borda)}
 
-.drawflow svg .main-path{stroke:var(--pg-borda2);stroke-width:2.2px}
-.drawflow svg .main-path:hover{stroke:#2563eb}
+#pg-canvas .drawflow .connection .main-path{stroke:var(--pg-borda2);
+  stroke-width:2.2px;fill:none}
+#pg-canvas .drawflow .connection .main-path:hover{stroke:#2563eb}
+#pg-canvas .drawflow .connection .point{stroke:var(--pg-borda2);fill:var(--pg-superficie)}
+#pg-canvas .drawflow-delete{background:var(--pgto-red);border-color:var(--pgto-red);
+  color:#fff;font-family:inherit}
 
-/* Painel */
-#pg-painel{border-left:1px solid var(--pg-borda);background:var(--pg-superficie);
-  overflow-y:auto;padding:16px;display:none;color:var(--pg-texto)}
-#pg-painel.aberto{display:block}
-#pg-painel-titulo{font-weight:700;font-size:14.5px;margin-bottom:5px;color:var(--pg-texto)}
-#pg-painel-desc{font-size:11.5px;color:var(--pg-texto2);margin-bottom:16px;line-height:1.55;
-  padding-bottom:14px;border-bottom:1px solid var(--pg-borda)}
+/* ── Painel do no ────────────────────────────────────────────────────────── */
+/* So existe com no selecionado. Antes era a terceira coluna de um grid fixo:
+   sem nada selecionado, 310px de tela morta. */
+#pg-painel{position:absolute;right:14px;top:var(--pg-topo);bottom:14px;z-index:7;
+  width:330px;max-width:calc(100% - 28px);
+  display:none;flex-direction:column;overflow:hidden;color:var(--pg-texto)}
+#pg-painel.aberto{display:flex;animation:pgFxEntra .16s ease both}
+@keyframes pgFxEntra{from{opacity:0;transform:translateX(10px)}}
+
+.pg-painel-cab{flex:none;padding:14px 16px;border-bottom:1px solid var(--pg-borda)}
+#pg-painel-titulo{font-weight:700;font-size:14.5px;color:var(--pg-texto)}
+#pg-painel-desc{font-size:11.5px;color:var(--pg-texto2);margin-top:4px;line-height:1.55}
+#pg-painel-desc:empty{display:none}
+#pg-painel-campos{flex:1;overflow-y:auto;padding:16px}
+.pg-painel-pe{flex:none;padding:12px 16px;border-top:1px solid var(--pg-borda)}
 #pg-painel label{display:block;font-size:11.5px;font-weight:600;
   color:var(--pg-texto2);margin-bottom:5px}
 #pg-painel .form-control{background:var(--pg-superficie);border-color:var(--pg-borda);
   color:var(--pg-texto)}
 
-/* Alertas — os fundos *-soft do sistema sao translucidos e ja
-   funcionam nos dois temas; so o texto precisa clarear no escuro. */
+/* ── Alertas ─────────────────────────────────────────────────────────────── */
+/* Os fundos *-soft do sistema sao translucidos e ja funcionam nos dois temas;
+   so o texto precisa clarear no escuro. */
 .pg-alerta{padding:10px 13px;border-radius:8px;font-size:12.5px;margin-bottom:7px;line-height:1.5}
 .pg-erro{background:var(--pgto-red-soft);color:var(--pgto-red);border:1px solid #dc26264d}
 .pg-aviso{background:var(--pgto-amber-soft);color:#b45309;border:1px solid #f59e0b4d}
 
-/* Legenda */
-.pg-legenda{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
-  margin-top:12px;font-size:11.5px;color:var(--pg-texto2)}
-.pg-legenda b{display:inline-flex;align-items:center;gap:5px;font-weight:600}
-.pg-legenda i{width:9px;height:9px;border-radius:50%;display:inline-block}
-.pg-dica{font-size:11.5px;color:var(--pg-texto2);margin-top:10px;line-height:1.6}
-.pg-dica strong{color:var(--pg-texto)}
+/* Mensagens de salvar/publicar: flutuam no rodape. Um erro de publicacao nao
+   pode empurrar o canvas. */
+#pg-msg{position:absolute;left:50%;bottom:58px;transform:translateX(-50%);
+  z-index:9;width:min(560px,calc(100% - 28px))}
+#pg-msg:empty{display:none}
+#pg-msg .pg-alerta{box-shadow:var(--pg-flut-sombra)}
+#pg-msg .pg-alerta:last-child{margin-bottom:0}
+
+/* ── Legenda ─────────────────────────────────────────────────────────────── */
+/* Fica sempre visivel: sem ela as bolinhas coloridas nao querem dizer nada.
+   Desloca quando o painel abre para nao ficar por baixo dele. */
+.pg-legenda{position:absolute;left:242px;right:14px;bottom:14px;z-index:5;
+  display:flex;justify-content:center;pointer-events:none;
+  transition:right .18s ease}
+.pg-tela:has(#pg-painel.aberto) .pg-legenda{right:358px}
+.pg-legenda-pilula{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+  padding:7px 14px;border-radius:20px;font-size:11.5px;color:var(--pg-texto2);
+  background:color-mix(in srgb,var(--pg-superficie) 88%,transparent);
+  border:1px solid var(--pg-borda);backdrop-filter:blur(6px);pointer-events:auto}
+.pg-legenda b{display:inline-flex;align-items:center;gap:5px;font-weight:600;white-space:nowrap}
+.pg-legenda i{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
+
 @media (prefers-color-scheme: dark){
   html:not([data-theme="light"]) .pg-erro{color:#fca5a5}
   html:not([data-theme="light"]) .pg-aviso{color:#fcd34d}
 }
 html[data-theme="dark"] .pg-erro{color:#fca5a5}
 html[data-theme="dark"] .pg-aviso{color:#fcd34d}
+
+/* ── Telas estreitas ─────────────────────────────────────────────────────── */
+/* A paleta vira gaveta de rodape e o painel ocupa a largura toda. A legenda
+   sai: com 3 peças disputando 360px de largura, ela e a que menos custa. */
+@media (max-width: 900px){
+  /* Paleta, painel e ajuda viram gaveta de rodape. Ancorar pelo topo exigiria
+     saber a altura da barra, que muda com a largura e com o estado do fluxo. */
+  .pg-paleta-box{left:14px;right:14px;width:auto;top:auto;bottom:14px;max-height:38%}
+  #pg-paleta{padding-bottom:10px}
+  #pg-painel{left:14px;right:14px;width:auto;top:auto;bottom:14px;max-height:62%}
+  /* Uma gaveta de cada vez: com o painel aberto a paleta so atrapalharia. */
+  .pg-tela:has(#pg-painel.aberto) .pg-paleta-box{display:none}
+  .pg-ajuda{top:auto;bottom:14px;left:14px;right:14px;width:auto;
+    max-height:50%;overflow-y:auto}
+  .pg-tela:has(#pg-painel.aberto) .pg-ajuda{right:14px}
+  .pg-legenda{display:none}
+  .pg-titulo{max-width:180px}
+}
 
 /* ===== admin/views/pagamentos/fluxos.php ===== */
 /* ── Tema ──────────────────────────────────────────────────────

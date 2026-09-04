@@ -1653,6 +1653,7 @@ class ChatNoMsgCanal extends ChatNo
         } else {
             $texto = trim($this->texto($config, 'texto', $ctx));
         }
+        $rico = $tpl['rico'] ?? null;
 
         if ($texto === '') {
             $sessao['erro_detalhe'] = 'mensagem sem texto';
@@ -1661,7 +1662,7 @@ class ChatNoMsgCanal extends ChatNo
 
         $ok = $canal === 'email'
             ? $this->porEmail($destino, $config, $texto, $ctx)
-            : $this->porChat($destino, $sessao, $texto, $ctx);
+            : $this->porChat($destino, $sessao, $texto, $ctx, $rico);
 
         if (!$ok) return 'falhou';
 
@@ -1686,7 +1687,9 @@ class ChatNoMsgCanal extends ChatNo
 
         try {
             $st = $ctx->db->prepare(
-                "SELECT conteudo, assunto FROM recuperacao_templates
+                "SELECT conteudo, assunto, cabecalho_tipo, cabecalho_valor,
+                        rodape, botoes_json
+                 FROM recuperacao_templates
                  WHERE id = :id AND ativo = 1 LIMIT 1"
             );
             $st->execute([':id' => $id]);
@@ -1713,20 +1716,123 @@ class ChatNoMsgCanal extends ChatNo
             '{produtos_html}' => $v['carrinho_produtos'] ?? '',
         ];
 
+        $resolver = fn(?string $s): string => $s === null || $s === ''
+            ? '' : ChatContatoService::interpolar(strtr($s, $de), $v);
+
         return [
             // strtr para o vocabulário da Central; interpolar para o do fluxo —
             // um template pode usar os dois, e os dois resolvem.
-            'conteudo' => ChatContatoService::interpolar(strtr((string)$t['conteudo'], $de), $v),
+            'conteudo' => $resolver((string)$t['conteudo']),
             'assunto'  => $t['assunto'] !== null && $t['assunto'] !== ''
-                          ? ChatContatoService::interpolar(strtr((string)$t['assunto'], $de), $v)
-                          : null,
+                          ? $resolver((string)$t['assunto']) : null,
+            'rico'     => $this->rico($t, $resolver),
         ];
     }
 
-    /** WhatsApp e Instagram: sempre endereçado ao contato DAQUELE canal. */
-    private function porChat(array $destino, array $sessao, string $texto, ChatExecCtx $ctx): bool
+    /**
+     * Cabeçalho, rodapé e botões do template, no vocabulário do ChatMetaClient.
+     *
+     * Os nomes mudam na fronteira de propósito: 'imagem' é o que o operador vê
+     * na tela, 'image' é o que a Meta espera. Traduzir aqui deixa a tela em
+     * português sem espalhar o vocabulário da API pelo editor.
+     *
+     * @return array{cabecalho:?array, rodape:?string, botoes:?array}|null
+     */
+    private function rico(array $t, callable $resolver): ?array
     {
-        $r = $ctx->envio->texto((int)$destino['contato_id'], $texto, $this->opts($sessao));
+        $mapa = ['texto' => 'text', 'imagem' => 'image',
+                 'video' => 'video', 'documento' => 'document'];
+
+        $cabecalho = null;
+        $tipo      = (string)($t['cabecalho_tipo'] ?? 'nenhum');
+        if (isset($mapa[$tipo]) && !empty($t['cabecalho_valor'])) {
+            $cabecalho = [
+                'tipo'  => $mapa[$tipo],
+                // Só o cabeçalho de TEXTO aceita variável; numa URL de mídia,
+                // interpolar produziria endereço quebrado.
+                'valor' => $tipo === 'texto'
+                    ? $resolver((string)$t['cabecalho_valor'])
+                    : (string)$t['cabecalho_valor'],
+            ];
+        }
+
+        $rodape = !empty($t['rodape']) ? $resolver((string)$t['rodape']) : null;
+
+        $botoes = json_decode((string)($t['botoes_json'] ?? ''), true);
+        if (!is_array($botoes) || empty($botoes['itens'])) $botoes = null;
+
+        if ($cabecalho === null && $rodape === null && $botoes === null) return null;
+
+        return ['cabecalho' => $cabecalho, 'rodape' => $rodape, 'botoes' => $botoes];
+    }
+
+    /**
+     * WhatsApp e Instagram: sempre endereçado ao contato DAQUELE canal.
+     *
+     * Com cabeçalho, rodapé ou botões, a mensagem sai como INTERATIVA. Sem
+     * eles, como texto — que é mais barato e não depende de a janela estar
+     * aberta do mesmo jeito.
+     *
+     * O envio manual da Central (`wa.me?text=`) não passa por aqui e continua
+     * texto puro: aquele formato não tem onde pôr botão.
+     */
+    private function porChat(array $destino, array $sessao, string $texto,
+                             ChatExecCtx $ctx, ?array $rico = null): bool
+    {
+        $contatoId = (int)$destino['contato_id'];
+        $opts      = $this->opts($sessao);
+
+        $cabecalho = $rico['cabecalho'] ?? null;
+        $rodape    = $rico['rodape']    ?? null;
+        $botoes    = $rico['botoes']    ?? null;
+
+        if ($cabecalho !== null) $opts['cabecalho'] = $cabecalho;
+        if ($rodape    !== null) $opts['rodape']    = $rodape;
+
+        // Lista: até 10 linhas atrás de um botão que abre o menu
+        if (is_array($botoes) && ($botoes['tipo'] ?? '') === 'lista') {
+            $linhas = [];
+            foreach ((array)($botoes['itens'] ?? []) as $i => $b) {
+                $linhas[] = [
+                    'id'        => 'opt_' . ($i + 1),
+                    'titulo'    => (string)$b['titulo'],
+                    'descricao' => (string)($b['descricao'] ?? ''),
+                ];
+            }
+            if ($linhas) {
+                $r = $ctx->envio->lista(
+                    $contatoId, $texto,
+                    (string)($botoes['texto_botao'] ?? 'Ver opções'),
+                    [['titulo' => '', 'linhas' => $linhas]],
+                    $opts
+                );
+                return !empty($r['ok']);
+            }
+        }
+
+        // Botões: até 3 toques diretos
+        if (is_array($botoes) && ($botoes['tipo'] ?? '') === 'botoes') {
+            $itens = [];
+            foreach ((array)($botoes['itens'] ?? []) as $i => $b) {
+                $itens[] = ['id' => 'btn_' . ($i + 1), 'titulo' => (string)$b['titulo']];
+            }
+            if ($itens) {
+                $r = $ctx->envio->botoes($contatoId, $texto, $itens, $opts);
+                return !empty($r['ok']);
+            }
+        }
+
+        // Cabeçalho ou rodapé sozinhos também exigem interativa — só que sem
+        // botão nenhum a Meta recusa o interactive. Vira texto, com o
+        // cabeçalho de TEXTO embutido para não se perder.
+        if (is_string($cabecalho['valor'] ?? null) && ($cabecalho['tipo'] ?? '') === 'text') {
+            $texto = $cabecalho['valor'] . "\n\n" . $texto;
+        }
+        if (is_string($rodape) && $rodape !== '') {
+            $texto .= "\n\n" . $rodape;
+        }
+
+        $r = $ctx->envio->texto($contatoId, $texto, $this->opts($sessao));
         return !empty($r['ok']);
     }
 

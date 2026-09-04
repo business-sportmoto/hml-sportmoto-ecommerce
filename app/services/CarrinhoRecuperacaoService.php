@@ -789,6 +789,7 @@ class CarrinhoRecuperacaoService {
             '{link}'          => $link,
             '{vendedor}'      => $esc((string)($rec['responsavel_nome'] ?? 'Equipe Sportmoto')),
             '{telefone_loja}' => defined('LOJA_TELEFONE') ? LOJA_TELEFONE : '',
+            '{link_loja}'     => BASE_URL,
             '{produtos_html}' => $html ? $this->produtosHtml($itens) : $nomesProdutos,
         ];
 

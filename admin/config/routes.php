@@ -85,6 +85,7 @@ AdminRouter::get ('/carrinhos-abandonados/templates/{id:\d+}',         'AdminCar
 AdminRouter::post('/carrinhos-abandonados/templates/{id:\d+}',         'AdminCarrinhoAbandonadoController@templatesAtualizar');
 AdminRouter::post('/carrinhos-abandonados/templates/{id:\d+}/toggle',  'AdminCarrinhoAbandonadoController@templatesToggle');
 AdminRouter::post('/carrinhos-abandonados/templates/{id:\d+}/excluir', 'AdminCarrinhoAbandonadoController@templatesExcluir');
+AdminRouter::post('/carrinhos-abandonados/templates/upload-cabecalho',  'AdminCarrinhoAbandonadoController@templatesUploadCabecalho');
 
 AdminRouter::get ('/carrinhos-abandonados/config',              'AdminCarrinhoAbandonadoController@configForm');
 AdminRouter::post('/carrinhos-abandonados/config',              'AdminCarrinhoAbandonadoController@configSalvar');

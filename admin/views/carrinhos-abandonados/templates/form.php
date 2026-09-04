@@ -11,6 +11,12 @@ $canal    = $template['canal'] ?? 'whatsapp';
 $vars     = CarrinhoAbandonado::VARIAVEIS;
 $varsMail = CarrinhoAbandonado::VARIAVEIS_EMAIL;
 $presets  = CarrinhoAbandonado::PRESETS;
+$cabTipos = CarrinhoAbandonado::CABECALHO_TIPOS;
+$linksBt  = CarrinhoAbandonado::LINKS_BOTAO;
+
+$botoes   = json_decode((string)($template['botoes_json'] ?? ''), true) ?: [];
+$btTipo   = (string)($botoes['tipo'] ?? 'nenhum');
+$btItens  = (array)($botoes['itens'] ?? []);
 ?>
 <div class="ap-page-header" style="display:flex;align-items:center;gap:14px;">
   <a href="<?= ADMIN_URL ?>/carrinhos-abandonados/templates" class="btn">← Voltar</a>
@@ -63,7 +69,37 @@ $presets  = CarrinhoAbandonado::PRESETS;
   .tpl-aviso      { background:var(--warning-lt,#fef3c7);border:1px solid var(--warning-bd,#fde68a);
                     color:var(--warning,#92400e);border-radius:7px;padding:6px 11px;
                     font-size:11.5px;font-weight:600;display:none; }
+  .tpl-nota       { background:var(--blue-lt,#eff6ff);border:1px solid #bfdbfe;color:#1d4ed8;
+                    border-radius:8px;padding:9px 13px;font-size:12px;line-height:1.5; }
+
+  /* Linhas de botão: entram e saem com animação para o operador enxergar
+     o que mudou, em vez de a lista pular de tamanho sem aviso. */
+  .bt-linha       { display:grid;grid-template-columns:1fr 150px 34px;gap:8px;align-items:start;
+                    padding:10px;border:1px solid var(--c-border);border-radius:9px;
+                    background:var(--bg);margin-bottom:8px;
+                    animation:btEntra .18s ease-out; }
+  .bt-linha.saindo{ animation:btSai .16s ease-in forwards; }
+  @keyframes btEntra { from { opacity:0; transform:translateY(-6px); }
+                       to   { opacity:1; transform:none; } }
+  @keyframes btSai   { from { opacity:1; transform:none; }
+                       to   { opacity:0; transform:translateY(-6px); } }
+  @media (prefers-reduced-motion: reduce) {
+    .bt-linha, .bt-linha.saindo { animation:none; }
+  }
+  .bt-remover     { border:1px solid var(--c-border);background:var(--surface);border-radius:7px;
+                    width:34px;height:34px;cursor:pointer;color:var(--c-text-muted);
+                    font-size:15px;line-height:1; }
+  .bt-remover:hover { border-color:var(--danger,#dc2626);color:var(--danger,#dc2626); }
+  .bt-url-livre   { grid-column:1 / -1; }
+  /* Prévia dos botões dentro da moldura do celular */
+  .fone-bt        { background:#1f2c33;color:#53bdeb;text-align:center;padding:8px;
+                    font-size:12.5px;font-weight:600;border-radius:7px;margin-top:5px; }
+  .fone-cab-mid   { background:#2a3942;color:#8696a0;border-radius:6px;padding:16px 10px;
+                    text-align:center;font-size:11.5px;margin-bottom:6px; }
+  .fone-rodape    { color:#8696a0;font-size:11px;margin-top:4px; }
 </style>
+
+<script src="<?= View::asset('js/var-chips.js') ?>"></script>
 
 <form method="post" id="form-tpl"
       action="<?= ADMIN_URL ?>/carrinhos-abandonados/templates<?= $editando ? '/' . (int)$template['id'] : '/novo' ?>">
@@ -190,6 +226,37 @@ $presets  = CarrinhoAbandonado::PRESETS;
           </div>
         </div>
 
+        <!-- Cabeçalho: só WhatsApp, e só em mensagem interativa -->
+        <div class="form-group so-whatsapp" style="<?= $canal !== 'whatsapp' ? 'display:none;' : '' ?>">
+          <label class="form-label">Cabeçalho</label>
+          <div style="display:grid;grid-template-columns:200px 1fr;gap:10px;">
+            <select name="cabecalho_tipo" id="cab-tipo" class="form-control">
+              <?php foreach ($cabTipos as $k => $rot): ?>
+              <option value="<?= View::e($k) ?>"
+                <?= ($template['cabecalho_tipo'] ?? 'nenhum') === $k ? 'selected' : '' ?>>
+                <?= View::e($rot) ?></option>
+              <?php endforeach; ?>
+            </select>
+            <input type="text" name="cabecalho_valor" id="cab-valor" class="form-control"
+                   maxlength="500" placeholder="Texto do cabeçalho ou https://… da mídia"
+                   value="<?= View::e($template['cabecalho_valor'] ?? '') ?>"
+                   style="<?= ($template['cabecalho_tipo'] ?? 'nenhum') === 'nenhum' ? 'display:none;' : '' ?>">
+          </div>
+
+          <!-- Upload: aparece só quando o cabeçalho é mídia -->
+          <div id="cab-upload" style="display:none;margin-top:8px;">
+            <input type="file" id="cab-arquivo" style="display:none;">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <button type="button" class="btn" id="cab-escolher" style="font-size:12.5px;">
+                ⬆ Enviar arquivo</button>
+              <span id="cab-status" style="font-size:12px;color:var(--c-text-muted);"></span>
+            </div>
+            <div id="cab-thumb" style="margin-top:8px;"></div>
+          </div>
+
+          <span class="form-hint" id="cab-hint"></span>
+        </div>
+
         <div class="form-group">
           <label class="form-label">
             Corpo da mensagem *
@@ -207,6 +274,76 @@ $presets  = CarrinhoAbandonado::PRESETS;
                   : 'Texto puro — quebras de linha são preservadas no WhatsApp.' ?>
             </span>
             <span class="tpl-aviso" id="aviso-corte">⚠ Pode ser cortada depois de ~5 linhas</span>
+          </div>
+        </div>
+
+        <!-- Rodapé: só WhatsApp interativo -->
+        <div class="form-group so-whatsapp" style="<?= $canal !== 'whatsapp' ? 'display:none;' : '' ?>">
+          <label class="form-label">Rodapé (opcional)
+            <span style="float:right;font-weight:400;font-size:11.5px;color:var(--c-text-muted);"
+                  id="cont-rodape">0 / 60</span>
+          </label>
+          <input type="text" name="rodape" id="inp-rodape" class="form-control" maxlength="60"
+                 placeholder="Ex.: Sua loja de sempre"
+                 value="<?= View::e($template['rodape'] ?? '') ?>">
+          <span class="form-hint">Linha pequena abaixo da mensagem.</span>
+        </div>
+
+        <!-- Botões / lista -->
+        <div class="form-group so-whatsapp" style="<?= $canal !== 'whatsapp' ? 'display:none;' : '' ?>">
+          <label class="form-label">Botões</label>
+          <select name="botoes_tipo" id="bt-tipo" class="form-control" style="max-width:280px;">
+            <option value="nenhum" <?= $btTipo === 'nenhum' ? 'selected' : '' ?>>Sem botões</option>
+            <option value="botoes" <?= $btTipo === 'botoes' ? 'selected' : '' ?>>Botões (até 3)</option>
+            <option value="lista"  <?= $btTipo === 'lista'  ? 'selected' : '' ?>>Menu em lista (até 10)</option>
+          </select>
+
+          <div id="bt-area" style="margin-top:12px;<?= $btTipo === 'nenhum' ? 'display:none;' : '' ?>">
+            <div class="form-group" id="bt-abre"
+                 style="<?= $btTipo !== 'lista' ? 'display:none;' : '' ?>">
+              <label class="form-label">Texto do botão que abre a lista *</label>
+              <input type="text" name="botoes_texto_botao" class="form-control" maxlength="20"
+                     placeholder="Ex.: Ver opções"
+                     value="<?= View::e($botoes['texto_botao'] ?? '') ?>">
+            </div>
+
+            <div id="bt-lista">
+              <?php foreach ($btItens as $i => $b): ?>
+                <?php
+                  $url     = (string)($b['url'] ?? '{link}');
+                  $ehVar   = isset($linksBt[$url]);
+                  $escolha = $ehVar ? $url : 'personalizado';
+                ?>
+                <div class="bt-linha">
+                  <div>
+                    <input type="text" name="botao_titulo[]" class="form-control" maxlength="24"
+                           placeholder="Texto do botão" value="<?= View::e($b['titulo'] ?? '') ?>">
+                    <input type="text" name="botao_desc[]" class="form-control bt-desc"
+                           maxlength="72" placeholder="Descrição (só na lista)"
+                           value="<?= View::e($b['descricao'] ?? '') ?>"
+                           style="margin-top:6px;<?= $btTipo !== 'lista' ? 'display:none;' : '' ?>">
+                  </div>
+                  <select name="botao_link[]" class="form-control bt-link">
+                    <?php foreach ($linksBt as $k => $rot): ?>
+                    <option value="<?= View::e($k) ?>" <?= $escolha === $k ? 'selected' : '' ?>>
+                      <?= View::e($rot) ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                  <button type="button" class="bt-remover" title="Remover">✕</button>
+                  <input type="text" name="botao_url[]" class="form-control bt-url-livre"
+                         placeholder="https://…" value="<?= $ehVar ? '' : View::e($url) ?>"
+                         style="<?= $escolha === 'personalizado' ? '' : 'display:none;' ?>">
+                </div>
+              <?php endforeach; ?>
+            </div>
+
+            <button type="button" class="btn" id="bt-add" style="font-size:12.5px;">+ Adicionar</button>
+            <p class="tpl-nota" style="margin-top:10px;">
+              <strong>Onde isto aparece:</strong> cabeçalho, rodapé e botões viajam quando a
+              mensagem sai pela API — nos blocos de fluxo, dentro da janela de 24h.
+              O envio manual da Central abre o WhatsApp com <code>wa.me</code>, que é
+              texto puro: lá só o corpo da mensagem vai.
+            </p>
           </div>
         </div>
       </div>
@@ -236,8 +373,13 @@ $presets  = CarrinhoAbandonado::PRESETS;
                 <span>Sportmoto</span>
               </div>
               <div class="tpl-fone-corpo">
-                <div class="tpl-bolha" id="preview-wpp-texto"></div>
+                <div class="tpl-bolha">
+                  <div id="preview-cab"></div>
+                  <div id="preview-wpp-texto" style="white-space:pre-wrap;word-break:break-word;"></div>
+                  <div class="fone-rodape" id="preview-rodape"></div>
+                </div>
                 <div class="tpl-bolha-hora"><?= date('H:i') ?> ✓✓</div>
+                <div id="preview-botoes" style="max-width:96%;margin-left:auto;"></div>
               </div>
             </div>
           </div>
@@ -261,7 +403,9 @@ $presets  = CarrinhoAbandonado::PRESETS;
 <script>
 jQuery(function ($) {
   // Presets vêm do servidor (CarrinhoAbandonado::PRESETS) — fonte única.
-  var PRESETS = <?= json_encode($presets, JSON_UNESCAPED_UNICODE) ?>;
+  var PRESETS   = <?= json_encode($presets, JSON_UNESCAPED_UNICODE) ?>;
+  var LINKS_BT  = <?= json_encode($linksBt, JSON_UNESCAPED_UNICODE) ?>;
+  var MAX_BT    = { botoes: 3, lista: 10 };
 
   // Dados fictícios CONSTANTES — nenhum input externo entra na prévia.
   var DADOS = {
@@ -303,6 +447,9 @@ jQuery(function ($) {
       $('#preview-wpp-texto').text(corpo);
       // O WhatsApp corta com "Ler mais" por volta da 5ª linha visível
       $('#aviso-corte').toggle(bruto.split('\n').length > 5);
+      desenharCabecalho();
+      desenharRodape();
+      desenharBotoes();
     } else {
       $('#preview-mail-assunto').text(substituir($('input[name="assunto"]').val() || '(sem assunto)'));
       // HTML do template é trusted-admin e os dados são constantes; o sandbox
@@ -317,8 +464,131 @@ jQuery(function ($) {
     $('#cont-chars').text(bruto.length.toLocaleString('pt-BR') + ' / 10.000');
   }
 
+  /* ── Prévia: cabeçalho ── */
+  function desenharCabecalho() {
+    var tipo  = $('#cab-tipo').val() || 'nenhum';
+    var valor = String($('#cab-valor').val() || '');
+    var $alvo = $('#preview-cab').empty();
+
+    if (tipo === 'nenhum' || valor === '') return;
+
+    if (tipo === 'texto') {
+      // .text() = escape; nunca injetar o que o operador digitou como HTML
+      $alvo.append($('<div>').css({ fontWeight: 700, marginBottom: '4px' })
+                             .text(substituir(valor)));
+      return;
+    }
+    // Mídia: a Meta busca o arquivo no envio. Aqui só o formato, porque
+    // carregar a URL na prévia daria requisição externa a cada tecla.
+    var rotulo = { imagem: '🖼️ Imagem', video: '🎬 Vídeo', documento: '📎 Documento' }[tipo] || '';
+    $alvo.append($('<div class="fone-cab-mid">').text(rotulo));
+  }
+
+  /* ── Prévia: rodapé ── */
+  function desenharRodape() {
+    var r = String($('#inp-rodape').val() || '');
+    $('#preview-rodape').text(r ? substituir(r) : '');
+    $('#cont-rodape').text(r.length + ' / 60');
+  }
+
+  /* ── Prévia: botões ── */
+  function desenharBotoes() {
+    var tipo  = $('#bt-tipo').val() || 'nenhum';
+    var $alvo = $('#preview-botoes').empty();
+    if (tipo === 'nenhum') return;
+
+    if (tipo === 'lista') {
+      var abre = String($('input[name="botoes_texto_botao"]').val() || '').trim();
+      if (abre) $alvo.append($('<div class="fone-bt">').text('☰ ' + abre));
+      return;
+    }
+    $('#bt-lista .bt-linha').each(function () {
+      var t = String($(this).find('input[name="botao_titulo[]"]').val() || '').trim();
+      if (t) $alvo.append($('<div class="fone-bt">').text(t));
+    });
+  }
+
+  /* ── Linhas de botão ── */
+  function linhaBotao(dados) {
+    dados = dados || {};
+    var ops = Object.keys(LINKS_BT).map(function (k) {
+      return '<option value="' + k + '"' + (dados.link === k ? ' selected' : '') + '>' +
+             LINKS_BT[k] + '</option>';
+    }).join('');
+
+    return $(
+      '<div class="bt-linha">' +
+        '<div>' +
+          '<input type="text" name="botao_titulo[]" class="form-control" maxlength="24" ' +
+                 'placeholder="Texto do botão">' +
+          '<input type="text" name="botao_desc[]" class="form-control bt-desc" maxlength="72" ' +
+                 'placeholder="Descrição (só na lista)" style="margin-top:6px;">' +
+        '</div>' +
+        '<select name="botao_link[]" class="form-control bt-link">' + ops + '</select>' +
+        '<button type="button" class="bt-remover" title="Remover">✕</button>' +
+        '<input type="text" name="botao_url[]" class="form-control bt-url-livre" ' +
+               'placeholder="https://…" style="display:none;">' +
+      '</div>'
+    );
+  }
+
+  function sincronizarBotoes() {
+    var tipo = $('#bt-tipo').val() || 'nenhum';
+    $('#bt-area').toggle(tipo !== 'nenhum');
+    $('#bt-abre').toggle(tipo === 'lista');
+    $('.bt-desc').toggle(tipo === 'lista');
+
+    // O teto é da Meta, não nosso: 3 botões ou 10 linhas de lista.
+    var max   = MAX_BT[tipo] || 0;
+    var qtd   = $('#bt-lista .bt-linha').length;
+    $('#bt-add').prop('disabled', qtd >= max)
+                .text(qtd >= max ? 'Limite de ' + max + ' atingido' : '+ Adicionar');
+    desenharBotoes();
+  }
+
+  $('#bt-tipo').on('change', sincronizarBotoes);
+
+  $('#bt-add').on('click', function () {
+    var tipo = $('#bt-tipo').val() || 'nenhum';
+    if ($('#bt-lista .bt-linha').length >= (MAX_BT[tipo] || 0)) return;
+    $('#bt-lista').append(linhaBotao({ link: '{link}' }));
+    sincronizarBotoes();
+  });
+
+  // Remoção com saída animada — a linha sai por onde entrou, para o operador
+  // enxergar o que sumiu em vez de a lista dar um pulo.
+  $('#bt-lista').on('click', '.bt-remover', function () {
+    var $l = $(this).closest('.bt-linha').addClass('saindo');
+    setTimeout(function () { $l.remove(); sincronizarBotoes(); }, 160);
+  });
+
+  // Destino "personalizado" abre o campo livre
+  $('#bt-lista').on('change', '.bt-link', function () {
+    $(this).closest('.bt-linha').find('.bt-url-livre')
+           .toggle($(this).val() === 'personalizado');
+  });
+
+  $('#bt-lista').on('input', 'input', desenharBotoes);
+  $('input[name="botoes_texto_botao"]').on('input', desenharBotoes);
+
+  /* ── Cabeçalho: o campo muda de significado conforme o tipo ── */
+  $('#cab-tipo').on('change', function () {
+    var t = $(this).val();
+    $('#cab-valor').toggle(t !== 'nenhum').attr('placeholder',
+      t === 'texto' ? 'Texto do cabeçalho (até 60 caracteres)' : 'https://… endereço público do arquivo');
+    $('#cab-hint').text(
+      t === 'nenhum' ? '' :
+      t === 'texto'  ? 'Até 60 caracteres. Aceita variáveis.'
+                     : 'A Meta busca o arquivo neste endereço — precisa estar acessível pela internet.');
+    atualizarPreview();
+  }).trigger('change');
+
+  $('#inp-rodape').on('input', atualizarPreview);
+
   function aplicarCanal(canal) {
     $('#grupo-assunto').toggle(canal === 'email');
+    // Cabeçalho, rodapé e botões não existem em e-mail
+    $('.so-whatsapp').toggle(canal === 'whatsapp');
     $('#preview-wpp').toggle(canal === 'whatsapp');
     $('#preview-mail').toggle(canal === 'email');
     $('.var-chip-email').toggle(canal === 'email');
@@ -346,21 +616,21 @@ jQuery(function ($) {
     var canal = $(this).data('canal');
     var p     = (PRESETS[canal] || {})[$(this).data('preset')];
     if (!p) return;
-    if ($.trim($('#inp-conteudo').val()) !== '' &&
+    if (String($('#inp-conteudo').val()).trim() !== '' &&
         !confirm('Isso substitui o texto atual. Continuar?')) return;
 
-    $('#inp-conteudo').val(p.conteudo);
+    $('#inp-conteudo').val(p.conteudo).varChips('sincronizar');
     if (p.assunto) $('input[name="assunto"]').val(p.assunto);
-    if (p.uso && $.trim($('input[name="uso_recomendado"]').val()) === '') {
+    if (p.uso && String($('input[name="uso_recomendado"]').val()).trim() === '') {
       $('input[name="uso_recomendado"]').val(p.uso);
     }
     atualizarPreview();
   });
 
   $('#btn-branco').on('click', function () {
-    if ($.trim($('#inp-conteudo').val()) !== '' &&
+    if (String($('#inp-conteudo').val()).trim() !== '' &&
         !confirm('Isso apaga o texto atual. Continuar?')) return;
-    $('#inp-conteudo').val('');
+    $('#inp-conteudo').val('').varChips('sincronizar');
     atualizarPreview();
   });
 
@@ -384,7 +654,99 @@ jQuery(function ($) {
     }
   });
 
+  /* ── Editor de fichas no corpo da mensagem ──
+     O textarea continua sendo o campo do formulário; o plugin é uma camada
+     por cima que devolve o texto a cada tecla. Por isso o atualizarPreview,
+     o contador e a validação continuam escutando o textarea, sem saber que
+     o plugin existe. */
+  var VARIAVEIS = <?= json_encode(
+        array_map(fn($d) => $d, $vars + $varsMail), JSON_UNESCAPED_UNICODE) ?>;
+
+  $('#inp-conteudo').varChips({
+    variaveis: VARIAVEIS,
+    placeholder: 'Escreva a mensagem. Clique nas variáveis acima para inserir.'
+  });
+
+  // As fichas da paleta passam a inserir no editor, não no textarea
+  $('.var-chip').off('click').on('click', function () {
+    $('#inp-conteudo').varChips('inserir', $(this).data('var'));
+  });
+
+  /* ── Upload do cabeçalho ── */
+  var TIPOS_ARQ = {
+    imagem:    { accept: '.jpg,.jpeg,.png',  rotulo: 'imagem (JPG/PNG, até 5 MB)' },
+    video:     { accept: '.mp4,.3gp',        rotulo: 'vídeo (MP4/3GP, até 16 MB)' },
+    documento: { accept: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt',
+                 rotulo: 'documento (PDF, DOC, XLS, PPT, TXT, até 100 MB)' }
+  };
+
+  function sincronizarUpload() {
+    var t   = $('#cab-tipo').val();
+    var cfg = TIPOS_ARQ[t];
+    $('#cab-upload').toggle(!!cfg);
+    if (cfg) $('#cab-arquivo').attr('accept', cfg.accept);
+    desenharThumb();
+  }
+
+  function desenharThumb() {
+    var t   = $('#cab-tipo').val();
+    var url = String($('#cab-valor').val() || '');
+    var $a  = $('#cab-thumb').empty();
+    if (!TIPOS_ARQ[t] || url === '') return;
+
+    if (t === 'imagem') {
+      $a.append($('<img>').attr('src', url).css({
+        maxHeight: '110px', borderRadius: '8px', border: '1px solid var(--c-border)'
+      }));
+    } else {
+      // Vídeo e documento não têm miniatura barata — o endereço já diz o que é
+      $a.append($('<a target="_blank" rel="noopener">')
+        .attr('href', url).text('Ver arquivo enviado ↗')
+        .css({ fontSize: '12px' }));
+    }
+  }
+
+  $('#cab-escolher').on('click', function () { $('#cab-arquivo').trigger('click'); });
+
+  $('#cab-arquivo').on('change', function () {
+    var arq = this.files && this.files[0];
+    if (!arq) return;
+
+    var tipo = $('#cab-tipo').val();
+    var fd   = new FormData();
+    fd.append('arquivo', arq);
+    fd.append('tipo', tipo);
+    fd.append('_csrf_token', $('input[name="_csrf_token"]').val());
+
+    var $st = $('#cab-status').text('Enviando ' + arq.name + '…');
+    $('#cab-escolher').prop('disabled', true);
+
+    $.ajax({
+      url: '<?= ADMIN_URL ?>/carrinhos-abandonados/templates/upload-cabecalho',
+      method: 'POST', data: fd, processData: false, contentType: false, dataType: 'json'
+    }).done(function (r) {
+      if (r && r.ok) {
+        $('#cab-valor').val(r.url);
+        $st.css('color', 'var(--success)').text('✓ ' + (r.nome || 'enviado'));
+        desenharThumb();
+        atualizarPreview();
+      } else {
+        $st.css('color', 'var(--danger)').text((r && r.msg) || 'Falha no envio.');
+      }
+    }).fail(function () {
+      $st.css('color', 'var(--danger)').text('Falha de comunicação com o servidor.');
+    }).always(function () {
+      $('#cab-escolher').prop('disabled', false);
+      $('#cab-arquivo').val('');
+    });
+  });
+
+  $('#cab-tipo').on('change', sincronizarUpload);
+  $('#cab-valor').on('input', desenharThumb);
+  sincronizarUpload();
+
   $('#inp-conteudo, input[name="assunto"]').on('input', atualizarPreview);
+  sincronizarBotoes();
   aplicarCanal(canalAtual());
 });
 </script>

@@ -388,6 +388,30 @@ class CarrinhoAbandonado {
         '{link}'          => 'Link de retorno ao carrinho',
         '{vendedor}'      => 'Nome do responsável pelo atendimento',
         '{telefone_loja}' => 'Telefone da loja',
+        '{link_loja}'     => 'Endereço da loja (home)',
+    ];
+
+    /**
+     * Destinos prontos para o botão, para não obrigar o operador a decorar
+     * URL. `personalizado` libera o campo livre.
+     *
+     * O link do carrinho é o padrão porque é o único que muda por pessoa —
+     * os outros são páginas fixas, e uma delas escrita à mão vira link
+     * quebrado que ninguém percebe até o cliente clicar.
+     */
+    public const LINKS_BOTAO = [
+        '{link}'        => 'Voltar ao carrinho (recomendado)',
+        '{link_loja}'   => 'Página inicial da loja',
+        'personalizado' => 'Outro endereço…',
+    ];
+
+    /** Cabeçalho de mensagem interativa. A Meta NÃO aceita áudio aqui. */
+    public const CABECALHO_TIPOS = [
+        'nenhum'    => 'Nenhum',
+        'texto'     => 'Texto',
+        'imagem'    => 'Imagem',
+        'video'     => 'Vídeo',
+        'documento' => 'Documento',
     ];
  
     /**
@@ -555,6 +579,15 @@ class CarrinhoAbandonado {
         $conteudo= trim($data['conteudo'] ?? '');
         $uso     = trim($data['uso_recomendado'] ?? '');
         $ativo   = (int)($data['ativo'] ?? 0);
+
+        // Cabeçalho, rodapé e botões só existem em mensagem INTERATIVA, que
+        // sai pela API. O envio manual do operador é `wa.me?text=` — texto
+        // puro — e descarta tudo isso. Por isso são exclusivos de WhatsApp e
+        // o editor avisa onde eles valem.
+        $cabTipo  = (string)($data['cabecalho_tipo'] ?? 'nenhum');
+        $cabValor = trim((string)($data['cabecalho_valor'] ?? ''));
+        $rodape   = trim((string)($data['rodape'] ?? ''));
+        $botoes   = $this->normalizarBotoes($data['botoes'] ?? null);
  
         // Na edição o canal é IMUTÁVEL: migrar whatsapp↔email criaria
         // estado inválido (assunto órfão / HTML em texto puro)
@@ -587,32 +620,140 @@ class CarrinhoAbandonado {
             throw new \InvalidArgumentException('Uso recomendado: máximo 150 caracteres.');
         }
  
-        $this->validarVariaveisTemplate($conteudo . ' ' . $assunto, $canal);
+        if ($canal === 'email') {
+            // E-mail não tem cabeçalho de mídia, rodapé de 60 chars nem
+            // botões da Meta. Zerar aqui evita o dado órfão no banco.
+            $cabTipo = 'nenhum'; $cabValor = ''; $rodape = ''; $botoes = null;
+        }
+
+        if (!isset(self::CABECALHO_TIPOS[$cabTipo])) {
+            throw new \InvalidArgumentException('Tipo de cabeçalho inválido.');
+        }
+        if ($cabTipo !== 'nenhum' && $cabValor === '') {
+            throw new \InvalidArgumentException('Preencha o cabeçalho ou escolha "Nenhum".');
+        }
+        if ($cabTipo === 'texto' && mb_strlen($cabValor) > 60) {
+            throw new \InvalidArgumentException('Cabeçalho de texto: máximo 60 caracteres.');
+        }
+        // Mídia é buscada pela Meta no endereço informado — endereço local ou
+        // relativo não é alcançável de fora e falha no envio, não aqui.
+        if (in_array($cabTipo, ['imagem', 'video', 'documento'], true)
+            && !filter_var($cabValor, FILTER_VALIDATE_URL)) {
+            throw new \InvalidArgumentException(
+                'Cabeçalho de mídia precisa de uma URL pública (https://…).'
+            );
+        }
+        if (mb_strlen($rodape) > 60) {
+            throw new \InvalidArgumentException('Rodapé: máximo 60 caracteres.');
+        }
+
+        $this->validarVariaveisTemplate(
+            $conteudo . ' ' . $assunto . ' ' . ($cabTipo === 'texto' ? $cabValor : '') . ' ' . $rodape,
+            $canal
+        );
  
         if ($id !== null) {
             $this->db->prepare(
                 "UPDATE recuperacao_templates
-                 SET nome = ?, assunto = ?, conteudo = ?,
+                 SET nome = ?, assunto = ?, cabecalho_tipo = ?, cabecalho_valor = ?,
+                     conteudo = ?, rodape = ?, botoes_json = ?,
                      uso_recomendado = ?, ativo = ?
                  WHERE id = ?"
             )->execute([
                 $nome, $canal === 'email' ? $assunto : null,
-                $conteudo, $uso ?: null, $ativo, $id,
+                $cabTipo, $cabValor ?: null,
+                $conteudo, $rodape ?: null, $botoes,
+                $uso ?: null, $ativo, $id,
             ]);
             return $id;
         }
  
         $this->db->prepare(
             "INSERT INTO recuperacao_templates
-                (nome, canal, assunto, conteudo, uso_recomendado, ativo)
-             VALUES (?,?,?,?,?,?)"
+                (nome, canal, assunto, cabecalho_tipo, cabecalho_valor,
+                 conteudo, rodape, botoes_json, uso_recomendado, ativo)
+             VALUES (?,?,?,?,?,?,?,?,?,?)"
         )->execute([
             $nome, $canal, $canal === 'email' ? $assunto : null,
-            $conteudo, $uso ?: null, $ativo,
+            $cabTipo, $cabValor ?: null,
+            $conteudo, $rodape ?: null, $botoes,
+            $uso ?: null, $ativo,
         ]);
         return (int)$this->db->lastInsertId();
     }
  
+    /**
+     * Normaliza os botões vindos do formulário para o JSON guardado.
+     *
+     * Dois formatos exclusivos, na mesma coluna porque a mensagem só pode ser
+     * de um deles:
+     *   botões  — até 3, cada um vira um toque direto
+     *   lista   — até 10 linhas atrás de um botão que abre o menu
+     *
+     * Os limites são da Meta, não escolha nossa: 3 botões e 20 caracteres de
+     * título. Estourar não dá erro no nosso lado — a mensagem é recusada no
+     * envio, que é longe daqui e difícil de associar à causa.
+     *
+     * @return string|null JSON, ou null quando não há botão nenhum
+     */
+    private function normalizarBotoes($dados): ?string {
+        if (!is_array($dados)) return null;
+
+        $tipo = (string)($dados['tipo'] ?? '');
+
+        if ($tipo === 'botoes') {
+            $itens = [];
+            foreach ((array)($dados['itens'] ?? []) as $b) {
+                $titulo = trim((string)($b['titulo'] ?? ''));
+                if ($titulo === '') continue;
+                if (mb_strlen($titulo) > 20) {
+                    throw new \InvalidArgumentException(
+                        "Botão \"{$titulo}\": máximo 20 caracteres."
+                    );
+                }
+                $itens[] = ['titulo' => $titulo, 'url' => trim((string)($b['url'] ?? ''))];
+            }
+            if (!$itens) return null;
+            if (count($itens) > 3) {
+                throw new \InvalidArgumentException('No máximo 3 botões.');
+            }
+            return json_encode(['tipo' => 'botoes', 'itens' => $itens], JSON_UNESCAPED_UNICODE);
+        }
+
+        if ($tipo === 'lista') {
+            $textoBotao = trim((string)($dados['texto_botao'] ?? ''));
+            if ($textoBotao === '' || mb_strlen($textoBotao) > 20) {
+                throw new \InvalidArgumentException(
+                    'A lista precisa do texto do botão que a abre (até 20 caracteres).'
+                );
+            }
+            $linhas = [];
+            foreach ((array)($dados['itens'] ?? []) as $b) {
+                $titulo = trim((string)($b['titulo'] ?? ''));
+                if ($titulo === '') continue;
+                if (mb_strlen($titulo) > 24) {
+                    throw new \InvalidArgumentException(
+                        "Item \"{$titulo}\": máximo 24 caracteres."
+                    );
+                }
+                $linhas[] = [
+                    'titulo'    => $titulo,
+                    'descricao' => mb_substr(trim((string)($b['descricao'] ?? '')), 0, 72),
+                    'url'       => trim((string)($b['url'] ?? '')),
+                ];
+            }
+            if (!$linhas) return null;
+            if (count($linhas) > 10) {
+                throw new \InvalidArgumentException('No máximo 10 itens na lista.');
+            }
+            return json_encode([
+                'tipo' => 'lista', 'texto_botao' => $textoBotao, 'itens' => $linhas,
+            ], JSON_UNESCAPED_UNICODE);
+        }
+
+        return null;
+    }
+
     /**
      * Rejeita variáveis fora da whitelist. Um typo ({nome_cliente})
      * chegaria literal na mensagem do cliente — pior tipo de erro:
