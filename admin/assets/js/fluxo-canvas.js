@@ -41,7 +41,11 @@ var FLUXO_UI = {
           // interessa a quem tem o produto na wishlist, e volta de estoque a
           // quem se inscreveu no avise-me.
           'pedido_entregue','queda_preco','volta_estoque'] },
-        { k: 'entidade_tipo', label: 'Entidade (opcional)', tipo: 'select', ops: ['', 'produto', 'categoria', 'banner'] },
+        { k: 'entidade_tipo', label: 'Entidade (opcional)', tipo: 'select',
+          // 'pedido' entrou com os eventos server-side (pedido_entregue,
+          // pedido_criado): sem ele o select nao conseguia exibir nem
+          // preservar a entidade desses triggers.
+          ops: ['', 'produto', 'categoria', 'banner', 'pedido'] },
         { k: 'min_ocorrencias', label: 'Mín. ocorrências', tipo: 'number', def: 1 },
         { k: 'janela_dias', label: 'Janela (dias)', tipo: 'number', def: 7 },
         { k: 'apenas_logados', label: 'Apenas logados', tipo: 'checkbox', def: true }

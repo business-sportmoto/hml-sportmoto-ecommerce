@@ -12,6 +12,16 @@ atualizado_em: 2026-09-03
 
 ## Em desenvolvimento
 
+- **4 fluxos ganharam gatilho de evento.** #11/#12 (pos-compra) passaram a
+  `pedido_entregue`, #16 a `queda_preco` e #17 a `volta_estoque` — os quatro
+  validam como publicaveis. **Nenhum dispara ate ser publicado** (o detector
+  filtra `status='publicado' AND versao_publicada>=1`). Falta escolher template
+  em #11 e #12, que estao com `template_id: 0` e erram em runtime sem ele.
+  O `sair_se_eventos:["pedido_criado"]` saiu de #11/#12: aquela regra existe
+  para abortar jornada de RECUPERACAO, e pos-compra nao e recuperacao — mantida
+  em #16/#17, que sao. Ver
+  [[../12-decisoes-tecnicas/tracking-eventos-server-side]].
+
 - **Eventos server-side no stream.** `TrackingService::registrarPara()` emite
   com `cliente_id` explícito e funciona em CLI — o que destravou
   `pedido_entregue`, `queda_preco`, `volta_estoque` e fechou o `pedido_criado`

@@ -85,12 +85,12 @@ Instalador do atendimento inicial (roda uma vez, não é cron):
 
 `cli/ia-agentes-worker.php`. Dois modos, lock por modo em `storage/locks/`.
 
-| Linha de cron | O que faz | Custo |
-|---|---|---|
-| `0 6 * * * … --agente=agente_financeiro` | resumo executivo do dia (uma rodada por agente por dia; repetir não gasta) | ≈ US$ 0,10 |
-| `0 7 * * * … --agente=agente_estoque` | idem | ≈ US$ 0,10 |
-| `0 8 * * * … --agente=agente_analytics` | idem | ≈ US$ 0,10 |
-| `0,30 * * * * … --modo=evento` | só dispara quando `BiService::alertas()` tem alerta **crítico** ainda não tratado hoje. **Desde 05/09 se retira** se um fluxo publicado no canvas escuta `bi_alerta_critico` (Fase C) — aí quem trata é o `fluxo-worker` | zero sem alerta |
+| Linha de cron                            | O que faz                                                                                                                                                                                                                | Custo           |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------- |
+| `0 6 * * * … --agente=agente_financeiro` | resumo executivo do dia (uma rodada por agente por dia; repetir não gasta)                                                                                                                                               | ≈ US$ 0,10      |
+| `0 7 * * * … --agente=agente_estoque`    | idem                                                                                                                                                                                                                     | ≈ US$ 0,10      |
+| `0 8 * * * … --agente=agente_analytics`  | idem                                                                                                                                                                                                                     | ≈ US$ 0,10      |
+| `0,30 * * * * … --modo=evento`           | só dispara quando `BiService::alertas()` tem alerta **crítico** ainda não tratado hoje. **Desde 05/09 se retira** se um fluxo publicado no canvas escuta `bi_alerta_critico` (Fase C) — aí quem trata é o `fluxo-worker` | zero sem alerta |
 
 Prioridade **Alta** em qualquer modo → sino de todos os admins
 (`NotificacaoService::criarBroadcast`, categoria financeiro/estoque/sistema).
