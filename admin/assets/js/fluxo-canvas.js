@@ -20,7 +20,10 @@ var FLUXO_UI = {
     trigger:  { label: 'Triggers',  cor: '#16a34a' },
     condicao: { label: 'Condições', cor: '#f59e0b' },
     acao:     { label: 'Ações',     cor: '#0a66c2' },
-    fluxo:    { label: 'Fluxo',     cor: '#71717a' }
+    fluxo:    { label: 'Fluxo',     cor: '#71717a' },
+    // Fase C dos agentes de IA: o BI publica eventos (bi_alerta_*, bi_meta_risco,
+    // agenda_NNh) e estes nós perguntam ao agente e avisam o gestor.
+    ia:       { label: 'BI & IA',   cor: '#7c3aed' }
   },
   nos: {
     trigger_evento: { cat: 'trigger', label: 'Evento do site', icone: 'bi-lightning-charge',
@@ -28,7 +31,11 @@ var FLUXO_UI = {
         { k: 'evento', label: 'Evento', tipo: 'select', ops: ['produto_visto','categoria_vista','catalogo_moto_visto','busca','banner_click','pagina_vista','pedido_criado', 'dica_cuidado_clicada',
           // Radar de clientes (cli/cliente-radar.php) — estados que
           // amadurecem sozinhos, nao cliques.
-          'aniversario','inativo_30d','inativo_60d','inativo_90d','saldo_expirando'] },
+          'aniversario','inativo_30d','inativo_60d','inativo_90d','saldo_expirando',
+          // BI (app/services/BiEventoService.php) — eventos do SISTEMA, sem
+          // pessoa: "apenas logados" é ignorado pelo detector para estes.
+          'bi_alerta_critico','bi_alerta_alto','bi_alerta_medio','bi_meta_risco',
+          'agenda_06h','agenda_07h','agenda_08h','agenda_12h','agenda_18h'] },
         { k: 'entidade_tipo', label: 'Entidade (opcional)', tipo: 'select', ops: ['', 'produto', 'categoria', 'banner'] },
         { k: 'min_ocorrencias', label: 'Mín. ocorrências', tipo: 'number', def: 1 },
         { k: 'janela_dias', label: 'Janela (dias)', tipo: 'number', def: 7 },
@@ -149,6 +156,41 @@ var FLUXO_UI = {
         { k: 'mensagem',  label: 'Mensagem', tipo: 'textarea', def: '' },
         { k: 'url',       label: 'Link (opcional)', tipo: 'text', def: '' }
       ] },
+
+    // ── BI & IA (Fase C) ──
+    // O agente responde em modo 'evento' e grava no contexto: ia_prioridade,
+    // ia_resumo, ia_recomendacoes, ia_resposta, ia_conversa_uuid, ia_custo_usd,
+    // ia_url (ou ia_erro na porta 'erro'). Tudo vira {{var}} nos nós seguintes,
+    // junto com o que veio do evento: {{titulo}} {{nivel}} {{detalhe}} {{pct}}…
+    agente_ia: { cat: 'ia', label: 'Agente de IA', icone: 'bi-robot',
+      campos: [
+        { k: 'agente',   label: 'Agente', tipo: 'select_fonte', fonte: 'FX_AGENTES_BI', def: 'auto' },
+        { k: 'pergunta', label: 'Pergunta (aceita {{vars}} do evento)', tipo: 'textarea', def: '' },
+        { k: 'periodo',  label: 'Período analisado', tipo: 'select', ops: ['7d', '30d', '90d', '12m'], def: '30d' },
+        { k: 'pagina',   label: 'Página do BI (dados pré-carregados)', tipo: 'select_fonte', fonte: 'FX_PAGINAS_BI',
+          vazio: '(página padrão do agente)' }
+      ] },
+    cond_prioridade: { cat: 'ia', label: 'Prioridade da IA ≥', icone: 'bi-exclamation-diamond',
+      campos: [ { k: 'minimo', label: 'Prioridade mínima', tipo: 'select', ops: ['Alta', 'Média', 'Baixa'], def: 'Alta' } ] },
+    cond_contexto: { cat: 'ia', label: 'Valor do contexto', icone: 'bi-braces',
+      campos: [
+        { k: 'campo',    label: 'Campo (ex.: pct, nivel, ia_custo_usd)', tipo: 'text', def: '' },
+        { k: 'operador', label: 'Operador', tipo: 'select', ops: ['=', '!=', '>=', '>', '<=', '<', 'contem', 'existe'], def: '=' },
+        { k: 'valor',    label: 'Valor', tipo: 'text', def: '' }
+      ] },
+    acao_sino_admins: { cat: 'ia', label: 'Sino dos admins', icone: 'bi-bell-fill',
+      campos: [
+        { k: 'categoria', label: 'Categoria', tipo: 'select', ops: ['sistema', 'financeiro', 'estoque', 'pedido', 'promocao'], def: 'sistema' },
+        { k: 'titulo',    label: 'Título (aceita {{vars}})', tipo: 'text', def: '{{titulo}} · prioridade {{ia_prioridade}}' },
+        { k: 'mensagem',  label: 'Mensagem', tipo: 'textarea', def: '{{ia_resumo}}' },
+        { k: 'url',       label: 'Link (opcional)', tipo: 'text', def: '{{ia_url}}' }
+      ] },
+    acao_email_gestor: { cat: 'ia', label: 'E-mail ao gestor', icone: 'bi-envelope-at',
+      campos: [
+        { k: 'para',     label: 'Para (até 5, separados por vírgula)', tipo: 'text', def: '' },
+        { k: 'assunto',  label: 'Assunto (aceita {{vars}})', tipo: 'text', def: '{{titulo}} · prioridade {{ia_prioridade}}' },
+        { k: 'mensagem', label: 'Mensagem', tipo: 'textarea', def: '{{ia_resumo}}\n\n{{ia_recomendacoes}}' }
+      ] },
   },
 
   /** Resumo curto exibido dentro do nó no canvas. */
@@ -193,6 +235,17 @@ var FLUXO_UI = {
       case 'acao_notificar_vendedor':
         return (cfg.canal || 'auto') + ' · ' +
                (cfg.titulo ? cfg.titulo.substring(0, 22) : 'sem título');
+
+      // BI & IA
+      case 'agente_ia':
+        return (cfg.agente || 'auto') + ' · ' + (cfg.periodo || '30d') +
+               (cfg.pergunta ? '' : ' · sem pergunta');
+      case 'cond_prioridade':   return '≥ ' + (cfg.minimo || 'Alta');
+      case 'cond_contexto':
+        return (cfg.campo || '—') + ' ' + (cfg.operador || '=') +
+               (cfg.operador === 'existe' ? '' : ' ' + (cfg.valor !== undefined ? cfg.valor : ''));
+      case 'acao_sino_admins':  return cfg.titulo ? cfg.titulo.substring(0, 26) : '—';
+      case 'acao_email_gestor': return cfg.para ? cfg.para.split(/[,;\s]+/)[0].substring(0, 26) : 'sem destinatário';
       default: return '';
     }
   }
@@ -519,6 +572,16 @@ if (typeof window !== 'undefined' && window.jQuery && window.Drawflow) {
           });
           $st.val(String(val));
           $g.append($st);
+        } else if (c.tipo === 'select_fonte') {
+          // Opções [{v, t}] injetadas pela view em window[c.fonte]
+          // (FX_AGENTES_BI, FX_PAGINAS_BI). c.vazio = rótulo da opção em branco.
+          var $sf = $('<select class="fx-input">').attr('data-k', c.k);
+          if (c.vazio) $sf.append($('<option value="">').text(c.vazio));
+          (window[c.fonte] || []).forEach(function (o) {
+            $sf.append($('<option>').val(o.v).text(o.t));
+          });
+          $sf.val(String(val));
+          $g.append($sf);
         } else if (c.tipo === 'textarea' || c.tipo === 'textarea_lista') {
           var v = c.tipo === 'textarea_lista' && Array.isArray(val) ? val.join('\n') : val;
           $g.append($('<textarea class="fx-input" rows="3">').attr('data-k', c.k)

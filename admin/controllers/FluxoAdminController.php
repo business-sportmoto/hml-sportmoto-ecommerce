@@ -22,12 +22,11 @@ class FluxoAdminController extends Controller
     public function __construct()
     {
         // parent::__construct();
-        if (method_exists('AuthHelper', 'requirePermission')) {
-            try { AuthHelper::requirePermission('automacao'); }
-            catch (Throwable $e) { AuthHelper::requireAdminLevel(); }
-        } else {
-            AuthHelper::requireAdmin();
-        }
+        // A cascata mora no AuthHelper — ver o porquê lá. O try/catch que
+        // existia aqui era código morto: requirePermission() não lança, nega
+        // com exit, e o requireAdminLevel() do catch iria sem argumento
+        // nenhum (= só o super).
+        AuthHelper::requirePermissaoOuNivel('automacao', 'super', 'gerente');
         $this->svc = new FluxoAdminService();
     }
 
@@ -56,10 +55,29 @@ class FluxoAdminController extends Controller
             // sem templates o canvas ainda funciona; o select fica vazio
         }
 
+        // Agentes e páginas do BI para os selects do nó agente_ia (Fase C).
+        // Sem o módulo de IA instalado o canvas segue; o select fica só com 'auto'.
+        $agentesBi = [['v' => 'auto', 't' => 'auto — o agente sugerido pelo alerta']];
+        $paginasBi = [];
+        if (class_exists('IAAgenteGateway')) {
+            try {
+                foreach (IAAgenteGateway::agentes() as $codigo => $a) {
+                    $agentesBi[] = ['v' => $codigo, 't' => (string)($a['nome_exibicao'] ?? $codigo)];
+                }
+                foreach (IAAgenteGateway::PAGINAS as $codigo => $rotulo) {
+                    $paginasBi[] = ['v' => $codigo, 't' => $rotulo];
+                }
+            } catch (Throwable $e) {
+                // catálogo ainda não migrado — canvas sem a lista
+            }
+        }
+
         $this->render('fluxos/editor', [
             'fluxo'          => $fluxo,
             'catalogo'       => FluxoNoRegistry::catalogo(),
             'emailTemplates' => $emailTemplates,
+            'agentesBi'      => $agentesBi,
+            'paginasBi'      => $paginasBi,
             'titulo'         => 'Fluxo — ' . $fluxo['nome'],
         ], 'admin');
     }

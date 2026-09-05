@@ -631,6 +631,18 @@ html[data-theme="light"] .pwb_ia_drawer {
   margin: 12px 0 0; padding: 8px 10px; border-radius: var(--pwb-r-sm);
   background: var(--pwb-a-amber); color: var(--pwb-tc-amber); font-size: 12px; line-height: 1.45;
 }
+/* Analistas consultados pelo Diretor (Fase B). */
+.pwb_ia_delegacoes { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--pwb-line); }
+.pwb_ia_delegacoes_titulo { display: block; font-size: 10.5px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--pwb-t2); margin-bottom: 6px; }
+.pwb_ia_delegacao { border: 1px solid var(--pwb-line); border-radius: var(--pwb-r-sm); background: var(--pwb-panel); margin-top: 6px; padding: 0 10px; }
+.pwb_ia_delegacao summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; padding: 8px 0; font-size: 12.5px; color: var(--pwb-t0); }
+.pwb_ia_delegacao summary::-webkit-details-marker { display: none; }
+.pwb_ia_delegacao summary::after { content: '▾'; margin-left: auto; color: var(--pwb-t2); }
+.pwb_ia_delegacao[open] summary::after { transform: rotate(180deg); }
+.pwb_ia_delegacao_meta { font-size: 11px; color: var(--pwb-t2); font-variant-numeric: tabular-nums; }
+.pwb_ia_delegacao_pergunta { margin: 0 0 6px; font-size: 12px; color: var(--pwb-t2); font-style: italic; }
+.pwb_ia_delegacao .pwb_ia_secao_texto { padding-bottom: 10px; font-size: 13px; }
+
 .pwb_ia_procedencia {
   display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 12px;
   font-size: 11px; color: var(--pwb-t2); font-variant-numeric: tabular-nums;

@@ -295,7 +295,13 @@ class CheckoutController extends Controller {
             $this->redirect('/checkout/address');            
         }
 
-        $cartoesSalvos =  $this->CartaoSalvo->listarPorCliente($clienteId);
+        // O cartão "só nesta compra" de um pagamento recusado continua
+        // selecionável enquanto o cron não passa — senão segurá-lo na recusa
+        // não serviria para nada, e o cliente redigitaria assim mesmo.
+        $cartoesSalvos = $this->CartaoSalvo->listarPorCliente(
+            $clienteId,
+            (int) Session::get('checkout_cartao_id')
+        );
 
         $this->state->setUltimaEtapa('payment');
 
@@ -1895,6 +1901,32 @@ class CheckoutController extends Controller {
 
             $db->commit();
     
+            // ── Evento `pedido_criado` no stream de automacao ──────────────
+            // Exit-condition mais importante do motor v2: e ele que faz
+            // `sair_se_eventos: ["pedido_criado"]` abortar a jornada de
+            // recuperacao quando o cliente finalmente compra. Sem isto a
+            // regra existe nos fluxos mas nunca dispara, e quem comprou
+            // segue recebendo "esqueceu algo no carrinho?".
+            //
+            // DEPOIS do commit de proposito: o TrackingService escreve pela
+            // MESMA conexao PDO, entao dentro da transacao o evento sumiria
+            // junto num rollback — o pedido nao existiria e o evento tambem
+            // nao, mas a ordem correta e so registrar o que de fato existe.
+            if (class_exists('TrackingService')) {
+                try {
+                    TrackingService::registrar('pedido_criado', 'pedido', (int)$pedidoId, [
+                        'total'  => (float)$total,
+                        'codigo' => $codigo,
+                        'canal'  => $canal,
+                    ]);
+                } catch (\Throwable $e) {
+                    // Tracking NUNCA quebra o checkout: o pedido ja esta pago
+                    // e comitado, e falha de telemetria nao pode virar erro
+                    // para o cliente.
+                    error_log('[process] tracking pedido_criado falhou: ' . $e->getMessage());
+                }
+            }
+
         } catch (\Throwable $e) {
             $db->rollBack();
             error_log('[process] ' . $e->getMessage());
@@ -2224,6 +2256,30 @@ class CheckoutController extends Controller {
             catch (\Throwable $e) { error_log('[process] Cupom confirm: ' . $e->getMessage()); }
         }
         
+        // RECUSA COM CARTÃO "SÓ NESTA COMPRA": guarda o id para a retentativa.
+        //
+        // A limpeza da sessão logo abaixo apaga `checkout_cartao_id`, e o
+        // cartão temporário não aparece na lista do checkout. Sem esta chave,
+        // segurá-lo na recusa seria inútil: ele ficaria invisível até o cron
+        // apagar, e o cliente redigitaria assim mesmo.
+        //
+        // Chave própria, e não `checkout_cartao_id`, de propósito: aquela
+        // sobrevive a um checkout novo, e um cartão que o cliente mandou não
+        // guardar reaparecendo numa compra diferente contradiz a escolha dele.
+        // Esta só é consumida pelo "trocar forma de pagamento" deste pedido.
+        $cartaoParaRetentar = null;
+        if ($cartaoSalvoId && $statusPagamento === 'recusado') {
+            try {
+                if ((new CartaoSalvo())->ehTemporario((int) $cartaoSalvoId, $clienteId)) {
+                    $cartaoParaRetentar = (int) $cartaoSalvoId;
+                }
+            } catch (\Throwable $e) {
+                LogService::exception($e, 'warning', 'pagamento', [
+                    'acao' => 'guardar_cartao_retentativa', 'pedido_id' => $pedidoId,
+                ]);
+            }
+        }
+
         // 
         // 9. Limpa sessão
         $this->state->clear();
@@ -2232,6 +2288,11 @@ class CheckoutController extends Controller {
         Session::remove('checkout_cartao_id');
         Session::remove('checkout_payment_method');
         Session::remove('cupom_aplicado');
+
+        // Depois do clear, senão sairia junto.
+        if ($cartaoParaRetentar !== null) {
+            Session::set('checkout_cartao_recusado', $cartaoParaRetentar);
+        }
 
         // Cart::clear() recebe o ID DO CARRINHO. Aqui vinha `$clienteId`, o que
         // esvaziava o carrinho cujo *id* calhava de ser igual ao id do cliente
@@ -2251,19 +2312,24 @@ class CheckoutController extends Controller {
         // O navegador abre o desafio e so entao segue.
         $desafio3ds = $rot ? $rot->desafio3ds() : null;
 
-        // CARTÃO QUE O CLIENTE NÃO MANDOU SALVAR SAI AGORA.
+        // CARTÃO QUE O CLIENTE NÃO MANDOU SALVAR SAI AGORA — SE APROVOU.
         //
-        // Ele existiu porque a cobrança precisava dele. O pagamento tem
-        // resultado, então ele some — dos cofres das adquirentes e daqui.
+        // Ele existiu porque a cobrança precisava dele. Aprovada, a compra
+        // acabou e ele some: dos cofres das adquirentes e daqui.
         //
-        // Só em resultado TERMINAL. Pendente e desafio 3DS ficam: a cobrança
+        // RECUSA NÃO APAGA. Quem foi recusado quase sempre tenta de novo em
+        // seguida, e apagar aqui obrigaria a redigitar o cartão inteiro no
+        // pior momento — depois de um "não autorizado". O cartão fica de pé
+        // pela janela do cron, que o recolhe dentro de uma hora. A promessa
+        // ao cliente continua valendo; o que muda é o prazo, de segundos para
+        // minutos.
+        //
+        // Pendente e desafio 3DS também ficam, por outro motivo: a cobrança
         // ainda pode precisar da referência, e apagar aqui faria a compra
-        // falhar sozinha depois de o cliente autenticar. Para esses, quem
-        // recolhe é o cron (cli/cartoes-temporarios-purgar.php), que só olha
-        // cartão com mais de uma hora.
-        $terminal = in_array($statusPagamento, ['aprovado', 'recusado'], true);
-
-        if ($cartaoSalvoId && $terminal && $desafio3ds === null) {
+        // falhar sozinha depois de o cliente autenticar.
+        //
+        // Em todos esses casos quem limpa é cli/cartoes-temporarios-purgar.php.
+        if ($cartaoSalvoId && $statusPagamento === 'aprovado' && $desafio3ds === null) {
             try {
                 (new CartaoSalvoService($db))
                     ->purgarTemporario((int) $cartaoSalvoId, $clienteId);
@@ -2856,6 +2922,18 @@ class CheckoutController extends Controller {
             ]);
         }
         $this->state->setUltimaEtapa('payment');
+
+        // Cartão "só nesta compra" da tentativa recusada: volta selecionado,
+        // para o cliente não redigitar tudo depois de um "não autorizado".
+        // Some da sessão aqui — vale uma retentativa, não para sempre. Se o
+        // cron já tiver passado, `findOwned` devolve null e ele digita de novo.
+        $recusado = (int) Session::get('checkout_cartao_recusado');
+        Session::remove('checkout_cartao_recusado');
+
+        if ($recusado > 0 && (new CartaoSalvo())->findOwned($recusado, $clienteId)) {
+            Session::set('checkout_cartao_id', $recusado);
+            Session::set('checkout_payment_method', 'cartao');
+        }
 
         LogService::audit('Cliente refez o pagamento', [
             'pedido_id'     => $pedido['id'],

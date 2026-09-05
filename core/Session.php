@@ -210,6 +210,13 @@ class Session {
         if (self::get('admin_nivel') === 'super') return true;
 
         $permissoes = self::get('admin_permissoes', []);
+
+        // `{"all": true}` e o que o cadastro grava para "acesso total" — e o
+        // que os dois admins deste banco tem. Sem esta linha a chave era
+        // ignorada e quem tinha permissao TOTAL tomava 403 em todo modulo que
+        // consultasse uma permissao nominal.
+        if (($permissoes['all'] ?? false) === true) return true;
+
         return ($permissoes[$permissao] ?? false) === true;
     }
 

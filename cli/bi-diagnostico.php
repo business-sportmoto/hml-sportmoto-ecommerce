@@ -429,6 +429,31 @@ if ($temAgente) {
     }
 }
 
+// Fase C (05/09): o BI publica eventos (bi_alerta_*, bi_meta_risco, agenda_NNh)
+// e fluxos do canvas decidem o que fazer — a regra fixa do worker só vale
+// enquanto nenhum fluxo publicado escutar o alerta crítico.
+if ($temAgente && class_exists('BiEventoService')) {
+    $ouvintes = BiEventoService::ouvintes();
+    if (!$ouvintes) {
+        linha('aviso', 'nenhum fluxo publicado escuta eventos do BI (bi_alerta_*, bi_meta_risco, agenda_NNh)',
+              'php cli/fluxo-bi-exemplos.php cria 2 rascunhos; publique em /admin/fluxos');
+    } else {
+        foreach ($ouvintes as $tipo => $fls) {
+            linha('ok', sprintf('%-18s → %s', $tipo,
+                  implode(', ', array_map(fn($x) => "#{$x['id']} {$x['nome']}", $fls))));
+        }
+        $evHoje = $db->query(
+            "SELECT tipo, COUNT(*) n FROM eventos
+              WHERE (tipo LIKE 'bi\\_%' OR tipo LIKE 'agenda\\_%') AND criado_em >= CURDATE()
+              GROUP BY tipo ORDER BY tipo"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        linha($evHoje ? 'ok' : 'aviso',
+              $evHoje ? 'eventos do BI hoje: ' . implode(', ', array_map(fn($e) => "{$e['tipo']}×{$e['n']}", $evHoje))
+                      : 'nenhum evento do BI publicado hoje',
+              $evHoje ? '' : 'o fluxo-worker publica a cada minuto (alertas e metas a cada 15 min)');
+    }
+}
+
 // ────────────────────────────────────────────────────────
 // Marca é quase obrigatória no cadastro, então produto sem marca
 // derruba a página de Marcas em silêncio.

@@ -26,18 +26,10 @@ class VidaUtilAdminController extends Controller
         $this->db = Database::getInstance()->getConnection();
     }
 
-    /** Cascata de permissão do projeto. */
+    /** Cascata de permissão do projeto — mora no AuthHelper, ver o porquê lá. */
     private function autorizar(): void
     {
-        if (method_exists('AuthHelper', 'requirePermission')) {
-            AuthHelper::requirePermission('vida_util');
-            return;
-        }
-        if (method_exists('AuthHelper', 'requireAdminLevel')) {
-            AuthHelper::requireAdminLevel();
-            return;
-        }
-        AuthHelper::requireAdmin();
+        AuthHelper::requirePermissaoOuNivel('vida_util', 'super', 'gerente');
     }
 
     // ═════════════════════════════════════════════════════════════════════════

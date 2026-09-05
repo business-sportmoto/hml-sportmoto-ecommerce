@@ -72,6 +72,12 @@ cache, LGPD), `IAAgenteService` (conversa, pré-carga, guarda de números),
 Capacidade `agente` só tem modelos Claude. Três modos: botão no BI, cron
 agendado, por evento sobre `BiService::alertas()`.
 
+Desde 05/09 há também o **catálogo editável** (`ia_agentes`, tela Agentes de
+IA), o **Diretor** (`perguntar_agente` → sub-conversas `delegado`) e a **Fase
+C**: o BI publica eventos no stream (`BiEventoService` → `eventos` com tipos
+`bi_*`/`agenda_*`) e o motor de automação v2 tem nós `agente_ia`,
+`cond_prioridade`, `cond_contexto`, `acao_sino_admins`, `acao_email_gestor` —
+as regras fixas do worker viraram fluxos do canvas.
 → [[../12-decisoes-tecnicas/ia-agentes-bi]]
 
 ---

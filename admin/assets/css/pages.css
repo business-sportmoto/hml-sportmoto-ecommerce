@@ -2124,8 +2124,12 @@ html[data-theme="dark"] .toggle-slider::after { background: #f8fafc; }
 }
 
 /* ==== tokens do módulo (escopados, herdam o tema do painel) ================ */
+/* `.admin-drawer` também: o adminDrawer é anexado ao <body>, FORA de
+   .ia_wrap, e todo formulário da Central que abre nele (provedor, modelo,
+   limite, agente) ficava sem token — sem margem, sem cor, sem borda. */
 .ia_pagina,
-.ia_wrap {
+.ia_wrap,
+.admin-drawer {
   --ia-azul:        var(--blue, #2563eb);
   --ia-azul-suave:  var(--blue-lt, #eff6ff);
   --ia-azul-anel:   rgba(37, 99, 235, .30);
@@ -4738,3 +4742,26 @@ html[data-theme="dark"] .fp-selo{background:var(--pgto-surface-2) !important;col
   max-height: 380px; overflow: auto;
   white-space: pre; tab-size: 2;
 }
+
+/* ==== Agentes de IA · formulário no drawer ================================ */
+/* O formulário é denso (21 ferramentas, 19 páginas): cada grupo vira uma
+   lista legível — nome mono à esquerda, descrição apagada embaixo — e as
+   páginas ficam em duas colunas. Tudo herda os tokens --ia-* declarados
+   acima também em .admin-drawer. */
+.ia_form_agente .ia_secao_titulo { margin-top: var(--ia-e-5, 32px); }
+.ia_form_agente .ia_secao_titulo:first-of-type { margin-top: 0; }
+.ia_form_agente .ia_secao_titulo .ia_hint { font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 6px; }
+.ia_form_agente .ia_check { align-items: flex-start; }
+.ia_form_agente .ia_check_solto { margin-top: 4px; }
+.ia_form_agente .ia_check .ia_celula_sub { display: block; font-size: 11.5px; color: var(--ia-txt2); line-height: 1.4; margin-top: 2px; }
+.ia_form_agente .ia_check .ia_mono { font-weight: 600; color: var(--ia-txt); }
+.ia_form_agente .ia_check .ia_pill { margin-left: 6px; }
+.ia_ag_dominio { padding: 10px 12px 6px; border: 1px solid var(--ia-borda); border-radius: 10px; background: var(--ia-card, transparent); }
+.ia_ag_dominio + .ia_ag_dominio { margin-top: 10px; }
+.ia_ag_dominio .ia_grupo_rotulo { display: flex; align-items: center; justify-content: space-between; margin: 0 0 6px; }
+.ia_ag_paginas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 12px; }
+.ia_ag_paginas .ia_check { margin-top: 0; }
+.ia_ag_paginas .ia_check input:disabled + * { opacity: .55; }
+.ia_form_agente textarea.ia_input_mono { font-size: 12.5px; }
+.ia_form_agente .ia_form_rodape { margin-top: var(--ia-e-4); }
+@media (max-width: 560px) { .ia_ag_paginas { grid-template-columns: 1fr; } }

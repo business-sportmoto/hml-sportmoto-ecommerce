@@ -39,10 +39,24 @@ class IAAgenteGateway
         'consultar_funil' => 'Conversão', 'consultar_dispositivos' => 'Conversão', 'consultar_carrinhos' => 'Conversão',
         'consultar_clientes' => 'Clientes', 'consultar_geografia' => 'Clientes',
         'consultar_alertas' => 'Todos', 'consultar_saude_dados' => 'Todos',
+        'perguntar_agente' => 'Coordenação',
     ];
 
     /** Catálogo de agentes (ia_agentes), carregado uma vez por requisição. */
     private static ?array $agentes = null;
+
+    /**
+     * Delegação a outro agente — a ferramenta `perguntar_agente` do Diretor.
+     * O gateway valida nome/whitelist/schema como em qualquer ferramenta;
+     * quem EXECUTA é o IAAgenteService, que registra o callback por
+     * pergunta (e o restaura ao sair, porque a execução é reentrante: o
+     * analista consultado roda o mesmo caminho).
+     * @var callable|null fn(array $params): array{ok:bool, dados?:array, erro?:string, mensagem?:string}
+     */
+    private $delegacao = null;
+
+    /** Consultas a analistas por pergunta. Acima disso o Diretor consolida com o que tem. */
+    public const DELEGACOES_MAX = 4;
 
     /** Teto de linhas que uma ferramenta devolve. O modelo não pode pedir mais. */
     private const LIMITE_MAX    = 20;
@@ -242,7 +256,20 @@ class IAAgenteGateway
      * os campos obrigatórios) para `strict: true` — o modelo não consegue
      * inventar parâmetro.
      */
-    public function definicoes(array $whitelist): array
+    /** Registra (ou limpa) o executor de `perguntar_agente`; devolve o anterior, para restaurar. */
+    public function registrarDelegacao(?callable $fn): ?callable
+    {
+        $anterior = $this->delegacao;
+        $this->delegacao = $fn;
+        return $anterior;
+    }
+
+    /**
+     * @param string[]    $whitelist   ferramentas do agente
+     * @param string|null $agenteAtual quem pergunta — sai do enum de `perguntar_agente`
+     *                                 (o Diretor não consulta a si mesmo)
+     */
+    public function definicoes(array $whitelist, ?string $agenteAtual = null): array
     {
         $out = [];
         foreach ($whitelist as $nome) {
@@ -250,9 +277,15 @@ class IAAgenteGateway
             $f = $this->catalogo[$nome];
 
             $props = [];
+            $vazio = false;
             foreach ($f['propriedades'] as $chave => $p) {
                 $prop = ['type' => $p['type'], 'description' => $p['descricao']];
                 if (isset($p['enum'])) $prop['enum'] = $p['enum'];
+                if (isset($p['enum_dinamico'])) {
+                    $enum = ($p['enum_dinamico'])($agenteAtual);
+                    if ($enum === []) { $vazio = true; break; }   // ninguém a quem delegar: a ferramenta some
+                    $prop['enum'] = array_values($enum);
+                }
                 // `minimum`/`maximum` NÃO vão para a API: com strict:true a
                 // Anthropic aceita só um subconjunto do JSON Schema e devolve
                 // 400 ("For 'integer' type, properties maximum, minimum are
@@ -264,6 +297,7 @@ class IAAgenteGateway
                 }
                 $props[$chave] = $prop;
             }
+            if ($vazio) continue;
 
             $out[] = [
                 'name'         => $nome,
@@ -294,7 +328,7 @@ class IAAgenteGateway
      * @param string[] $whitelist ferramentas do agente. Vazia = nada passa.
      * @return array{ok:bool, ferramenta:string, parametros?:array, dados?:mixed, ms?:int, cache?:bool, erro?:string, mensagem?:string}
      */
-    public function executar(string $nome, array $params, array $whitelist): array
+    public function executar(string $nome, array $params, array $whitelist, ?string $agenteAtual = null): array
     {
         if (!isset($this->catalogo[$nome])) {
             return $this->recusa($nome, 'ferramenta_desconhecida', "A ferramenta '{$nome}' não existe.");
@@ -307,9 +341,27 @@ class IAAgenteGateway
         $f = $this->catalogo[$nome];
 
         try {
-            $p = $this->validar($f['propriedades'], $params);
+            $p = $this->validar($f['propriedades'], $params, $agenteAtual);
         } catch (InvalidArgumentException $e) {
             return $this->recusa($nome, 'parametro_invalido', $e->getMessage());
+        }
+
+        // Delegação: o executor é do serviço (reentrante), sem cache — cada
+        // consulta a um analista é uma conversa nova, com custo próprio.
+        if (!empty($f['delegada'])) {
+            if ($this->delegacao === null) {
+                return $this->recusa($nome, 'execucao', 'Consultar outro analista não está disponível neste contexto.');
+            }
+            $t0 = microtime(true);
+            $ex = ($this->delegacao)($p);
+            $ms = (int) round((microtime(true) - $t0) * 1000);
+            LogService::info('ia_delegacao', ['de' => $agenteAtual, 'para' => $p['agente'] ?? null, 'ok' => (bool) ($ex['ok'] ?? false), 'ms' => $ms], 'ia');
+            if (empty($ex['ok'])) {
+                return ['ok' => false, 'ferramenta' => $nome, 'erro' => (string) ($ex['erro'] ?? 'execucao'),
+                        'mensagem' => (string) ($ex['mensagem'] ?? 'O analista não respondeu.')];
+            }
+            return ['ok' => true, 'ferramenta' => $nome, 'parametros' => $p,
+                    'dados' => $this->semDadoPessoal($ex['dados'] ?? []), 'ms' => $ms, 'cache' => false];
         }
 
         $chave = self::chaveCache($nome, $p);
@@ -372,7 +424,7 @@ class IAAgenteGateway
      * Param desconhecido é erro (não é ignorado): se o modelo mandou,
      * ele acha que tem efeito, e silêncio aqui viraria resposta errada.
      */
-    private function validar(array $schema, array $params): array
+    private function validar(array $schema, array $params, ?string $agenteAtual = null): array
     {
         foreach (array_keys($params) as $k) {
             if (!isset($schema[$k])) {
@@ -396,10 +448,17 @@ class IAAgenteGateway
                 if (isset($def['minimo']) && $v < $def['minimo']) $v = (int) $def['minimo'];
                 if (isset($def['maximo']) && $v > $def['maximo']) $v = (int) $def['maximo'];
             } else {
-                $v = (string) $v;
-                if (isset($def['enum']) && !in_array($v, $def['enum'], true)) {
+                $v = trim((string) $v);
+                $enum = $def['enum'] ?? (isset($def['enum_dinamico']) ? ($def['enum_dinamico'])($agenteAtual) : null);
+                if ($enum !== null && !in_array($v, $enum, true)) {
                     throw new InvalidArgumentException(
-                        "'{$chave}' inválido: '{$v}'. Aceitos: " . implode(', ', $def['enum']) . '.');
+                        "'{$chave}' inválido: '{$v}'. Aceitos: " . implode(', ', $enum) . '.');
+                }
+                if (isset($def['tamanho']) && mb_strlen($v) > $def['tamanho']) {
+                    $v = mb_substr($v, 0, (int) $def['tamanho']);
+                }
+                if (!empty($def['obrigatorio_texto']) && $v === '') {
+                    throw new InvalidArgumentException("'{$chave}' não pode ser vazio.");
                 }
             }
             $out[$chave] = $v;
@@ -720,6 +779,21 @@ class IAAgenteGateway
                     'recompra'  => $bi->recompra(),
                     'em_risco'  => $bi->clientesRisco((int) $p['limite']),
                 ],
+            ],
+
+            // ── Coordenação (só o Diretor tem na whitelist) ──────
+            'perguntar_agente' => [
+                'descricao'    => 'Consulta um analista especializado e devolve a resposta dele (RESUMO, INDICADORES, CAUSAS, IMPACTO, RECOMENDAÇÕES, PRIORIDADE). Use para tudo que é do domínio do analista: margem, estoque, funil. Faça a pergunta completa e específica, com o período. Cada consulta leva 15 a 30 segundos e tem custo — no máximo 3 por pergunta, e nunca a mesma pergunta duas vezes ao mesmo analista. Para cruzar domínios, chame vários de uma só vez.',
+                'propriedades' => [
+                    'agente'   => ['type' => 'string',
+                                   'enum_dinamico' => fn(?string $atual) => array_values(array_diff(array_keys(self::agentes()), [$atual, ''])),
+                                   'descricao' => 'Código do analista a consultar.'],
+                    'pergunta' => ['type' => 'string', 'tamanho' => 600, 'obrigatorio_texto' => true,
+                                   'descricao' => 'A pergunta ao analista, completa e específica (inclua o período).'],
+                ],
+                'ttl'      => 0,
+                'delegada' => true,
+                'fn'       => fn(array $p) => throw new LogicException('perguntar_agente é executada pela delegação.'),
             ],
 
             // ── Todos ────────────────────────────────────────────

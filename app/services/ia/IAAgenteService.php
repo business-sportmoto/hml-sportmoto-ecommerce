@@ -49,6 +49,8 @@ class IAAgenteService
                 'sugestoes'  => array_values(array_filter($a['sugestoes'], 'is_string')),
                 'perguntas'  => array_values(array_filter($a['perguntas'], fn($g) => is_array($g) && isset($g['tema'], $g['itens']))),
                 'aprofundar' => self::APROFUNDAR,
+                // Coordena outros agentes: o loader avisa que a espera é maior.
+                'delega'     => in_array('perguntar_agente', $a['ferramentas'], true),
             ];
         }
         return $out;
@@ -163,7 +165,7 @@ class IAAgenteService
             : $this->mensagemSeguinte($conversa, $periodo, $pergunta);
         $mensagens[] = ['role' => 'user', 'content' => $textoUser];
 
-        $ferramentasDefs = $this->gw->definicoes($whitelist);
+        $ferramentasDefs = $this->gw->definicoes($whitelist, $agente);
 
         // ── Limites: gerais + o teto próprio dos agentes ──────────────
         $chars = mb_strlen((string) $tipo['instrucoes_sistema'])
@@ -226,11 +228,23 @@ class IAAgenteService
             'mensagens'          => $mensagens,
             'ferramentas'        => $ferramentasDefs,
             // Sem ninguém esperando na tela, a análise pode pensar mais.
-            'params_override'    => $modo === 'tempo_real' ? ['effort' => $tipo['effort']] : ['effort' => 'high'],
+            // Alguém está esperando na tela (tempo real, ou o Diretor esperando
+            // o analista): effort do catálogo. Agendado/evento: high.
+            'params_override'    => in_array($modo, ['tempo_real', 'delegado'], true) ? ['effort' => $tipo['effort']] : ['effort' => 'high'],
         ];
 
         $servico = new IAGeracaoService();
-        $executar = fn(string $nome, array $params) => $this->gw->executar($nome, $params, $whitelist);
+        $executar = fn(string $nome, array $params) => $this->gw->executar($nome, $params, $whitelist, $agente);
+
+        // Delegação (o Diretor): cada `perguntar_agente` vira uma conversa
+        // do analista, em modo `delegado`, ligada a esta pela conversa_pai.
+        // O callback é registrado por pergunta e restaurado ao sair — o
+        // analista consultado passa por este mesmo método (reentrância).
+        $delegacoes = [];
+        $delegar = function (array $p) use (&$delegacoes, $agente, $usuarioId, $periodo, &$conversaUuid): array {
+            return $this->delegar($p, $delegacoes, $agente, $usuarioId, $periodo, (string) $conversaUuid);
+        };
+        $delegacaoAnterior = $this->gw->registrarDelegacao($delegar);
 
         try {
             $r = $this->orq->executarAgente($geracao, $tipoArr, $executar);
@@ -238,6 +252,8 @@ class IAAgenteService
             $servico->falhar($geracao, IAResultado::falha('excecao', mb_substr($e->getMessage(), 0, 500), false));
             LogService::exception($e, 'error', 'ia', ['geracao_id' => $id, 'agente' => $agente]);
             return ['ok' => false, 'msg' => 'O agente falhou ao responder. O erro foi registrado.'];
+        } finally {
+            $this->gw->registrarDelegacao($delegacaoAnterior);
         }
 
         if (!$r->ok) {
@@ -313,6 +329,11 @@ class IAAgenteService
                 'provedor'      => (string) ($r->provedorCodigo ?? ''),
                 'modelo'        => (string) ($r->modeloCodigo ?? ''),
                 'custo_usd'     => $r->custoRealUsd,
+                // O que os analistas consultados custaram entra na conta da
+                // pergunta: é o número que o usuário pagou por ESTA resposta.
+                'custo_usd_total' => round((float) $r->custoRealUsd
+                                   + array_sum(array_map(fn($d) => (float) ($d['custo_usd'] ?? 0), $delegacoes)), 6),
+                'delegacoes'    => $delegacoes,
                 'tokens_in'     => $r->tokensIn,
                 'tokens_out'    => $r->tokensOut,
                 'cache_leitura' => $r->tokensCacheLeitura,
@@ -324,6 +345,71 @@ class IAAgenteService
                 ))),
             ],
         ];
+    }
+
+    /**
+     * Executa uma `perguntar_agente` em nome de quem coordena.
+     *
+     * O analista roda o caminho inteiro (pré-carga da sua página, loop de
+     * ferramentas, conversa própria em modo `delegado`), com o MESMO
+     * usuário — o teto e a auditoria são da pessoa que perguntou. Volta
+     * para o coordenador como tool_result: as seções, a prioridade e a
+     * procedência do analista, nunca o texto cru inteiro duas vezes.
+     *
+     * @param array  $delegacoes acumulador da pergunta (por referência) — é o limite e a procedência
+     */
+    private function delegar(array $p, array &$delegacoes, string $deQuem, ?int $usuarioId, string $periodo, string $conversaPai): array
+    {
+        if (count($delegacoes) >= IAAgenteGateway::DELEGACOES_MAX) {
+            return ['ok' => false, 'erro' => 'limite_delegacao',
+                    'mensagem' => 'Limite de ' . IAAgenteGateway::DELEGACOES_MAX . ' consultas a analistas nesta pergunta. Consolide com o que já tem.'];
+        }
+        $alvo = (string) ($p['agente'] ?? '');
+        if ($alvo === $deQuem) {
+            return ['ok' => false, 'erro' => 'auto_delegacao', 'mensagem' => 'Um agente não consulta a si mesmo.'];
+        }
+        $sub = $this->agente($alvo);
+        if ($sub === null) {
+            return ['ok' => false, 'erro' => 'agente_inexistente', 'mensagem' => "O analista '{$alvo}' não existe ou está inativo."];
+        }
+        // Só quem não delega pode ser delegado: profundidade 1 por construção.
+        if (in_array('perguntar_agente', $sub['whitelist'], true)) {
+            return ['ok' => false, 'erro' => 'delegacao_em_cadeia', 'mensagem' => "O analista '{$alvo}' também é coordenador; consulte um analista de domínio."];
+        }
+
+        $r = $this->perguntar(
+            $alvo,
+            (string) $p['pergunta'],
+            ['pagina' => $sub['pagina_agendada'] ?: 'overview', 'periodo' => $periodo,
+             'origem' => 'diretor', 'delegado_por' => $deQuem, 'conversa_pai' => $conversaPai],
+            null, $usuarioId, 'delegado'
+        );
+
+        if (!$r['ok']) {
+            return ['ok' => false, 'erro' => (string) ($r['erro'] ?? 'execucao'),
+                    'mensagem' => 'O analista não respondeu: ' . (string) ($r['msg'] ?? '')];
+        }
+
+        $delegacoes[] = [
+            'agente'        => $alvo,
+            'analista'      => $sub['nome_exibicao'],
+            'pergunta'      => (string) $p['pergunta'],
+            'prioridade'    => $r['prioridade'],
+            'resumo'        => (string) ($r['secoes']['RESUMO'] ?? ''),
+            'conversa_uuid' => $r['conversa_uuid'],
+            'custo_usd'     => (float) ($r['procedencia']['custo_usd'] ?? 0),
+            'rodadas'       => (int) ($r['procedencia']['rodadas'] ?? 0),
+            'ferramentas'   => $r['procedencia']['ferramentas'] ?? [],
+        ];
+
+        return ['ok' => true, 'dados' => [
+            'analista'           => $sub['nome_exibicao'],
+            'agente'             => $alvo,
+            'prioridade'         => $r['prioridade'],
+            'secoes'             => $r['secoes'],
+            'numeros_sem_origem' => $r['numeros_sem_origem'],
+            'ferramentas_usadas' => $r['procedencia']['ferramentas'] ?? [],
+        ]];
     }
 
     /* ------------------------------------------------------------------ */

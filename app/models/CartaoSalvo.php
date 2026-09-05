@@ -34,21 +34,33 @@ class CartaoSalvo {
      * "salvar para as próximas compras". Ele existe só enquanto a compra
      * acontece; mostrá-lo na conta seria contradizer a escolha dele.
      */
-    public function listarPorCliente(int $clienteId): array {
+    public function listarPorCliente(int $clienteId, ?int $incluirTemporario = null): array {
+        // `$incluirTemporario` abre uma exceção para UM cartão, por id.
+        //
+        // Serve à retentativa: o pagamento foi recusado, o cartão que o
+        // cliente mandou não guardar continua de pé até o cron passar, e ele
+        // precisa poder tentar de novo sem redigitar tudo. Fora desse caso a
+        // exceção não existe — quem chama sem o segundo argumento continua
+        // vendo só os permanentes.
+        $temp = $incluirTemporario !== null && $incluirTemporario > 0
+              ? (int) $incluirTemporario : 0;
+
         $stmt = $this->db->prepare(
             "SELECT cs.id, cs.gateway_id, cs.card_ref, cs.bandeira, cs.ultimos_4,
                     cs.nome_titular, cs.validade, cs.principal, cs.apelido,
+                    cs.temporario,
                     GROUP_CONCAT(DISTINCT g.codigo ORDER BY g.codigo) AS adquirentes
                FROM cartoes_salvos cs
           LEFT JOIN cartoes_salvos_adquirentes a
                  ON a.cartao_id = cs.id AND a.ativo = 1
           LEFT JOIN pgto_gateways g
                  ON g.id = a.gateway_id AND g.ativo = 1
-              WHERE cs.cliente_id = :cid AND cs.ativo = 1 AND cs.temporario = 0
+              WHERE cs.cliente_id = :cid AND cs.ativo = 1
+                AND (cs.temporario = 0 OR cs.id = :temp)
            GROUP BY cs.id
            ORDER BY cs.principal DESC, cs.id DESC"
         );
-        $stmt->execute([':cid' => $clienteId]);
+        $stmt->execute([':cid' => $clienteId, ':temp' => $temp]);
 
         $out = [];
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $c) {

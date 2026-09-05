@@ -1558,7 +1558,11 @@ $pwb_indisponivel = $pwb_dashboard_data['indisponivel'] ?? [];
       if (primeiroTurno) {
         ((iaCfg.padrao || {})[pagina] || []).forEach(function (f) { if (rotulo[f]) etapas.push(rotulo[f]); });
       }
-      etapas.push('Enviando ao modelo', 'Cruzando os dados', 'Escrevendo a análise');
+      etapas.push('Enviando ao modelo');
+      // Coordenador: cada analista consultado e uma conversa inteira (15-30 s).
+      var ag = (iaCfg.agentes || {})[agenteDe(pagina)] || {};
+      if (ag.delega) etapas.push('Decidindo quais analistas consultar', 'Consultando os analistas especializados', 'Aguardando as respostas dos analistas', 'Consolidando as respostas');
+      etapas.push('Cruzando os dados', 'Escrevendo a análise');
       return etapas;
     }
 
@@ -1602,9 +1606,23 @@ $pwb_indisponivel = $pwb_dashboard_data['indisponivel'] ?? [];
       }
 
       var p = r.procedencia || {};
+      // Analistas consultados pelo Diretor: cada um com prioridade e o RESUMO
+      // que devolveu, expansivel. E o que sustenta a consolidacao.
+      if (p.delegacoes && p.delegacoes.length) {
+        h += '<div class="pwb_ia_delegacoes"><span class="pwb_ia_delegacoes_titulo">Consultou ' + p.delegacoes.length + ' analista(s)</span>'
+           + p.delegacoes.map(function (d) {
+               return '<details class="pwb_ia_delegacao"><summary>' + badgePrioridade(d.prioridade) + ' <strong>' + esc(d.analista || d.agente) + '</strong>'
+                    + '<span class="pwb_ia_delegacao_meta">' + (d.custo_usd != null ? 'US$ ' + Number(d.custo_usd).toFixed(4) : '') + (d.rodadas ? ' · ' + d.rodadas + ' rodada(s)' : '') + '</span></summary>'
+                    + '<p class="pwb_ia_delegacao_pergunta">' + textoHtml(d.pergunta || '') + '</p>'
+                    + '<p class="pwb_ia_secao_texto">' + textoHtml(d.resumo || '') + '</p>'
+                    + '</details>';
+             }).join('')
+           + '</div>';
+      }
+      var custo = (p.custo_usd_total != null && p.delegacoes && p.delegacoes.length) ? p.custo_usd_total : p.custo_usd;
       h += '<div class="pwb_ia_procedencia">'
          + (p.modelo ? '<span>' + esc(p.provedor || '') + ' · ' + esc(p.modelo) + '</span>' : '')
-         + (p.custo_usd != null ? '<span>US$ ' + Number(p.custo_usd).toFixed(4) + '</span>' : '')
+         + (custo != null ? '<span>US$ ' + Number(custo).toFixed(4) + (p.delegacoes && p.delegacoes.length ? ' (com analistas)' : '') + '</span>' : '')
          + (p.rodadas ? '<span>' + p.rodadas + ' rodada(s)</span>' : '')
          + (p.cache_leitura ? '<span>cache ' + p.cache_leitura + ' tokens</span>' : '')
          + '</div>';
@@ -1711,7 +1729,7 @@ $pwb_indisponivel = $pwb_dashboard_data['indisponivel'] ?? [];
         [lista, hist].forEach(function (d) { if (d && d.open && !d.contains(ev.target)) d.open = false; });
       });
 
-      function rotuloModo(m) { return { tempo_real: 'você', agendado: 'agendado', evento: 'alerta' }[m] || m; }
+      function rotuloModo(m) { return { tempo_real: 'você', agendado: 'agendado', evento: 'alerta', delegado: 'via Diretor' }[m] || m; }
       function dataCurta(s) {
         var d = new Date(String(s).replace(' ', 'T'));
         if (isNaN(d)) return esc(s);

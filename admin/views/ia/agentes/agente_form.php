@@ -17,7 +17,9 @@ $paginasDo = $agente['paginas'] ?? [];
 $porDominio = [];
 foreach ($ferramentas as $nome => $f) $porDominio[$f['dominio']][$nome] = $f;
 $ordemDominios = ['Financeiro', 'Produtos', 'Estoque', 'Logística', 'Conversão', 'Clientes', 'Todos', 'Outros'];
-uksort($porDominio, fn($a, $b) => (array_search($a, $ordemDominios, true) ?: 99) <=> (array_search($b, $ordemDominios, true) ?: 99));
+// array_search devolve 0 para o primeiro item — `?:` trataria como "não achou".
+$posDominio = fn($d) => ($p = array_search($d, $ordemDominios, true)) === false ? 99 : $p;
+uksort($porDominio, fn($a, $b) => $posDominio($a) <=> $posDominio($b));
 ?>
 <form class="ia_form ia_form_agente" autocomplete="off">
   <?= SecurityHelper::csrfField() ?>

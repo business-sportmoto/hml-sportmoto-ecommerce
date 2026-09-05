@@ -194,13 +194,43 @@ class CarrinhoRecuperacaoService {
      * captura recuperação orgânica, via link, via WhatsApp — tudo.
      */
     public function reconciliarRecuperados(): int {
+        // O pedido tem de conter ALGUM produto do carrinho abandonado.
+        //
+        // Antes bastava ser um pedido aprovado do mesmo cliente depois do
+        // abandono: quem largou um capacete e três dias depois comprou um par
+        // de luvas contava como recuperado, com o valor das luvas. Medido em
+        // 05/09 na base: 12 de 15 "recuperados" não tinham NENHUM produto em
+        // comum — 80% do indicador era ruído, e o relatório de conversão por
+        // template herdava o viés inteiro.
+        //
+        // É a mesma regra do `ChatCanalPessoaService::comprouProduto()`, que o
+        // fluxo usa antes de cada envio. Aqui ela não pode ser aquele método:
+        // ele responde sim/não, e a reconciliação precisa de QUAL pedido, para
+        // gravar `pedido_recuperado_id` e `valor_recuperado`. Mudam juntos.
+        //
+        // A subconsulta também torna a escolha DETERMINÍSTICA. O JOIN antigo
+        // casava vários pedidos e o MySQL gravava um qualquer — na base local,
+        // 15 de 15 registros tinham mais de um pedido elegível. Agora é sempre
+        // o primeiro aprovado depois do abandono: o que a mensagem influenciou.
         $stmt = $this->db->prepare(
             "UPDATE carrinho_recuperacao cr
-             JOIN pedidos p ON p.cliente_id = cr.cliente_id
-                           AND p.criado_em  > cr.abandonado_em
-                           AND p.status_pagamento = 'aprovado'
+             JOIN pedidos p ON p.id = (
+                     SELECT p2.id
+                     FROM pedidos p2
+                     JOIN pedido_itens pi ON pi.pedido_id = p2.id
+                     WHERE p2.cliente_id       = cr.cliente_id
+                       AND p2.criado_em        > cr.abandonado_em
+                       AND p2.status_pagamento = 'aprovado'
+                       AND EXISTS (SELECT 1 FROM carrinho_itens ci
+                                   WHERE ci.carrinho_id = cr.carrinho_id
+                                     AND ci.produto_id  = pi.produto_id)
+                     ORDER BY p2.criado_em ASC, p2.id ASC
+                     LIMIT 1
+                   )
              SET cr.status               = 'recuperado',
                  cr.pedido_recuperado_id = p.id,
+                 -- Total do pedido, não só a parte que casou: se a mensagem
+                 -- trouxe a pessoa de volta, trouxe a compra inteira.
                  cr.valor_recuperado     = p.total,
                  cr.ultima_acao_em       = NOW()
              WHERE cr.status NOT IN ('recuperado','perdido','ignorado')

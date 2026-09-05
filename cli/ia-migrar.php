@@ -104,6 +104,9 @@ $migrations = [
     // Depende dos 3 tipos agente_* da anterior: o seed liga por código.
     ['2026-09-05_ia_agentes_catalogo.sql', 'Catálogo de agentes editável (tela na Central)',
         fn () => $temTabela('ia_agentes')],
+    // Detector: o modo `delegado` no ENUM — nasce junto com o Diretor.
+    ['2026-09-05_ia_agente_diretor.sql', 'Fase B — o Diretor (perguntar_agente) e o modo delegado',
+        fn () => $enumTem('ia_agente_conversas', 'modo', 'delegado')],
 ];
 
 /* ------------------------------------------------------------------ */

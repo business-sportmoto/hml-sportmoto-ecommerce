@@ -965,6 +965,12 @@ class FluxoNoRegistry
         'acao_cupom'            => FluxoNoAcaoCupom::class,     // ← ADICIONAR
         'cond_veio_de_vendedor'     => FluxoNoCondVeioDeVendedor::class,   // ← ADICIONAR
         'acao_notificar_vendedor'   => FluxoNoAcaoNotificarVendedor::class, // ← ADICIONAR
+        // BI & IA (Fase C dos agentes, 05/09/2026) — eventos vêm do BiEventoService
+        'agente_ia'             => FluxoNoAgenteIa::class,
+        'cond_prioridade'       => FluxoNoCondPrioridade::class,
+        'cond_contexto'         => FluxoNoCondContexto::class,
+        'acao_sino_admins'      => FluxoNoAcaoSinoAdmins::class,
+        'acao_email_gestor'     => FluxoNoAcaoEmailGestor::class,
     ];
 
     /** @var array<string,FluxoNo> instâncias (stateless, reutilizáveis) */
@@ -1281,5 +1287,300 @@ class FluxoNoCondPerfil extends FluxoNo
         }
 
         return $ok ? 'true' : 'false';
+    }
+}
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+// BI & IA (Fase C dos agentes — 05/09/2026)
+//
+// Os eventos chegam por BiEventoService (bi_alerta_*, bi_meta_risco,
+// agenda_NNh) sem pessoa: cliente_id NULL, visitante_token sintético. O
+// contexto do evento (titulo, nivel, detalhe, gatilho, agente_sugerido…)
+// vira {{var}} como qualquer outro. O nó agente_ia escreve ia_* no contexto
+// e os nós seguintes decidem com isso.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * agente_ia — pergunta a um agente de BI (IAAgenteService, modo 'evento').
+ *
+ * config: {"agente":"agente_financeiro"|"auto", "pergunta":"…{{titulo}}…",
+ *          "periodo":"30d", "pagina":""}
+ *   agente 'auto' = o agente_sugerido do evento (alerta), senão o primeiro ativo.
+ *   pagina vazia  = a página agendada do agente (define a pré-carga de dados).
+ * portas: ok | erro
+ *   'erro' é PORTA (sem modelo, teto, falha do provedor): o fluxo decide o que
+ *   fazer — ia_erro fica no contexto. Configuração inválida é FluxoNo::ERRO.
+ * contexto escrito: ia_agente, ia_prioridade (Alta/Média/Baixa), ia_resumo,
+ *   ia_recomendacoes, ia_resposta, ia_conversa_uuid, ia_custo_usd, ia_url, ia_erro.
+ */
+class FluxoNoAgenteIa extends FluxoNo
+{
+    /** @var callable|null fábrica do serviço — os testes injetam um orquestrador falso */
+    public static $fabrica = null;
+
+    public function portas(): array { return ['ok', 'erro']; }
+
+    public function executar(array &$exec, array $config, PDO $db): string
+    {
+        if (!class_exists('IAAgenteService') || !class_exists('IAAgenteGateway')) {
+            $exec['erro_detalhe'] = 'módulo de agentes indisponível (autoloader sem app/services/ia)';
+            return self::ERRO;
+        }
+        $ctx  = $this->ctx($exec);
+        $vars = $this->montarVars($exec, $db);
+
+        $agente = preg_replace('/[^a-z_]/', '', (string)($config['agente'] ?? 'auto'));
+        if ($agente === '' || $agente === 'auto') {
+            $agente = preg_replace('/[^a-z_]/', '', (string)($ctx['agente_sugerido'] ?? ''));
+            if ($agente === '') $agente = IAAgenteGateway::agentesAtivos()[0] ?? '';
+        }
+        if ($agente === '') { $exec['erro_detalhe'] = 'nenhum agente de IA ativo no catálogo'; return self::ERRO; }
+
+        $pergunta = trim($this->interpolar((string)($config['pergunta'] ?? ''), $vars));
+        if ($pergunta === '') { $exec['erro_detalhe'] = 'nó agente_ia sem pergunta'; return self::ERRO; }
+
+        $periodo = in_array($config['periodo'] ?? '', IAAgenteGateway::PERIODOS, true)
+            ? (string)$config['periodo'] : '30d';
+        $pagina  = preg_replace('/[^a-z_]/', '', (string)($config['pagina'] ?? ''));
+
+        try {
+            $svc = self::$fabrica ? (self::$fabrica)() : new IAAgenteService();
+            $ag  = $svc->agente($agente);
+            if ($ag === null) { $exec['erro_detalhe'] = "agente '$agente' desconhecido ou inativo"; return self::ERRO; }
+            if ($pagina === '') $pagina = (string)(($ag['pagina_agendada'] ?? '') ?: 'overview');
+
+            // O gatilho do evento (alerta:sha1) é o mesmo que o ia-agentes-worker
+            // usa: quem rodar primeiro hoje vale, o outro vê "já tratado".
+            $gatilho = (string)($ctx['gatilho'] ?? '');
+            if ($gatilho === '') {
+                $gatilho = 'fluxo:' . (int)$exec['fluxo_id'] . ':' . (string)$exec['no_atual'] . ':' . date('Y-m-d');
+            }
+
+            $r = $svc->perguntar($agente, $pergunta, [
+                'pagina'       => $pagina,
+                'periodo'      => $periodo,
+                'origem'       => 'fluxo',
+                'gatilho'      => $gatilho,
+                'fluxo_id'     => (int)$exec['fluxo_id'],
+                'execucao_id'  => (int)($exec['id'] ?? 0),
+                'evento'       => (string)($ctx['_evento_tipo'] ?? ''),
+                'alerta'       => (string)($ctx['titulo'] ?? ''),
+            ], null, null, 'evento');
+        } catch (Throwable $e) {
+            $exec['contexto']['ia_agente'] = $agente;
+            $exec['contexto']['ia_erro']   = mb_substr($e->getMessage(), 0, 300);
+            return 'erro';
+        }
+
+        $exec['contexto']['ia_agente'] = $agente;
+        if (empty($r['ok'])) {
+            $exec['contexto']['ia_erro'] = mb_substr((string)($r['msg'] ?? 'o agente não respondeu'), 0, 300);
+            return 'erro';
+        }
+
+        $secoes = is_array($r['secoes'] ?? null) ? $r['secoes'] : [];
+        $exec['contexto']['ia_prioridade']    = (string)($r['prioridade'] ?? '');
+        $exec['contexto']['ia_resumo']        = mb_substr(trim((string)($secoes['RESUMO'] ?? $r['resposta'] ?? '')), 0, 1000);
+        $exec['contexto']['ia_recomendacoes'] = mb_substr(trim((string)($secoes['RECOMENDAÇÕES'] ?? '')), 0, 1500);
+        $exec['contexto']['ia_resposta']      = mb_substr((string)($r['resposta'] ?? ''), 0, 6000);
+        $exec['contexto']['ia_conversa_uuid'] = (string)($r['conversa_uuid'] ?? '');
+        $exec['contexto']['ia_custo_usd']     = (float)($r['procedencia']['custo_usd_total'] ?? $r['procedencia']['custo_usd'] ?? 0);
+        $exec['contexto']['ia_url']           = (defined('BASE_URL') ? BASE_URL : '') . '/admin/power-bi';
+        unset($exec['contexto']['ia_erro']);
+        return 'ok';
+    }
+}
+
+/**
+ * cond_prioridade — a prioridade que o agente devolveu atinge o mínimo?
+ * config: {"minimo":"Alta"|"Média"|"Baixa"}   (lê contexto.ia_prioridade)
+ * portas: true | false   (sem prioridade no contexto → false)
+ */
+class FluxoNoCondPrioridade extends FluxoNo
+{
+    private const PESO = ['alta' => 3, 'média' => 2, 'media' => 2, 'baixa' => 1];
+
+    public function portas(): array { return ['true', 'false']; }
+
+    public function executar(array &$exec, array $config, PDO $db): string
+    {
+        $min   = self::peso((string)($config['minimo'] ?? 'Alta'));
+        $atual = self::peso((string)($this->ctx($exec)['ia_prioridade'] ?? ''));
+        return ($atual > 0 && $atual >= $min) ? 'true' : 'false';
+    }
+
+    private static function peso(string $p): int
+    {
+        return self::PESO[mb_strtolower(trim($p))] ?? 0;
+    }
+}
+
+/**
+ * cond_contexto — compara um valor do contexto da execução.
+ * config: {"campo":"pct","operador":"<","valor":"50"}
+ *   operadores: = != >= > <= < contem existe
+ *   número contra número compara numericamente; o resto, texto sem
+ *   diferenciar maiúsculas. Campo ausente → false (inclusive 'existe').
+ * portas: true | false
+ */
+class FluxoNoCondContexto extends FluxoNo
+{
+    public const OPERADORES = ['=', '!=', '>=', '>', '<=', '<', 'contem', 'existe'];
+
+    public function portas(): array { return ['true', 'false']; }
+
+    public function executar(array &$exec, array $config, PDO $db): string
+    {
+        $campo = (string)($config['campo'] ?? '');
+        if (!preg_match('/^[a-zA-Z0-9_]{1,60}$/', $campo)) return 'false';
+        $op = (string)($config['operador'] ?? '=');
+        if (!in_array($op, self::OPERADORES, true)) return 'false';
+
+        $ctx = $this->ctx($exec);
+        if (!array_key_exists($campo, $ctx) || $ctx[$campo] === null || $ctx[$campo] === '') return 'false';
+        if ($op === 'existe') return 'true';
+
+        $a = $ctx[$campo];
+        $b = $config['valor'] ?? '';
+        if (is_bool($a)) $a = $a ? 1 : 0;
+
+        if (is_numeric($a) && is_numeric($b)) {
+            $a = (float)$a; $b = (float)$b;
+            $ok = match ($op) {
+                '='  => $a == $b, '!=' => $a != $b,
+                '>=' => $a >= $b, '>'  => $a > $b,
+                '<=' => $a <= $b, '<'  => $a < $b,
+                'contem' => str_contains((string)$a, (string)$b),
+            };
+            return $ok ? 'true' : 'false';
+        }
+
+        $a = mb_strtolower(trim((string)$a)); $b = mb_strtolower(trim((string)$b));
+        $ok = match ($op) {
+            '='  => $a === $b, '!=' => $a !== $b,
+            'contem' => $b !== '' && str_contains($a, $b),
+            '>=' => strcmp($a, $b) >= 0, '>' => strcmp($a, $b) > 0,
+            '<=' => strcmp($a, $b) <= 0, '<' => strcmp($a, $b) < 0,
+        };
+        return $ok ? 'true' : 'false';
+    }
+}
+
+/**
+ * acao_sino_admins — notificação in-app para TODOS os admins (broadcast,
+ * CLAUDE.md §6). Não depende de cliente: é o "sino" do gestor.
+ * config: {"categoria":"financeiro","titulo":"…{{ia_prioridade}}…",
+ *          "mensagem":"{{ia_resumo}}","url":"{{ia_url}}"}
+ * portas: saida
+ */
+class FluxoNoAcaoSinoAdmins extends FluxoNo
+{
+    public const CATEGORIAS = ['sistema', 'financeiro', 'estoque', 'pedido', 'promocao', 'conta', 'atendimento'];
+
+    public function portas(): array { return ['saida']; }
+
+    public function executar(array &$exec, array $config, PDO $db): string
+    {
+        if (!class_exists('NotificacaoService')) {
+            $exec['erro_detalhe'] = 'NotificacaoService indisponível'; return self::ERRO;
+        }
+        $vars   = $this->montarVars($exec, $db);
+        $titulo = trim($this->interpolar((string)($config['titulo'] ?? ''), $vars));
+        if ($titulo === '') { $exec['erro_detalhe'] = 'nó acao_sino_admins sem título'; return self::ERRO; }
+
+        $categoria = (string)($config['categoria'] ?? 'sistema');
+        if (!in_array($categoria, self::CATEGORIAS, true)) $categoria = 'sistema';
+        $mensagem = isset($config['mensagem']) ? trim($this->interpolar((string)$config['mensagem'], $vars)) : '';
+        $url      = isset($config['url']) ? trim($this->interpolar((string)$config['url'], $vars)) : '';
+
+        try {
+            $id = NotificacaoService::criarBroadcast([
+                'categoria' => $categoria,
+                'tipo'      => 'fluxo_bi',
+                'titulo'    => mb_substr($titulo, 0, 160),
+                'mensagem'  => $mensagem !== '' ? mb_substr($mensagem, 0, 2000) : null,
+                'url'       => $url !== '' ? mb_substr($url, 0, 500) : null,
+            ], 'todos_admins');
+            if ($id === null) { $exec['erro_detalhe'] = 'broadcast recusado pelo NotificacaoService'; return self::ERRO; }
+            $exec['contexto']['sino_notificacao_id'] = $id;
+            return 'saida';
+        } catch (Throwable $e) {
+            $exec['erro_detalhe'] = mb_substr($e->getMessage(), 0, 400);
+            return self::ERRO;
+        }
+    }
+}
+
+/**
+ * acao_email_gestor — e-mail simples (sem template) para endereços fixos.
+ * Mesmo caminho de envio do acao_email; sem descadastro porque não é
+ * marketing. Até 5 destinatários, separados por vírgula/;/linha.
+ * config: {"para":"gestor@loja.com","assunto":"…","mensagem":"…{{ia_resumo}}…"}
+ * portas: saida
+ */
+class FluxoNoAcaoEmailGestor extends FluxoNo
+{
+    public const MAX_DESTINATARIOS = 5;
+
+    public function portas(): array { return ['saida']; }
+
+    public function executar(array &$exec, array $config, PDO $db): string
+    {
+        $paras = self::destinatarios((string)($config['para'] ?? ''));
+        if (!$paras) { $exec['erro_detalhe'] = 'nó acao_email_gestor sem destinatário válido'; return self::ERRO; }
+
+        $vars    = $this->montarVars($exec, $db);
+        $assunto = trim($this->interpolar((string)($config['assunto'] ?? ''), $vars));
+        if ($assunto === '') { $exec['erro_detalhe'] = 'nó acao_email_gestor sem assunto'; return self::ERRO; }
+        $texto = trim($this->interpolar((string)($config['mensagem'] ?? ''), $vars));
+        if ($texto === '') $texto = $assunto;
+
+        $html = '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#222">'
+              . nl2br(htmlspecialchars($texto, ENT_QUOTES, 'UTF-8'))
+              . '<p style="color:#888;font-size:12px;margin-top:24px">'
+              . htmlspecialchars((string)($vars['site_nome'] ?? 'SportMoto'), ENT_QUOTES, 'UTF-8')
+              . ' · automação · ' . date('d/m/Y H:i') . '</p></div>';
+
+        try {
+            if (!class_exists('EmailProviderService')) { $exec['erro_detalhe'] = 'EmailProviderService indisponível'; return self::ERRO; }
+            $stP = $db->query("SELECT * FROM email_provedores WHERE ativo=1 ORDER BY padrao DESC, id ASC LIMIT 1");
+            $cfgProv = $stP ? $stP->fetch(PDO::FETCH_ASSOC) : null;
+            if (!$cfgProv) { $exec['erro_detalhe'] = 'nenhum provedor de email ativo'; return self::ERRO; }
+            $provider = (new EmailProviderService())->buildPadrao();
+
+            $falhas = [];
+            foreach ($paras as $para) {
+                $r = $provider->send([
+                    'from_email' => $cfgProv['remetente_email'],
+                    'from_name'  => $cfgProv['remetente_nome'] ?? '',
+                    'to_email'   => $para,
+                    'to_name'    => '',
+                    'subject'    => mb_substr($assunto, 0, 200),
+                    'html'       => $html,
+                    'text'       => $texto,
+                ]);
+                if (empty($r->success)) $falhas[] = $para . ': ' . (string)($r->error ?? 'falha');
+            }
+            if ($falhas) { $exec['erro_detalhe'] = mb_substr(implode(' | ', $falhas), 0, 400); return self::ERRO; }
+            $exec['contexto']['email_gestor_enviados'] = count($paras);
+            return 'saida';
+        } catch (Throwable $e) {
+            $exec['erro_detalhe'] = mb_substr($e->getMessage(), 0, 400);
+            return self::ERRO;
+        }
+    }
+
+    /** @return string[] e-mails válidos, sem repetição, no máximo MAX_DESTINATARIOS */
+    public static function destinatarios(string $lista): array
+    {
+        $out = [];
+        foreach (preg_split('/[,;\s]+/', $lista) ?: [] as $e) {
+            $e = mb_strtolower(trim($e));
+            if ($e === '' || !filter_var($e, FILTER_VALIDATE_EMAIL)) continue;
+            $out[$e] = true;
+            if (count($out) >= self::MAX_DESTINATARIOS) break;
+        }
+        return array_keys($out);
     }
 }

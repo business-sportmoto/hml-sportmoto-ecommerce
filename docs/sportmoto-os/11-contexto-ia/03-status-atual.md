@@ -12,6 +12,21 @@ atualizado_em: 2026-09-03
 
 ## Em desenvolvimento
 
+- **Permissão dos módulos consertada.** E-mail marketing, automações,
+  notificações e vida útil eram super-only por três defeitos numa cascata
+  copiada para 16 controllers. A lógica virou `AuthHelper::requirePermissaoOuNivel`
+  e o `adminTemPermissao` passou a honrar `{"all": true}`. Ver
+  [[../12-decisoes-tecnicas/permissao-cascata-modulos]].
+
+- **`pedido_criado` instrumentado.** O gap 8.1 fechou: o `CheckoutController`
+  emite o evento depois do commit da transação do pedido, e o
+  `sair_se_eventos: ["pedido_criado"]` deixou de ser inerte. **Só o checkout da
+  loja** — o pedido manual do admin e a importação Tray continuam sem emitir
+  (ver [[../04-bugs/Bugs para resolver]]).
+- **Nós dos fluxos migrados reposicionados.** Os 11 rascunhos que nasciam com
+  tudo em (0,0) ganharam layout em camadas; o migrador passou a posicionar o
+  que cria. O fluxo 17, que já tinha arranjo manual, foi preservado.
+
 - **Radar de clientes — instalado.** `cli/cliente-radar.php` no lugar,
   `cond_perfil` e os 5 eventos do radar no canvas (paleta agora com 20 nós).
   Testado ponta a ponta: 65 dias de inatividade emitem `inativo_60d` e

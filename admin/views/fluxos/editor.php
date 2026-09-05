@@ -22,6 +22,8 @@
  * @var array $fluxo           (com ['grafo'] = rascunho v0)
  * @var array $catalogo        FluxoNoRegistry::catalogo() → tipo → {portas, trigger}
  * @var array $emailTemplates  [{id, nome}] para o select do acao_email
+ * @var array $agentesBi       [{v, t}] agentes de IA para o nó agente_ia (Fase C)
+ * @var array $paginasBi       [{v, t}] páginas do BI para o nó agente_ia
  */
 $base = defined('BASE_URL') ? BASE_URL : '';
 $badge = [
@@ -134,6 +136,9 @@ $configJson = $fluxo['config_json'] ?: "{\n  \"reentrada\": \"nunca\",\n  \"sair
   window.FX_GRAFO_INICIAL   = <?= json_encode($fluxo['grafo'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
   window.FX_CATALOGO        = <?= json_encode($catalogo, JSON_UNESCAPED_UNICODE) ?>;
   window.FX_EMAIL_TEMPLATES = <?= json_encode($emailTemplates ?? [], JSON_UNESCAPED_UNICODE) ?>;
+  // Nó agente_ia (Fase C): [{v, t}] para os selects de agente e página do BI
+  window.FX_AGENTES_BI      = <?= json_encode($agentesBi ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
+  window.FX_PAGINAS_BI      = <?= json_encode($paginasBi ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
   window.BASE_URL   = window.BASE_URL   || '<?= BASE_URL ?>';
   window.CSRF_TOKEN = '<?= \SecurityHelper::generateCsrf() ?>';
 </script>

@@ -22,7 +22,9 @@ if (is_file($ROOT . '/vendor/autoload.php')) require_once $ROOT . '/vendor/autol
 
 spl_autoload_register(function (string $class) use ($ROOT): void {
     foreach (['/core/','/app/controllers/','/app/models/','/app/helpers/',
-              '/app/services/','/app/services/email/','/app/services/email/providers/'] as $p) {
+              '/app/services/','/app/services/email/','/app/services/email/providers/',
+              // Nó agente_ia (Fase C): IAAgenteService, gateway e orquestrador
+              '/app/services/ia/','/app/services/ia/providers/'] as $p) {
         $f = $ROOT . $p . $class . '.php';
         if (file_exists($f)) { require_once $f; return; }
     }
@@ -52,6 +54,23 @@ register_shutdown_function(function () use (&$fp, $lockFile) {
 $log("fluxo-worker iniciado (pid " . getmypid() . ")");
 
 try {
+    // ── FASE A0: o BI publica no stream (Fase C dos agentes de IA) ──
+    // Alertas, metas em risco e o relógio (agenda_NNh) viram eventos que os
+    // fluxos publicados escutam. Só publica o que alguém escuta; alertas e
+    // metas no máximo a cada 15 min. Falha aqui nunca segura os fluxos.
+    $log("--- FASE A0: eventos do BI ---");
+    try {
+        $sBi = (new BiEventoService())->publicar();
+        $log(sprintf("  ouvintes=%d agenda=%d alertas=%d metas=%d%s",
+            count($sBi['ouvintes']), $sBi['agenda'], $sBi['alertas'], $sBi['metas'],
+            $sBi['pulado'] ? " (pulado: {$sBi['pulado']})" : ''));
+    } catch (Throwable $e) {
+        $log("  BI indisponível: " . $e->getMessage());
+        if (class_exists('LogService')) {
+            try { LogService::warning('fluxo-worker: BiEventoService: ' . $e->getMessage(), [], 'ia'); } catch (Throwable $x) {}
+        }
+    }
+
     // ── FASE A: triggers ──
     $log("--- FASE A: detecção de triggers ---");
     $trig = new FluxoTriggerService();

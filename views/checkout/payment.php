@@ -120,6 +120,12 @@ $temCartoes       = !empty($cartoesSalvos);
             <?php if (!empty($cartao['principal'])): ?>
             <span class="payment-badge-blue">Principal</span>
             <?php endif; ?>
+            <?php // Cartão de uma tentativa recusada, que o cliente mandou não
+                  // guardar. Está aqui para ele poder tentar de novo sem
+                  // redigitar — e o selo diz que ele não fica. ?>
+            <?php if (!empty($cartao['temporario'])): ?>
+            <span class="payment-badge-gray">Só nesta compra</span>
+            <?php endif; ?>
           </div>
           <div class="payment-desc">
             •••• <?= View::e($cartao['ultimos_4']) ?> ·

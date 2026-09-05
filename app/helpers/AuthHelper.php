@@ -77,6 +77,41 @@ class AuthHelper {
     }
 
     /**
+     * Permissão granular COM fallback de nível.
+     *
+     * É a cascata que os módulos tentavam montar à mão e que nunca funcionou:
+     * `requirePermission()` **não lança** — nega com 403 e `exit` —, então o
+     * `try/catch` em volta dela era código morto e o fallback, inalcançável.
+     * E o `requireAdminLevel()` daquelas cascatas era chamado sem argumento
+     * nenhum, o que só deixa passar o super pelo bypass. As duas pernas
+     * levavam ao mesmo lugar: módulo super-only.
+     *
+     * Aqui a ordem é explícita e cada camada só concede:
+     *   1. permissão nominal (ou `all`) concede;
+     *   2. não havendo, o nível decide;
+     *   3. só então nega.
+     *
+     * A negação replica o comportamento do requireAdminLevel: Ajax recebe
+     * JSON 403, navegação recebe a view de erro. Um `$.post` que recebe HTML
+     * onde espera JSON quebra no parse e esconde o motivo real.
+     */
+    public static function requirePermissaoOuNivel(string $permissao, string ...$niveis): void {
+        self::requireAdmin();
+
+        if (Session::adminTemPermissao($permissao)) return;
+        if ($niveis && self::hasLevel(...$niveis)) return;
+
+        http_response_code(403);
+        if (self::isAjax()) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => false, 'msg' => 'Sem permissão para esta ação.']);
+        } else {
+            View::render('errors/403', [], 'minimal');
+        }
+        exit;
+    }
+
+    /**
      * Verifica se a requisição atual é Ajax (XMLHttpRequest).
      */
     public static function isAjax(): bool {

@@ -29,13 +29,8 @@ class AutomacaoAdminController extends Controller
 
     private function requirePermission(): void
     {
-        if (method_exists('AuthHelper', 'requirePermission')) {
-            try { AuthHelper::requirePermission('email_marketing'); return; } catch (Throwable $e) {}
-        }
-        if (method_exists('AuthHelper', 'requireAdminLevel')) {
-            AuthHelper::requireAdminLevel(); return;
-        }
-        AuthHelper::requireAdmin();
+        // A cascata mora no AuthHelper agora — ver o porquê lá.
+        AuthHelper::requirePermissaoOuNivel('email_marketing', 'super', 'gerente');
     }
 
     /** Dashboard de automações. */

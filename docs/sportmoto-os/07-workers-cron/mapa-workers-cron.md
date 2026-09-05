@@ -2,6 +2,15 @@
 
 * * * * * cd /home/homo-v2.sportmoto.com.br/public_html && /usr/local/lsws/lsphp82/bin/php cli/fluxo-worker.php --verbose >> storage/logs/fluxo-worker.log 2>&1
 
+Desde 05/09/2026 o worker tem uma **FASE A0** antes da detecção de triggers:
+`BiEventoService::publicar()` grava no stream `eventos` os alertas do BI
+(`bi_alerta_critico|alto|medio`), metas em risco (`bi_meta_risco`) e o relógio
+(`agenda_06h…18h`) — **só os tipos que algum fluxo publicado escuta**, alertas
+e metas no máximo a cada 15 min. Sem fluxo escutando, a fase custa uma
+consulta. O autoloader do worker ganhou `app/services/ia/` por causa do nó
+`agente_ia`. Fluxos de exemplo: `php cli/fluxo-bi-exemplos.php` (rascunhos).
+→ [[../12-decisoes-tecnicas/ia-agentes-bi]] §8d · [[../03-funcionalidades/fluxos-bi-ia]]
+
 
 # Importações CSV
 * Worker CLI para processar importações CSV em background.
@@ -81,7 +90,7 @@ Instalador do atendimento inicial (roda uma vez, não é cron):
 | `0 6 * * * … --agente=agente_financeiro` | resumo executivo do dia (uma rodada por agente por dia; repetir não gasta) | ≈ US$ 0,10 |
 | `0 7 * * * … --agente=agente_estoque` | idem | ≈ US$ 0,10 |
 | `0 8 * * * … --agente=agente_analytics` | idem | ≈ US$ 0,10 |
-| `0,30 * * * * … --modo=evento` | só dispara quando `BiService::alertas()` tem alerta **crítico** ainda não tratado hoje | zero sem alerta |
+| `0,30 * * * * … --modo=evento` | só dispara quando `BiService::alertas()` tem alerta **crítico** ainda não tratado hoje. **Desde 05/09 se retira** se um fluxo publicado no canvas escuta `bi_alerta_critico` (Fase C) — aí quem trata é o `fluxo-worker` | zero sem alerta |
 
 Prioridade **Alta** em qualquer modo → sino de todos os admins
 (`NotificacaoService::criarBroadcast`, categoria financeiro/estoque/sistema).
@@ -375,3 +384,20 @@ ligado para não disparar uma enxurrada no primeiro dia.
 > Quem nunca logou é caso do Bloco 2. Ver
 > [[../04-bugs/Bugs para resolver]] sobre a divergência de fuso entre os dois
 > pontos que gravam essa coluna.
+
+# Correcao da reconciliacao (manutencao, roda uma vez)
+
+  php bin/carrinho-reconciliacao-corrigir.php              simula e mostra
+  php bin/carrinho-reconciliacao-corrigir.php --aplicar    grava
+  php bin/carrinho-reconciliacao-corrigir.php --apenas=17,19 --aplicar
+
+NAO e cron. Reavalia os carrinhos JA marcados como recuperados com a regra
+correta (o pedido tem de conter algum produto do carrinho). A correcao no
+reconciliarRecuperados() so vale dali para frente: o WHERE pula quem ja esta
+recuperado.
+
+Nao altera nada sem --aplicar. Mexe em indicador de faturamento — rode a
+simulacao, leia a saida, e so entao aplique.
+
+Toda mudanca deixa evento status_alterado na trilha, com meta.correcao =
+'reconciliacao_3_8'. Idempotente.

@@ -125,9 +125,13 @@ class FluxoTriggerService
     /** O evento satisfaz a config do trigger? */
     private function casa(array $cfg, array $ev): bool
     {
+        // Eventos do sistema (BI, agenda — BiEventoService) não têm pessoa:
+        // 'apenas_logados' não se aplica, senão nunca disparariam.
+        $sistema = class_exists('BiEventoService') && BiEventoService::ehSistema((string)$ev['tipo']);
+
         // Logados apenas (default true)
-        $apenasLogados = array_key_exists('apenas_logados', $cfg)
-            ? (bool)$cfg['apenas_logados'] : true;
+        $apenasLogados = !$sistema && (array_key_exists('apenas_logados', $cfg)
+            ? (bool)$cfg['apenas_logados'] : true);
         if ($apenasLogados && $ev['cliente_id'] === null) return false;
 
         // Entidade exigida

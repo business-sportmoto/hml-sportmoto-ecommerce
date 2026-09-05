@@ -48,6 +48,12 @@ class TrackingService
         'banner_click'        => 5,     // anti double-click
         'banner_visto'        => 3600,
         'sessao_iniciada'     => 0,     // controlada por flag de sessão, não por janela
+        // pedido_criado NAO entra aqui de proposito: a janela padrao de 60s e
+        // a correta. O dedup compara token+tipo+entidade_tipo+entidade_id, e
+        // como cada pedido traz seu proprio pedido_id, dois pedidos seguidos
+        // do mesmo visitante nunca se suprimem — enquanto uma reemissao do
+        // MESMO pedido (retry, duplo submit) e descartada, que e o que se
+        // quer: evento repetido dispararia a jornada duas vezes.
     ];
     private const DEDUP_PADRAO = 60;
 

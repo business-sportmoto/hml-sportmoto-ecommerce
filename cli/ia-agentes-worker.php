@@ -78,7 +78,17 @@ $saida = 0;
 
 try {
     if ($modo === 'evento') {
-        $r = $svc->rodarPorEvento();
+        // Fase C: se um fluxo publicado no canvas escuta bi_alerta_critico, a
+        // regra fixa daqui sai de cena — senão o mesmo alerta seria analisado
+        // duas vezes (a dedup por gatilho segura, mas não vale depender dela).
+        $fluxos = class_exists('BiEventoService') ? BiEventoService::fluxosPublicados(BiEventoService::ALERTAS['critico']) : [];
+        if ($fluxos) {
+            $log(sprintf('Alertas críticos são tratados pelo fluxo publicado "%s" (#%d) — nada a fazer aqui. Edite-o em /admin/fluxos.',
+                $fluxos[0]['nome'], $fluxos[0]['id']));
+            $r = ['ok' => true, 'disparados' => [], 'ignorados' => 0, 'delegado_fluxo' => $fluxos[0]['id']];
+        } else {
+            $r = $svc->rodarPorEvento();
+        }
         if (!$r['ok']) {
             $log('Falha: ' . ($r['msg'] ?? '?'));
             $saida = 1;
