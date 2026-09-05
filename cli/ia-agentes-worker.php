@@ -92,7 +92,7 @@ try {
         }
     } else {
         $agentes = array_key_exists('todos', $opts)
-            ? IAAgenteGateway::AGENTES
+            ? IAAgenteGateway::agentesAtivos()
             : [preg_replace('/[^a-z_]/', '', (string) ($opts['agente'] ?? ''))];
 
         if ($agentes === ['']) {

@@ -32,6 +32,10 @@ class IAPermissaoService
         'marketing_ia'         => ['gerente'],
         'marketing_ia_aprovar' => ['gerente'],
         'marketing_ia_config'  => ['super'],
+        // Catálogo de agentes de BI: persona, ferramentas, páginas. Muda o
+        // que a IA diz ao time inteiro, mas não toca credencial — régua de
+        // "config de automação" (§4.2), não de "integrações".
+        'marketing_ia_agentes' => ['gerente'],
     ];
 
     /** Não-fatal: quem chama decide se bloqueia ou só muda o comportamento. */

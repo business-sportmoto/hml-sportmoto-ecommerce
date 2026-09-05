@@ -369,8 +369,23 @@ if ($temAgente) {
     )->fetchColumn(), "'agente'");
     linha($capAgente ? 'ok' : 'falta', "capacidade 'agente' no ENUM de ia_modelos");
 
-    $tipos = (int)$db->query("SELECT COUNT(*) FROM ia_tipos_conteudo WHERE capacidade='agente' AND ativo=1")->fetchColumn();
-    linha($tipos === 3 ? 'ok' : 'falta', "{$tipos} de 3 agentes ativos em ia_tipos_conteudo");
+    // Desde 05/09 o catálogo é ia_agentes (tela Agentes de IA na Central);
+    // sem ele os tipos existem mas o painel não sabe quem atende cada página.
+    if (!existeObjeto($db, 'ia_agentes')) {
+        linha('falta', 'catálogo ia_agentes ausente', 'rode: php cli/ia-migrar.php --aplicar (2026-09-05_ia_agentes_catalogo)');
+    } else {
+        $ag = $db->query(
+            "SELECT COUNT(*) total, COALESCE(SUM(a.ativo = 1 AND t.ativo = 1),0) ativos
+               FROM ia_agentes a JOIN ia_tipos_conteudo t ON t.id = a.tipo_conteudo_id"
+        )->fetch();
+        linha((int)$ag['ativos'] > 0 ? 'ok' : 'aviso', "{$ag['ativos']} de {$ag['total']} agentes ativos no catálogo",
+              (int)$ag['ativos'] > 0 ? '' : 'crie ou ative um em /admin/ia/agentes');
+        $semDono = array_diff(array_keys(IAAgenteGateway::PAGINAS), array_keys(IAAgenteGateway::mapaPaginas()));
+        if ($semDono) {
+            linha('aviso', count($semDono) . ' página(s) do BI sem agente: ' . implode(', ', $semDono),
+                  'o botão de IA fica desligado nelas');
+        }
+    }
 
     $prov = $db->query("SELECT ativo, api_key_enc IS NOT NULL tem_chave FROM ia_provedores WHERE codigo='claude'")->fetch();
     if (!$prov) {

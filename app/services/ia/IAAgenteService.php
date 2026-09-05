@@ -26,173 +26,6 @@ class IAAgenteService
 
     public const SECOES = ['RESUMO', 'INDICADORES', 'CAUSAS PROVÁVEIS', 'IMPACTO', 'RECOMENDAÇÕES', 'PRIORIDADE'];
 
-    /**
-     * O que a tela mostra de cada agente: nome de exibição e perguntas
-     * sugeridas. As sugestões são as perguntas que a spec (§31) diz que
-     * o BI passa a responder — e que as ferramentas de fato sustentam.
-     */
-    private const TELA = [
-        'agente_financeiro' => [
-            'nome'  => 'Analista Financeiro',
-            'curto' => 'IA Financeira',
-            'sugestoes' => [
-                'Por que minha margem caiu?',
-                'Qual categoria apresentou maior crescimento?',
-                'Qual canal está reduzindo minha rentabilidade?',
-                'Quais produtos concentram 80% da receita?',
-            ],
-        ],
-        'agente_estoque' => [
-            'nome'  => 'Analista de Supply Chain',
-            'curto' => 'IA Estoque',
-            'sugestoes' => [
-                'Quais produtos correm risco de ruptura?',
-                'Onde tenho dinheiro parado em estoque?',
-                'O que devo repor primeiro?',
-                'Quais produtos estão em queda de venda?',
-            ],
-        ],
-        'agente_analytics' => [
-            'nome'  => 'Cientista de Dados',
-            'curto' => 'IA Analytics',
-            'sugestoes' => [
-                'Onde meu funil está perdendo clientes?',
-                'Mobile converte pior que desktop?',
-                'Quanto recuperamos de carrinho abandonado?',
-                'Quais clientes estão em risco de sumir?',
-            ],
-        ],
-    ];
-
-    /** @return array<string, array{nome:string, curto:string, sugestoes:string[]}> */
-    /**
-     * A lista completa de perguntas do drawer, por tema. É a mesma do guia
-     * de uso no Vault (03-funcionalidades/agentes-de-ia-perguntas): cada
-     * pergunta corresponde a uma ferramenta que existe — nada aqui promete
-     * o que o dado não sustenta.
-     */
-    private const PERGUNTAS = [
-        'agente_financeiro' => [
-            ['Faturamento e crescimento', [
-                'Como foi o faturamento contra o período anterior?',
-                'O ticket médio subiu ou caiu? E o número de pedidos?',
-                'Qual categoria mais cresceu? E qual mais caiu?',
-                'Quais marcas puxaram o resultado e quais seguraram?',
-                'Quantos produtos concentram 80% da receita?',
-                'Quais produtos estão em alta? E em queda?',
-                'Que projeção temos para fechar o mês?',
-                'Estamos no ritmo para bater a meta?',
-            ]],
-            ['Margem e rentabilidade', [
-                'Por que minha margem caiu?',
-                'Qual a margem por marca? E por categoria?',
-                'Quais marcas vendem muito e têm margem baixa?',
-                'Qual a cobertura de custo hoje?',
-                'Quais produtos cadastrar custo primeiro para a margem ficar visível?',
-                'Qual o lucro bruto do período, só nos itens com custo?',
-            ]],
-            ['Canais e pagamentos', [
-                'Qual canal está reduzindo minha rentabilidade?',
-                'Como está a venda por canal (site, app, manual)?',
-                'Qual a taxa de aprovação por método de pagamento?',
-                'Onde estão as recusas de pagamento e por qual motivo?',
-                'Como se distribuem as parcelas?',
-                'Pix está crescendo em relação ao cartão?',
-            ]],
-            ['Descontos e cupons', [
-                'Quanto de receita estamos deixando na mesa com desconto?',
-                'Qual cupom mais gerou receita? Qual mais custou?',
-                'Pedidos com cupom têm ticket maior ou menor?',
-            ]],
-            ['Frete', [
-                'O frete cobrado cobre o frete pago? Quanto subsidiamos?',
-                'Qual transportadora custa mais por envio? Qual atrasa mais?',
-                'O custo médio de frete subiu?',
-            ]],
-            ['Devoluções e cancelamentos', [
-                'Qual a taxa de devolução e quais motivos dominam?',
-                'Quais produtos mais são devolvidos?',
-                'Quantos pedidos foram cancelados e por quê?',
-            ]],
-            ['Geografia', [
-                'Quais estados lideram em receita? E em ticket médio?',
-                'Onde o frete médio pesa mais no pedido?',
-            ]],
-            ['Diagnóstico', [
-                'Faça um resumo executivo do período.',
-                'O que merece minha atenção hoje?',
-                'Qual alerta é mais urgente e por quê?',
-                'Se eu só pudesse agir em uma coisa esta semana, qual seria?',
-            ]],
-        ],
-        'agente_estoque' => [
-            ['Ruptura', [
-                'Quais produtos correm risco de ruptura nos próximos 7 dias?',
-                'Quais produtos estão abaixo do estoque mínimo?',
-                'Quais itens da curva A estão com cobertura baixa?',
-                'Que produto vai acabar primeiro no ritmo atual?',
-            ]],
-            ['Reposição', [
-                'O que devo repor primeiro?',
-                'Quais produtos vendem todo dia e estão com pouco saldo?',
-                'Quais produtos em alta merecem reforço de estoque?',
-            ]],
-            ['Capital parado', [
-                'Onde tenho dinheiro parado em estoque?',
-                'Quais produtos estão há mais de 90 dias sem venda?',
-                'Qual o valor imobilizado nos produtos parados?',
-                'Quais produtos parados da curva C poderiam sair em promoção?',
-            ]],
-            ['Giro', [
-                'Qual a cobertura média de estoque em dias?',
-                'Quais produtos têm giro mais alto? E mais baixo?',
-                'Quais produtos estão em queda de venda e acumulando saldo?',
-            ]],
-            ['Logística', [
-                'Qual tipo de frete pesa mais no custo?',
-                'Alguma transportadora está com prazo pior que as outras?',
-            ]],
-            ['Diagnóstico', [
-                'Faça o resumo executivo de estoque.',
-                'Qual o maior risco de estoque agora: ruptura ou excesso?',
-                'Que dado falta para eu planejar compras com precisão?',
-            ]],
-        ],
-        'agente_analytics' => [
-            ['Funil e conversão', [
-                'Onde meu funil está perdendo clientes?',
-                'Qual etapa tem a pior conversão?',
-                'A conversão melhorou ou piorou contra o período anterior?',
-                'Quantas pessoas chegaram ao checkout e não compraram?',
-            ]],
-            ['Dispositivo', [
-                'Mobile converte pior que desktop?',
-                'Em qual etapa o mobile perde mais gente?',
-                'Vale investir na experiência mobile? O que os números dizem?',
-            ]],
-            ['Carrinho abandonado', [
-                'Quantos carrinhos foram abandonados e quanto valem?',
-                'Quanto recuperamos de carrinho abandonado?',
-                'A recuperação está melhorando?',
-            ]],
-            ['Clientes', [
-                'Quantos clientes novos × recorrentes compraram?',
-                'Qual a taxa de recompra?',
-                'Quais segmentos RFM concentram receita?',
-                'Quais clientes estão em risco de sumir?',
-            ]],
-            ['Geografia e pagamento', [
-                'De onde vêm os clientes recorrentes?',
-                'A recusa de pagamento está derrubando a conversão?',
-            ]],
-            ['Diagnóstico', [
-                'Faça o resumo executivo de conversão.',
-                'Qual o maior gargalo de conversão hoje?',
-                'O que eu deveria testar primeiro para melhorar a conversão?',
-            ]],
-        ],
-    ];
-
     /** Perguntas de aprofundamento — valem para qualquer agente, no 2º turno. */
     private const APROFUNDAR = [
         'E por marca?', 'E por categoria?', 'E por canal?', 'Qual o impacto em reais?',
@@ -200,17 +33,23 @@ class IAAgenteService
         'Que dado eu precisaria cadastrar para completar essa análise?', 'Isso é tendência ou um mês fora da curva?',
     ];
 
-    /** @return array<string, array{nome:string, curto:string, sugestoes:string[], perguntas:array, aprofundar:string[]}> */
+    /**
+     * O que o drawer precisa de cada agente ativo: nome, rótulo, sugestões,
+     * perguntas por tema. Vem do catálogo (ia_agentes) — editável na
+     * Central, sem código.
+     * @return array<string, array{nome:string, curto:string, sugestoes:string[], perguntas:array, aprofundar:string[]}>
+     */
     public static function catalogoParaTela(): array
     {
         $out = [];
-        foreach (self::TELA as $codigo => $t) {
-            $t['perguntas'] = array_map(
-                fn($g) => ['tema' => $g[0], 'itens' => $g[1]],
-                self::PERGUNTAS[$codigo] ?? []
-            );
-            $t['aprofundar'] = self::APROFUNDAR;
-            $out[$codigo] = $t;
+        foreach (IAAgenteGateway::agentes() as $codigo => $a) {
+            $out[$codigo] = [
+                'nome'       => (string) $a['nome_exibicao'],
+                'curto'      => (string) $a['rotulo_curto'],
+                'sugestoes'  => array_values(array_filter($a['sugestoes'], 'is_string')),
+                'perguntas'  => array_values(array_filter($a['perguntas'], fn($g) => is_array($g) && isset($g['tema'], $g['itens']))),
+                'aprofundar' => self::APROFUNDAR,
+            ];
         }
         return $out;
     }
@@ -219,7 +58,6 @@ class IAAgenteService
     private IAAgenteGateway   $gw;
     private IACustoService    $custo;
     private IAAgenteConversa  $conversas;
-    private IATipoConteudo    $tipos;
 
     public function __construct(?IAOrchestrator $orq = null, ?IAAgenteGateway $gw = null)
     {
@@ -227,23 +65,36 @@ class IAAgenteService
         $this->gw        = $gw  ?? new IAAgenteGateway();
         $this->custo     = new IACustoService();
         $this->conversas = new IAAgenteConversa();
-        $this->tipos     = new IATipoConteudo();
     }
 
     /* ------------------------------------------------------------------ */
     /* Catálogo                                                            */
     /* ------------------------------------------------------------------ */
 
-    /** O tipo de conteúdo do agente, com a whitelist decodificada. null = inexistente/inativo. */
+    /**
+     * O agente pronto para o orquestrador: os campos do tipo de conteúdo
+     * (id, instrucoes_sistema, max_tokens, modelo_id, nome) mais a
+     * whitelist, o effort e o resto do catálogo. null = inexistente/inativo.
+     */
     public function agente(string $codigo): ?array
     {
-        if (!in_array($codigo, IAAgenteGateway::AGENTES, true)) return null;
-        $t = $this->tipos->buscarPorCodigo($codigo);
-        if ($t === null || (int) $t['ativo'] !== 1 || ($t['capacidade'] ?? '') !== 'agente') return null;
+        $a = IAAgenteGateway::agentes()[$codigo] ?? null;
+        if ($a === null) return null;
 
-        $lista = json_decode((string) ($t['ferramentas'] ?? ''), true);
-        $t['whitelist'] = is_array($lista) ? array_values(array_filter($lista, 'is_string')) : [];
-        return $t;
+        return [
+            'id'                 => (int) $a['tipo_conteudo_id'],
+            'codigo'             => $a['codigo'],
+            'nome'               => (string) $a['tipo_nome'],
+            'instrucoes_sistema' => $a['instrucoes_sistema'],
+            'max_tokens'         => (int) ($a['max_tokens'] ?: 2500),
+            'modelo_id'          => $a['modelo_id'],
+            'effort'             => in_array($a['effort'] ?? '', IAAgente::EFFORTS, true) ? $a['effort'] : 'medium',
+            'whitelist'          => array_values(array_filter($a['ferramentas'], 'is_string')),
+            'nome_exibicao'      => (string) $a['nome_exibicao'],
+            'pergunta_agendada'  => $a['pergunta_agendada'],
+            'pagina_agendada'    => $a['pagina_agendada'],
+            'agendado_ativo'     => (int) $a['agendado_ativo'],
+        ];
     }
 
     /* ------------------------------------------------------------------ */
@@ -375,7 +226,7 @@ class IAAgenteService
             'mensagens'          => $mensagens,
             'ferramentas'        => $ferramentasDefs,
             // Sem ninguém esperando na tela, a análise pode pensar mais.
-            'params_override'    => $modo === 'tempo_real' ? [] : ['effort' => 'high'],
+            'params_override'    => $modo === 'tempo_real' ? ['effort' => $tipo['effort']] : ['effort' => 'high'],
         ];
 
         $servico = new IAGeracaoService();
@@ -514,7 +365,7 @@ class IAAgenteService
      */
     public function listarConversas(string $agente, ?int $usuarioId, int $limite = 20): array
     {
-        if (!in_array($agente, IAAgenteGateway::AGENTES, true)) return [];
+        if (!isset(IAAgenteGateway::agentes()[$agente])) return [];
         $out = [];
         foreach ($this->conversas->listarPorAgente($agente, $usuarioId, $limite) as $c) {
             $out[] = [
@@ -546,20 +397,6 @@ class IAAgenteService
     /* Modo agendado e modo por evento (worker)                            */
     /* ------------------------------------------------------------------ */
 
-    /** A pergunta padrão de cada agente na rodada do dia. */
-    private const PERGUNTA_AGENDADA = [
-        'agente_financeiro' => 'Faça o resumo executivo financeiro dos últimos 30 dias: o que mudou contra o período anterior, o que explica, o que merece ação hoje.',
-        'agente_estoque'    => 'Faça o resumo executivo de estoque: rupturas iminentes, capital parado e o que repor primeiro. Diga o que não dá para afirmar.',
-        'agente_analytics'  => 'Faça o resumo executivo de conversão dos últimos 30 dias: onde o funil perde, mobile × desktop, carrinhos e clientes em risco.',
-    ];
-
-    /** Página usada como contexto da rodada agendada (define a pré-carga). */
-    private const PAGINA_AGENDADA = [
-        'agente_financeiro' => 'rentabilidade',
-        'agente_estoque'    => 'stock',
-        'agente_analytics'  => 'access',
-    ];
-
     /**
      * Uma rodada agendada de um agente. Uma por dia — o cron pode rodar
      * de novo sem gastar (spec §16: "reduz a necessidade de consultar a
@@ -568,7 +405,8 @@ class IAAgenteService
      */
     public function rodarAgendado(string $agente, bool $forcar = false): array
     {
-        if (!isset(self::PERGUNTA_AGENDADA[$agente])) {
+        $a = $this->agente($agente);
+        if ($a === null || $a['agendado_ativo'] !== 1 || trim((string) $a['pergunta_agendada']) === '') {
             return ['ok' => false, 'msg' => 'Agente sem rodada agendada: ' . $agente];
         }
         if (!$forcar && $this->conversas->existeAgendadoHoje($agente)) {
@@ -577,8 +415,8 @@ class IAAgenteService
 
         $r = $this->perguntar(
             $agente,
-            self::PERGUNTA_AGENDADA[$agente],
-            ['pagina' => self::PAGINA_AGENDADA[$agente], 'periodo' => '30d', 'origem' => 'agendado'],
+            (string) $a['pergunta_agendada'],
+            ['pagina' => $a['pagina_agendada'] ?: 'overview', 'periodo' => '30d', 'origem' => 'agendado'],
             null, null, 'agendado'
         );
         if (!$r['ok']) return $r;
@@ -617,7 +455,7 @@ class IAAgenteService
                 $agente,
                 'ALERTA CRÍTICO detectado pelo sistema: "' . $titulo . '" — ' . (string) ($a['detalhe'] ?? '')
                 . '. Analise a causa provável, o impacto e recomende a ação imediata.',
-                ['pagina' => self::PAGINA_AGENDADA[$agente], 'periodo' => '30d', 'origem' => 'evento',
+                ['pagina' => ($this->agente($agente)['pagina_agendada'] ?? null) ?: 'overview', 'periodo' => '30d', 'origem' => 'evento',
                  'gatilho' => $gatilho, 'alerta' => $titulo],
                 null, null, 'evento'
             );
@@ -638,13 +476,22 @@ class IAAgenteService
         return ['ok' => true, 'disparados' => $disparados, 'ignorados' => $ignorados];
     }
 
-    /** Ruptura é de estoque; o resto (faturamento, aprovação…) é financeiro. */
+    /**
+     * Ruptura é de estoque; aprovação/funil/carrinho é conversão; o resto é
+     * financeiro. O preferido só vale se existir e estiver ativo no
+     * catálogo — senão o primeiro agente ativo assume, e o alerta nunca
+     * fica sem dono. Sem agente nenhum, devolve '' e o chamador falha limpo.
+     */
     public static function agenteDoAlerta(string $titulo): string
     {
         $t = mb_strtolower($titulo);
-        if (str_contains($t, 'ruptura') || str_contains($t, 'estoque')) return 'agente_estoque';
-        if (str_contains($t, 'aprovação') || str_contains($t, 'funil') || str_contains($t, 'carrinho')) return 'agente_analytics';
-        return 'agente_financeiro';
+        $preferido = 'agente_financeiro';
+        if (str_contains($t, 'ruptura') || str_contains($t, 'estoque')) $preferido = 'agente_estoque';
+        elseif (str_contains($t, 'aprovação') || str_contains($t, 'funil') || str_contains($t, 'carrinho')) $preferido = 'agente_analytics';
+
+        $ativos = IAAgenteGateway::agentesAtivos();
+        if (in_array($preferido, $ativos, true)) return $preferido;
+        return $ativos[0] ?? '';
     }
 
     /**
@@ -655,7 +502,7 @@ class IAAgenteService
     {
         $categoria = ['agente_financeiro' => 'financeiro', 'agente_estoque' => 'estoque'][$agente] ?? 'sistema';
         $resumo    = trim((string) ($r['secoes']['RESUMO'] ?? $r['resposta'] ?? ''));
-        $nomes     = self::TELA[$agente]['nome'] ?? $agente;
+        $nomes     = IAAgenteGateway::agentes()[$agente]['nome_exibicao'] ?? $agente;
         try {
             if (!class_exists('NotificacaoService')) return false;
             $id = NotificacaoService::criarBroadcast([
@@ -676,7 +523,8 @@ class IAAgenteService
     public function resumosParaTela(): array
     {
         $out = [];
-        foreach (array_keys(self::TELA) as $agente) {
+        foreach (IAAgenteGateway::agentes() as $agente => $a) {
+            if ((int) $a['agendado_ativo'] !== 1) continue;
             try {
                 $u = $this->ultimaAgendada($agente);
             } catch (\Throwable $e) {
@@ -685,7 +533,7 @@ class IAAgenteService
             }
             if ($u === null) continue;
             $out[$agente] = [
-                'nome'       => self::TELA[$agente]['nome'],
+                'nome'       => (string) $a['nome_exibicao'],
                 'resumo'     => $u['secoes']['RESUMO'] ?? mb_substr($u['texto'], 0, 400),
                 'prioridade' => $u['prioridade'],
                 'quando'     => $u['criado_em'],

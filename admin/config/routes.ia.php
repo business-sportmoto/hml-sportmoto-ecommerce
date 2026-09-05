@@ -55,6 +55,15 @@ AdminRouter::post('/ia/campanha/arquivar',          'IACampanhaController@arquiv
 AdminRouter::post('/ia/campanha/refazer-falhas',    'IACampanhaController@refazerFalhas');
 AdminRouter::post('/ia/campanha/aprovar-concluidas','IACampanhaController@aprovarConcluidas');
 
+// ── IA · Agentes de BI (SportMoto AI — Fase A) ─────────────
+// Permissão marketing_ia_agentes (super+gerente). Criar/editar agentes
+// sem código: persona, ferramentas, páginas do BI, perguntas, agendado.
+AdminRouter::get ('/ia/agentes',                    'IAAgenteController@index');
+AdminRouter::get ('/ia/agentes/form',               'IAAgenteController@form');
+AdminRouter::post('/ia/agentes/salvar',             'IAAgenteController@salvar');
+AdminRouter::post('/ia/agentes/alternar',           'IAAgenteController@alternar');
+AdminRouter::post('/ia/agentes/excluir',            'IAAgenteController@excluir');
+
 // ── IA · Histórico e curadoria (Fase 1) ───────────────────
 AdminRouter::get ('/ia/historico',                  'IAGeracaoController@historico');
 AdminRouter::get ('/ia/historico/linhas',           'IAGeracaoController@historicoLinhas');

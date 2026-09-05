@@ -1644,6 +1644,7 @@ class ChatNoMsgCanal extends ChatNo
         // Template escolhido vence o texto solto: o conteúdo mora na Central
         // de Recuperação e edita-se num lugar só, sem caçar a mesma frase
         // dentro de cinco fluxos diferentes.
+        /** @var array|null $tpl usado também no registro da trilha */
         $tpl = $this->template($config, $ctx);
         if ($tpl !== null) {
             $texto  = $tpl['conteudo'];
@@ -1667,7 +1668,56 @@ class ChatNoMsgCanal extends ChatNo
         if (!$ok) return 'falhou';
 
         $this->marcarEnviado($sessao);
+        $this->registrarNaOrigem($sessao, $canal, $destino, $tpl);
         return 'enviado';
+    }
+
+    /**
+     * Conta para quem originou o fluxo que a mensagem saiu.
+     *
+     * Sem isto, o vendedor abre o carrinho, vê só "abandono detectado" e
+     * conclui que ninguém falou com o cliente — quando a automação já mandou
+     * Instagram e dois e-mails. O terceiro contato do dia passa a ser dele.
+     *
+     * O bloco continua genérico: ele não sabe o que é um carrinho. Quem diz de
+     * onde veio é o CONTEXTO da sessão (`origem_tipo`/`origem_id`), posto lá
+     * pelo despachante. Outra origem no futuro entra aqui com um `case`.
+     *
+     * Nunca lança: a mensagem JÁ saiu. Falhar o registro e devolver 'falhou'
+     * faria o fluxo tentar de novo e mandar duas vezes.
+     */
+    private function registrarNaOrigem(array $sessao, string $canal,
+                                       array $destino, ?array $tpl): void
+    {
+        $c = $this->ctx($sessao);
+        if ((string)($c['origem_tipo'] ?? '') !== 'carrinho_recuperacao') return;
+
+        $recId = (int)($c['recuperacao_id'] ?? $c['origem_id'] ?? 0);
+        if ($recId < 1 || !class_exists('CarrinhoRecuperacaoService')) return;
+
+        $tipo = match ($canal) {
+            'instagram' => 'instagram_enviado',
+            'email'     => 'email_enviado',
+            default     => 'whatsapp_enviado',
+        };
+        $rotulo = match ($canal) {
+            'instagram' => 'Instagram',
+            'email'     => 'E-mail',
+            default     => 'WhatsApp',
+        };
+
+        try {
+            (new CarrinhoRecuperacaoService())->registrarDaAutomacao(
+                $recId, $tipo,
+                $rotulo . ' enviado pela automação'
+                    . ($tpl !== null ? ' — template da Central' : ''),
+                [
+                    'canal'      => $canal,
+                    'fluxo_id'   => (int)($sessao['fluxo_id'] ?? 0),
+                    'destino'    => (string)($destino['identidade'] ?? ''),
+                ]
+            );
+        } catch (Throwable $e) { /* registro não derruba envio já feito */ }
     }
 
     /**

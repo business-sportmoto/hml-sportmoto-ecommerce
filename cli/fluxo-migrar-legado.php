@@ -88,6 +88,17 @@ foreach ($fluxos as $f) {
     $nos[] = ['chave' => 'fim', 'tipo' => 'encerrar', 'config' => []];
     $conexoes[] = ['de' => $anterior, 'porta' => $portaAnterior, 'para' => 'fim'];
 
+    // Posiciona em cadeia horizontal. Sem isto o salvarRascunho() grava
+    // `pos ?? [0,0]` e TODOS os nos nascem na origem do canvas — empilhados e,
+    // na tela cheia, atras da gaveta da paleta. O grafo aqui e sempre linear e
+    // esta na ordem certa em $nos, entao o indice ja da a coluna. O passo
+    // acompanha a escala dos fluxos feitos a mao (no tem 168px de largura).
+    foreach ($nos as $i => $_) {
+        // x comeca depois da gaveta da paleta (ela cobre 14..228 do canvas);
+        // um no em 140 nasceria escondido atras dela.
+        $nos[$i]['pos'] = [280 + $i * 260, 140];
+    }
+
     $nome = 'v2: ' . $f['nome'];
     echo "[{$f['tipo']}] → '$nome' — " . count($nos) . " nós$nota\n";
 

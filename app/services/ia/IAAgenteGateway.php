@@ -22,7 +22,27 @@ declare(strict_types=1);
 class IAAgenteGateway
 {
     public const PERIODOS = ['7d', '30d', '90d', '12m'];
-    public const AGENTES  = ['agente_financeiro', 'agente_estoque', 'agente_analytics'];
+
+    /**
+     * Domínio de cada ferramenta, para a tela do catálogo agrupar as
+     * checkboxes. É rótulo de apresentação — a whitelist real é a lista
+     * gravada no agente, não este mapa.
+     */
+    public const DOMINIO_DA_FERRAMENTA = [
+        'consultar_faturamento' => 'Financeiro', 'consultar_vendas' => 'Financeiro',
+        'consultar_margem' => 'Financeiro', 'consultar_descontos' => 'Financeiro',
+        'consultar_pagamentos' => 'Financeiro', 'consultar_devolucoes_cancelamentos' => 'Financeiro',
+        'consultar_metas' => 'Financeiro', 'consultar_projecao' => 'Financeiro',
+        'consultar_curva_abc' => 'Produtos', 'consultar_tendencia_produtos' => 'Produtos',
+        'consultar_frete' => 'Logística',
+        'consultar_giro_estoque' => 'Estoque', 'consultar_estoque_parado' => 'Estoque', 'consultar_ruptura' => 'Estoque',
+        'consultar_funil' => 'Conversão', 'consultar_dispositivos' => 'Conversão', 'consultar_carrinhos' => 'Conversão',
+        'consultar_clientes' => 'Clientes', 'consultar_geografia' => 'Clientes',
+        'consultar_alertas' => 'Todos', 'consultar_saude_dados' => 'Todos',
+    ];
+
+    /** Catálogo de agentes (ia_agentes), carregado uma vez por requisição. */
+    private static ?array $agentes = null;
 
     /** Teto de linhas que uma ferramenta devolve. O modelo não pode pedir mais. */
     private const LIMITE_MAX    = 20;
@@ -43,25 +63,25 @@ class IAAgenteGateway
     ];
 
     /**
-     * Qual agente atende cada página do painel (data-pwb-view).
-     * Uma fonte só: o PHP usa para validar, a view emite para o JS.
+     * As páginas do painel que um agente pode atender (data-pwb-view).
+     * Quem atende cada uma é decidido no catálogo (ia_agentes.paginas):
+     * uma página, um agente. A Central de IA ('ai') fica de fora.
      */
-    private const AGENTE_DA_PAGINA = [
-        'overview' => 'agente_financeiro', 'orders' => 'agente_financeiro',
-        'products' => 'agente_financeiro', 'marcas' => 'agente_financeiro',
-        'categorias' => 'agente_financeiro', 'cupons' => 'agente_financeiro',
-        'pagamentos' => 'agente_financeiro', 'rentabilidade' => 'agente_financeiro',
-        'metas' => 'agente_financeiro', 'central' => 'agente_financeiro',
-        'posvenda' => 'agente_financeiro',
-        'stock' => 'agente_estoque', 'logistica' => 'agente_estoque',
-        'customers' => 'agente_analytics', 'geo' => 'agente_analytics',
-        'access' => 'agente_analytics', 'clips' => 'agente_analytics',
-        'compartilhados' => 'agente_analytics', 'faq' => 'agente_analytics',
+    public const PAGINAS = [
+        'overview' => 'Visão Geral', 'orders' => 'Pedidos', 'products' => 'Produtos',
+        'marcas' => 'Marcas', 'categorias' => 'Categorias', 'rentabilidade' => 'Rentabilidade',
+        'cupons' => 'Cupons', 'pagamentos' => 'Pagamentos', 'posvenda' => 'Pós-venda',
+        'metas' => 'Metas', 'central' => 'Central executiva',
+        'stock' => 'Estoque', 'logistica' => 'Logística',
+        'customers' => 'Clientes', 'geo' => 'Geografia', 'access' => 'Funil',
+        'clips' => 'Clips', 'compartilhados' => 'Carrinhos compartilhados', 'faq' => 'Perguntas e IA',
     ];
 
     /**
      * O que o PHP pré-carrega ao abrir o agente numa página. `periodo`
-     * é preenchido em tempo de execução com o filtro do painel.
+     * é preenchido em tempo de execução com o filtro do painel. É
+     * propriedade da PÁGINA, não do agente: o agente que atende a página
+     * recebe o que dela passa pela sua whitelist.
      */
     private const PADRAO_DA_PAGINA = [
         'overview'       => [['consultar_faturamento'], ['consultar_alertas']],
@@ -111,15 +131,73 @@ class IAAgenteGateway
         return isset($this->catalogo[$nome]);
     }
 
+    /* ── Catálogo de agentes (ia_agentes) ─────────────────────────────── */
+
+    /**
+     * Agentes ativos, por código. Vem do banco (tela da Central), com
+     * cache por requisição. Sem a tabela (ambiente não migrado) devolve
+     * vazio: o painel diz "sem agente", o diagnóstico diz o que rodar.
+     * @return array<string, array> codigo => linha do catálogo
+     */
+    public static function agentes(): array
+    {
+        if (self::$agentes !== null) return self::$agentes;
+        try {
+            $lista = (new IAAgente())->listarAtivos();
+        } catch (\PDOException $e) {
+            if (($e->getCode() ?: '') !== '42S02') throw $e;
+            $lista = [];
+        }
+        self::$agentes = [];
+        foreach ($lista as $a) self::$agentes[$a['codigo']] = $a;
+        return self::$agentes;
+    }
+
+    /** @return string[] códigos dos agentes ativos */
+    public static function agentesAtivos(): array
+    {
+        return array_keys(self::agentes());
+    }
+
+    /** Depois de salvar na tela (e nos testes). */
+    public static function limparCacheAgentes(): void
+    {
+        self::$agentes = null;
+    }
+
     public static function agenteDaPagina(string $pagina): ?string
     {
-        return self::AGENTE_DA_PAGINA[$pagina] ?? null;
+        return self::mapaPaginas()[$pagina] ?? null;
     }
 
     /** @return array<string,string> pagina => agente, para a view emitir ao JS */
     public static function mapaPaginas(): array
     {
-        return self::AGENTE_DA_PAGINA;
+        $out = [];
+        foreach (self::agentes() as $codigo => $a) {
+            foreach ($a['paginas'] as $p) {
+                if (!isset($out[$p])) $out[$p] = $codigo;   // primeira na ordem vence
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * O catálogo de ferramentas para a tela: nome, descrição (a mesma que
+     * o modelo lê) e domínio. Sem as closures.
+     * @return array<string, array{descricao:string, dominio:string, parametros:string[]}>
+     */
+    public function catalogoPublico(): array
+    {
+        $out = [];
+        foreach ($this->catalogo as $nome => $f) {
+            $out[$nome] = [
+                'descricao'  => $f['descricao'],
+                'dominio'    => self::DOMINIO_DA_FERRAMENTA[$nome] ?? 'Outros',
+                'parametros' => array_keys($f['propriedades']),
+            ];
+        }
+        return $out;
     }
 
     /**

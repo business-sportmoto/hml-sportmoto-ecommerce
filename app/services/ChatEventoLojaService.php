@@ -280,9 +280,36 @@ class ChatEventoLojaService
                     'fluxo_id' => (int)$fluxo['id'], 'contato_id' => (int)$contato['id']];
         }
 
+        $this->avisarOrigem($ev, $fluxo, $contato);
+
         return ['status' => 'concluido', 'motivo' => '',
                 'fluxo_id' => (int)$fluxo['id'], 'sessao_id' => $sessaoId,
                 'contato_id' => (int)$contato['id']];
+    }
+
+    /**
+     * Conta para quem produziu o evento que a automação assumiu o caso.
+     *
+     * Bloco próprio com try/catch: é efeito colateral pós-conclusão. A sessão
+     * de fluxo já existe e já andou; uma falha ao registrar não pode virar
+     * falha do evento e provocar retentativa — que mandaria a mensagem de novo.
+     */
+    private function avisarOrigem(array $ev, array $fluxo, array $contato): void
+    {
+        if ((string)$ev['origem_tipo'] !== 'carrinho_recuperacao') return;
+        if (!class_exists('CarrinhoRecuperacaoService')) return;
+
+        try {
+            (new CarrinhoRecuperacaoService())->registrarDaAutomacao(
+                (int)$ev['origem_id'],
+                'fluxo_iniciado',
+                'Automação assumiu — fluxo "' . $fluxo['nome'] . '" por '
+                    . ((string)($contato['canal'] ?? 'whatsapp') === 'instagram' ? 'Instagram' : 'WhatsApp'),
+                ['fluxo_id' => (int)$fluxo['id'], 'contato_id' => (int)$contato['id']]
+            );
+        } catch (Throwable $e) {
+            $this->logErro('avisarOrigem', $e);
+        }
     }
 
     /** Grava o desfecho. Falha volta para 'pendente' enquanto houver tentativa. */

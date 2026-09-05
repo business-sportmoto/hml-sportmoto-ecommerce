@@ -291,7 +291,8 @@
         // e config; campanhas tem item proprio.
         $uriIa       = $_SERVER['REQUEST_URI'] ?? '';
         $ehCampanhas = str_contains($uriIa, '/admin/ia/campanha');
-        $ehCentral   = str_contains($uriIa, '/admin/ia/') && !$ehCampanhas;
+        $ehAgentes   = str_contains($uriIa, '/admin/ia/agentes');
+        $ehCentral   = str_contains($uriIa, '/admin/ia/') && !$ehCampanhas && !$ehAgentes;
       ?>
       <a href="<?= BASE_URL ?>/admin/ia/gerar" class="admin-nav-item<?= $ehCentral ? ' active' : '' ?>">
         <span class="admin-nav-icon">
@@ -305,6 +306,14 @@
           <?= IconLibrary::render('stacks', 'icon icon--md') ?>
         </span>
         Campanhas de IA
+      </a>
+
+      <?php // Agentes de BI: quem responde no botão "Analisar com IA" do painel. ?>
+      <a href="<?= BASE_URL ?>/admin/ia/agentes" class="admin-nav-item<?= $ehAgentes ? ' active' : '' ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('person-circle', 'icon icon--md') ?>
+        </span>
+        Agentes de IA
       </a>
 
       <a href="<?= BASE_URL ?>/admin/fluxos" class="admin-nav-item<?= adminIsActive('/admin/fluxos') ?>">

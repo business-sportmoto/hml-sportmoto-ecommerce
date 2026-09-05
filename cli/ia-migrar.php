@@ -101,6 +101,9 @@ $migrations = [
     // modelos de capacidade `agente` apontam para ele por código.
     ['2026-09-04_ia_agentes_bi.sql', 'Agentes de BI — capacidade agente, 3 tipos, conversas, teto próprio',
         fn () => $temTabela('ia_agente_mensagens')],
+    // Depende dos 3 tipos agente_* da anterior: o seed liga por código.
+    ['2026-09-05_ia_agentes_catalogo.sql', 'Catálogo de agentes editável (tela na Central)',
+        fn () => $temTabela('ia_agentes')],
 ];
 
 /* ------------------------------------------------------------------ */

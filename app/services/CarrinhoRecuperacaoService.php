@@ -830,6 +830,54 @@ class CarrinhoRecuperacaoService {
         return (new CarrinhoAbandonado())->findById($id);
     }
 
+    /**
+     * Tipos que a AUTOMAÇÃO pode escrever na trilha do carrinho.
+     *
+     * Whitelist e não "qualquer ENUM" porque a trilha é a memória comercial do
+     * registro: um bloco de fluxo mal configurado escrevendo `recuperado` ali
+     * mentiria no funil e no relatório de conversão, sem ninguém perceber.
+     * Estes três são relato do que a automação fez — nunca veredito sobre o
+     * carrinho. Quem muda status continua sendo a reconciliação e o operador.
+     */
+    private const EVENTOS_DA_AUTOMACAO = [
+        'fluxo_iniciado', 'fluxo_encerrado',
+        'instagram_enviado', 'whatsapp_enviado', 'email_enviado',
+    ];
+
+    /**
+     * Registra na trilha do carrinho algo que a automação fez.
+     *
+     * Existe para o vendedor não abrir o registro, ver só "abandono detectado"
+     * e concluir que ninguém falou com o cliente — quando o fluxo já mandou
+     * Instagram e dois e-mails. Sem isto, o terceiro contato do dia é dele.
+     *
+     * `autor = null` de propósito: quem agiu foi o sistema, e atribuir a um
+     * humano corromperia a autoria (CLAUDE.md §4.1).
+     *
+     * Nunca lança: a trilha é registro, não parte do envio. Uma falha aqui não
+     * pode derrubar uma mensagem que já saiu — mesmo motivo do
+     * `avisarConclusao()` da IA ([[ia-arquitetura-e-contratos]] §5).
+     *
+     * @return bool gravou?
+     */
+    public function registrarDaAutomacao(int $recId, string $tipo, string $descricao,
+                                         array $meta = []): bool {
+        if ($recId < 1 || !in_array($tipo, self::EVENTOS_DA_AUTOMACAO, true)) {
+            return false;
+        }
+        try {
+            // `origem` separa o que veio do fluxo do que o operador fez à mão:
+            // os dois usam `whatsapp_enviado`, e sem isto o relatório some com
+            // a diferença entre automação e vendedor.
+            $meta['origem'] = 'fluxo';
+            $this->evento($recId, $tipo, $descricao, $meta);
+            return true;
+        } catch (\Throwable $e) {
+            error_log('[CarrinhoRecuperacao] trilha #' . $recId . ': ' . $e->getMessage());
+            return false;
+        }
+    }
+
     private function evento(int $recId, string $tipo, string $descricao,
                             array $meta = [], ?int $adminId = null): void {
         $this->db->prepare(

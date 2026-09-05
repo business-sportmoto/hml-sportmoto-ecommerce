@@ -14,6 +14,8 @@ $eventoIcones = [
   'abandono_detectado' => '🛒', 'status_alterado' => '🔄', 'whatsapp_enviado' => '💬',
   'email_enviado' => '✉️', 'anotacao' => '📝', 'responsavel_alterado' => '👤',
   'agendamento' => '📅', 'cliente_retornou' => '👋', 'recuperado' => '✅', 'perdido' => '❌',
+  'capturado' => '⚡', 'captura_expirada' => '⏱️', 'chat_cupom_enviado' => '🎟️',
+  'fluxo_iniciado' => '🤖', 'instagram_enviado' => '📸', 'fluxo_encerrado' => '🏁',
 ];
 $semOptIn = isset($rec['aceita_marketing']) && !(int)$rec['aceita_marketing'];
 
@@ -45,6 +47,7 @@ $marcos   = [];
 $porEtapa = [
     'abandono_detectado' => 0,
     'whatsapp_enviado'   => 1, 'email_enviado' => 1, 'chat_cupom_enviado' => 1,
+    'instagram_enviado'  => 1, 'fluxo_iniciado' => 1,
     'cliente_retornou'   => 3,
     'recuperado'         => 4, 'perdido' => 4,
 ];
@@ -346,7 +349,18 @@ $souODono = $temDono && (int)$rec['responsavel_id'] === (int)Session::get('usuar
             <div style="font-size:13px;"><?= View::e($e['descricao']) ?></div>
             <div style="font-size:11.5px;color:var(--c-text-muted);margin-top:2px;">
               <?= date('d/m/Y H:i', strtotime($e['criado_em'])) ?>
-              <?= $e['admin_nome'] ? ' · ' . View::e($e['admin_nome']) : ' · sistema' ?>
+              <?php
+                // Automação e operador usam os mesmos tipos (whatsapp_enviado,
+                // email_enviado). Sem distinguir, o vendedor não sabe se o
+                // contato foi dele ou do robô — e é isso que decide se ele liga.
+                $daAutomacao = is_array($e['meta'] ?? null)
+                            && ($e['meta']['origem'] ?? '') === 'fluxo';
+              ?>
+              <?php if ($daAutomacao): ?>
+                · <span style="color:var(--c-primary);font-weight:600;">automação</span>
+              <?php else: ?>
+                <?= $e['admin_nome'] ? ' · ' . View::e($e['admin_nome']) : ' · sistema' ?>
+              <?php endif; ?>
             </div>
           </div>
         </div>
