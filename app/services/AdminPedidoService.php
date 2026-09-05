@@ -396,6 +396,22 @@ class AdminPedidoService {
 
             $this->db->commit();
 
+            // Evento no stream: pedido lançado à mão conta como compra, e
+            // precisa tirar o cliente das jornadas de recuperação igual ao
+            // checkout. registrarPara() e não registrar(): aqui a sessão é a
+            // do ADMIN, e o registrar() gravaria o id dele no lugar do cliente.
+            if (class_exists('TrackingService') && method_exists('TrackingService', 'registrarPara')) {
+                try {
+                    TrackingService::registrarPara(
+                        (int)$dados['cliente_id'], 'pedido_criado', 'pedido', $pedidoId,
+                        ['total' => (float)($dados['total'] ?? 0), 'origem' => 'manual'],
+                        'admin'
+                    );
+                } catch (\Throwable $e) {
+                    error_log('[AdminPedidoService] evento pedido_criado: ' . $e->getMessage());
+                }
+            }
+
         } catch (\Throwable $e) {
             if ($this->db->inTransaction()) { $this->db->rollBack(); }
             error_log('[AdminPedidoService] criarPedidoManual (fase 1): ' . $e->getMessage());

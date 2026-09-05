@@ -655,13 +655,8 @@ $(function () {
       // Lê o sku_id de ambas as fontes (jQuery data e atributo HTML)
       const skuId     = parseInt($btn.parent().data('sku-id') || $btn.parent().attr('data-sku-id') || 0);
 
-      console.log(skuId, $btn);
-
       if (!produtoId) return;
-      console.log(
-        PV
-      );
-      
+
       // Verifica se tem variações obrigatórias não selecionadas
       if (typeof window.PV !== 'undefined' && PV.tipos_slug && Object.keys(PV.tipos_slug).length > 0) {
           if (!skuId) {
@@ -680,7 +675,10 @@ $(function () {
           }
       }
 
-      $btn.prop('disabled', true).text('Adicionando...');
+      // Estado de carregamento sem apagar o ícone e sem trocar a identidade do
+      // botão: quem clicou em "Comprar agora" volta a ler "Comprar agora".
+      setRotulo($btn, 'Adicionando...');
+      $btn.prop('disabled', true).addClass('btn-disabled');
 
       const dados = {
           produto_id  : produtoId,
@@ -692,15 +690,18 @@ $(function () {
           dados.sku_id = skuId;
       }
       var eventId = uuidv4(); // ← gerado AQUI, vai pros 2 lados
-      console.log('[Comprar] Enviando:', dados);
 
-      // 1. Dispara o Pixel IMEDIATAMENTE (no clique) com o eventId
+      // 1. Dispara o Pixel IMEDIATAMENTE (no clique) com o eventId.
+      //    value vem de precoCorrente() (numérico, do SKU escolhido). Antes era
+      //    PV.preco — string formatada — e o evento saía com value NaN; em
+      //    produto sem variação o window.PV nem existe e o clique inteiro
+      //    quebrava antes do POST.
       if (window.smPixel) {
         window.smPixel.track('AddToCart', {
           content_type: 'product',
           content_ids: [String(produtoId)],
           content_name: produtoName || '',
-          value: (PV.preco || 0) * (dados.quantidade || 1),
+          value: precoCorrente() * (dados.quantidade || 1),
           currency: 'BRL'
         }, eventId);
       }
@@ -708,10 +709,8 @@ $(function () {
       dados.event_id = eventId;
 
       $.post(BASE_URL + '/carrinho/adicionar', dados, function (res) {
-          console.log('[Comprar] Resposta:', res);
-          
-
-          $btn.prop('disabled', false).text('Adicionar ao carrinho');
+          restaurarRotulo($btn);
+          $btn.prop('disabled', false).removeClass('btn-disabled');
 
           if (!res.ok) {
               mostrarAviso(res.msg || 'Erro ao adicionar.');
@@ -737,10 +736,102 @@ $(function () {
 
       }, 'json').fail(function (xhr) {
           console.error('[Comprar] Erro:', xhr.status, xhr.responseText);
-          $btn.prop('disabled', false).text('Adicionar ao carrinho');
+          restaurarRotulo($btn);
+          $btn.prop('disabled', false).removeClass('btn-disabled');
+          mostrarAviso('Não foi possível adicionar ao carrinho. Tente de novo.');
       });
   });
 
+
+  // ── Preço corrente da página ──────────────────────────────
+  // Base = preço efetivo do produto (PV.preco_num, numérico). Passa a ser o
+  // preço do SKU assim que houver seleção. PV.preco é string formatada
+  // ("R$ 899,90") e virava NaN quando usado em conta.
+  let precoSelecionado = null;
+
+  function precoBaseNum() {
+      return (window.PV && parseFloat(PV.preco_num)) || 0;
+  }
+
+  function precoCorrente() {
+      return precoSelecionado !== null ? precoSelecionado : precoBaseNum();
+  }
+
+  // Arredonda como o round() do PHP (metade para cima), não como o toFixed()
+  // do JS. Sem isto, 899,90 × 0,95 = 854,905 virava "854,90" aqui e "854,91"
+  // no PHP: o preço do Pix mudava um centavo no instante em que o cliente
+  // escolhia o tamanho. O .toPrecision(12) mata o ruído binário do float.
+  function arredondar2(valor) {
+      return Math.round(Number((valor * 100).toPrecision(12))) / 100;
+  }
+
+  function formatarBRL(valor) {
+      return 'R$ ' + arredondar2(valor).toFixed(2)
+          .replace('.', ',')
+          .replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  }
+
+  // ── Rótulo dos CTAs ───────────────────────────────────────
+  // Escreve no .pdx-btn-label, nunca no botão: .text() no botão apagava o
+  // ícone SVG junto com o texto. Guarda o rótulo original na primeira troca
+  // para conseguir voltar ao que o PHP renderizou.
+  function alvoRotulo($btn) {
+      const $label = $btn.find('.pdx-btn-label');
+      return $label.length ? $label : $btn;
+  }
+
+  function setRotulo($btn, texto) {
+      const $alvo = alvoRotulo($btn);
+      if (!$alvo.length) return;
+      if ($alvo.data('rotulo-original') === undefined) {
+          $alvo.data('rotulo-original', $alvo.text().trim());
+      }
+      $alvo.text(texto);
+  }
+
+  function restaurarRotulo($btn) {
+      const $alvo = alvoRotulo($btn);
+      if (!$alvo.length) return;
+      const original = $alvo.data('rotulo-original');
+      if (original !== undefined) $alvo.text(original);
+  }
+
+  // ── Pix ───────────────────────────────────────────────────
+  // O bloco de formas de pagamento vive FORA do #price-range-wrapper, então
+  // sobrevive à seleção de variação; aqui só o valor é recalculado por SKU.
+  let pixBaseFmt = null;
+
+  function atualizarPix(precoNum) {
+      const $alvo = $('#pdx-pix-valor');
+      if (!$alvo.length) return;
+      if (pixBaseFmt === null) pixBaseFmt = $alvo.text();
+
+      const pct   = (window.PV && parseFloat(PV.pix_pct)) || 0;
+      const preco = parseFloat(precoNum);
+      if (!pct || !preco || preco <= 0) return;
+
+      $alvo.text(formatarBRL(preco * (1 - pct / 100)));
+  }
+
+  function restaurarPix() {
+      if (pixBaseFmt !== null) $('#pdx-pix-valor').text(pixBaseFmt);
+  }
+
+  // ── Estado dos CTAs ───────────────────────────────────────
+  function ctas() {
+      return {
+          $add : $('.btn-add-cart-detail, #btn-comprar').first(),
+          $buy : $('#btn-buynow')
+      };
+  }
+
+  function liberarCtas() {
+      const { $add, $buy } = ctas();
+      restaurarRotulo($add);
+      restaurarRotulo($buy);
+      $add.prop('disabled', false).removeClass('btn-disabled');
+      $buy.prop('disabled', false).removeClass('btn-disabled').addClass('btn-primary');
+  }
 
   function aplicarSkuNaUI(sku) {
     $('#price-range-wrapper').hide();
@@ -756,71 +847,88 @@ $(function () {
         $('#sku-preco-original').hide();
     }
 
-    // Parcelamento calculado no JS a partir do preço do SKU
+    // Parcelamento — regras vindas do PHP (PV.parcelas)
     const parcela = calcularParcela(sku.preco);
     if (parcela) {
         $('#sku-preco-parcela')
-            .text('ou ' + parcela.vezes + 'x de ' + parcela.valorFmt + ' sem juros')
+            .text('ou ' + parcela.vezes + 'x de ' + parcela.valorFmt + (parcela.semJuros ? ' sem juros' : ''))
             .show();
     } else {
         $('#sku-preco-parcela').hide();
     }
 
-    // Botão de comprar
-    const $btn = $('#btn-comprar, .btn-add-cart-detail, #btn-buynow').first();
-    if (!$btn.length) return;
-    $btn.attr('title','teste')
-    console.log(sku);
-    
-    if (sku.sem_estoque) {
-        $btn.prop('disabled', true)
-            .text('Sem estoque')
-            .removeClass('btn-primary')
-            .addClass('btn-disabled');
-    } else {
-        $btn.prop('disabled', false)
-            .text('Adicionar ao carrinho')
-            .removeClass('btn-disabled')
-            .addClass('btn-primary')
-            .attr('data-sku-id', sku.sku_id)
-            .data('sku-id', sku.sku_id);
+    atualizarPix(sku.preco);
+    precoSelecionado = parseFloat(sku.preco) || precoSelecionado;
 
-        $btn.parent().attr('data-sku-id', sku.sku_id)
-            .data('sku-id', sku.sku_id);
+    // O sku_id é lido do elemento PAI no handler de compra. Precisa ser gravado
+    // nos dois estados: antes, um SKU esgotado mantinha o id do SKU anterior.
+    const { $add, $buy } = ctas();
+    $('.product-actions').attr('data-sku-id', sku.sku_id).data('sku-id', sku.sku_id);
+    $add.attr('data-sku-id', sku.sku_id).data('sku-id', sku.sku_id);
+    $buy.attr('data-sku-id', sku.sku_id).data('sku-id', sku.sku_id);
+
+    if (sku.sem_estoque) {
+        // Os DOIS botões saem de cena. Antes só o primeiro do seletor era
+        // desabilitado (o "Comprar agora"), e o "Adicionar ao carrinho" seguia
+        // ativo — dava para mandar um SKU esgotado pro carrinho.
+        setRotulo($add, 'Sem estoque');
+        $add.prop('disabled', true).addClass('btn-disabled');
+        $buy.prop('disabled', true).removeClass('btn-primary').addClass('btn-disabled');
+    } else {
+        // O #btn-buynow NUNCA é renomeado: ele é "Comprar agora" e vai direto
+        // ao checkout. Renomear os dois deixava botões idênticos lado a lado
+        // com destinos diferentes.
+        liberarCtas();
     }
   }
 
-  // Calcula o parcelamento no JS com as mesmas regras do PHP
+  // Espelha PriceHelper::installments(): mesmas chaves de config, mesma regra de
+  // corte, mesma fórmula de juros. Os números vêm do PHP em PV.parcelas — este
+  // arquivo não tem opinião própria sobre parcelamento. Antes tinha
+  // (MAX_PARCELAS=10, mínimo R$ 10,00) e contradizia o PHP e a barra do topo.
+  function regrasParcelamento() {
+      const cfg = (window.PV && PV.parcelas) || {};
+      const num = (v, padrao) => (isFinite(parseFloat(v)) ? parseFloat(v) : padrao);
+      return {
+          max     : num(cfg.max, 12),
+          minValor: num(cfg.min_valor, 30.00),
+          juros   : num(cfg.juros, 0)
+      };
+  }
+
   function calcularParcela(preco) {
-      // Ajuste os valores conforme suas regras de negócio
-      const MAX_PARCELAS  = 10;
-      const VALOR_MINIMO  = 10.00; // parcela mínima
-      const SEM_JUROS     = true;
+      const valorTotal = parseFloat(preco);
+      if (!valorTotal || valorTotal <= 0) return null;
 
-      if (!preco || preco <= 0) return null;
-
+      const { max, minValor, juros } = regrasParcelamento();
       let melhorParcela = null;
 
-      for (let n = MAX_PARCELAS; n >= 2; n--) {
-          const valor = preco / n;
-          if (valor >= VALOR_MINIMO) {
-              melhorParcela = {
-                  vezes   : n,
-                  valor   : valor,
-                  valorFmt: 'R$ ' + valor.toFixed(2)
-                      .replace('.', ',')
-                      .replace(/\B(?=(\d{3})+(?!\d))/g, '.'),
-              };
-              break;
-          }
+      for (let n = 1; n <= max; n++) {
+          const valor = (juros > 0 && n > 1)
+              ? valorTotal * (juros / 100) / (1 - Math.pow(1 + juros / 100, -n))
+              : valorTotal / n;
+
+          if (valor < minValor && n > 1) break;
+
+          melhorParcela = {
+              vezes   : n,
+              valor   : valor,
+              valorFmt: formatarBRL(valor),
+              semJuros: !(juros > 0 && n > 1)
+          };
       }
 
-      return melhorParcela;
+      // 1x não é parcelamento: não há o que anunciar.
+      return (melhorParcela && melhorParcela.vezes > 1) ? melhorParcela : null;
   }
 
   function restaurarPrecoBase() {
       $('#sku-preco-wrapper').hide();
       $('#price-range-wrapper').show();
+      restaurarPix();
+      precoSelecionado = null;
+      $('.product-actions').removeAttr('data-sku-id').removeData('sku-id');
+      liberarCtas();
   }
 
   function atualizarURL(chave) {

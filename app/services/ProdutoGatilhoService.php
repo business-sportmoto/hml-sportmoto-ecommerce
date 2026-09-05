@@ -275,18 +275,50 @@ class ProdutoGatilhoService
         // `wishlist_itens`. Perde-se a ENTREGA, nunca a LISTA — quando o v2
         // ganhar os eventos `queda_preco` e `volta_estoque`, os interessados
         // ainda estarao la.
-        if (!defined('AUTOMACAO_V1_PERMITIDO')) {
+        // ── MOTOR v2: o gatilho vira evento no stream ──────────────────────
+        // A DETECÇÃO (queda de preço, volta de estoque) sempre viveu aqui e
+        // continua igual — o que muda é o destino. Antes ia para a fila do v1,
+        // que nenhum worker drena desde que o motor foi aposentado.
+        //
+        // registrarPara() e não registrar(): o interessado NÃO é quem está
+        // navegando. Em queda de preço é quem tem o produto na wishlist; em
+        // volta de estoque é quem se inscreveu em `aviso_estoque`. Quem
+        // disparou a ação foi o admin mudando o preço, ou um worker de
+        // estoque. registrar() gravaria o cliente errado, ou null em CLI.
+        $clienteId = (int)($dados['cliente_id'] ?? 0);
+
+        if ($clienteId <= 0) {
+            // Inscrito anônimo do "avise-me" (só e-mail, sem conta). O motor
+            // trabalha por cliente, então este não vira jornada — o registro
+            // dele continua em `aviso_estoque` para quando houver conta.
             if (class_exists('LogService')) {
                 try {
-                    LogService::info('gatilho: v1 aposentado, envio nao enfileirado', [
-                        'tipo'       => $tipo,
-                        'produto_id' => $dados['produto_id'] ?? null,
-                        'cliente_id' => $dados['cliente_id'] ?? null,
+                    LogService::info('gatilho: interessado sem cliente_id, fora do stream', [
+                        'tipo' => $tipo, 'produto_id' => $dados['produto_id'] ?? null,
                     ]);
-                } catch (Throwable $x) { /* log nunca quebra o gatilho */ }
+                } catch (Throwable $x) {}
             }
             return false;
         }
+
+        if (class_exists('TrackingService') && method_exists('TrackingService', 'registrarPara')) {
+            $ok = TrackingService::registrarPara(
+                $clienteId,
+                $tipo,                                  // queda_preco | volta_estoque
+                'produto',
+                (int)($dados['produto_id'] ?? 0) ?: null,
+                (array)($dados['contexto'] ?? []),
+                'gatilho'
+            );
+            if (!defined('AUTOMACAO_V1_PERMITIDO')) {
+                return $ok !== null;
+            }
+        } elseif (!defined('AUTOMACAO_V1_PERMITIDO')) {
+            return false;
+        }
+
+        // Abaixo: caminho do v1, mantido atrás da constante como saída de
+        // emergência. Não roda em operação normal.
 
         try {
             // ── 1. Acha o fluxo ativo ────────────────────────────────────────

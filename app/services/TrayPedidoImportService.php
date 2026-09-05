@@ -344,6 +344,21 @@ class TrayPedidoImportService
                  VALUES (?, ?, 'Importado da Tray', ?)"
             )->execute([$pedidoId, $statusPedido, $criadoEm]);
 
+            // Evento no stream: compra feita no marketplace também tira o
+            // cliente das jornadas de recuperação. registrarPara() porque isto
+            // roda em CLI, onde o registrar() devolve null por guarda.
+            if ($clienteId > 0 && class_exists('TrackingService')
+                && method_exists('TrackingService', 'registrarPara')) {
+                try {
+                    TrackingService::registrarPara(
+                        (int)$clienteId, 'pedido_criado', 'pedido', $pedidoId,
+                        ['origem' => 'tray'], 'tray'
+                    );
+                } catch (\Throwable $e) {
+                    error_log('[TrayPedidoImport] evento pedido_criado: ' . $e->getMessage());
+                }
+            }
+
             $this->db->commit();
             return 'criado';
 

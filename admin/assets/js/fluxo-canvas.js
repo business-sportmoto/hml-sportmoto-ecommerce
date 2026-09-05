@@ -35,7 +35,12 @@ var FLUXO_UI = {
           // BI (app/services/BiEventoService.php) — eventos do SISTEMA, sem
           // pessoa: "apenas logados" é ignorado pelo detector para estes.
           'bi_alerta_critico','bi_alerta_alto','bi_alerta_medio','bi_meta_risco',
-          'agenda_06h','agenda_07h','agenda_08h','agenda_12h','agenda_18h'] },
+          'agenda_06h','agenda_07h','agenda_08h','agenda_12h','agenda_18h',
+          // Server-side, via TrackingService::registrarPara() — o interessado
+          // nao e quem esta navegando: entrega vem de CLI/admin, queda de preco
+          // interessa a quem tem o produto na wishlist, e volta de estoque a
+          // quem se inscreveu no avise-me.
+          'pedido_entregue','queda_preco','volta_estoque'] },
         { k: 'entidade_tipo', label: 'Entidade (opcional)', tipo: 'select', ops: ['', 'produto', 'categoria', 'banner'] },
         { k: 'min_ocorrencias', label: 'Mín. ocorrências', tipo: 'number', def: 1 },
         { k: 'janela_dias', label: 'Janela (dias)', tipo: 'number', def: 7 },

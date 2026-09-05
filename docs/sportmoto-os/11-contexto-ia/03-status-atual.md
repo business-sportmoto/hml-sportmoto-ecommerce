@@ -12,6 +12,12 @@ atualizado_em: 2026-09-03
 
 ## Em desenvolvimento
 
+- **Eventos server-side no stream.** `TrackingService::registrarPara()` emite
+  com `cliente_id` explícito e funciona em CLI — o que destravou
+  `pedido_entregue`, `queda_preco`, `volta_estoque` e fechou o `pedido_criado`
+  no pedido manual e na importação Tray. Ver
+  [[../12-decisoes-tecnicas/tracking-eventos-server-side]].
+
 - **Permissão dos módulos consertada.** E-mail marketing, automações,
   notificações e vida útil eram super-only por três defeitos numa cascata
   copiada para 16 controllers. A lógica virou `AuthHelper::requirePermissaoOuNivel`

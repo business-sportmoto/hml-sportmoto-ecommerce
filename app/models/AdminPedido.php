@@ -268,6 +268,35 @@ class AdminPedido {
             "INSERT INTO pedido_historico (pedido_id, status_novo, observacao, admin_id)
              VALUES (?, ?, ?, ?)"
         )->execute([$id, $status, $obs, $adminId]);
+
+        // ── Evento `pedido_entregue` no stream de automação ────────────────
+        // Aqui, e não numa camada acima, porque este método é o funil: tudo
+        // que muda status passa por ele — o worker dos Correios, o Bling, o
+        // admin na tela e o fluxo de devolução. Instrumentar em qualquer um
+        // deles deixaria os outros de fora.
+        //
+        // registrarPara() e não registrar(): entrega nunca acontece na sessão
+        // do cliente. Vem de CLI (Correios, Bling), onde registrar() devolve
+        // null por guarda, ou da sessão do ADMIN, onde gravaria o id errado.
+        //
+        // Destrava os dois fluxos de pós-compra, que no legado disparavam na
+        // ENTREGA (+7d complementar, +14d avaliação) e não na compra.
+        if ($status === 'entregue' && class_exists('TrackingService')
+            && method_exists('TrackingService', 'registrarPara')) {
+            try {
+                $st = $this->db->prepare("SELECT cliente_id FROM pedidos WHERE id = ? LIMIT 1");
+                $st->execute([$id]);
+                $clienteId = (int)($st->fetchColumn() ?: 0);
+                if ($clienteId > 0) {
+                    TrackingService::registrarPara(
+                        $clienteId, 'pedido_entregue', 'pedido', $id, [], 'entrega'
+                    );
+                }
+            } catch (\Throwable $e) {
+                // Telemetria não pode derrubar uma mudança de status.
+                error_log('[AdminPedido] evento pedido_entregue falhou: ' . $e->getMessage());
+            }
+        }
     }
 
     /**

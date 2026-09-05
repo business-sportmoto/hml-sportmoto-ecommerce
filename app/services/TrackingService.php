@@ -48,6 +48,11 @@ class TrackingService
         'banner_click'        => 5,     // anti double-click
         'banner_visto'        => 3600,
         'sessao_iniciada'     => 0,     // controlada por flag de sessão, não por janela
+        // Entrega é fato único por pedido. A janela longa, combinada com o
+        // entidade_id (o pedido_id), faz o evento sair uma vez só — mesmo que
+        // o status seja regravado (devolução negada volta o pedido para
+        // 'entregue', e isso não é uma segunda entrega).
+        'pedido_entregue'     => 2592000,   // 30 dias
         // pedido_criado NAO entra aqui de proposito: a janela padrao de 60s e
         // a correta. O dedup compara token+tipo+entidade_tipo+entidade_id, e
         // como cada pedido traz seu proprio pedido_id, dois pedidos seguidos
