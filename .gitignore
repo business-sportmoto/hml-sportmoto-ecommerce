@@ -27,6 +27,10 @@
 /preview/
 /public/
 /.claude/
+/.codex/
+/.agents/
+/.agents/skills/
+/.impeccable/
 
 /docs/
 /docs/sportmoto-os/

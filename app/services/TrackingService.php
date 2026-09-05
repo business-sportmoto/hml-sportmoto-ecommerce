@@ -128,6 +128,118 @@ class TrackingService
     }
 
     /**
+     * Registra um evento para um cliente ESPECÍFICO, fora do fluxo de navegação.
+     *
+     * O `registrar()` acima resolve o cliente pela **sessão** e recusa CLI —
+     * correto para quem está clicando, errado para tudo que amadurece longe do
+     * teclado dele: a entrega que o worker dos Correios detecta, a queda de
+     * preço que interessa a quem tem o produto na wishlist, a volta de estoque
+     * que interessa a quem pediu "avise-me", o pedido lançado à mão pelo admin,
+     * a importação do marketplace. Nesses casos o `registrar()` devolve `null`
+     * ou grava o cliente errado — que é a corrupção de espaço de ID já
+     * conhecida na tabela.
+     *
+     * O `ClienteRadarService` foi o primeiro a esbarrar nisso e resolveu com
+     * INSERT direto + token sentinela. Este método generaliza aquele precedente,
+     * para o INSERT não ser recopiado em cada serviço novo.
+     *
+     * A `$origem` vira o token sentinela (CHAR(32)) e o marcador de sessão: os
+     * eventos de cada fonte ficam agrupáveis e removíveis por uma cláusula só,
+     * como já se faz com os do radar.
+     *
+     * Mantém a deduplicação — dois avisos do mesmo produto para o mesmo cliente
+     * na mesma janela continuam virando um. E, como o resto do serviço, **nunca
+     * lança**: telemetria não pode derrubar quem a chamou.
+     *
+     * @param int $clienteId  clientes.id — NUNCA usuarios.id
+     * @return int|null id do evento, ou null se deduplicado/falhou
+     */
+    public static function registrarPara(
+        int     $clienteId,
+        string  $tipo,
+        ?string $entidadeTipo = null,
+        ?int    $entidadeId = null,
+        array   $contexto = [],
+        string  $origem = 'servidor'
+    ): ?int {
+        try {
+            if ($clienteId <= 0) return null;
+
+            $tipo = mb_substr(trim($tipo), 0, 40);
+            if ($tipo === '') return null;
+
+            // Token sentinela: 'entrega' -> 'entrega0000000000000000000000000'
+            $origem = preg_replace('/[^a-z0-9_]/', '', mb_strtolower($origem)) ?: 'servidor';
+            $token  = str_pad(mb_substr($origem, 0, 32), 32, '0');
+
+            $janela = self::DEDUP[$tipo] ?? self::DEDUP_PADRAO;
+            if ($janela > 0 && self::duplicadoRecentePara($clienteId, $tipo, $entidadeTipo, $entidadeId, $janela)) {
+                return null;
+            }
+
+            $db = Database::getInstance()->getConnection();
+            $st = $db->prepare(
+                "INSERT INTO eventos
+                 (visitante_token, cliente_id, sessao_id, tipo, entidade_tipo, entidade_id, contexto_json)
+                 VALUES (:tok, :cid, :sid, :tipo, :etipo, :eid, :ctx)"
+            );
+            $st->execute([
+                ':tok'   => $token,
+                ':cid'   => $clienteId,
+                ':sid'   => mb_substr($origem, 0, 64),
+                ':tipo'  => $tipo,
+                ':etipo' => $entidadeTipo ? mb_substr($entidadeTipo, 0, 30) : null,
+                ':eid'   => $entidadeId,
+                ':ctx'   => $contexto ? json_encode($contexto, JSON_UNESCAPED_UNICODE) : null,
+            ]);
+            return (int)$db->lastInsertId() ?: null;
+
+        } catch (Throwable $e) {
+            if (class_exists('LogService')) {
+                try {
+                    LogService::warning('tracking server-side falhou', [
+                        'tipo' => $tipo, 'cliente_id' => $clienteId, 'erro' => $e->getMessage(),
+                    ]);
+                } catch (Throwable $x) {}
+            }
+            return null;
+        }
+    }
+
+    /**
+     * Dedup do registrarPara: por CLIENTE, e não por token de visitante.
+     * Server-side não há visitante — o mesmo cliente pode ser alcançado por
+     * origens diferentes, e o que não pode repetir é o aviso, não a origem.
+     */
+    private static function duplicadoRecentePara(
+        int $clienteId, string $tipo, ?string $etipo, ?int $eid, int $janelaSeg
+    ): bool {
+        try {
+            $db  = Database::getInstance()->getConnection();
+            $sql = "SELECT 1 FROM eventos
+                    WHERE cliente_id = :cid AND tipo = :tipo
+                      AND criado_em > DATE_SUB(NOW(), INTERVAL :seg SECOND)";
+            $params = [':cid' => $clienteId, ':tipo' => $tipo, ':seg' => $janelaSeg];
+
+            if ($etipo !== null) { $sql .= " AND entidade_tipo = :et"; $params[':et'] = $etipo; }
+            else                 { $sql .= " AND entidade_tipo IS NULL"; }
+
+            if ($eid !== null)   { $sql .= " AND entidade_id = :ei"; $params[':ei'] = $eid; }
+            else                 { $sql .= " AND entidade_id IS NULL"; }
+
+            $sql .= " LIMIT 1";
+            $st = $db->prepare($sql);
+            foreach ($params as $k => $v) {
+                $st->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
+            }
+            $st->execute();
+            return (bool)$st->fetchColumn();
+        } catch (Throwable $e) {
+            return false;   // na dúvida, emite: perder aviso é pior que repetir
+        }
+    }
+
+    /**
      * Atalho para páginas nomeadas (institucionais, políticas etc.).
      *   TrackingService::pagina('politica-trocas');
      */

@@ -303,9 +303,15 @@ function swatchTipo(array $membro, string $atributoSlug): string {
           $ultimaParcela  = end($arrParcelas);
           $maxParcelas    = $ultimaParcela ? (int)$ultimaParcela['parcelas'] : 0;
 
-          // Descontos por método (Pix 5% / Boleto 3%) sobre o preço efetivo
-          $precoPix    = $preco * 0.95;
-          $precoBoleto = $preco * 0.97;
+          // Descontos por método sobre o preço efetivo.
+          // O percentual vive AQUI e em nenhum outro lugar: a cópia da página,
+          // a modal de pagamento e o recálculo por SKU no JS (PV.pix_pct) leem
+          // todos daqui. Antes o 0.95 e o texto "5% off" eram dois números
+          // soltos que podiam divergir em silêncio.
+          $pixPct      = 5;
+          $boletoPct   = 3;
+          $precoPix    = $preco * (1 - $pixPct / 100);
+          $precoBoleto = $preco * (1 - $boletoPct / 100);
         ?>
 
         <!-- ═══ PAINEL DE PREÇO (consolidado — hooks #sku-preco-* / #price-range-wrapper) ═══ -->
@@ -376,11 +382,18 @@ function swatchTipo(array $membro, string $atributoSlug): string {
               </span>
               <?php endif; ?>
             <?php endif; ?>
+          </div><!-- /#price-range-wrapper -->
 
-            <!-- Pix + gatilho da modal de pagamento -->
+          <!-- Formas de pagamento — DE PROPÓSITO fora do #price-range-wrapper.
+               O JS esconde o range ao selecionar a variação; enquanto o Pix
+               morava lá dentro, o melhor preço da página e o link de formas de
+               pagamento desapareciam exatamente no momento em que o cliente
+               escolhia o tamanho. O valor é recalculado por SKU em
+               aplicarSkuNaUI() usando PV.pix_pct. -->
+          <div class="pdx-price-methods" id="pdx-price-methods">
             <div class="pdx-price-pix">
               <svg viewBox="0 0 24 24" fill="none" stroke="#0a8f5b" stroke-width="2" stroke-linecap="round"><path d="M12 2l3 3-3 3-3-3 3-3zM5 9l3 3-3 3-3-3 3-3zM19 9l3 3-3 3-3-3 3-3zM12 16l3 3-3 3-3-3 3-3z"/></svg>
-              <span><strong><?= PriceHelper::format($precoPix) ?></strong> à vista no Pix (5% off)</span>
+              <span><strong id="pdx-pix-valor"><?= PriceHelper::format($precoPix) ?></strong> à vista no Pix (<?= (int)$pixPct ?>% off)</span>
             </div>
             <button type="button" class="pdx-pay-link" id="pdx-open-pay">
               <svg viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
@@ -388,6 +401,23 @@ function swatchTipo(array $membro, string $atributoSlug): string {
             </button>
           </div>
         </div><!-- /pdx-price -->
+
+        <!-- Regras comerciais para o JS. Emitido SEMPRE (o bloco window.PV das
+             variações só existe em produto com variação, e o handler de compra
+             lê PV mesmo sem elas). O parcelamento vem do ConfigHelper, as mesmas
+             chaves que PriceHelper::installments() usa — antes o JS tinha os
+             próprios MAX_PARCELAS=10 e mínimo 10,00 e contradizia o PHP. -->
+        <script>
+          window.PV = Object.assign(window.PV || {}, {
+            preco_num : <?= json_encode(round((float)$preco, 2)) ?>,
+            pix_pct   : <?= (int)$pixPct ?>,
+            parcelas  : {
+              max       : <?= (int)   ConfigHelper::get('parcelas_max', 12) ?>,
+              min_valor : <?= json_encode((float) ConfigHelper::get('parcelas_min_valor', 30.00)) ?>,
+              juros     : <?= json_encode((float) ConfigHelper::get('parcelas_juros', 0)) ?>
+            }
+          });
+        </script>
 
         <!-- Cálculo de frete (partial com JS próprio — #fpFrete) -->
         <?php include __DIR__ . '/../partials/frete-produto.php'; ?>
@@ -461,9 +491,12 @@ function swatchTipo(array $membro, string $atributoSlug): string {
             </div>
           </div>
 
-          <!-- Dados serializados para o JS (window.PV) — VERBATIM -->
+          <!-- Dados serializados para o JS (window.PV) — VERBATIM.
+               Object.assign e não atribuição: as regras comerciais emitidas
+               junto ao painel de preço já estão em window.PV e não podem ser
+               sobrescritas aqui. -->
           <script>
-            window.PV = {
+            window.PV = Object.assign(window.PV || {}, {
               produto_id   : <?= (int)$product['id'] ?>,
               produto_slug : <?= json_encode($product['slug']) ?>,
               tipos_slug   : <?= json_encode($vdata['tipos_slug']  ?? [], JSON_UNESCAPED_UNICODE) ?>,
@@ -512,8 +545,8 @@ function swatchTipo(array $membro, string $atributoSlug): string {
               tem_range    : <?= json_encode($vdata['tem_range_preco'] ?? false) ?>,
               preco_min_fmt: <?= json_encode($vdata['preco_min_fmt']   ?? '') ?>,
               preco_max_fmt: <?= json_encode($vdata['preco_max_fmt']   ?? '') ?>,
-              preco   : <?= json_encode(PriceHelper::format((float)$product['preco'])) ?>,
-            };
+              preco   : <?= json_encode(PriceHelper::format((float)$product['preco'])) ?>
+            });
           </script>
         <?php endif; ?>
 
@@ -538,13 +571,15 @@ function swatchTipo(array $membro, string $atributoSlug): string {
         <!-- ═══ AÇÕES (hooks: #btn-buynow / .btn-add-cart-detail / #aviso-*) ═══ -->
         <div class="product-actions" data-pro-name="<?= $product['nome'] ?>">
           <?php if (!$semEstoque): ?>
+          <!-- O rótulo mora num .pdx-btn-label próprio: o JS troca o texto pelo
+               span, nunca por .text() no botão — que apagava o ícone SVG junto. -->
           <button type="button" class="btn btn-primary btn-buynow" id="btn-buynow" data-product-id="<?= (int)$product['id'] ?>">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
-            Comprar agora
+            <span class="pdx-btn-label">Comprar agora</span>
           </button>
           <button type="button" class="btn btn-outline btn-add-cart-detail" data-product-id="<?= (int)$product['id'] ?>">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/></svg>
-            Adicionar ao carrinho
+            <span class="pdx-btn-label">Adicionar ao carrinho</span>
           </button>
           <?php else: ?>
           <button class="btn btn-soldout btn-full" disabled>Produto esgotado</button>
@@ -756,7 +791,7 @@ function swatchTipo(array $membro, string $atributoSlug): string {
       <div class="pdx-pay-m">
         <div class="pdx-pay-m-head">
           <span class="pdx-pay-ic pdx-pay-ic--pix"><svg viewBox="0 0 24 24"><path d="M12 2l3 3-3 3-3-3 3-3zM5 9l3 3-3 3-3-3 3-3zM19 9l3 3-3 3-3-3 3-3zM12 16l3 3-3 3-3-3 3-3z"/></svg></span>
-          <div><div class="pdx-pay-m-t">Pix <span class="pdx-pay-tag">5% OFF</span></div><div class="pdx-pay-m-s">Aprovação na hora</div></div>
+          <div><div class="pdx-pay-m-t">Pix <span class="pdx-pay-tag"><?= (int)$pixPct ?>% OFF</span></div><div class="pdx-pay-m-s">Aprovação na hora</div></div>
         </div>
         <div class="pdx-pay-hi"><?= PriceHelper::format($precoPix) ?><small>economize <?= PriceHelper::format($preco - $precoPix) ?></small></div>
         <p class="pdx-pay-m-desc">Na finalização você recebe o QR Code e o código copia-e-cola. O pagamento cai em segundos e o pedido é liberado automaticamente, sem esperar compensação.</p>

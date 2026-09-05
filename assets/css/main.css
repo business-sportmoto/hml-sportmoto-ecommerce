@@ -11085,6 +11085,16 @@ to{opacity:1;transform:scale(1)}
 .pdx .btn-add-cart-detail,.pdx .btn-cart-secondary{background:var(--pdx-surface);color:var(--pdx-ink);border:1.5px solid var(--pdx-line)}
 .pdx .btn-add-cart-detail:hover{border-color:var(--pdx-ink);background:#fcfcfd}
 .pdx .btn-soldout{background:var(--pdx-line-2);color:var(--pdx-faint);cursor:not-allowed}
+/* Estado desabilitado dos CTAs (SKU sem estoque, e o "Adicionando..." durante o
+   POST). Antes o botao ficava disabled sem nenhum sinal visual: continuava azul
+   e clicavel aos olhos. Mesmo tratamento do .btn-soldout, que ja e o padrao da
+   pagina para "nao da para comprar isto". */
+.pdx .product-actions .btn-disabled,
+.pdx .product-actions .btn:disabled{background:var(--pdx-line-2);color:var(--pdx-faint);border-color:var(--pdx-line-2);box-shadow:none;cursor:not-allowed}
+.pdx .product-actions .btn-disabled:hover,
+.pdx .product-actions .btn:disabled:hover{background:var(--pdx-line-2);border-color:var(--pdx-line-2);box-shadow:none}
+.pdx .product-actions .btn-disabled:active,
+.pdx .product-actions .btn:disabled:active{transform:none}
 .pdx .aviso-estoque{margin-top:6px;padding:14px 16px;border:1px solid var(--pdx-line);border-radius:var(--pdx-r-md);background:var(--pdx-surface)}
 .pdx .aviso-estoque__form{display:flex;gap:8px;margin-top:8px}
 .pdx .aviso-estoque__form input{flex:1;height:42px;border:1.5px solid var(--pdx-line);border-radius:9px;padding:0 12px;font-size:14px;outline:none}
