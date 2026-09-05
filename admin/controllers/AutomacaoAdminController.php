@@ -11,6 +11,19 @@ class AutomacaoAdminController extends Controller
     {
         // parent::__construct();
         $this->requirePermission();
+
+        // ── MOTOR v1 APOSENTADO (04/09/2026) ──────────────────────────────
+        // A Central de Automacoes agora e o motor v2 (/admin/fluxos).
+        // O guard fica no construtor de proposito: cobre TAMBEM os POSTs
+        // (salvar/toggle), que de outro modo seguiriam mutando automacao_*
+        // por rota direta mesmo sem link no menu.
+        // Para reativar em emergencia: comente este bloco inteiro.
+        if (!defined('AUTOMACAO_V1_PERMITIDO')) {
+            Session::flash('info', 'As automacoes agora vivem na Central de Automacoes.');
+            header('Location: ' . BASE_URL . '/admin/fluxos');
+            exit;
+        }
+
         $this->model = new AutomacaoModel();
     }
 

@@ -863,9 +863,13 @@ class CheckoutController extends Controller {
             // Fallback: auto-seleciona o cartão principal do cliente
             if (!$cartaoSalvoId && !$cartaoTemp) {
                 $db   = Database::getInstance()->getConnection();
+                // `temporario = 0`: um cartão que o cliente mandou NÃO
+                // guardar não pode ser escolhido sozinho numa compra
+                // seguinte. Ele só vale enquanto a compra dele está em pé, e
+                // aí quem aponta é a sessão.
                 $stmt = $db->prepare(
                     "SELECT id FROM cartoes_salvos
-                    WHERE cliente_id = ? AND ativo = 1
+                    WHERE cliente_id = ? AND ativo = 1 AND temporario = 0
                     ORDER BY principal DESC, criado_em DESC LIMIT 1"
                 );
                 $stmt->execute([$clienteId]);
@@ -914,6 +918,25 @@ class CheckoutController extends Controller {
             }
         }
     
+        // MUDOU DE IDEIA NO RESUMO.
+        //
+        // O cartão foi digitado com "salvar" desmarcado (nasceu temporário) e
+        // aqui o cliente marcou. Nada muda nas adquirentes — o cartão já está
+        // nos cofres —, só o destino da linha: para de ser varrida no fim da
+        // compra. O contrário não existe de propósito: quem já mandou salvar
+        // remove o cartão pela conta, não escondido no meio de uma compra.
+        if ($cartaoSalvoId && $salvarCartao) {
+            try {
+                (new CartaoSalvo())->marcarPermanente((int) $cartaoSalvoId, $clienteId);
+            } catch (\Throwable $e) {
+                // Não derruba a compra: no pior caso o cartão é varrido e o
+                // cliente cadastra de novo.
+                LogService::exception($e, 'warning', 'pagamento', [
+                    'acao' => 'promover_cartao', 'cartao_id' => $cartaoSalvoId,
+                ]);
+            }
+        }
+
         // Monta dados para process()
         $_POST['cliente_id']          = $clienteId;
         $_POST['endereco_entrega_id'] = $this->state->getEnderecoId();
@@ -1942,6 +1965,13 @@ class CheckoutController extends Controller {
         // com subtotal - desconto + frete) e `credito_utilizado` à parte.
         $aPagar = $conta['a_pagar'];
 
+        // Nulo ate o roteador rodar. DOIS caminhos chegam na resposta sem
+        // ele: crédito que cobre a compra inteira (o bloco abaixo) e exceção
+        // no roteamento (o catch mais adiante). Nos dois, $rot->desafio3ds()
+        // era chamado num nulo e derrubava com fatal um pedido JÁ GRAVADO — o
+        // cliente via erro de conexão numa compra que estava paga no banco.
+        $rot = null;
+
         // Crédito cobriu tudo: não existe cobrança de R$ 0,00 para fazer. O
         // gateway recusaria, e o pedido ficaria eternamente "aguardando
         // pagamento" por uma compra que já está paga.
@@ -2219,7 +2249,32 @@ class CheckoutController extends Controller {
         // pagamento nao esta aprovado nem recusado, e mandar o cliente para a
         // tela de sucesso seria mentir sobre um pedido que ainda pode cair.
         // O navegador abre o desafio e so entao segue.
-        $desafio3ds = $rot->desafio3ds();
+        $desafio3ds = $rot ? $rot->desafio3ds() : null;
+
+        // CARTÃO QUE O CLIENTE NÃO MANDOU SALVAR SAI AGORA.
+        //
+        // Ele existiu porque a cobrança precisava dele. O pagamento tem
+        // resultado, então ele some — dos cofres das adquirentes e daqui.
+        //
+        // Só em resultado TERMINAL. Pendente e desafio 3DS ficam: a cobrança
+        // ainda pode precisar da referência, e apagar aqui faria a compra
+        // falhar sozinha depois de o cliente autenticar. Para esses, quem
+        // recolhe é o cron (cli/cartoes-temporarios-purgar.php), que só olha
+        // cartão com mais de uma hora.
+        $terminal = in_array($statusPagamento, ['aprovado', 'recusado'], true);
+
+        if ($cartaoSalvoId && $terminal && $desafio3ds === null) {
+            try {
+                (new CartaoSalvoService($db))
+                    ->purgarTemporario((int) $cartaoSalvoId, $clienteId);
+            } catch (\Throwable $e) {
+                // A compra já aconteceu. Falhar a limpeza não pode derrubar a
+                // resposta — o cron tenta de novo.
+                LogService::exception($e, 'error', 'pagamento', [
+                    'acao' => 'purgar_cartao_temporario', 'pedido_id' => $pedidoId,
+                ]);
+            }
+        }
 
         $this->json([
             'ok'         => true,
@@ -3353,6 +3408,16 @@ class CheckoutController extends Controller {
         $principal = (int) ($_POST['padrao'] ?? 0);
         $apelido   = $apelido !== '' ? $apelido : null;
 
+        // "Salvar cartão para as próximas compras".
+        //
+        // Desmarcado, o cartão AINDA VAI para os cofres das adquirentes: é de
+        // lá que sai a referência de cobrança, e é por `cartao_id` que a
+        // tabela filha pendura uma linha por adquirente. O que muda é o
+        // destino: nasce `temporario = 1` e some assim que o pagamento tem
+        // resultado — nos cofres e aqui. Ver cli/cartoes-temporarios-purgar.php.
+        $temporario = empty($_POST['salvar_cartao']) ? 1 : 0;
+        if ($temporario) $principal = 0;   // não vira padrão o que vai sumir
+
         // UM TOKEN POR ADQUIRENTE. A tela nova tokeniza em todas as
         // adquirentes ativas e manda `tokens[codigo]`; a antiga manda so
         // `gateway_token`. Os dois formatos entram no mesmo mapa.
@@ -3567,6 +3632,7 @@ class CheckoutController extends Controller {
                 'validade'     => $validade,
                 'apelido'      => $apelido,
                 'principal'    => $principal,
+                'temporario'   => $temporario,
                 // Uma linha filha por adquirente onde o cartao existe.
                 'adquirentes'  => $vinculos,
             ]);
@@ -3578,6 +3644,7 @@ class CheckoutController extends Controller {
                 'cliente_id'  => $clienteId,
                 'cartao_id'   => $cartaoId,
                 'bandeira'    => $bandeira,
+                'temporario'  => $temporario,
                 'adquirentes' => array_column($vinculos, 'codigo'),
                 'falhas'      => $falhas,
             ]);
@@ -3585,6 +3652,9 @@ class CheckoutController extends Controller {
             $this->json([
                 'ok'          => true,
                 'redirect'    => BASE_URL . '/checkout/payment',
+                // A tela do resumo mostra "Salvo" ou "Só nesta compra" a
+                // partir daqui.
+                'salvo'       => $temporario === 0,
                 'adquirentes' => array_column($vinculos, 'codigo'),
                 'falhas'      => array_keys($falhas),
             ]);

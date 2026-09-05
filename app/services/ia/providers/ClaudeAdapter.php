@@ -192,21 +192,7 @@ class ClaudeAdapter extends IAProviderBase
             return $r;
         }
 
-        $blocos = [];
-        $texto  = '';
-        foreach (($corpo['content'] ?? []) as $bloco) {
-            $tipo = (string) ($bloco['type'] ?? '');
-            if ($tipo === 'text') {
-                $texto .= (string) ($bloco['text'] ?? '');
-                $blocos[] = ['type' => 'text', 'text' => (string) ($bloco['text'] ?? '')];
-            } elseif ($tipo === 'tool_use') {
-                // input pode vir como objeto vazio; normaliza para array.
-                $blocos[] = ['type' => 'tool_use', 'id' => (string) ($bloco['id'] ?? ''),
-                             'name' => (string) ($bloco['name'] ?? ''),
-                             'input' => is_array($bloco['input'] ?? null) ? $bloco['input'] : []];
-            }
-            // thinking fica de fora: não é reenviado nem exibido.
-        }
+        [$blocos, $texto] = $this->blocosDaResposta($corpo);
 
         $r = IAResultado::sucesso(trim($texto));
         $r->stopReason         = (string) ($corpo['stop_reason'] ?? 'end_turn');
@@ -220,6 +206,36 @@ class ClaudeAdapter extends IAProviderBase
         return $r;
     }
 
+    /**
+     * content[] da resposta → blocos reenviáveis + texto concatenado.
+     * Separado para ser testável sem rede.
+     *
+     * ⚠ `input` de ferramenta SEM parâmetros chega como `{}`; decodificado
+     * vira array vazio, e `json_encode([])` reenvia `[]` — a API responde
+     * 400 "tool_use.input: Input should be an object". Vazio fica stdClass.
+     *
+     * @return array{0: array, 1: string}
+     */
+    protected function blocosDaResposta(array $corpo): array
+    {
+        $blocos = [];
+        $texto  = '';
+        foreach (($corpo['content'] ?? []) as $bloco) {
+            $tipo = (string) ($bloco['type'] ?? '');
+            if ($tipo === 'text') {
+                $texto .= (string) ($bloco['text'] ?? '');
+                $blocos[] = ['type' => 'text', 'text' => (string) ($bloco['text'] ?? '')];
+            } elseif ($tipo === 'tool_use') {
+                $input = $bloco['input'] ?? null;
+                $blocos[] = ['type' => 'tool_use', 'id' => (string) ($bloco['id'] ?? ''),
+                             'name' => (string) ($bloco['name'] ?? ''),
+                             'input' => (is_array($input) && $input !== []) ? $input : new stdClass()];
+            }
+            // thinking fica de fora: não é reenviado nem exibido.
+        }
+        return [$blocos, $texto];
+    }
+
     /** Payload do turno com ferramentas. Separado para ser testável sem rede. */
     protected function montarPayloadConversa(array $job): array
     {
@@ -229,6 +245,20 @@ class ClaudeAdapter extends IAProviderBase
         }
 
         $mensagens = is_array($job['mensagens'] ?? null) ? array_values($job['mensagens']) : [];
+
+        // Defesa em profundidade da mesma regra de blocosDaResposta(): um
+        // histórico montado por outro caminho (persistido, replay) pode
+        // trazer tool_use com input []. Aqui é a última porta antes do JSON.
+        foreach ($mensagens as &$msg) {
+            if (!is_array($msg['content'] ?? null)) continue;
+            foreach ($msg['content'] as &$bl) {
+                if (is_array($bl) && ($bl['type'] ?? '') === 'tool_use' && ($bl['input'] ?? null) === []) {
+                    $bl['input'] = new stdClass();
+                }
+            }
+            unset($bl);
+        }
+        unset($msg);
 
         // Breakpoint de cache no último bloco da última mensagem: a
         // próxima rodada (ou a próxima pergunta) reaproveita tudo até aqui.

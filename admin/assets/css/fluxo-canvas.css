@@ -4,33 +4,100 @@
  * Segue o padrão visual do admin (iOS × SaaS, dark mode automático).
  */
 
-/* ── Layout geral do editor ─────────────────────────────────────────────── */
-.fx-wrap {
-  display: flex;
-  gap: 0;
-  height: calc(100vh - 150px);
-  min-height: 560px;
-  border: 0.5px solid var(--em-border, #e5e7eb);
-  border-radius: 16px;
+/* ── Modo tela cheia ────────────────────────────────────────────────────── */
+/* Antes o canvas era uma moldura de altura fixa (100vh - 150px) dentro de um
+   .em_wrapper, que traz `padding:28px 32px 56px` e `min-height:100vh`: sobrava
+   faixa morta nas bordas e o documento ganhava barra de rolagem. Agora o canvas
+   ocupa o .admin-content inteiro e barra, paleta, painel, config e avisos
+   flutuam sobre ele — mesmo desenho de .ch-fx-tela (chat) e .pg-tela
+   (pagamentos). O modo so liga com .fx-tela na pagina; /admin/fluxos e
+   /admin/fluxos/atividade nao mudam. */
+.fx-editor {
+  /* Onde comeca tudo que fica sob a barra. Vira 2 linhas no celular e o numero
+     cresce — por isso e token, e nao valor solto em 4 regras. */
+  --fx-topo: 68px;
+
+  /* --em-bg-card NUNCA foi definido no email-marketing.css: todo
+     `var(--em-bg-card, #fff)` deste arquivo caia no branco, enquanto
+     --em-text vale #f1f5f9 (o :root escuro no fim daquele arquivo nao tem
+     media query nem guarda de tema, entao sempre vence). Resultado: texto
+     quase branco sobre superficie branca. O .em_wrapper escondia isso pintando
+     a pagina de --em-bg; a tela cheia largou a classe e o defeito apareceu.
+
+     Apontar o token uma vez aqui conserta o subtree inteiro — barra, paleta,
+     painel, botoes, inputs e canvas — sem reescrever nenhuma das regras que ja
+     o usavam. E acompanha o modulo se ele virar theme-aware um dia. */
+  --em-bg-card: var(--em-bg-elev, #fff);
+
+  background: var(--em-bg, #fff);
+  color: var(--em-text, #18181b);
+  font: 14px/1.55 var(--em-font, inherit);
+  letter-spacing: -.005em;
+}
+.fx-editor *, .fx-editor ::before, .fx-editor ::after { box-sizing: border-box; }
+
+/* A pagina inteira para de rolar: quem rola sao a paleta e o painel, por
+   dentro. Sem isto o arrasto do canvas puxa a rolagem do documento. */
+body:has(.fx-tela) { overflow: hidden; }
+body:has(.fx-tela) .admin-content {
+  padding: 0;
+  /* flex:none e obrigatorio: o .admin-content nasce flex:1, ou seja
+     flex-basis:0%, e num container em coluna o flex-basis vence a altura — a
+     area de conteudo colapsaria para a altura do conteudo e o canvas sumiria. */
+  flex: none;
+  height: calc(100vh - var(--topbar-h, 60px));
   overflow: hidden;
+  animation: none;   /* o fadeSlideUp do admin arrastava o canvas na entrada */
+}
+/* O .fx-editor e filho direto do .admin-content e nao tem altura propria — sem
+   esta linha o height:100% da .fx-tela resolveria para zero. */
+body:has(.fx-tela) .admin-content > .fx-editor { height: 100%; }
+
+.fx-tela { position: relative; width: 100%; height: 100%; overflow: hidden; }
+
+/* ── Peca flutuante ─────────────────────────────────────────────────────── */
+.fx-flut {
   background: var(--em-bg-card, #fff);
+  border: 0.5px solid var(--em-border, #e5e7eb);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px -8px rgba(16,24,40,.16);
 }
 
-/* ── Toolbar ────────────────────────────────────────────────────────────── */
-.fx-toolbar {
+/* ── Barra flutuante ────────────────────────────────────────────────────── */
+/* Sai do fluxo do documento mas continua acima do canvas. O pointer-events
+   devolvido so aos grupos deixa o vao entre eles arrastavel. */
+.fx-barra {
+  position: absolute;
+  top: 14px; left: 14px; right: 14px;
+  z-index: 8;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 10px;
-  margin-bottom: 14px;
-  flex-wrap: wrap;
+  pointer-events: none;
 }
-.fx-toolbar .fx-titulo {
-  font-size: 17px;
-  font-weight: 600;
-  margin-right: auto;
+.fx-grupo {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 7px;
+  padding: 7px 9px;
+  pointer-events: auto;
+  min-width: 0;
+}
+.fx-nome {
+  font-size: 14.5px;
+  font-weight: 650;
+  letter-spacing: -.012em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 34ch;
+}
+.fx-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 3px;
+  background: var(--em-border, #e5e7eb);
 }
 .fx-badge {
   font-size: 11px;
@@ -64,13 +131,36 @@
 .fx-btn-icon { padding: 8px 10px; }
 
 /* ── Paleta lateral ─────────────────────────────────────────────────────── */
+.fx-paleta-box {
+  position: absolute;
+  left: 14px; top: var(--fx-topo); bottom: 14px;
+  z-index: 6;
+  width: 214px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.fx-paleta-cab {
+  flex: none;
+  padding: 11px 14px;
+  border-bottom: 0.5px solid var(--em-border, #e5e7eb);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: -.01em;
+}
+.fx-paleta-cab span {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--em-text-muted, #71717a);
+  margin-top: 2px;
+  letter-spacing: 0;
+}
 #fx-paleta {
-  width: 210px;
-  flex-shrink: 0;
+  flex: 1;
   overflow-y: auto;
-  border-right: 0.5px solid var(--em-border, #e5e7eb);
-  background: var(--em-bg, #fafafa);
-  padding: 10px 0 20px;
+  padding: 10px 11px 16px;
+  background: transparent;
 }
 .fx-pal-grupo { margin-bottom: 6px; }
 .fx-pal-titulo {
@@ -97,8 +187,8 @@
 
 /* ── Canvas ─────────────────────────────────────────────────────────────── */
 #fx-canvas {
-  flex: 1;
-  position: relative;
+  position: absolute;
+  inset: 0;
   background:
     radial-gradient(circle, var(--em-border, #e5e7eb) 1px, transparent 1px);
   background-size: 22px 22px;
@@ -169,20 +259,24 @@
 }
 
 /* ── Painel de configuração (direita) ───────────────────────────────────── */
+/* Fechado o painel nao existe (display:none), em vez de ficar com width:0 no
+   caminho do mouse. O JS so troca a classe .aberto — nada aqui exige mudar o
+   fluxo-canvas.js. */
 #fx-painel {
-  width: 0;
-  flex-shrink: 0;
-  overflow: hidden;
-  border-left: 0.5px solid transparent;
-  background: var(--em-bg, #fafafa);
-  transition: width .18s ease;
-  display: flex;
+  position: absolute;
+  right: 14px; top: var(--fx-topo); bottom: 14px;
+  z-index: 7;
+  width: 300px;
+  max-width: calc(100% - 28px);
+  display: none;
   flex-direction: column;
+  overflow: hidden;
 }
 #fx-painel.aberto {
-  width: 290px;
-  border-left-color: var(--em-border, #e5e7eb);
+  display: flex;
+  animation: fxEntra .16s ease both;
 }
+@keyframes fxEntra { from { opacity: 0; transform: translateX(10px); } }
 .fx-painel-head {
   padding: 14px 16px 10px;
   border-bottom: 0.5px solid var(--em-border, #e5e7eb);
@@ -239,13 +333,23 @@
 .fx-btn-del:hover { background: #fecaca; }
 
 /* ── Config do fluxo (guard-rails) + mensagens ──────────────────────────── */
+/* Topo-centro para nao brigar com a paleta (esquerda) nem com o painel
+   (direita). O JS usa slideToggle, que anima a altura e escreve display
+   inline — position:absolute nao atrapalha. */
 #fx-cfg-box {
   display: none;
-  margin-bottom: 12px;
+  position: absolute;
+  top: var(--fx-topo);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9;
+  width: min(460px, calc(100% - 28px));
   padding: 12px 14px;
-  border: 0.5px solid var(--em-border, #e5e7eb);
-  border-radius: 12px;
-  background: var(--em-bg, #fafafa);
+}
+.fx-cfg-dica {
+  font-size: 11px;
+  color: var(--em-text-muted, #71717a);
+  margin: 6px 0 0;
 }
 #fx-cfg-json {
   width: 100%;
@@ -260,19 +364,76 @@
   color: inherit;
   resize: vertical;
 }
+/* Rodape-centro. O JS escreve display/background inline e depois faz fadeOut. */
 #fx-msg {
   display: none;
-  margin-bottom: 12px;
-  padding: 10px 14px;
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 12;
+  max-width: calc(100% - 28px);
+  padding: 10px 16px;
   border-radius: 10px;
   font-size: 12.5px;
   white-space: pre-wrap;
+  box-shadow: 0 8px 24px -8px rgba(16,24,40,.3);
+}
+
+/* ── Dica no rodape ─────────────────────────────────────────────────────── */
+/* Sai da frente quando o painel abre; some quando nao ha largura para ela. */
+.fx-dica {
+  position: absolute;
+  bottom: 14px;
+  left: 242px;
+  z-index: 5;
+  max-width: 62ch;
+  padding: 7px 13px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  color: var(--em-text-muted, #71717a);
+  background: var(--em-bg-card, #fff);
+  border: 0.5px solid var(--em-border, #e5e7eb);
+  box-shadow: 0 1px 2px rgba(16,24,40,.06);
+}
+.fx-tela:has(#fx-painel.aberto) .fx-dica { display: none; }
+@media (max-width: 1180px) { .fx-dica { display: none; } }
+
+/* ── Celular: paleta e painel viram gavetas de rodape ───────────────────── */
+/* Aqui a barra quebra em varias linhas, entao nada pode depender da altura
+   dela — as gavetas ancoram no rodape, uma de cada vez. */
+@media (max-width: 900px) {
+  /* A barra vira duas faixas empilhadas e cada grupo quebra por dentro. Sem
+     isto os dois grupos disputam a mesma linha: em 375px sobram 347px para
+     tres botoes de zoom + quatro de acao, os rotulos espremem e o ultimo corta
+     na borda. */
+  .fx-barra { flex-direction: column; align-items: stretch; }
+  .fx-grupo { flex-wrap: wrap; }
+  .fx-nome { max-width: none; }
+
+  /* Paleta, painel e guard-rails viram gavetas de RODAPE, uma de cada vez.
+     Ancorar no rodape e o que tira a dependencia da altura da barra — que
+     aqui varia com a quebra e nao cabe num numero fixo. */
+  .fx-paleta-box {
+    left: 14px; right: 14px; top: auto; bottom: 14px;
+    width: auto; height: 42vh;
+  }
+  #fx-painel {
+    left: 14px; right: 14px; top: auto; bottom: 14px;
+    width: auto; height: 52vh;
+  }
+  #fx-cfg-box {
+    left: 14px; right: 14px; top: auto; bottom: 14px;
+    width: auto; max-height: 46vh; overflow-y: auto;
+    transform: none;
+  }
+  .fx-tela:has(#fx-painel.aberto) .fx-paleta-box { display: none; }
 }
 
 /* ── Dark mode ──────────────────────────────────────────────────────────── */
 @media (prefers-color-scheme: dark) {
-  /* .fx-wrap { background: #1c1c1e; border-color: #2c2c2e; }
-  #fx-paleta { background: #161618; border-color: #2c2c2e; }
+  /* .fx-flut { background: #1c1c1e; border-color: #2c2c2e; }
+  #fx-paleta { background: transparent; }
   .fx-pal-item:hover { background: rgba(255,255,255,.06); }
   #fx-canvas {
     background-color: #1c1c1e;
@@ -571,17 +732,27 @@ html[data-theme="dark"] {
 html[data-theme="dark"] { color-scheme: dark; }
 
 /* Estrutura e tipografia */
-html[data-theme="dark"] .fx-wrap, html[data-theme="dark"] .fx-toolbar, html[data-theme="dark"] .fxa_head, html[data-theme="dark"] .fxa_card, html[data-theme="dark"] .fxa_kpi, html[data-theme="dark"] .fx-painel-atv {
+html[data-theme="dark"] .fx-editor, html[data-theme="dark"] .fx-flut, html[data-theme="dark"] .fxa_head, html[data-theme="dark"] .fxa_card, html[data-theme="dark"] .fxa_kpi, html[data-theme="dark"] .fx-painel-atv {
   color: var(--fx-text);
 }
 
-html[data-theme="dark"] .fx-wrap {
+/* Uma regra so para tudo que flutua sobre o canvas: barra, paleta, painel e
+   caixa de guard-rails compartilham .fx-flut. */
+html[data-theme="dark"] .fx-flut {
   background: var(--em-bg-card);
   border-color: var(--em-border);
-  box-shadow: 0 18px 46px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.025);
+  box-shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -8px rgba(0,0,0,.55);
 }
+html[data-theme="dark"] .fx-dica {
+  background: var(--em-bg-card);
+  border-color: var(--em-border);
+  color: var(--em-text-muted);
+}
+html[data-theme="dark"] .fx-sep,
+html[data-theme="dark"] .fx-paleta-cab { border-color: var(--em-border); }
+html[data-theme="dark"] .fx-sep { background: var(--em-border); }
 
-html[data-theme="dark"] .fx-toolbar .fx-titulo, html[data-theme="dark"] #fx-painel-titulo, html[data-theme="dark"] .fx-label, html[data-theme="dark"] .fxa_h1, html[data-theme="dark"] .fxa_kpi_n, html[data-theme="dark"] .fxa_titulo, html[data-theme="dark"] .fxa_vazio_t, html[data-theme="dark"] .fx-atv-linha {
+html[data-theme="dark"] .fx-nome, html[data-theme="dark"] #fx-painel-titulo, html[data-theme="dark"] .fx-label, html[data-theme="dark"] .fxa_h1, html[data-theme="dark"] .fxa_kpi_n, html[data-theme="dark"] .fxa_titulo, html[data-theme="dark"] .fxa_vazio_t, html[data-theme="dark"] .fx-atv-linha {
   color: var(--fx-text);
 }
 

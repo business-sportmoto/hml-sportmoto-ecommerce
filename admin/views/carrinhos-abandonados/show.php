@@ -16,7 +16,185 @@ $eventoIcones = [
   'agendamento' => '📅', 'cliente_retornou' => '👋', 'recuperado' => '✅', 'perdido' => '❌',
 ];
 $semOptIn = isset($rec['aceita_marketing']) && !(int)$rec['aceita_marketing'];
+
+// ── O trilho ────────────────────────────────────────────────────────────────
+// Onze status contam uma história de cinco atos. O trilho mostra o ato, não o
+// status cru: "Aguardando" diz mais a quem vende do que "aguardando_resposta".
+$etapas = [
+    ['rotulo' => 'Abandonado', 'ico' => '🛒'],
+    ['rotulo' => 'Contato',    'ico' => '💬'],
+    ['rotulo' => 'Aguardando', 'ico' => '⏳'],
+    ['rotulo' => 'Respondeu',  'ico' => '🙋'],
+    ['rotulo' => 'Fechado',    'ico' => '🏁'],
+];
+$etapaDoStatus = [
+    'novo' => 0, 'abandonado' => 0, 'sem_contato' => 0,
+    'em_recuperacao' => 1, 'msg_enviada' => 1,
+    'aguardando_resposta' => 2,
+    'respondeu' => 3, 'negociacao' => 3,
+    'recuperado' => 4, 'perdido' => 4, 'ignorado' => 4,
+];
+$etapaAtual = $etapaDoStatus[$rec['status']] ?? 0;
+$ganhou     = $rec['status'] === 'recuperado';
+$encerrou   = in_array($rec['status'], ['recuperado', 'perdido', 'ignorado'], true);
+
+// Marcos: QUANDO cada ato aconteceu, tirado da trilha de eventos. É isto que
+// separa um trilho de verdade de uma barra de progresso decorativa — o
+// vendedor lê "msg enviada 14:32" e sabe há quanto tempo está sem resposta.
+$marcos   = [];
+$porEtapa = [
+    'abandono_detectado' => 0,
+    'whatsapp_enviado'   => 1, 'email_enviado' => 1, 'chat_cupom_enviado' => 1,
+    'cliente_retornou'   => 3,
+    'recuperado'         => 4, 'perdido' => 4,
+];
+foreach ($eventos as $e) {
+    $idx = $porEtapa[$e['tipo']] ?? null;
+
+    // Mudança de status carrega o destino no meta — é como se sabe quando a
+    // conversa entrou em "aguardando" ou "negociação", que não têm evento próprio.
+    if ($idx === null && $e['tipo'] === 'status_alterado') {
+        // getEventos() JÁ devolve o meta decodificado — tratar como string aqui
+        // dava "Array to string conversion" e, pior, o json_decode devolvia
+        // null em silêncio: a etapa "Aguardando" nunca ganhava data.
+        $meta = is_array($e['meta'] ?? null) ? $e['meta'] : [];
+        $idx  = $etapaDoStatus[(string)($meta['para'] ?? '')] ?? null;
+    }
+    if ($idx === null) continue;
+
+    $ts = strtotime((string)$e['criado_em']);
+    // O primeiro de cada ato é o que importa: a hora em que virou aquilo
+    if (!isset($marcos[$idx]) || $ts < $marcos[$idx]) $marcos[$idx] = $ts;
+}
+if (!isset($marcos[0])) $marcos[0] = strtotime((string)$rec['abandonado_em']);
+
+$score   = (int)($rec['score'] ?? 0);
+$prioCfg = [
+    'imediata' => ['Imediata', 'var(--danger)'], 'alta'  => ['Alta',  'var(--warning)'],
+    'media'    => ['Média',    'var(--blue)'],   'baixa' => ['Baixa', 'var(--text-2)'],
+];
+[$prioLabel, $prioCor] = $prioCfg[$rec['prioridade'] ?? 'baixa'] ?? ['—', 'var(--text-2)'];
+
+$temDono  = !empty($rec['responsavel_id']);
+$souODono = $temDono && (int)$rec['responsavel_id'] === (int)Session::get('usuario_id');
 ?>
+<style>
+/* ══ Trilho da recuperação ═════════════════════════════════════════════════
+   O bloco responde uma pergunta só: onde este carrinho está, e o que dá para
+   fazer agora. Por isso valor, etapa e ações moram juntos e no topo. */
+.rec-topo { padding:18px 20px 16px; }
+
+.rec-resumo { display:flex;align-items:center;justify-content:space-between;
+              gap:16px;flex-wrap:wrap;margin-bottom:20px; }
+
+.rec-valor  { font-size:27px;font-weight:800;letter-spacing:-.6px;line-height:1;
+              color:var(--c-text);display:flex;align-items:baseline;gap:8px; }
+.rec-cifra  { font-size:14px;font-weight:700;color:var(--c-text-muted);margin-right:-4px; }
+.rec-valor small { font-size:12.5px;font-weight:600;color:var(--c-text-muted);
+                   letter-spacing:0; }
+
+.rec-tags   { display:flex;align-items:center;gap:9px;flex-wrap:wrap; }
+.rec-tag    { display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;
+              padding:5px 11px;border-radius:99px;color:var(--cor);
+              background:color-mix(in srgb, var(--cor) 12%, transparent);
+              border:1px solid color-mix(in srgb, var(--cor) 30%, transparent); }
+.rec-tag i  { width:6px;height:6px;border-radius:50%;background:var(--cor);display:block; }
+
+/* Score como anel: o número sozinho não diz se 60 é muito ou pouco */
+.rec-score  { position:relative;width:38px;height:38px;display:inline-flex;
+              align-items:center;justify-content:center; }
+.rec-score svg { position:absolute;inset:0;transform:rotate(-90deg); }
+.rec-score circle { fill:none;stroke-width:3.2;}
+.rec-score .tr { stroke:var(--c-border); }
+.rec-score .vl { stroke:var(--c-primary);stroke-linecap:round;
+                 transition:stroke-dasharray .5s ease; }
+.rec-score b   { font-size:12px;font-weight:800;color:var(--c-text); }
+
+.rec-dono, .rec-agendado, .rec-tentativas {
+  font-size:11.5px;font-weight:600;padding:5px 11px;border-radius:99px;
+  background:var(--bg);border:1px solid var(--c-border);color:var(--c-text-muted); }
+.rec-dono.meu { background:var(--success-lt);border-color:var(--success-bd);color:var(--success); }
+
+/* ── O trilho ── */
+.rec-trilho { list-style:none;margin:0 0 18px;padding:0;display:grid;
+              grid-template-columns:repeat(5,1fr);position:relative; }
+
+/* A linha de trás e a que preenche até a etapa atual. Duas camadas em vez de
+   borda por item: assim o preenchimento é uma transição só, sem degrau. */
+.rec-trilho::before, .rec-trilho::after {
+  content:'';position:absolute;top:17px;height:3px;border-radius:2px;
+  left:10%;right:10%; }
+.rec-trilho::before { background:var(--c-border); }
+.rec-trilho::after  { right:auto;background:linear-gradient(90deg,var(--c-primary),var(--blue));
+                      width:calc((80% / 4) * var(--ate));transition:width .6s cubic-bezier(.4,0,.2,1); }
+.rec-trilho.perdeu::after { background:var(--c-text-muted);opacity:.55; }
+
+.rec-trilho li { position:relative;z-index:1;display:flex;flex-direction:column;
+                 align-items:center;gap:5px;text-align:center; }
+
+.rec-no  { width:35px;height:35px;border-radius:50%;display:flex;align-items:center;
+           justify-content:center;font-size:15px;background:var(--c-surface);
+           border:3px solid var(--c-border);transition:all .3s ease; }
+.rec-rot { font-size:11.5px;font-weight:700;color:var(--c-text-muted);line-height:1.25; }
+.rec-quando { font-size:10.5px;color:var(--c-text-muted);opacity:.75;font-variant-numeric:tabular-nums; }
+
+.rec-trilho .feito .rec-no { border-color:var(--c-primary);
+                             background:color-mix(in srgb, var(--c-primary) 12%, var(--c-surface)); }
+.rec-trilho .feito .rec-rot { color:var(--c-text); }
+
+/* A etapa atual é a única que pulsa — mais de um ponto pulsando não destaca
+   nada. O anel fica fora do fluxo, então o trilho não muda de altura. */
+.rec-trilho .agora .rec-no {
+  border-color:var(--c-primary);background:var(--c-primary);color:#fff;
+  box-shadow:0 0 0 5px color-mix(in srgb, var(--c-primary) 18%, transparent);
+  animation:recPulso 2.2s ease-in-out infinite; }
+.rec-trilho .agora .rec-rot { color:var(--c-primary);font-weight:800; }
+
+.rec-trilho .venceu .rec-no { border-color:var(--success);background:var(--success);
+                              color:#fff;animation:none;
+                              box-shadow:0 0 0 5px color-mix(in srgb, var(--success) 20%, transparent); }
+.rec-trilho .venceu .rec-rot { color:var(--success); }
+.rec-trilho.perdeu .agora .rec-no { border-color:var(--c-text-muted);
+                                    background:var(--c-text-muted);animation:none;box-shadow:none; }
+
+@keyframes recPulso {
+  0%,100% { box-shadow:0 0 0 5px color-mix(in srgb, var(--c-primary) 18%, transparent); }
+  50%     { box-shadow:0 0 0 9px color-mix(in srgb, var(--c-primary) 6%, transparent); }
+}
+@media (prefers-reduced-motion:reduce) {
+  .rec-trilho .agora .rec-no { animation:none; }
+  .rec-trilho::after { transition:none; }
+}
+
+/* ── Barra de ações ── */
+.rec-acoes { display:flex;align-items:center;gap:9px;flex-wrap:wrap;
+             padding-top:15px;border-top:1px solid var(--c-border); }
+.rec-sep   { flex:1; }
+
+.rec-bt { display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:700;
+          padding:9px 16px;border-radius:9px;border:1px solid var(--c-border);
+          background:var(--c-surface);color:var(--c-text);cursor:pointer;
+          transition:transform .12s ease, box-shadow .12s ease, background .12s ease; }
+.rec-bt span { font-size:14px;line-height:1; }
+.rec-bt:hover:not(:disabled)  { transform:translateY(-1px);box-shadow:0 3px 10px rgba(15,23,42,.10); }
+.rec-bt:active:not(:disabled) { transform:none;box-shadow:none; }
+.rec-bt:disabled { opacity:.45;cursor:not-allowed; }
+
+.rec-bt-capturar { background:var(--c-text);border-color:var(--c-text);color:var(--c-surface); }
+.rec-bt-wpp  { background:var(--success);border-color:var(--success);color:#fff; }
+.rec-bt-mail { background:var(--blue);border-color:var(--blue);color:#fff; }
+.rec-bt-mais { background:var(--bg); }
+
+.rec-travado { font-size:12px;font-weight:600;color:var(--warning);
+               background:var(--warning-lt);border:1px solid var(--warning-bd);
+               padding:8px 13px;border-radius:9px; }
+
+@media (max-width:900px) {
+  .rec-trilho .rec-rot, .rec-trilho .rec-quando { font-size:10px; }
+  .rec-valor { font-size:23px; }
+}
+</style>
+
 <div class="ap-page-header" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
   <a href="<?= ADMIN_URL ?>/carrinhos-abandonados" class="btn">← Voltar</a>
   <h1 style="font-size:20px;font-weight:800;margin:0;">
@@ -43,6 +221,88 @@ $semOptIn = isset($rec['aceita_marketing']) && !(int)$rec['aceita_marketing'];
 
   <!-- COLUNA PRINCIPAL -->
   <div style="display:flex;flex-direction:column;gap:16px;">
+
+    <!-- ═══ Trilho da recuperação + ações ═══ -->
+    <div class="admin-card rec-topo">
+      <div class="rec-resumo">
+        <div class="rec-valor">
+          <span class="rec-cifra">R$</span><?= number_format((float)$rec['valor_snapshot'], 2, ',', '.') ?>
+          <small><?= (int)$rec['itens_snapshot'] ?> <?= (int)$rec['itens_snapshot'] === 1 ? 'item' : 'itens' ?></small>
+        </div>
+
+        <div class="rec-tags">
+          <span class="rec-tag" style="--cor:<?= $prioCor ?>;"><i></i><?= $prioLabel ?></span>
+
+          <?php /* O score já existe e decide o roteamento da automação —
+                   mostrá-lo aqui evita abrir a lista para saber o peso deste. */ ?>
+          <span class="rec-score" title="Score de recuperação: <?= $score ?>/100">
+            <svg viewBox="0 0 36 36" aria-hidden="true">
+              <circle class="tr" cx="18" cy="18" r="15.5"></circle>
+              <circle class="vl" cx="18" cy="18" r="15.5"
+                      style="stroke-dasharray:<?= round($score * 0.974, 2) ?> 200;"></circle>
+            </svg>
+            <b><?= $score ?></b>
+          </span>
+
+          <?php if ($temDono): ?>
+          <span class="rec-dono<?= $souODono ? ' meu' : '' ?>">
+            <?= $souODono ? '★' : '👤' ?> <?= View::e($rec['responsavel_nome'] ?? '') ?>
+          </span>
+          <?php endif; ?>
+
+          <?php if (!empty($rec['proximo_contato_em'])): ?>
+          <span class="rec-agendado" title="Próximo contato agendado">
+            📅 <?= date('d/m H:i', strtotime((string)$rec['proximo_contato_em'])) ?>
+          </span>
+          <?php endif; ?>
+        </div>
+      </div>
+
+      <ol class="rec-trilho<?= $encerrou && !$ganhou ? ' perdeu' : '' ?>" style="--ate:<?= $etapaAtual ?>;">
+        <?php foreach ($etapas as $i => $et): ?>
+          <?php
+            $feito  = $i < $etapaAtual || ($i === $etapaAtual && isset($marcos[$i]));
+            $classe = $i === $etapaAtual ? 'agora' : ($feito ? 'feito' : 'futuro');
+            if ($i === 4 && $ganhou) $classe .= ' venceu';
+          ?>
+        <li class="<?= $classe ?>">
+          <span class="rec-no"><?= $i === 4 && $ganhou ? '🎉' : $et['ico'] ?></span>
+          <span class="rec-rot"><?= $i === 4 && $encerrou ? $statusCfg[$rec['status']][0] : $et['rotulo'] ?></span>
+          <?php /* Etapa futura não mostra data: um carrinho reaberto guarda o
+                   marco antigo, e exibi-lo num passo que ainda não aconteceu
+                   diz ao vendedor o contrário do que é verdade. */ ?>
+          <span class="rec-quando"><?= $i <= $etapaAtual && isset($marcos[$i])
+                ? date('d/m H:i', $marcos[$i]) : '—' ?></span>
+        </li>
+        <?php endforeach; ?>
+      </ol>
+
+      <div class="rec-acoes">
+        <?php if (!$temDono): ?>
+          <button class="btn rec-bt rec-bt-capturar" id="btn-capturar"><span>⚡</span> Capturar</button>
+        <?php elseif (!$souODono): ?>
+          <span class="rec-travado">🔒 Com <strong><?= View::e($rec['responsavel_nome']) ?></strong></span>
+        <?php endif; ?>
+
+        <button class="btn rec-bt rec-bt-wpp" id="btn-whatsapp"
+                <?= !$rec['cliente_telefone'] ? 'disabled title="Cliente sem telefone"' : '' ?>>
+          <span>💬</span> WhatsApp</button>
+
+        <button class="btn rec-bt rec-bt-mail" id="btn-email"
+                <?= !$rec['cliente_email'] ? 'disabled title="Cliente sem e-mail"' : '' ?>>
+          <span>✉</span> E-mail</button>
+
+        <button class="btn rec-bt" id="btn-link"><span>🔗</span> Copiar link</button>
+
+        <span class="rec-sep"></span>
+
+        <?php if ((int)($rec['tentativas_contato'] ?? 0) > 0): ?>
+        <span class="rec-tentativas"><?= (int)$rec['tentativas_contato'] ?>ª tentativa</span>
+        <?php endif; ?>
+
+        <button class="btn rec-bt rec-bt-mais" id="btn-mais"><span>⋯</span> Mais ações</button>
+      </div>
+    </div>
 
     <!-- Itens -->
     <div class="admin-card">
@@ -115,32 +375,11 @@ $semOptIn = isset($rec['aceita_marketing']) && !(int)$rec['aceita_marketing'];
       </div>
     </div>
 
-    <div class="admin-card">
-      <h3 class="ap-card-title">Ações <?= Session::get('usuario_id') ?></h3>
-      <div style="padding:14px 18px;display:flex;flex-direction:column;gap:8px;">
-        <?php if (empty($rec['responsavel_id'])): ?>
-        <button class="btn" id="btn-capturar"
-                style="background:var(--text);color:var(--surface);">⚡ Capturar este carrinho</button>
-        <?php elseif ((int)$rec['responsavel_id'] !== (int)Session::get('usuario_id')): ?>
-        <div style="background:var(--warning-lt);border:1px solid var(--warning-bd);border-radius:8px;
-            padding:10px 12px;font-size:12.5px;color:var(--warning);">
-          🔒 Capturado por <strong><?= View::e($rec['responsavel_nome']) ?></strong>
-        </div>
-        <?php elseif ((int)$rec['responsavel_id'] == (int)Session::get('usuario_id')): ?>
-        <div style="background:var(--warning-lt);border:1px solid var(--warning-bd);border-radius:8px;
-            padding:10px 12px;font-size:12.5px;color:var(--warning);">
-          🔒 Meu carrinho
-        </div>
-        <?php endif; ?>
-        <button class="btn" id="btn-whatsapp" style="background:var(--success);color:var(--surface);"
-                <?= !$rec['cliente_telefone'] ? 'disabled title="Sem telefone"' : '' ?>>
-          💬 Enviar WhatsApp</button>
-
-        <button class="btn" id="btn-email" style="background:var(--blue);color:var(--surface);"
-                <?= !$rec['cliente_email'] ? 'disabled title="Sem e-mail"' : '' ?>>
-          ✉ Enviar e-mail</button>              
-
-        <button class="btn" id="btn-link">🔗 Copiar link do carrinho</button>
+    <!-- Ações secundárias: vivem aqui escondidas e o drawer as empresta.
+         Ficarem no DOM desde o início é o que mantém os handlers ligados —
+         conteúdo criado na abertura exigiria religar tudo toda vez. -->
+    <div id="acoes-mais" hidden>
+      <div style="display:flex;flex-direction:column;gap:14px;">
 
         <select class="form-control" id="sel-status">
           <option value="">Alterar status…</option>
@@ -184,16 +423,23 @@ $semOptIn = isset($rec['aceita_marketing']) && !(int)$rec['aceita_marketing'];
           </div>
         <?php endif; ?>
 
-        <input type="datetime-local" class="form-control" id="inp-agendar"
-               title="Agendar próximo contato">
+        <div class="form-group" style="margin:0;">
+          <label class="form-label" style="font-size:12px;">📅 Agendar próximo contato</label>
+          <input type="datetime-local" class="form-control" id="inp-agendar">
+        </div>
 
-        <textarea class="form-control" id="inp-anotacao" rows="3"
-                  placeholder="Anotação interna…" maxlength="1000"></textarea>
-        <button class="btn" id="btn-anotar">📝 Salvar anotação</button>
+        <div class="form-group" style="margin:0;">
+          <label class="form-label" style="font-size:12px;">📝 Anotação interna</label>
+          <textarea class="form-control" id="inp-anotacao" rows="4"
+                    placeholder="O que aconteceu nesta conversa…" maxlength="1000"></textarea>
+        </div>
+        <button class="btn btn-primary" id="btn-anotar">Salvar anotação</button>
       </div>
     </div>
   </div>
 </div>
+
+<div id="acoes-guarda" style="display:none;"></div>
 
 <!-- Modal de templates (WhatsApp / e-mail) -->
 <div id="modal-tpl" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);
@@ -228,8 +474,30 @@ jQuery(function ($) {
   }
   function reload(msg) { if (msg) alert(msg); location.reload(); }
 
+  /* ── Mais ações: o drawer empresta o bloco que já está no DOM ──
+     Passar o elemento (e não HTML novo) é o que mantém os handlers abaixo
+     ligados. O adminDrawer devolve o nó ao fechar. */
+  $('#btn-mais').on('click', function () {
+    var $bloco = $('#acoes-mais');
+    $bloco.prop('hidden', false);
+
+    var drawer = adminDrawer({
+      titulo: 'Ações do carrinho',
+      subtitulo: 'Status, responsável, agendamento e anotações',
+      conteudo: $bloco,
+      tamanho: 'md',
+      onClose: function () {
+        // De volta para o DOM da página, escondido, com os handlers intactos
+        $bloco.prop('hidden', true).appendTo('#acoes-guarda');
+      }
+    });
+  });
+
+  /* Handlers delegados: os campos abaixo entram e saem do drawer, e um bind
+     direto morreria na primeira movimentação do nó. */
+
   /* Status */
-  $('#sel-status').on('change', function () {
+  $(document).on('change', '#sel-status', function () {
     var st = $(this).val();
     if (!st) return;
     var motivo = '';
@@ -241,13 +509,13 @@ jQuery(function ($) {
       .done(function (r) { r.ok ? reload() : alert(r.msg); });
   });
 
-  $('#btn-capturar').on('click', function () {
+  $(document).on('click', '#btn-capturar', function () {
     post(BASE + '/capturar', {})
       .done(function (r) { r.ok ? reload() : alert(r.msg); });
   });
 
   /* Responsável */
-  $('#sel-responsavel').on('change', function () {
+  $(document).on('change', '#sel-responsavel', function () {
     var id = $(this).val();
     if (!id) return;
     post(BASE + '/responsavel', { responsavel_id: id })
@@ -255,7 +523,7 @@ jQuery(function ($) {
   });
 
   /* Agendamento */
-  $('#inp-agendar').on('change', function () {
+  $(document).on('change', '#inp-agendar', function () {
     var quando = $(this).val();
     if (!quando) return;
     post(BASE + '/agendar', { quando: quando.replace('T', ' ') + ':00' })
@@ -263,7 +531,7 @@ jQuery(function ($) {
   });
 
   /* Anotação */
-  $('#btn-anotar').on('click', function () {
+  $(document).on('click', '#btn-anotar', function () {
     var t = $('#inp-anotacao').val().trim();
     if (!t) return;
     post(BASE + '/anotacao', { texto: t })
@@ -271,7 +539,7 @@ jQuery(function ($) {
   });
 
   /* Link de recuperação */
-  $('#btn-link').on('click', function () {
+  $(document).on('click', '#btn-link', function () {
     post(BASE + '/link', {}).done(function (r) {
       if (!r.ok) return alert(r.msg);
       navigator.clipboard.writeText(r.link).then(function () {

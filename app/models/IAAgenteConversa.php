@@ -110,6 +110,23 @@ class IAAgenteConversa
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
+    /**
+     * Histórico de um agente para uma pessoa: as conversas DELA mais as do
+     * sistema (agendado/evento, sem dono) — essas são leitura para qualquer
+     * admin que possa abrir o painel. Conversa de outra pessoa não entra.
+     */
+    public function listarPorAgente(string $agente, ?int $usuarioId, int $limite = 20): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT id, uuid, agente, modo, pagina, periodo, titulo, usuario_id, criado_em, atualizado_em
+               FROM ia_agente_conversas
+              WHERE agente = :a AND (usuario_id = :u OR usuario_id IS NULL)
+              ORDER BY atualizado_em DESC, id DESC LIMIT ' . (int) $limite
+        );
+        $stmt->execute([':a' => $agente, ':u' => (int) $usuarioId]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
     public function tocar(int $id): void
     {
         $this->db->prepare('UPDATE ia_agente_conversas SET atualizado_em = NOW() WHERE id = :id')

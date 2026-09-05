@@ -25,7 +25,10 @@ var FLUXO_UI = {
   nos: {
     trigger_evento: { cat: 'trigger', label: 'Evento do site', icone: 'bi-lightning-charge',
       campos: [
-        { k: 'evento', label: 'Evento', tipo: 'select', ops: ['produto_visto','categoria_vista','catalogo_moto_visto','busca','banner_click','pagina_vista','pedido_criado', 'dica_cuidado_clicada'] },
+        { k: 'evento', label: 'Evento', tipo: 'select', ops: ['produto_visto','categoria_vista','catalogo_moto_visto','busca','banner_click','pagina_vista','pedido_criado', 'dica_cuidado_clicada',
+          // Radar de clientes (cli/cliente-radar.php) — estados que
+          // amadurecem sozinhos, nao cliques.
+          'aniversario','inativo_30d','inativo_60d','inativo_90d','saldo_expirando'] },
         { k: 'entidade_tipo', label: 'Entidade (opcional)', tipo: 'select', ops: ['', 'produto', 'categoria', 'banner'] },
         { k: 'min_ocorrencias', label: 'Mín. ocorrências', tipo: 'number', def: 1 },
         { k: 'janela_dias', label: 'Janela (dias)', tipo: 'number', def: 7 },
@@ -48,7 +51,8 @@ var FLUXO_UI = {
 
     cond_evento_ocorreu: { cat: 'condicao', label: 'Evento ocorreu?', icone: 'bi-activity',
       campos: [
-        { k: 'evento', label: 'Evento', tipo: 'select', ops: ['produto_visto','categoria_vista','busca','pagina_vista','pedido_criado'] },
+        { k: 'evento', label: 'Evento', tipo: 'select', ops: ['produto_visto','categoria_vista','busca','pagina_vista','pedido_criado',
+          'aniversario','inativo_30d','inativo_60d','inativo_90d','saldo_expirando'] },
         { k: 'janela_dias', label: 'Janela (dias)', tipo: 'number', def: 7 },
         { k: 'min', label: 'Mín. vezes', tipo: 'number', def: 1 },
         { k: 'mesma_entidade', label: 'Mesmo produto do contexto', tipo: 'checkbox', def: false }
@@ -93,7 +97,8 @@ var FLUXO_UI = {
     esperar_evento: { cat: 'fluxo', label: 'Esperar evento', icone: 'bi-hourglass-bottom',
       campos: [
         { k: 'evento', label: 'Evento aguardado', tipo: 'select',
-          ops: ['produto_visto','categoria_vista','busca','banner_click','pagina_vista','pedido_criado','email_aberto'] },
+          ops: ['produto_visto','categoria_vista','busca','banner_click','pagina_vista','pedido_criado','email_aberto',
+                'aniversario','inativo_30d','inativo_60d','inativo_90d','saldo_expirando'] },
         { k: 'mesma_entidade', label: 'Mesmo produto do contexto', tipo: 'checkbox', def: false },
         { k: 'timeout_dias',    label: 'Timeout — dias',    tipo: 'number', def: 2 },
         { k: 'timeout_horas',   label: 'Timeout — horas',   tipo: 'number', def: 0 },
@@ -119,6 +124,20 @@ var FLUXO_UI = {
         { k: 'escopo', label: 'Onde procurar', tipo: 'select',
           ops: ['auto', 'contexto', 'cliente_ultimo', 'cliente_primeiro'] },
         { k: 'codigo', label: 'Código do vendedor (vazio = qualquer)', tipo: 'text', def: '' }
+      ] },
+
+    // Ramifica por atributo do cadastro — genero nao "acontece", entao e
+    // CONDICAO e nao evento. A allowlist de campo e a de operador por tipo
+    // vivem no backend (FluxoNoCondPerfil): combinacao invalida cai em 'false',
+    // nunca vira SQL. Por isso o form aqui pode ser o declarativo de sempre.
+    // Campo texto (genero) so respeita = e != ; os numericos aceitam os seis.
+    cond_perfil: { cat: 'condicao', label: 'Perfil do cliente', icone: 'bi-person-vcard',
+      campos: [
+        { k: 'campo', label: 'Campo', tipo: 'select',
+          ops: ['genero', 'saldo_disponivel', 'newsletter', 'verificado'] },
+        { k: 'operador', label: 'Operador', tipo: 'select',
+          ops: ['=', '!=', '>=', '>', '<=', '<'] },
+        { k: 'valor', label: 'Valor (genero: M/F/O/N)', tipo: 'text', def: '' }
       ] },
 
     acao_notificar_vendedor: { cat: 'acao', label: 'Avisar vendedor', icone: 'bi-megaphone',
@@ -167,6 +186,9 @@ var FLUXO_UI = {
       case 'acao_tag':         return (cfg.acao || 'adicionar') + ' "' + (cfg.tag || '') + '"';
       case 'cond_veio_de_vendedor':
         return cfg.codigo ? '= ' + cfg.codigo : 'qualquer vendedor';
+      case 'cond_perfil':
+        return (cfg.campo || 'genero') + ' ' + (cfg.operador || '=') + ' ' +
+               (cfg.valor !== undefined && cfg.valor !== '' ? cfg.valor : '—');
 
       case 'acao_notificar_vendedor':
         return (cfg.canal || 'auto') + ' · ' +

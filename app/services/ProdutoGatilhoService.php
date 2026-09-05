@@ -265,6 +265,29 @@ class ProdutoGatilhoService
      */
     private function enfileirarAutomacao(string $tipo, array $dados): bool
     {
+        // ── MOTOR v1 APOSENTADO (04/09/2026) ──────────────────────────────
+        // Sem este guard o servico seguiria escrevendo em automacao_fila a
+        // cada mudanca de preco e cada volta de estoque, enchendo uma fila
+        // que nenhum worker drena.
+        //
+        // O que NAO se perde: a inscricao do cliente continua sendo gravada
+        // normalmente em `aviso_estoque` (inscreverAviso) e a wishlist em
+        // `wishlist_itens`. Perde-se a ENTREGA, nunca a LISTA — quando o v2
+        // ganhar os eventos `queda_preco` e `volta_estoque`, os interessados
+        // ainda estarao la.
+        if (!defined('AUTOMACAO_V1_PERMITIDO')) {
+            if (class_exists('LogService')) {
+                try {
+                    LogService::info('gatilho: v1 aposentado, envio nao enfileirado', [
+                        'tipo'       => $tipo,
+                        'produto_id' => $dados['produto_id'] ?? null,
+                        'cliente_id' => $dados['cliente_id'] ?? null,
+                    ]);
+                } catch (Throwable $x) { /* log nunca quebra o gatilho */ }
+            }
+            return false;
+        }
+
         try {
             // ── 1. Acha o fluxo ativo ────────────────────────────────────────
             $fluxo = $this->fluxoAtivoPorTipo($tipo);

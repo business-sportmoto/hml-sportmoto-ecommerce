@@ -657,10 +657,105 @@ html[data-theme="light"] .pwb_ia_drawer {
 .pwb_ia_resumo_texto { margin: 0; font-size: 13px; line-height: 1.5; color: var(--pwb-t1); }
 .pwb_ia_resumo_quando { font-size: 11px; color: var(--pwb-t2); font-variant-numeric: tabular-nums; }
 
-/* "Consultando os dados…" — três pontos que respiram. */
-.pwb_ia_pensando { color: var(--pwb-t1); font-style: italic; }
-.pwb_ia_dots::after { content: '…'; animation: pwb_ia_dots 1.2s steps(4, end) infinite; }
-@keyframes pwb_ia_dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '…'; } }
+/* Loader no estilo dos chats de IA: avatar que pulsa, a etapa real do
+   servidor, três pontos que sobem e descem, e linhas em shimmer no lugar
+   onde a resposta vai aparecer. */
+.pwb_ia_pensando { color: var(--pwb-t1); }
+.pwb_ia_pensando_topo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pwb_ia_pensando_avatar {
+  width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: var(--pwb-g-roxo); color: #fff;
+  animation: pwb_ia_pulso 1.6s ease-in-out infinite;
+}
+.pwb_ia_pensando_avatar .pwb_icon_svg { width: 15px; height: 15px; }
+.pwb_ia_pensando_etapa { font-size: 13px; color: var(--pwb-t0); }
+.pwb_ia_pensando_tempo { margin-left: auto; font-size: 11px; color: var(--pwb-t2); font-variant-numeric: tabular-nums; }
+.pwb_ia_dots { display: inline-flex; gap: 4px; align-items: center; height: 10px; }
+.pwb_ia_dots i {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--pwb-lilac); display: block;
+  animation: pwb_ia_salto 1.2s ease-in-out infinite;
+}
+.pwb_ia_dots i:nth-child(2) { animation-delay: .15s; }
+.pwb_ia_dots i:nth-child(3) { animation-delay: .3s; }
+.pwb_ia_skeleton { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.pwb_ia_skeleton span {
+  display: block; height: 11px; border-radius: 6px;
+  background: linear-gradient(90deg, var(--pwb-card-2) 0%, var(--pwb-line-hi) 45%, var(--pwb-card-2) 90%);
+  background-size: 220% 100%;
+  animation: pwb_ia_shimmer 1.5s linear infinite;
+}
+@keyframes pwb_ia_pulso   { 0%, 100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, .45); } 60% { box-shadow: 0 0 0 8px rgba(139, 92, 246, 0); } }
+@keyframes pwb_ia_salto   { 0%, 80%, 100% { transform: translateY(0); opacity: .5; } 40% { transform: translateY(-5px); opacity: 1; } }
+@keyframes pwb_ia_shimmer { 0% { background-position: 120% 0; } 100% { background-position: -120% 0; } }
+
+/* Topo do drawer: contexto + botão "Perguntas". A lista abre como
+   dropdown sobre o thread (painel absoluto), não no fluxo. */
+.pwb_ia_topo { display: flex; gap: 8px; align-items: center; position: relative; container-type: inline-size; }
+.pwb_ia_topo .pwb_ia_contexto { flex: 1; min-width: 0; }
+/* Com dois botões ao lado, a dica não cabe no drawer "lg" (~520px de
+   conteúdo): some pela largura do CONTAINER, não da janela. */
+@container (max-width: 680px) { .pwb_ia_contexto_dica { display: none; } }
+@media (max-width: 560px) { .pwb_ia_contexto_dica { display: none; } }
+
+.pwb_ia_lista { flex: none; position: static; align-self: stretch; display: flex; }
+.pwb_ia_lista_titulo {
+  cursor: pointer; list-style: none; user-select: none; height: 100%; box-sizing: border-box;
+  display: inline-flex; align-items: center; gap: 7px; padding: 0 12px 0 10px;
+  border-radius: var(--pwb-r-md); font-size: 12.5px; font-weight: 700; color: var(--pwb-t0);
+  background:
+    linear-gradient(var(--pwb-panel), var(--pwb-panel)) padding-box,
+    var(--pwb-g-roxo) border-box;
+  border: 1px solid transparent; white-space: nowrap;
+  transition: box-shadow .16s ease;
+}
+.pwb_ia_lista_titulo:hover, .pwb_ia_lista[open] .pwb_ia_lista_titulo { box-shadow: 0 0 0 3px rgba(139, 92, 246, .16); }
+.pwb_ia_lista_titulo::-webkit-details-marker { display: none; }
+.pwb_ia_lista_titulo::after { content: '▾'; color: var(--pwb-t2); transition: transform .16s ease; }
+.pwb_ia_lista[open] .pwb_ia_lista_titulo::after { transform: rotate(180deg); }
+.pwb_ia_lista_titulo .pwb_icon_svg { width: 15px; height: 15px; color: var(--pwb-lilac); }
+.pwb_ia_lista_n {
+  font-size: 10.5px; font-weight: 800; padding: 1px 7px; border-radius: 999px;
+  background: var(--pwb-a-neutral); color: var(--pwb-t1);
+}
+.pwb_ia_lista_painel {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 5;
+  max-height: min(60vh, 520px); overflow: auto; padding: 10px 12px 2px;
+  background: var(--pwb-panel); border: 1px solid var(--pwb-line-hi);
+  border-radius: var(--pwb-r-md); box-shadow: var(--pwb-shadow);
+  scrollbar-width: thin; scrollbar-color: var(--pwb-line-hi) transparent;
+}
+/* Histórico: mesmo botão/painel da lista; itens como linhas clicáveis. */
+.pwb_ia_historico .pwb_ia_lista_painel { padding: 6px; }
+.pwb_ia_hist_item {
+  display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left; cursor: pointer;
+  font: inherit; padding: 9px 10px; border-radius: var(--pwb-r-sm);
+  background: transparent; color: var(--pwb-t0); border: 1px solid transparent;
+  transition: background .12s ease, border-color .12s ease;
+}
+.pwb_ia_hist_item:hover { background: var(--pwb-card); border-color: var(--pwb-line); }
+.pwb_ia_hist_titulo { font-size: 13px; line-height: 1.35; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.pwb_ia_hist_meta { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; font-size: 11px; color: var(--pwb-t2); font-variant-numeric: tabular-nums; }
+.pwb_ia_hist_meta .pwb_badge { font-size: 10px; padding: 1px 7px; }
+.pwb_ia_hist_vazio { margin: 8px 6px; font-size: 12.5px; color: var(--pwb-t2); }
+.pwb_ia_hist_cabecalho {
+  font-size: 11.5px; color: var(--pwb-t2); text-align: center; padding: 4px 0 2px;
+  border-bottom: 1px dashed var(--pwb-line); margin-bottom: 4px;
+}
+
+.pwb_ia_filtro {
+  width: 100%; box-sizing: border-box; margin: 0 0 10px; font: inherit; font-size: 12.5px;
+  padding: 8px 10px; border-radius: var(--pwb-r-sm); outline: none;
+  background: var(--pwb-card); color: var(--pwb-t0); border: 1px solid var(--pwb-line);
+  position: sticky; top: 0;
+}
+.pwb_ia_filtro:focus { border-color: var(--pwb-lilac); }
+.pwb_ia_grupo { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 12px; }
+.pwb_ia_grupo_titulo {
+  flex-basis: 100%; margin: 0 0 2px; font-size: 10.5px; font-weight: 800; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--pwb-t2);
+}
+.pwb_ia_grupo_aprofundar { border-top: 1px dashed var(--pwb-line); padding-top: 10px; }
+.pwb_ia_grupo_aprofundar .pwb_ia_sugestao { border-style: dashed; }
 
 .pwb_ia_sugestoes { display: flex; flex-wrap: wrap; gap: 6px; }
 .pwb_ia_sugestao {
@@ -692,5 +787,6 @@ html[data-theme="light"] .pwb_ia_drawer {
 /* Quem prefere menos movimento não recebe a animação da barra. */
 @media (prefers-reduced-motion: reduce) {
   .pwb_bar_fill, .pwb_nav_item, .pwb_tbody .pwb_tr, .pwb_icon_button, .pwb_ia_button, .pwb_ia_enviar { transition: none; }
-  .pwb_ia_dots::after { animation: none; content: '…'; }
+  .pwb_ia_pensando_avatar, .pwb_ia_dots i, .pwb_ia_skeleton span { animation: none; }
+  .pwb_ia_dots i { opacity: .8; }
 }

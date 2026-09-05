@@ -58,7 +58,9 @@ class PowerBIController extends Controller {
         return [
             'perguntar_url' => BASE_URL . '/admin/power-bi/ia/perguntar',
             'conversa_url'  => BASE_URL . '/admin/power-bi/ia/conversa',
+            'conversas_url' => BASE_URL . '/admin/power-bi/ia/conversas',
             'paginas'       => IAAgenteGateway::mapaPaginas(),
+            'padrao'        => IAAgenteGateway::mapaPadroes(),
             'agentes'       => IAAgenteService::catalogoParaTela(),
             'disponivel'    => $disponivel,
             'permitido'     => (new IAPermissaoService())->pode('marketing_ia'),
@@ -91,6 +93,16 @@ class PowerBIController extends Controller {
         ];
 
         $this->json((new IAAgenteService())->perguntar($agente, $pergunta, $ctx, $conversa, $usuarioId));
+    }
+
+    // ── GET /admin/power-bi/ia/conversas?agente= ──────────
+    // O histórico do botão: as conversas da pessoa + as do sistema.
+    public function iaConversas(): void {
+        $agente = preg_replace('/[^a-z_]/', '', (string)($_GET['agente'] ?? ''));
+        $this->json([
+            'ok'        => true,
+            'conversas' => (new IAAgenteService())->listarConversas($agente, AuthHelper::usuarioId(), 20),
+        ]);
     }
 
     // ── GET /admin/power-bi/ia/conversa?uuid= ─────────────

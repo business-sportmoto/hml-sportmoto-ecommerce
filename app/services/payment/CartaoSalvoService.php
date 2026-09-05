@@ -230,4 +230,99 @@ class CartaoSalvoService
 
         return $r;
     }
+
+    // ── Cartão temporário ──────────────────────────────────────────────
+
+    /**
+     * Apaga um cartão que o cliente pediu para NÃO salvar.
+     *
+     * Ele precisou existir: é por `cartao_id` que ficam as referências de cada
+     * adquirente, e sem referência não há cobrança. Terminada a compra, ele
+     * sai — dos cofres e daqui.
+     *
+     * Difere de `remover()` em uma coisa, de propósito: **uma adquirente que
+     * recusa a exclusão não impede a limpeza local.** Em `remover()` a linha
+     * fica, porque o cliente está olhando a lista e precisa ver a verdade.
+     * Aqui não há lista: manter a linha significaria mostrar na conta dele um
+     * cartão que ele disse para não guardar. O que sobra vira aviso no log e
+     * cai na reconciliação.
+     *
+     * @return bool true se a linha saiu do banco.
+     */
+    public function purgarTemporario(int $cartaoId, int $clienteId): bool
+    {
+        $cartao = $this->daPessoa($cartaoId, $clienteId);
+        if ($cartao === null) return false;
+
+        $naAdquirente = null;
+        try {
+            $naAdquirente = $this->removerNaAdquirente($cartao);
+        } catch (\Throwable $e) {
+            // Nunca derruba a compra que acabou de acontecer.
+            LogService::exception($e, 'error', 'pagamento', [
+                'acao' => 'purgar_cartao_temporario', 'cartao_id' => $cartaoId,
+            ]);
+        }
+
+        if ($naAdquirente === false) {
+            // O cofre disse não. A linha sai mesmo assim (ver acima), mas
+            // isso precisa ficar registrado: há um cartão órfão lá dentro.
+            LogService::warning('Cartao temporario continua na adquirente', [
+                'cliente_id' => $clienteId,
+                'cartao_id'  => $cartaoId,
+                'adquirente' => $cartao['adquirente'] ?? null,
+            ], 'pagamento');
+        }
+
+        $st = $this->db->prepare(
+            "DELETE FROM cartoes_salvos
+              WHERE id = :id AND cliente_id = :cid AND temporario = 1"
+        );
+        $st->execute([':id' => $cartaoId, ':cid' => $clienteId]);
+        $saiu = $st->rowCount() > 0;
+
+        if ($saiu) {
+            LogService::audit('Cartao temporario removido', [
+                'cliente_id'    => $clienteId,
+                'cartao_id'     => $cartaoId,
+                'na_adquirente' => $naAdquirente === true ? 'removido'
+                                 : ($naAdquirente === false ? 'recusou' : 'nao_aplicavel'),
+            ]);
+        }
+
+        return $saiu;
+    }
+
+    /**
+     * Recolhe os temporários que ficaram para trás — o que o cron chama.
+     *
+     * A limpeza normal é no fim da compra. Esta pega o resto: navegador
+     * fechado no desafio 3DS, PHP morto no meio, compra que virou pendente e
+     * ninguém voltou. Sem ela o cartão fica nos cofres para sempre, contra a
+     * vontade de quem digitou.
+     *
+     * @param int $minutos idade mínima. Precisa ser maior que a validade de um
+     *                     desafio 3DS — apagar o cartão de uma compra em
+     *                     andamento faria a cobrança falhar sozinha.
+     */
+    public function purgarExpirados(int $minutos = 60, int $limite = 200): array
+    {
+        $r = ['achados' => 0, 'removidos' => 0, 'erros' => 0];
+
+        foreach ((new CartaoSalvo())->temporariosExpirados($minutos, $limite) as $c) {
+            $r['achados']++;
+            try {
+                if ($this->purgarTemporario((int) $c['id'], (int) $c['cliente_id'])) {
+                    $r['removidos']++;
+                }
+            } catch (\Throwable $e) {
+                $r['erros']++;
+                LogService::exception($e, 'error', 'pagamento', [
+                    'acao' => 'purgar_expirados', 'cartao_id' => $c['id'] ?? null,
+                ]);
+            }
+        }
+
+        return $r;
+    }
 }

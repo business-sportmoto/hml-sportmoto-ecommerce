@@ -91,6 +91,16 @@ foreach ($fluxos as $f) {
     $nome = 'v2: ' . $f['nome'];
     echo "[{$f['tipo']}] → '$nome' — " . count($nos) . " nós$nota\n";
 
+    // Idempotencia: sem isto, cada execucao com --executar cria mais uma
+    // copia de TODOS os fluxos. Ja aconteceu — rodou duas vezes e gerou 24
+    // rascunhos para 12 fluxos legados (ids 6-17 e 18-29).
+    $jaExiste = $db->prepare("SELECT id FROM fluxo_v2 WHERE nome = :n LIMIT 1");
+    $jaExiste->execute([':n' => $nome]);
+    if ($idExistente = $jaExiste->fetchColumn()) {
+        echo "        -> ja migrado (rascunho #$idExistente) — pulando\n";
+        continue;
+    }
+
     if ($executar) {
         $id = $adm->criar($nome, 'Migrado do legado #' . $f['id'] . ' em ' . date('d/m/Y'));
         $r  = $adm->salvarRascunho($id, ['nos' => $nos, 'conexoes' => $conexoes], [

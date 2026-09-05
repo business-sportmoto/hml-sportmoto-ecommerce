@@ -22,6 +22,27 @@ if (PHP_SAPI !== 'cli') {
     exit(1);
 }
 
+// ── MOTOR v1 APOSENTADO (04/09/2026) ────────────────────────────────────
+// Substituido pelo motor v2 (cli/fluxo-worker.php). Este worker nunca chegou
+// a entregar mensagem nenhuma (automacao_historico = 0) e sua fila acumulava
+// itens que ninguem drenava.
+//
+// Sai com codigo 0 de proposito: se o cron ainda estiver ativo no servidor,
+// um exit(1) encheria o log de erro a cada 5 minutos sem nada a corrigir.
+//
+// Escape hatch para diagnostico:  php cli/automacao-worker.php --forcar
+if (!in_array('--forcar', $argv ?? [], true)) {
+    fwrite(STDOUT, "[automacao-worker] motor v1 aposentado; use cli/fluxo-worker.php.\n");
+    exit(0);
+}
+
+// ATENCAO: --forcar nao e um dry-run. Ele roda deteccao E despacho de verdade,
+// e volta a escrever na automacao_fila. Um teste deste escape hatch em
+// 04/09/2026 enfileirou 10 itens segundos depois de a fila ter sido limpa.
+// Para so inspecionar, prefira: --forcar --apenas-detectar
+fwrite(STDERR, "[automacao-worker] --forcar: rodando motor APOSENTADO. "
+             . "Isto ESCREVE na automacao_fila.\n");
+
 define('AUTOMACAO_WORKER_CLI', true);
 $verbose         = in_array('--verbose', $argv ?? [], true);
 $apenasDetectar  = in_array('--apenas-detectar', $argv ?? [], true);

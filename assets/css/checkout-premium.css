@@ -3351,3 +3351,115 @@ body.tds-aberto { overflow: hidden; }
   .success-track-card { padding: 15px 16px; border-radius: 14px; }
   .stc-meta { gap: 6px 14px; }
 }
+
+
+/* ════════════════════════════════════════════════════════════════════════
+   Balão do código de segurança
+   ════════════════════════════════════════════════════════════════════════
+   Cartão salvo pede o CVV a cada compra. O campo ficava solto no meio do
+   resumo, longe do gesto que o exige — o cliente lia "código de segurança"
+   antes de decidir comprar. Agora ele aparece na hora: clicar em finalizar
+   abre este balão logo acima do botão.
+
+   Flutua (position:absolute) de propósito. Em fluxo normal ele empurraria o
+   botão para baixo justamente enquanto o cliente mira nele, e o clique
+   seguinte cairia no vazio. */
+.finalize-wrap { position: relative; }
+
+.cvv-balao {
+  position: absolute;
+  left: 0; right: 0; bottom: calc(100% + 12px);
+  z-index: 20;
+  padding: 14px 16px 16px;
+  background: var(--c-surface, #fff);
+  border: 1px solid var(--c-border, #e5e7eb);
+  border-radius: 14px;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, .06), 0 18px 40px -12px rgba(15, 23, 42, .22);
+  animation: cvvBalaoEntra .16s ease both;
+}
+@keyframes cvvBalaoEntra {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
+/* Bico apontando para o botão. Dois triângulos sobrepostos: o de baixo faz a
+   borda, o de cima tapa com a cor do fundo. */
+.cvv-balao::before,
+.cvv-balao::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  border: 9px solid transparent;
+  border-top-color: var(--c-border, #e5e7eb);
+  transform: translateX(-50%);
+}
+.cvv-balao::after {
+  border-width: 8px;
+  border-top-color: var(--c-surface, #fff);
+  margin-top: -1px;
+}
+
+.cvv-balao-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.cvv-balao-topo strong { font-size: 13.5px; font-weight: 700; }
+
+.cvv-balao-x {
+  width: 26px; height: 26px;
+  flex: none;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--c-text-muted, #6b7280);
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+}
+.cvv-balao-x:hover { background: rgba(15, 23, 42, .06); }
+
+.cvv-balao-texto {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--c-text-muted, #6b7280);
+}
+
+/* O campo do Mercado Pago é um iframe: precisa de altura declarada, senão
+   nasce com zero e o cliente vê uma linha vazia que não aceita foco. */
+.cvv-balao .hosted-field,
+.cvv-balao input {
+  height: 44px;
+  letter-spacing: .18em;
+  font-size: 15px;
+}
+
+.cvv-balao .field-error:empty { display: none; }
+.cvv-balao .field-error { display: block; margin-top: 6px; }
+
+.cvv-balao-ok { margin-top: 12px; }
+
+@media (max-width: 480px) {
+  .cvv-balao { padding: 12px 13px 14px; }
+}
+
+/* Badge "Não salvo" — o cliente desmarcou salvar na tela do cartão.
+   Neutro, não vermelho: não é erro, é a escolha dele. */
+.card-saved-badge--temp {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #475569;
+}
+.card-saved-badge--temp svg { stroke: #64748b; }
+
+/* O cliente marcou "salvar" aqui no resumo: o selo confirma na hora, antes de
+   o finalize gravar. Mesma cara do "Salvo" que ele veria na volta. */
+.card-saved-badge--vai-salvar {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: color-mix(in srgb, var(--c-success) 70%, black);
+}
+.card-saved-badge--vai-salvar svg { stroke: var(--c-success); }

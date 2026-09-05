@@ -192,6 +192,110 @@
     var limite = setTimeout(conferir, 600000);
   }
 
+  // ── Balão do código de segurança ─────────────────────────────────────
+  //
+  // Cartão salvo ainda pede o CVV a cada compra — é o que impede quem tem
+  // acesso à conta de usar o cartão sem ter o cartão na mão. O campo ficava
+  // solto no meio do resumo, longe do gesto que o exige; agora ele aparece
+  // quando o cliente clica em finalizar, num balão logo acima do botão.
+  //
+  // O gate é o `confirmado`, não o valor: no Mercado Pago o código é digitado
+  // dentro de um iframe deles e o valor não é legível daqui. Para a Cielo, que
+  // é input comum, dá para conferir o tamanho antes de mandar.
+  var cvvBalao = (function () {
+    var $balao = $('#cvv-balao');
+    if (!$balao.length) return null;
+
+    var confirmado = false;
+
+    function aberto() { return !$balao.prop('hidden'); }
+
+    function abrir(msg) {
+      $balao.prop('hidden', false);
+      $('#err-cvv-salvo').text(msg || '');
+
+      // O iframe do Mercado Pago só pode ser montado com o balão visível.
+      if (typeof window.__mpMontarCvv === 'function') window.__mpMontarCvv();
+
+      var $cielo = $('#cvv-cielo-input');
+      if ($cielo.length) setTimeout(function () { $cielo.trigger('focus'); }, 60);
+    }
+
+    function fechar() {
+      $balao.prop('hidden', true);
+      $('#err-cvv-salvo').text('');
+    }
+
+    return {
+      aberto: aberto,
+      abrir: abrir,
+      fechar: fechar,
+
+      // true = pode seguir para o POST.
+      liberado: function () { return confirmado; },
+
+      // Chamado pelo "Confirmar e pagar". Só valida o que dá para validar.
+      confirmar: function () {
+        var $cielo = $('#cvv-cielo-input');
+        if ($cielo.length) {
+          var v = ($cielo.val() || '').replace(/\D/g, '');
+          if (v.length < 3) {
+            $('#err-cvv-salvo').text('Digite o código de segurança (3 ou 4 dígitos).');
+            $cielo.trigger('focus');
+            return false;
+          }
+        }
+        confirmado = true;
+        fechar();
+        return true;
+      },
+
+      // O código foi recusado: volta a pedir, com o motivo.
+      recusar: function (msg) {
+        confirmado = false;
+        abrir(msg);
+      }
+    };
+  }());
+
+  if (cvvBalao) {
+    $('#cvv-balao-ok').on('click', function () {
+      if (cvvBalao.confirmar()) $('#btn-finalize').trigger('click');
+    });
+
+    $('#cvv-balao-fechar').on('click', function () { cvvBalao.fechar(); });
+
+    // Enter no campo da Cielo confirma — é o gesto natural de quem acabou de
+    // digitar 3 dígitos.
+    $('#cvv-cielo-input').on('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); $('#cvv-balao-ok').trigger('click'); }
+    });
+
+    $(document).on('keydown', function (e) {
+      if (e.key === 'Escape' && cvvBalao.aberto()) cvvBalao.fechar();
+    });
+  }
+
+  // ── Badge segue a escolha do cliente ─────────────────────────────────
+  //
+  // O cartao chegou aqui marcado "Nao salvo" — foi assim que ele saiu da tela
+  // de adicionar. Se o cliente mudar de ideia agora, o selo tem de mudar
+  // junto: dizer "Nao salvo" com a caixa marcada seria mentir sobre o que vai
+  // acontecer. Quem grava e o finalize (marcarPermanente); aqui e so a
+  // resposta visual.
+  $('#chk-salvar-cartao').on('change', function () {
+    var salvar = $(this).is(':checked');
+    var $selo  = $('.card-saved-badge--temp, .card-saved-badge--vai-salvar').first();
+    if (!$selo.length) return;
+
+    $selo
+      .toggleClass('card-saved-badge--temp', !salvar)
+      .toggleClass('card-saved-badge--vai-salvar', salvar)
+      .contents().filter(function () { return this.nodeType === 3; }).remove();
+
+    $selo.append(document.createTextNode(salvar ? ' Salvo ' : ' Não salvo '));
+  });
+
   // Finalizar
   $('#btn-finalize').on('click', function () {
     const $btn   = $(this);
@@ -230,6 +334,14 @@
         $('html,body').animate({ scrollTop: $('#card-panel').offset().top - 80 }, 250);
         return;
       }
+    }
+
+    // O cartão salvo precisa do código de segurança. Primeiro clique abre o
+    // balão e para aqui; o "Confirmar e pagar" volta neste mesmo handler já
+    // liberado.
+    if (cvvBalao && !cvvBalao.liberado()) {
+      cvvBalao.abrir();
+      return;
     }
 
     CK.btnLoading($btn);
@@ -287,7 +399,12 @@
         } else {
           encerrar(function () {
             CK.btnLoading($btn, false);
-            CK.formAlertSet($err, (dado && dado.msg) || 'Não foi possível validar o cartão.');
+            var msg = (dado && dado.msg) || 'Não foi possível validar o cartão.';
+            // Quase sempre é o código errado. Reabrir o balão com o motivo
+            // deixa o cliente corrigir onde ele digitou, em vez de olhar um
+            // erro no rodapé sem campo nenhum por perto.
+            if (cvvBalao) cvvBalao.recusar(msg);
+            else CK.formAlertSet($err, msg);
           });
         }
       }

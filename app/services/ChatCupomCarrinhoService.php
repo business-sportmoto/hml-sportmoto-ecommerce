@@ -6,6 +6,19 @@
  * Passadas N horas (`recuperacao_config.chat_cupom_h`, 20 por padrão), manda um
  * cupom — se existir um que sirva.
  *
+ * ─────────────────────────────────────────────────────────────────────────
+ * DESDE 05/09 ESTA RÉGUA É REDE DE SEGURANÇA, NÃO O CAMINHO PRINCIPAL.
+ *
+ * Quem recupera carrinho agora é o fluxo (ver [[evento-loja-como-porta-unica]]).
+ * Ela continua viva porque alcança quem o fluxo NÃO alcança: o produtor de
+ * eventos faz `JOIN clientes`, então **carrinho sem `cliente_id` nunca vira
+ * evento** — e é justamente o visitante anônimo que veio de um link do direct.
+ * Eram 7 de 24 registros na base em 04/09.
+ *
+ * O `enviarPendentes()` pula todo carrinho que o fluxo já assumiu, então os
+ * dois nunca mandam para a mesma pessoa. Ela se aposenta sozinha no dia em que
+ * o produtor souber emitir evento para carrinho anônimo — aí este arquivo sai.
+ *
  * POR QUE AQUI E NÃO NO AGENTE: dar cupom a quem pergunta preço desconta também
  * quem compraria pelo preço cheio. Aqui o desconto vai só para quem já mostrou
  * intenção E não converteu — que é o momento em que ele muda alguma coisa.
@@ -183,6 +196,22 @@ class ChatCupomCarrinhoService
                AND NOT EXISTS (
                      SELECT 1 FROM carrinho_recuperacao_eventos e
                      WHERE e.recuperacao_id = r.id AND e.tipo = 'chat_cupom_enviado'
+                   )
+               -- O fluxo já cuida deste carrinho? Então esta régua sai de cena.
+               --
+               -- Só os status em que o fluxo REALMENTE age contam:
+               --   pendente/processando -> vai disparar, ou está disparando
+               --   concluido            -> já disparou
+               -- `descartado` e `falhou` ficam de FORA de propósito: nesses o
+               -- fluxo não mandou nada (sem fluxo publicado, contato fora da
+               -- janela, opt-out). Guardar contra eles calaria os dois lados e
+               -- o carrinho morreria em silêncio.
+               AND NOT EXISTS (
+                     SELECT 1 FROM chat_eventos_loja el
+                     WHERE el.evento      = 'carrinho_abandonado'
+                       AND el.origem_tipo = 'carrinho_recuperacao'
+                       AND el.origem_id   = r.id
+                       AND el.status IN ('pendente', 'processando', 'concluido')
                    )
              ORDER BY r.abandonado_em ASC
              LIMIT :lim"

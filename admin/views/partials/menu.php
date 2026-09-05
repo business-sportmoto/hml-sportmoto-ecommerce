@@ -126,7 +126,7 @@
         </span>
         Campanhas
       </a>
-      <a href="<?= BASE_URL ?>/admin/email-marketing/automacoes" class="admin-nav-item<?= adminIsActive('/admin/email-marketing/automacoes') ?>">
+      <a href="<?= BASE_URL ?>/admin/fluxos" class="admin-nav-item<?= adminIsActive('/admin/fluxos') ?>">
         <span class="admin-nav-icon">
           <?= IconLibrary::render('automation', 'icon icon--md') ?>
         </span>

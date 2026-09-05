@@ -29,6 +29,10 @@ class CartaoSalvo {
      * existe (`adquirentes` => ['mercadopago', 'cielo']). Cartão sem nenhuma
      * adquirente ativa continua na lista — a tela decide o que mostrar —, mas
      * o checkout não consegue cobrá-lo, e é isso que `cobravel` diz.
+     *
+     * NÃO lista o cartão temporário — aquele em que o cliente desmarcou
+     * "salvar para as próximas compras". Ele existe só enquanto a compra
+     * acontece; mostrá-lo na conta seria contradizer a escolha dele.
      */
     public function listarPorCliente(int $clienteId): array {
         $stmt = $this->db->prepare(
@@ -40,7 +44,7 @@ class CartaoSalvo {
                  ON a.cartao_id = cs.id AND a.ativo = 1
           LEFT JOIN pgto_gateways g
                  ON g.id = a.gateway_id AND g.ativo = 1
-              WHERE cs.cliente_id = :cid AND cs.ativo = 1
+              WHERE cs.cliente_id = :cid AND cs.ativo = 1 AND cs.temporario = 0
            GROUP BY cs.id
            ORDER BY cs.principal DESC, cs.id DESC"
         );
@@ -113,8 +117,14 @@ class CartaoSalvo {
      *
      * Campos obrigatórios: cliente_id, token, bandeira, ultimos_4
      * Campos opcionais:    nome_titular, validade, apelido, principal,
-     *                      gateway_id, customer_ref, card_ref (legado da 1ª adquirente),
+     *                      temporario, gateway_id, customer_ref, card_ref
+     *                      (legado da 1ª adquirente),
      *                      adquirentes => [[gateway_id, customer_ref, card_ref], ...]
+     *
+     * `temporario` = 1 é o cartão que o cliente NÃO mandou salvar. A linha
+     * nasce assim mesmo porque a compra precisa dela: é por `cartao_id` que
+     * as referências de cada adquirente ficam penduradas. Ela some depois,
+     * junto com os cofres.
      *
      * nome_titular e validade são opcionais porque com hosted fields esses
      * dados não saem do iframe. Quando a adquirente devolve (o Mercado Pago
@@ -122,8 +132,12 @@ class CartaoSalvo {
      * inventado que a tela exibiria como se fosse do cartão.
      */
     public function salvar(array $data): int {
-        $clienteId = (int) $data['cliente_id'];
-        $principal = !empty($data['principal']) ? 1 : 0;
+        $clienteId  = (int) $data['cliente_id'];
+        $temporario = !empty($data['temporario']) ? 1 : 0;
+
+        // Cartão que vai ser apagado no fim da compra não pode virar o padrão
+        // do cliente: no dia seguinte o padrão apontaria para nada.
+        $principal = (!$temporario && !empty($data['principal'])) ? 1 : 0;
 
         foreach (['token', 'bandeira', 'ultimos_4'] as $campo) {
             if (empty($data[$campo])) {
@@ -143,10 +157,12 @@ class CartaoSalvo {
         $this->db->prepare(
             "INSERT INTO cartoes_salvos
                (cliente_id, gateway_id, token, customer_ref, card_ref,
-                bandeira, ultimos_4, nome_titular, apelido, validade, principal)
+                bandeira, ultimos_4, nome_titular, apelido, validade, principal,
+                temporario)
              VALUES
                (:cliente_id, :gateway_id, :token, :customer_ref, :card_ref,
-                :bandeira, :ultimos_4, :nome_titular, :apelido, :validade, :principal)"
+                :bandeira, :ultimos_4, :nome_titular, :apelido, :validade, :principal,
+                :temporario)"
         )->execute([
             ':cliente_id'   => $clienteId,
             // Legado: a PRIMEIRA adquirente. A fonte de verdade é a filha.
@@ -171,6 +187,7 @@ class CartaoSalvo {
                 ? SecurityHelper::sanitizeString(mb_substr((string) $data['validade'], 0, 5))
                 : null,
             ':principal'    => $principal,
+            ':temporario'   => $temporario,
         ]);
 
         $cartaoId = (int) $this->db->lastInsertId();
@@ -206,6 +223,62 @@ class CartaoSalvo {
                 ? SecurityHelper::sanitizeString($customerRef) : null,
             ':card' => SecurityHelper::sanitizeString($cardRef),
         ]);
+    }
+
+    /**
+     * Promove um cartão temporário a permanente.
+     *
+     * É o "mudei de ideia": o cliente desmarcou salvar na tela do cartão e
+     * marcou de novo no resumo, antes de finalizar. Nada muda nas adquirentes
+     * — o cartão já está nos cofres —, só o destino da linha.
+     */
+    public function marcarPermanente(int $cartaoId, int $clienteId): bool {
+        $stmt = $this->db->prepare(
+            "UPDATE cartoes_salvos SET temporario = 0
+              WHERE id = :id AND cliente_id = :cid AND temporario = 1"
+        );
+        $stmt->execute([':id' => $cartaoId, ':cid' => $clienteId]);
+        return $stmt->rowCount() > 0;
+    }
+
+    /** O cartão é temporário? (usado para decidir a limpeza pós-compra) */
+    public function ehTemporario(int $cartaoId, int $clienteId): bool {
+        $stmt = $this->db->prepare(
+            "SELECT temporario FROM cartoes_salvos
+              WHERE id = :id AND cliente_id = :cid LIMIT 1"
+        );
+        $stmt->execute([':id' => $cartaoId, ':cid' => $clienteId]);
+        return (int) $stmt->fetchColumn() === 1;
+    }
+
+    /**
+     * Temporários que passaram da janela — o que o cron recolhe.
+     *
+     * A limpeza normal acontece no fim da compra. Esta é a rede embaixo: o
+     * cliente fechou o navegador no desafio 3DS, o PHP morreu no meio, a
+     * compra virou pendente e ninguém voltou. Sem ela o cartão fica nos
+     * cofres das adquirentes para sempre, contra a vontade de quem digitou.
+     *
+     * @param int $minutos idade mínima. Tem de ser maior que a validade de um
+     *                     desafio 3DS, senão o cron apaga o cartão de uma
+     *                     compra que ainda está acontecendo.
+     */
+    public function temporariosExpirados(int $minutos = 60, int $limite = 200): array {
+        $minutos = max(15, $minutos);
+        $limite  = max(1, min(1000, $limite));
+
+        $stmt = $this->db->prepare(
+            "SELECT id, cliente_id, criado_em
+               FROM cartoes_salvos
+              WHERE temporario = 1
+                AND criado_em < (NOW() - INTERVAL :min MINUTE)
+           ORDER BY criado_em
+              LIMIT {$limite}"
+        );
+        $stmt->bindValue(':min', $minutos, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
     public function desativar(int $id, int $clienteId): bool {

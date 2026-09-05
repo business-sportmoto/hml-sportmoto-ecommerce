@@ -165,8 +165,27 @@ $cpfCliente = $cpfCliente ?? '';
       <small class="form-help">Facilita identificar na próxima compra.</small>
     </div>
 
-    <!-- Tornar padrão -->
-    <label class="save-card-toggle">
+    <!-- Salvar para as próximas compras -->
+    <!--
+      Desmarcado, o cartão AINDA vai para os cofres das adquirentes: é de lá
+      que sai a referência de cobrança desta compra. O que muda é o depois —
+      ele é apagado assim que o pagamento tem resultado, nos cofres e aqui.
+      Ver CheckoutController::paymentCardAddPost().
+    -->
+    <label class="save-card-toggle" id="lbl-salvar-cartao">
+      <input type="checkbox" name="salvar_cartao" value="1" id="chk-salvar-cartao" checked>
+      <span class="save-card-toggle-box">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </span>
+      <span class="save-card-toggle-text">
+        <strong>Salvar cartão para as próximas compras</strong>
+        <small id="txt-salvar-cartao">Na próxima vez você digita só o código de segurança.</small>
+      </span>
+    </label>
+
+    <!-- Tornar padrão — só faz sentido para cartão que fica salvo -->
+    <label class="save-card-toggle" id="lbl-padrao">
       <input type="checkbox" name="padrao" value="1" id="chk-padrao">
       <span class="save-card-toggle-box">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -642,4 +661,27 @@ $multi     = $conjunto !== [];
       onError: function (msg) { SDK.showError(msg); }
     });
   });
+</script>
+
+<script>
+// "Tornar padrão" não faz sentido num cartão que vai ser apagado no fim desta
+// compra: no dia seguinte o padrão apontaria para nada. Some junto.
+jQuery(function ($) {
+  var $salvar = $('#chk-salvar-cartao');
+  var $padrao = $('#lbl-padrao');
+  var $texto  = $('#txt-salvar-cartao');
+  if (!$salvar.length) return;
+
+  function refletir() {
+    var salvar = $salvar.is(':checked');
+    $padrao.toggle(salvar);
+    if (!salvar) $('#chk-padrao').prop('checked', false);
+    $texto.text(salvar
+      ? 'Na próxima vez você digita só o código de segurança.'
+      : 'Os dados são apagados assim que esta compra for concluída.');
+  }
+
+  $salvar.on('change', refletir);
+  refletir();
+});
 </script>

@@ -1,9 +1,23 @@
 <?php
 /**
- * views/admin/fluxos/editor.php  (Fase 2 — SUBSTITUI o editor JSON da Fase 1)
+ * admin/views/fluxos/editor.php  (Fase 2 — canvas visual)
  *
  * Canvas visual sobre Drawflow 0.0.60 (cdnjs, já permitido no CSP do site).
  * Gera exatamente o mesmo formato de grafo — o backend não mudou.
+ *
+ * TELA CHEIA: o canvas ocupa a área de conteúdo inteira e barra, paleta,
+ * painel, config e avisos flutuam sobre ele — mesmo desenho do editor de fluxo
+ * do chat (.ch-fx-tela) e do de pagamentos (.pg-tela). Quem liga o modo é a
+ * presença de .fx-tela na página; nenhuma outra tela do admin muda.
+ *
+ * A view NÃO usa .em_wrapper de propósito: aquela classe traz
+ * `padding:28px 32px 56px` e `min-height:100vh`, que numa tela que é toda
+ * canvas viram faixa morta nas bordas e barra de rolagem no documento.
+ *
+ * Os ids abaixo são contrato com o fluxo-canvas.js — não renomear:
+ *   #fx-canvas #fx-paleta #fx-painel #fx-painel-titulo #fx-painel-chave
+ *   #fx-painel-campos #fx-del-no #fx-cfg-toggle #fx-cfg-box #fx-cfg-json
+ *   #fx-msg #fx-salvar #fx-publicar #fx-zoom-in #fx-zoom-out #fx-zoom-reset
  *
  * @var array $fluxo           (com ['grafo'] = rascunho v0)
  * @var array $catalogo        FluxoNoRegistry::catalogo() → tipo → {portas, trigger}
@@ -20,65 +34,67 @@ $configJson = $fluxo['config_json'] ?: "{\n  \"reentrada\": \"nunca\",\n  \"sair
 ?>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.css">
 
+<div class="fx-editor">
+  <div class="fx-tela" id="fx-tela">
 
-<div class="em_wrapper" style="max-width:none;">
+    <?php // ── Canvas: o fundo de tudo ───────────────────────────────────── ?>
+    <div id="fx-canvas"></div>
 
-  <!-- Toolbar -->
-  <div class="fx-toolbar">
-    <div class="fx-titulo">
-      <a href="<?= $base ?>/admin/fluxos" class="fx-btn fx-btn-icon" title="Voltar">
-        <i class="bi bi-arrow-left">
-          <?= IconLibrary::render('arrow-back') ?>
-        </i>
-      </a>
-      <?= htmlspecialchars($fluxo['nome']) ?>
-      <span class="fx-badge" style="color:<?= $stCor ?>;background:<?= $stCor ?>18;">
-        <?= $stLbl ?> · v<?= (int)$fluxo['versao_publicada'] ?>
-      </span>
+    <?php // ── Barra flutuante ───────────────────────────────────────────── ?>
+    <?php // pointer-events volta só nos grupos: o vão entre eles continua
+          // arrastável, senão a faixa do topo virava uma parede sobre o canvas. ?>
+    <div class="fx-barra">
+      <div class="fx-grupo fx-flut">
+        <a href="<?= $base ?>/admin/fluxos" class="fx-btn fx-btn-icon" title="Voltar para a lista">
+          <i class="bi bi-arrow-left"><?= IconLibrary::render('arrow-back') ?></i>
+        </a>
+        <span class="fx-nome" title="<?= htmlspecialchars($fluxo['nome']) ?>">
+          <?= htmlspecialchars($fluxo['nome']) ?>
+        </span>
+        <span class="fx-badge" style="color:<?= $stCor ?>;background:<?= $stCor ?>18;">
+          <?= $stLbl ?> · v<?= (int)$fluxo['versao_publicada'] ?>
+        </span>
+      </div>
+
+      <div class="fx-grupo fx-flut">
+        <button type="button" id="fx-zoom-out"   class="fx-btn fx-btn-icon" title="Zoom −"><i class="bi bi-zoom-out"><?= IconLibrary::render('zoom-out') ?></i></button>
+        <button type="button" id="fx-zoom-reset" class="fx-btn fx-btn-icon" title="Zoom 100%"><i class="bi bi-aspect-ratio"><?= IconLibrary::render('aspect-ratio') ?></i></button>
+        <button type="button" id="fx-zoom-in"    class="fx-btn fx-btn-icon" title="Zoom +"><i class="bi bi-zoom-in"><?= IconLibrary::render('zoom-in') ?></i></button>
+
+        <span class="fx-sep"></span>
+
+        <button type="button" id="fx-cfg-toggle" class="fx-btn" title="Reentrada e exit conditions">
+          <i class="bi bi-shield-check"></i> Guard-rails
+        </button>
+        <button type="button" id="fx-salvar" class="fx-btn">
+          <i class="bi bi-save"></i> Salvar rascunho
+        </button>
+        <button type="button" id="fx-publicar" class="fx-btn fx-btn-pri">
+          <i class="bi bi-rocket-takeoff"><?= IconLibrary::render('rocket-launch') ?></i> Publicar
+        </button>
+        <?php if ($fluxo['status'] === 'publicado'): ?>
+          <button type="button" class="fx-btn fx-status-btn" data-status="pausado">
+            <i class="bi bi-pause-circle"></i> Pausar
+          </button>
+        <?php elseif ($fluxo['status'] === 'pausado'): ?>
+          <button type="button" class="fx-btn fx-status-btn" data-status="publicado">
+            <i class="bi bi-play-circle"></i> Reativar
+          </button>
+        <?php endif; ?>
+      </div>
     </div>
 
-    <button type="button" id="fx-zoom-out"   class="fx-btn fx-btn-icon" title="Zoom -"><i class="bi bi-zoom-out"><?= IconLibrary::render('zoom-out') ?></i></button>
-    <button type="button" id="fx-zoom-reset" class="fx-btn fx-btn-icon" title="Zoom 100%"><i class="bi bi-aspect-ratio"><?= IconLibrary::render('aspect-ratio') ?></i></button>
-    <button type="button" id="fx-zoom-in"    class="fx-btn fx-btn-icon" title="Zoom +"><i class="bi bi-zoom-in"><?= IconLibrary::render('zoom-in') ?></i></button>
+    <?php // ── Paleta: gaveta à esquerda, rola por dentro ────────────────── ?>
+    <div class="fx-paleta-box fx-flut">
+      <div class="fx-paleta-cab">
+        Nós
+        <span>Arraste para o canvas</span>
+      </div>
+      <div id="fx-paleta"></div>
+    </div>
 
-    <button type="button" id="fx-cfg-toggle" class="fx-btn">
-      <i class="bi bi-shield-check"></i> Guard-rails
-    </button>
-    <button type="button" id="fx-salvar" class="fx-btn">
-      <i class="bi bi-save"></i> Salvar rascunho
-    </button>
-    <button type="button" id="fx-publicar" class="fx-btn fx-btn-pri">
-      <i class="bi bi-rocket-takeoff"><?= IconLibrary::render('rocket-launch') ?></i></i> Publicar
-    </button>
-    <?php if ($fluxo['status'] === 'publicado'): ?>
-      <button type="button" class="fx-btn fx-status-btn" data-status="pausado">
-        <i class="bi bi-pause-circle"></i> Pausar
-      </button>
-    <?php elseif ($fluxo['status'] === 'pausado'): ?>
-      <button type="button" class="fx-btn fx-status-btn" data-status="publicado">
-        <i class="bi bi-play-circle"></i> Reativar
-      </button>
-    <?php endif; ?>
-  </div>
-
-  <!-- Config do fluxo (guard-rails) -->
-  <div id="fx-cfg-box">
-    <label class="fx-label" style="margin-bottom:6px;">
-      Config do fluxo — reentrada e exit conditions (JSON)
-    </label>
-    <textarea id="fx-cfg-json" spellcheck="false"><?= htmlspecialchars($configJson) ?></textarea>
-    <p style="font-size:11px;color:var(--em-text-muted);margin:6px 0 0;">
-      Ex.: <code>{"reentrada":"apos_dias:30","sair_se_eventos":["pedido_criado"]}</code>
-    </p>
-  </div>
-
-  <div id="fx-msg"></div>
-
-  <!-- Editor -->
-  <div class="fx-wrap">
-    <div id="fx-paleta"></div>
-    <div id="fx-canvas"></div>
-    <div id="fx-painel">
+    <?php // ── Painel do nó: à direita, só existe com nó selecionado ─────── ?>
+    <div id="fx-painel" class="fx-flut">
       <div class="fx-painel-head">
         <div id="fx-painel-titulo">—</div>
         <div id="fx-painel-chave"></div>
@@ -90,13 +106,26 @@ $configJson = $fluxo['config_json'] ?: "{\n  \"reentrada\": \"nunca\",\n  \"sair
         </button>
       </div>
     </div>
-  </div>
 
-  <p style="font-size:11.5px;color:var(--em-text-muted);margin-top:10px;">
-    Arraste nós da paleta para o canvas · clique num nó para configurar ·
-    arraste da bolinha de saída até a de entrada para conectar ·
-    <b>Delete</b> remove o nó selecionado.
-  </p>
+    <?php // ── Guard-rails: caixa flutuante (slideToggle pelo JS) ────────── ?>
+    <div id="fx-cfg-box" class="fx-flut">
+      <label class="fx-label">Config do fluxo — reentrada e exit conditions (JSON)</label>
+      <textarea id="fx-cfg-json" spellcheck="false"><?= htmlspecialchars($configJson) ?></textarea>
+      <p class="fx-cfg-dica">
+        Ex.: <code>{"reentrada":"apos_dias:30","sair_se_eventos":["pedido_criado"]}</code>
+      </p>
+    </div>
+
+    <?php // ── Aviso de salvar/publicar ──────────────────────────────────── ?>
+    <div id="fx-msg"></div>
+
+    <?php // ── Dica: pílula no rodapé ────────────────────────────────────── ?>
+    <div class="fx-dica">
+      Arraste nós da paleta · clique num nó para configurar ·
+      arraste da saída até a entrada para conectar · <b>Delete</b> remove o nó
+    </div>
+
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.js"></script>
@@ -108,7 +137,6 @@ $configJson = $fluxo['config_json'] ?: "{\n  \"reentrada\": \"nunca\",\n  \"sair
   window.BASE_URL   = window.BASE_URL   || '<?= BASE_URL ?>';
   window.CSRF_TOKEN = '<?= \SecurityHelper::generateCsrf() ?>';
 </script>
-
 
 <script>
 // Botões de status (pausar/reativar) — fora do fluxo-canvas.js por usarem reload

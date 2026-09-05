@@ -285,6 +285,14 @@ $isBoleto = $metodo === 'boleto';
   }
   $cardAtual = $cardSalvo ?? $cardTemp;
 
+  // A ESCOLHA DO CLIENTE, feita na tela de adicionar o cartão.
+  //
+  // `temporario = 1` é o cartão que ele mandou NÃO guardar. A linha existe
+  // porque a cobrança precisa dela — as referências de cada adquirente ficam
+  // penduradas em `cartao_id` —, e some quando o pagamento tem resultado.
+  // O badge abaixo tem de dizer isso, não "Salvo".
+  $cartaoFicaSalvo = $cardSalvo !== null && (int) ($cardSalvo['temporario'] ?? 0) === 0;
+
   // ── Cartao salvo que exige token novo a cada compra ─────────────────
   //
   // O Mercado Pago nao cobra por card_id: a Orders API so aceita `token`, e
@@ -356,7 +364,7 @@ $isBoleto = $metodo === 'boleto';
         </div>
       </div>
 
-      <?php if (!empty($cardSalvo)): ?>
+      <?php if ($cartaoFicaSalvo): ?>
         <span class="card-saved-badge">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -364,6 +372,30 @@ $isBoleto = $metodo === 'boleto';
           </svg>
           Salvo
         </span>
+
+      <?php elseif (!empty($cardSalvo)): ?>
+        <?php // Cartão desta compra só. O badge diz o que vai acontecer, e o
+              // toggle deixa mudar de ideia antes de finalizar. ?>
+        <span class="card-saved-badge card-saved-badge--temp">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
+          </svg>
+          Não salvo
+        </span>
+
+        <label class="save-card-toggle save-card-toggle--inline" id="save-card-toggle">
+          <input type="checkbox" name="salvar_cartao" value="1" id="chk-salvar-cartao">
+          <span class="save-card-toggle-box">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="3.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </span>
+          <span class="save-card-toggle-text">
+            <strong>Salvar para próximas compras</strong>
+            <small>Sem isso, os dados são apagados assim que a compra terminar.</small>
+          </span>
+        </label>
+
       <?php else: ?>
         <label class="save-card-toggle save-card-toggle--inline" id="save-card-toggle">
           <input type="checkbox" name="salvar_cartao" value="1" id="chk-salvar-cartao">
@@ -461,47 +493,56 @@ $isBoleto = $metodo === 'boleto';
     </div>
   </div>
 
-  <?php if ($cvvNecessario && $cvvPublicKey !== ''): ?>
-  <!-- ════════ CVV do cartao salvo (Mercado Pago) ════════
-       Campo hospedado: o codigo e digitado dentro de um iframe deles e
-       vira token. Nao passa pelo nosso DOM nem pelo POST. -->
-  <div class="form-group" id="cvv-salvo-bloco">
-    <label for="card-cvv-salvo">
-      Código de segurança
-      <span class="label-opt">3 dígitos no verso · 4 no Amex</span>
-    </label>
-    <div id="card-cvv-salvo" class="form-control hosted-field" data-placeholder="000"></div>
-    <span class="field-error" id="err-cvv-salvo"></span>
-    <small class="form-help">
-      Pedimos a cada compra para proteger seu cartão salvo.
-    </small>
-  </div>
-  <?php elseif ($cvvNecessario && $cvvCielo): ?>
-  <!-- ════════ CVV do cartao salvo (so Cielo) ════════
-       A Cielo cobra pelo CardToken + SecurityCode no corpo da venda. O
-       codigo passa pelo POST ate o servidor e dali para a Cielo; nao e
-       gravado em lugar nenhum. So aparece quando o cartao NAO existe no
-       Mercado Pago — la o iframe atende os dois. -->
-  <div class="form-group" id="cvv-salvo-bloco">
-    <label for="cvv-cielo-input">
-      Código de segurança
-      <span class="label-opt">3 dígitos no verso · 4 no Amex</span>
-    </label>
-    <input type="password" id="cvv-cielo-input" name="cvv_cielo" class="form-control"
-           inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="000">
-    <span class="field-error" id="err-cvv-salvo"></span>
-    <small class="form-help">
-      Pedimos a cada compra para proteger seu cartão salvo.
-    </small>
-  </div>
-  <?php endif; ?>
-
   <div id="finalize-error" class="form-alert" style="display:none;"></div>
 
-  <button type="button" class="btn btn-primary btn-full btn-place-order" id="btn-finalize">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-    Finalizar compra com segurança
-  </button>
+  <?php // ════════ Botão de comprar, com o balão do código de segurança ════
+        // O CVV vivia num campo solto no meio do resumo, longe do gesto que o
+        // exige. Agora ele só aparece na hora: clicar em finalizar abre um
+        // balão logo acima do botão. O balão flutua (position:absolute) para
+        // não empurrar o botão para baixo enquanto o cliente mira nele. ?>
+  <div class="finalize-wrap">
+
+    <?php if ($cvvNecessario && ($cvvPublicKey !== '' || $cvvCielo)): ?>
+    <div class="cvv-balao" id="cvv-balao" hidden>
+      <div class="cvv-balao-topo">
+        <strong>Código de segurança</strong>
+        <button type="button" class="cvv-balao-x" id="cvv-balao-fechar" aria-label="Fechar">&times;</button>
+      </div>
+
+      <p class="cvv-balao-texto">
+        Pedimos a cada compra para proteger seu cartão salvo —
+        <?= View::e(($cardAtual['bandeira'] ?? '') !== ''
+              ? ucfirst((string) $cardAtual['bandeira']) : 'cartão') ?>
+        •••• <?= View::e($cardAtual['ultimos_4'] ?? '????') ?>.
+      </p>
+
+      <?php if ($cvvPublicKey !== ''): ?>
+        <?php // Campo hospedado: o código é digitado dentro de um iframe do
+              // Mercado Pago e vira token. Não passa pelo nosso DOM nem pelo
+              // POST. Montado só quando o balão abre — iframe montado dentro
+              // de um container escondido nasce sem altura. ?>
+        <div id="card-cvv-salvo" class="form-control hosted-field" data-placeholder="000"></div>
+      <?php else: ?>
+        <?php // Só Cielo: ela cobra pelo CardToken + SecurityCode no corpo da
+              // venda. O código passa pelo POST até o servidor e dali para a
+              // Cielo; não é gravado em lugar nenhum. ?>
+        <input type="password" id="cvv-cielo-input" name="cvv_cielo" class="form-control"
+               inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="000">
+      <?php endif; ?>
+
+      <span class="field-error" id="err-cvv-salvo"></span>
+
+      <button type="button" class="btn btn-primary btn-full cvv-balao-ok" id="cvv-balao-ok">
+        Confirmar e pagar
+      </button>
+    </div>
+    <?php endif; ?>
+
+    <button type="button" class="btn btn-primary btn-full btn-place-order" id="btn-finalize">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+      Finalizar compra com segurança
+    </button>
+  </div>
 
   <p class="payment-terms">
     Ao finalizar, você concorda com nossos
@@ -519,10 +560,26 @@ $isBoleto = $metodo === 'boleto';
     var SDK = window.SportMotoMercadoPagoCheckout;
     if (!SDK) return;
 
+    // MONTAGEM PREGUICOSA. O campo do Mercado Pago e um iframe: montado
+    // dentro de um container com [hidden] ele nasce sem altura e fica
+    // inutilizavel mesmo depois de aparecer. Entao so montamos quando o balao
+    // abre — e, se o SDK ainda nao estiver pronto nessa hora, a vontade fica
+    // guardada e o onReady cumpre.
+    var pronto = false, querMontar = false, montado = false;
+
+    function montarCvv() {
+      if (montado) return;
+      if (!pronto) { querMontar = true; return; }
+      montado = true;
+      SDK.montarCvvDeCartaoSalvo(<?= json_encode($cvvCardRef) ?>, 'card-cvv-salvo');
+    }
+    window.__mpMontarCvv = montarCvv;
+
     SDK.init({
       publicKey: <?= json_encode($cvvPublicKey) ?>,
       onReady: function () {
-        SDK.montarCvvDeCartaoSalvo(<?= json_encode($cvvCardRef) ?>, 'card-cvv-salvo');
+        pronto = true;
+        if (querMontar) montarCvv();
       },
       // O token so nasce quando o cliente clica em finalizar; o checkout-summary
       // guarda aqui e segue com o POST.

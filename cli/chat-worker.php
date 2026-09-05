@@ -124,9 +124,11 @@ do {
         if ($notif->falhasDeEnvio()) $log('falhas de envio: gestores avisados');
 
         // ── E. Cupom para quem veio do direct e não fechou ──
-        // Só quem clicou no link do Instagram, colocou no carrinho e deixou
-        // passar a janela. Desconto para quem já mostrou intenção e não
-        // converteu — não para quem só perguntou o preço.
+        // REDE DE SEGURANÇA, não o caminho principal: quem recupera carrinho
+        // hoje é o fluxo (fase F). Esta régua cobre o que o fluxo não alcança
+        // — carrinho SEM cliente_id, que o produtor de eventos descarta no
+        // `JOIN clientes`. Ela pula todo carrinho que o fluxo já assumiu, então
+        // ninguém recebe cupom em dobro.
         $cupons = (new ChatCupomCarrinhoService())->enviarPendentes(30);
         if ($cupons > 0) $log("cupons de carrinho enviados: $cupons");
 

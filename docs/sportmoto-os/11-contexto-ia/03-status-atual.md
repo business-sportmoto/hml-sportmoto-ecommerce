@@ -12,6 +12,18 @@ atualizado_em: 2026-09-03
 
 ## Em desenvolvimento
 
+- **Radar de clientes — instalado.** `cli/cliente-radar.php` no lugar,
+  `cond_perfil` e os 5 eventos do radar no canvas (paleta agora com 20 nós).
+  Testado ponta a ponta: 65 dias de inatividade emitem `inativo_60d` e
+  consomem a chave do limiar menor. **Falta o cron** e o dry-run em
+  homologação. Ver [[../12-decisoes-tecnicas/automacao-motor-v1-aposentado]].
+
+- **Automações — motor único.** O motor v1 (`automacao_*`) foi aposentado em
+  04/09/2026; a Central de Automações agora é só o v2 (`/admin/fluxos`).
+  Restam 12 rascunhos migrados, dos quais **só 2 têm gatilho funcionando** —
+  o resto espera instrumentação de evento. Ver
+  [[../12-decisoes-tecnicas/automacao-motor-v1-aposentado]].
+
 - **Chat — log de chamadas do webhook** em `/admin/chat/config`: filtro por
   data, canal, evento e resultado, paginação e o conteúdo de cada chamada num
   drawer. Ver [[../12-decisoes-tecnicas/chat-log-de-chamadas]].

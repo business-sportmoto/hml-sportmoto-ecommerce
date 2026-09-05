@@ -123,6 +123,21 @@ class IAAgenteGateway
     }
 
     /**
+     * pagina => nomes das ferramentas pré-carregadas. Para a tela mostrar
+     * "Consultando faturamento…" enquanto espera — o que de fato está
+     * acontecendo no servidor, não uma animação genérica.
+     * @return array<string, string[]>
+     */
+    public static function mapaPadroes(): array
+    {
+        $out = [];
+        foreach (self::PADRAO_DA_PAGINA as $pagina => $itens) {
+            $out[$pagina] = array_values(array_unique(array_map(fn($i) => $i[0], $itens)));
+        }
+        return $out;
+    }
+
+    /**
      * Ferramentas padrão de uma página, já com o período do painel —
      * só nas que aceitam período: mandar `periodo` para uma ferramenta
      * sem esse parâmetro é recusado pelo validador (parâmetro

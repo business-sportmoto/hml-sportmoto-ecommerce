@@ -495,6 +495,7 @@ AdminRouter::get ('/power-bi/dados', 'PowerBIController@dados');
 // Agentes de IA sobre o BI: mesmo nivel do painel (super+gerente) + marketing_ia.
 AdminRouter::post('/power-bi/ia/perguntar', 'PowerBIController@iaPerguntar');
 AdminRouter::get ('/power-bi/ia/conversa',  'PowerBIController@iaConversa');
+AdminRouter::get ('/power-bi/ia/conversas', 'PowerBIController@iaConversas');
 
 AdminRouter::get ('/cupons',              'AdminCouponController@index');
 AdminRouter::get ('/cupons/form',         'AdminCouponController@form');

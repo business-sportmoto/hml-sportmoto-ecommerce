@@ -1525,6 +1525,42 @@ $pwb_indisponivel = $pwb_dashboard_data['indisponivel'] ?? [];
       return '<span class="pwb_badge ' + cls + '">' + esc(p || '—') + '</span>';
     }
     function textoHtml(t) { return esc(t).replace(/\n/g, '<br>'); }
+    function contarPerguntas(info) {
+      var n = 0;
+      (info.perguntas || []).forEach(function (g) { n += (g.itens || []).length; });
+      return n;
+    }
+    // Icones do drawer (o pwb_icon() e PHP; aqui e JS puro, sem a lista inteira).
+    function pwbIaIcone(nome) {
+      if (nome === 'lista') {
+        return '<svg class="pwb_icon_svg" viewBox="0 0 24 24" fill="none"><path d="M8 6h12M8 12h12M8 18h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="4" cy="6" r="1.2" fill="currentColor"/><circle cx="4" cy="12" r="1.2" fill="currentColor"/><circle cx="4" cy="18" r="1.2" fill="currentColor"/></svg>';
+      }
+      if (nome === 'historico') {
+        return '<svg class="pwb_icon_svg" viewBox="0 0 24 24" fill="none"><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6M3 4v4h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+      }
+      return '<svg class="pwb_icon_svg" viewBox="0 0 24 24" fill="none"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15ZM5 14l.6 1.4L7 16l-1.4.6L5 18l-.6-1.4L3 16l1.4-.6L5 14Z" fill="currentColor"/></svg>';
+    }
+    // As etapas do loader: o que o servidor faz de verdade, na ordem. No
+    // primeiro turno as ferramentas pre-carregadas da pagina; depois, o modelo.
+    function etapasDe(pagina, primeiroTurno) {
+      var rotulo = {
+        consultar_faturamento: 'Consultando o faturamento', consultar_vendas: 'Consultando as vendas',
+        consultar_margem: 'Calculando margem e cobertura de custo', consultar_frete: 'Consultando o frete',
+        consultar_descontos: 'Consultando descontos e cupons', consultar_pagamentos: 'Consultando aprovação de pagamento',
+        consultar_devolucoes_cancelamentos: 'Consultando devoluções e cancelamentos', consultar_curva_abc: 'Montando a curva ABC',
+        consultar_metas: 'Comparando metas e realizado', consultar_alertas: 'Lendo os alertas do sistema',
+        consultar_giro_estoque: 'Calculando giro e cobertura', consultar_ruptura: 'Verificando produtos no mínimo',
+        consultar_clientes: 'Segmentando clientes', consultar_geografia: 'Abrindo por região',
+        consultar_funil: 'Montando o funil', consultar_dispositivos: 'Separando mobile e desktop',
+        consultar_carrinhos: 'Consultando carrinhos abandonados', consultar_saude_dados: 'Checando a cobertura dos dados'
+      };
+      var etapas = ['Lendo o contexto da página'];
+      if (primeiroTurno) {
+        ((iaCfg.padrao || {})[pagina] || []).forEach(function (f) { if (rotulo[f]) etapas.push(rotulo[f]); });
+      }
+      etapas.push('Enviando ao modelo', 'Cruzando os dados', 'Escrevendo a análise');
+      return etapas;
+    }
 
     // O botao diz qual agente atende a pagina ativa (e desliga na Central).
     function atualizarBotao() {
@@ -1567,7 +1603,7 @@ $pwb_indisponivel = $pwb_dashboard_data['indisponivel'] ?? [];
 
       var p = r.procedencia || {};
       h += '<div class="pwb_ia_procedencia">'
-         + '<span>' + esc(p.provedor || '') + ' · ' + esc(p.modelo || '') + '</span>'
+         + (p.modelo ? '<span>' + esc(p.provedor || '') + ' · ' + esc(p.modelo) + '</span>' : '')
          + (p.custo_usd != null ? '<span>US$ ' + Number(p.custo_usd).toFixed(4) + '</span>' : '')
          + (p.rodadas ? '<span>' + p.rodadas + ' rodada(s)</span>' : '')
          + (p.cache_leitura ? '<span>cache ' + p.cache_leitura + ' tokens</span>' : '')
@@ -1600,13 +1636,38 @@ $pwb_indisponivel = $pwb_dashboard_data['indisponivel'] ?? [];
       } else if (iaCfg.disponivel === false) {
         aviso = '<div class="pwb_ia_bloqueio">Nenhum modelo de agente está configurado. Ative o provedor Claude e a chave em <strong>Central de IA → Configurações</strong>.</div>';
       }
+      // Topo: contexto a esquerda, o botao "Perguntas" a direita. A lista
+      // abre como dropdown sobre o thread (painel absoluto), nao no fluxo —
+      // aberta no fluxo ela empurrava a conversa para fora da tela.
       corpo.innerHTML =
-          '<div class="pwb_ia_contexto"><span>Página: <strong>' + esc(pagina) + '</strong></span><span>Período: <strong>' + esc(rotuloPeriodo(periodo)) + '</strong></span><span class="pwb_ia_contexto_dica">O agente já recebe estes filtros.</span></div>'
+          '<div class="pwb_ia_topo">'
+        +   '<div class="pwb_ia_contexto"><span>Página: <strong>' + esc(pagina) + '</strong></span><span>Período: <strong>' + esc(rotuloPeriodo(periodo)) + '</strong></span><span class="pwb_ia_contexto_dica">O agente já recebe estes filtros.</span></div>'
+        +   '<details class="pwb_ia_lista" data-pwb-ia-lista>'
+        +     '<summary class="pwb_ia_lista_titulo" title="Perguntas prontas, por tema">' + pwbIaIcone('lista') + ' Perguntas <span class="pwb_ia_lista_n">' + contarPerguntas(info) + '</span></summary>'
+        +     '<div class="pwb_ia_lista_painel">'
+        +       '<input type="search" class="pwb_ia_filtro" placeholder="Filtrar perguntas…" aria-label="Filtrar perguntas">'
+        +       (info.perguntas || []).map(function (g) {
+                  return '<div class="pwb_ia_grupo" data-pwb-ia-grupo><h5 class="pwb_ia_grupo_titulo">' + esc(g.tema) + '</h5>'
+                       + (g.itens || []).map(function (s) { return '<button type="button" class="pwb_ia_sugestao">' + esc(s) + '</button>'; }).join('')
+                       + '</div>';
+                }).join('')
+        +       ((info.aprofundar || []).length
+                  ? '<div class="pwb_ia_grupo pwb_ia_grupo_aprofundar" data-pwb-ia-grupo><h5 class="pwb_ia_grupo_titulo">Para aprofundar a última resposta</h5>'
+                    + info.aprofundar.map(function (s) { return '<button type="button" class="pwb_ia_sugestao">' + esc(s) + '</button>'; }).join('')
+                    + '</div>'
+                  : '')
+        +     '</div>'
+        +   '</details>'
+        // Historico: o que ja foi gerado com este agente (as suas conversas +
+        // as do sistema). A lista e carregada ao abrir; clicar numa reabre a
+        // conversa no thread e a proxima pergunta continua dela.
+        +   '<details class="pwb_ia_lista pwb_ia_historico" data-pwb-ia-historico>'
+        +     '<summary class="pwb_ia_lista_titulo" title="Conversas anteriores com este agente">' + pwbIaIcone('historico') + ' Histórico</summary>'
+        +     '<div class="pwb_ia_lista_painel" data-pwb-ia-hist-painel><p class="pwb_ia_hist_vazio">Carregando…</p></div>'
+        +   '</details>'
+        + '</div>'
         + aviso
         + '<div class="pwb_ia_thread" data-pwb-ia-thread></div>'
-        + '<div class="pwb_ia_sugestoes">' + (info.sugestoes || []).map(function (s) {
-            return '<button type="button" class="pwb_ia_sugestao">' + esc(s) + '</button>';
-          }).join('') + '</div>'
         + '<form class="pwb_ia_form"><textarea class="pwb_ia_input" rows="2" maxlength="1000" placeholder="Pergunte ao ' + esc(info.nome) + '…"></textarea>'
         + '<button type="submit" class="pwb_ia_enviar">Perguntar</button></form>';
 
@@ -1622,7 +1683,88 @@ $pwb_indisponivel = $pwb_dashboard_data['indisponivel'] ?? [];
       var thread = corpo.querySelector('[data-pwb-ia-thread]');
       var input  = corpo.querySelector('.pwb_ia_input');
       var form   = corpo.querySelector('.pwb_ia_form');
+      var lista  = corpo.querySelector('[data-pwb-ia-lista]');
       var ocupado = false;
+
+      var hist = corpo.querySelector('[data-pwb-ia-historico]');
+
+      // Dropdowns: so um aberto por vez; clique fora fecha; abrir a lista
+      // foca o filtro; abrir o historico carrega a lista do servidor.
+      function fecharDropdowns(exceto) {
+        [lista, hist].forEach(function (d) { if (d && d !== exceto && d.open) d.open = false; });
+      }
+      if (lista) {
+        lista.addEventListener('toggle', function () {
+          if (!lista.open) return;
+          fecharDropdowns(lista);
+          var f = lista.querySelector('.pwb_ia_filtro'); if (f) f.focus();
+        });
+      }
+      if (hist) {
+        hist.addEventListener('toggle', function () {
+          if (!hist.open) return;
+          fecharDropdowns(hist);
+          carregarHistorico();
+        });
+      }
+      corpo.addEventListener('click', function (ev) {
+        [lista, hist].forEach(function (d) { if (d && d.open && !d.contains(ev.target)) d.open = false; });
+      });
+
+      function rotuloModo(m) { return { tempo_real: 'você', agendado: 'agendado', evento: 'alerta' }[m] || m; }
+      function dataCurta(s) {
+        var d = new Date(String(s).replace(' ', 'T'));
+        if (isNaN(d)) return esc(s);
+        return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      }
+
+      function carregarHistorico() {
+        var painel = hist.querySelector('[data-pwb-ia-hist-painel]');
+        painel.innerHTML = '<p class="pwb_ia_hist_vazio">Carregando…</p>';
+        fetch(iaCfg.conversas_url + '?agente=' + encodeURIComponent(agente), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+          .then(function (r) { return r.json(); })
+          .then(function (r) {
+            var itens = (r && r.ok && r.conversas) || [];
+            if (!itens.length) { painel.innerHTML = '<p class="pwb_ia_hist_vazio">Nenhuma conversa com este agente ainda.</p>'; return; }
+            painel.innerHTML = itens.map(function (c) {
+              return '<button type="button" class="pwb_ia_hist_item" data-pwb-ia-uuid="' + esc(c.uuid) + '">'
+                   +   '<span class="pwb_ia_hist_titulo">' + esc(c.titulo || '(sem título)') + '</span>'
+                   +   '<span class="pwb_ia_hist_meta"><span class="pwb_badge ' + (c.modo === 'tempo_real' ? 'pwb_badge_info' : 'pwb_badge_default') + '">' + esc(rotuloModo(c.modo)) + '</span>'
+                   +   (c.pagina ? '<span>' + esc(c.pagina) + '</span>' : '') + (c.periodo ? '<span>' + esc(c.periodo) + '</span>' : '')
+                   +   '<span>' + dataCurta(c.quando) + '</span></span>'
+                   + '</button>';
+            }).join('');
+          })
+          .catch(function () { painel.innerHTML = '<p class="pwb_ia_hist_vazio">Não foi possível carregar o histórico.</p>'; });
+      }
+
+      // Reabre uma conversa: limpa o thread, renderiza os turnos e passa a
+      // continuar DELA (a proxima pergunta leva o uuid).
+      function abrirConversa(uuid) {
+        hist.open = false;
+        thread.innerHTML = '<div class="pwb_ia_msg pwb_ia_msg_agente pwb_ia_pensando" data-pwb-ia-pensando>Abrindo a conversa…</div>';
+        fetch(iaCfg.conversa_url + '?uuid=' + encodeURIComponent(uuid), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+          .then(function (r) { return r.json(); })
+          .then(function (r) {
+            if (!r || !r.ok) { thread.innerHTML = '<div class="pwb_ia_msg pwb_ia_msg_erro">' + esc((r && r.msg) || 'Conversa não encontrada.') + '</div>'; return; }
+            conversas[agente] = uuid;
+            var c = r.conversa || {};
+            var h = '<div class="pwb_ia_hist_cabecalho">Conversa de ' + dataCurta(c.criado_em) + ' · ' + esc(rotuloModo(c.modo)) + (c.pagina ? ' · ' + esc(c.pagina) : '') + (c.periodo ? ' · ' + esc(c.periodo) : '') + ' — a próxima pergunta continua daqui</div>';
+            (r.turnos || []).forEach(function (t) {
+              if (t.papel === 'user') { h += '<div class="pwb_ia_msg pwb_ia_msg_user">' + textoHtml(t.texto) + '</div>'; return; }
+              h += renderResposta({ secoes: t.secoes, prioridade: t.prioridade, resposta: t.texto,
+                                    procedencia: { ferramentas: t.ferramentas || [] } });
+            });
+            thread.innerHTML = h;
+            thread.scrollTop = thread.scrollHeight;
+            input.focus();
+          })
+          .catch(function () { thread.innerHTML = '<div class="pwb_ia_msg pwb_ia_msg_erro">Falha de rede ao abrir a conversa.</div>'; });
+      }
+      drawer.escutar('click', '.pwb_ia_hist_item', function (ev) {
+        var b = ev.target.closest('.pwb_ia_hist_item');
+        if (b) abrirConversa(b.getAttribute('data-pwb-ia-uuid'));
+      });
 
       function enviar(texto) {
         if (ocupado || !texto) return;
@@ -1630,7 +1772,30 @@ $pwb_indisponivel = $pwb_dashboard_data['indisponivel'] ?? [];
         ocupado = true;
         form.classList.add('pwb_ia_form_ocupado');
         thread.insertAdjacentHTML('beforeend', '<div class="pwb_ia_msg pwb_ia_msg_user">' + textoHtml(texto) + '</div>');
-        thread.insertAdjacentHTML('beforeend', '<div class="pwb_ia_msg pwb_ia_msg_agente pwb_ia_pensando" data-pwb-ia-pensando>Consultando os dados<span class="pwb_ia_dots"></span></div>');
+        // Loader no estilo dos chats de IA: avatar pulsando, etapa do que o
+        // servidor esta fazendo (as ferramentas pre-carregadas da pagina sao
+        // reais, nao decoracao), tres pontos e linhas em shimmer. Opus 5 leva
+        // 15-30 s numa pergunta: sem isso a tela parece travada.
+        thread.insertAdjacentHTML('beforeend',
+            '<div class="pwb_ia_msg pwb_ia_msg_agente pwb_ia_pensando" data-pwb-ia-pensando role="status" aria-live="polite">'
+          +   '<div class="pwb_ia_pensando_topo">'
+          +     '<span class="pwb_ia_pensando_avatar">' + pwbIaIcone('spark') + '</span>'
+          +     '<span class="pwb_ia_pensando_etapa" data-pwb-ia-etapa>Lendo o contexto da página</span>'
+          +     '<span class="pwb_ia_dots"><i></i><i></i><i></i></span>'
+          +     '<span class="pwb_ia_pensando_tempo" data-pwb-ia-tempo></span>'
+          +   '</div>'
+          +   '<div class="pwb_ia_skeleton"><span style="width:92%"></span><span style="width:78%"></span><span style="width:60%"></span></div>'
+          + '</div>');
+        var etapas = etapasDe(pagina, !conversas[agente]);
+        var etapaEl = thread.querySelector('[data-pwb-ia-etapa]');
+        var tempoEl = thread.querySelector('[data-pwb-ia-tempo]');
+        var t0 = Date.now(), iEtapa = 0;
+        var rotacao = window.setInterval(function () {
+          if (!etapaEl || !etapaEl.isConnected) { window.clearInterval(rotacao); return; }
+          if (iEtapa < etapas.length - 1) etapaEl.textContent = etapas[++iEtapa];
+          var s = Math.round((Date.now() - t0) / 1000);
+          if (tempoEl && s >= 5) tempoEl.textContent = s + ' s';
+        }, 1700);
         thread.scrollTop = thread.scrollHeight;
         input.value = '';
 
@@ -1661,15 +1826,33 @@ $pwb_indisponivel = $pwb_dashboard_data['indisponivel'] ?? [];
             thread.insertAdjacentHTML('beforeend', '<div class="pwb_ia_msg pwb_ia_msg_erro">Falha de rede ao consultar o agente.</div>');
           })
           .finally(function () {
+            window.clearInterval(rotacao);
             ocupado = false;
             form.classList.remove('pwb_ia_form_ocupado');
             input.focus();
           });
       }
 
+      // Filtro da lista completa: esconde chips (e grupos vazios) pelo texto.
+      drawer.escutar('input', '.pwb_ia_filtro', function (ev) {
+        var termo = (ev.target.value || '').toLowerCase().trim();
+        corpo.querySelectorAll('[data-pwb-ia-grupo]').forEach(function (g) {
+          var visiveis = 0;
+          g.querySelectorAll('.pwb_ia_sugestao').forEach(function (b) {
+            var mostra = !termo || b.textContent.toLowerCase().indexOf(termo) > -1;
+            b.hidden = !mostra;
+            if (mostra) visiveis++;
+          });
+          g.hidden = visiveis === 0;
+        });
+      });
+
       drawer.escutar('click', '.pwb_ia_sugestao', function (ev) {
         var b = ev.target.closest('.pwb_ia_sugestao');
-        if (b) enviar(b.textContent.trim());
+        if (!b) return;
+        // Ao clicar numa pergunta, fecha o dropdown: a resposta e o que importa.
+        if (lista && lista.contains(b)) lista.open = false;
+        enviar(b.textContent.trim());
       });
       drawer.escutar('submit', '.pwb_ia_form', function (ev) {
         ev.preventDefault();

@@ -65,9 +65,154 @@ class IAAgenteService
     ];
 
     /** @return array<string, array{nome:string, curto:string, sugestoes:string[]}> */
+    /**
+     * A lista completa de perguntas do drawer, por tema. É a mesma do guia
+     * de uso no Vault (03-funcionalidades/agentes-de-ia-perguntas): cada
+     * pergunta corresponde a uma ferramenta que existe — nada aqui promete
+     * o que o dado não sustenta.
+     */
+    private const PERGUNTAS = [
+        'agente_financeiro' => [
+            ['Faturamento e crescimento', [
+                'Como foi o faturamento contra o período anterior?',
+                'O ticket médio subiu ou caiu? E o número de pedidos?',
+                'Qual categoria mais cresceu? E qual mais caiu?',
+                'Quais marcas puxaram o resultado e quais seguraram?',
+                'Quantos produtos concentram 80% da receita?',
+                'Quais produtos estão em alta? E em queda?',
+                'Que projeção temos para fechar o mês?',
+                'Estamos no ritmo para bater a meta?',
+            ]],
+            ['Margem e rentabilidade', [
+                'Por que minha margem caiu?',
+                'Qual a margem por marca? E por categoria?',
+                'Quais marcas vendem muito e têm margem baixa?',
+                'Qual a cobertura de custo hoje?',
+                'Quais produtos cadastrar custo primeiro para a margem ficar visível?',
+                'Qual o lucro bruto do período, só nos itens com custo?',
+            ]],
+            ['Canais e pagamentos', [
+                'Qual canal está reduzindo minha rentabilidade?',
+                'Como está a venda por canal (site, app, manual)?',
+                'Qual a taxa de aprovação por método de pagamento?',
+                'Onde estão as recusas de pagamento e por qual motivo?',
+                'Como se distribuem as parcelas?',
+                'Pix está crescendo em relação ao cartão?',
+            ]],
+            ['Descontos e cupons', [
+                'Quanto de receita estamos deixando na mesa com desconto?',
+                'Qual cupom mais gerou receita? Qual mais custou?',
+                'Pedidos com cupom têm ticket maior ou menor?',
+            ]],
+            ['Frete', [
+                'O frete cobrado cobre o frete pago? Quanto subsidiamos?',
+                'Qual transportadora custa mais por envio? Qual atrasa mais?',
+                'O custo médio de frete subiu?',
+            ]],
+            ['Devoluções e cancelamentos', [
+                'Qual a taxa de devolução e quais motivos dominam?',
+                'Quais produtos mais são devolvidos?',
+                'Quantos pedidos foram cancelados e por quê?',
+            ]],
+            ['Geografia', [
+                'Quais estados lideram em receita? E em ticket médio?',
+                'Onde o frete médio pesa mais no pedido?',
+            ]],
+            ['Diagnóstico', [
+                'Faça um resumo executivo do período.',
+                'O que merece minha atenção hoje?',
+                'Qual alerta é mais urgente e por quê?',
+                'Se eu só pudesse agir em uma coisa esta semana, qual seria?',
+            ]],
+        ],
+        'agente_estoque' => [
+            ['Ruptura', [
+                'Quais produtos correm risco de ruptura nos próximos 7 dias?',
+                'Quais produtos estão abaixo do estoque mínimo?',
+                'Quais itens da curva A estão com cobertura baixa?',
+                'Que produto vai acabar primeiro no ritmo atual?',
+            ]],
+            ['Reposição', [
+                'O que devo repor primeiro?',
+                'Quais produtos vendem todo dia e estão com pouco saldo?',
+                'Quais produtos em alta merecem reforço de estoque?',
+            ]],
+            ['Capital parado', [
+                'Onde tenho dinheiro parado em estoque?',
+                'Quais produtos estão há mais de 90 dias sem venda?',
+                'Qual o valor imobilizado nos produtos parados?',
+                'Quais produtos parados da curva C poderiam sair em promoção?',
+            ]],
+            ['Giro', [
+                'Qual a cobertura média de estoque em dias?',
+                'Quais produtos têm giro mais alto? E mais baixo?',
+                'Quais produtos estão em queda de venda e acumulando saldo?',
+            ]],
+            ['Logística', [
+                'Qual tipo de frete pesa mais no custo?',
+                'Alguma transportadora está com prazo pior que as outras?',
+            ]],
+            ['Diagnóstico', [
+                'Faça o resumo executivo de estoque.',
+                'Qual o maior risco de estoque agora: ruptura ou excesso?',
+                'Que dado falta para eu planejar compras com precisão?',
+            ]],
+        ],
+        'agente_analytics' => [
+            ['Funil e conversão', [
+                'Onde meu funil está perdendo clientes?',
+                'Qual etapa tem a pior conversão?',
+                'A conversão melhorou ou piorou contra o período anterior?',
+                'Quantas pessoas chegaram ao checkout e não compraram?',
+            ]],
+            ['Dispositivo', [
+                'Mobile converte pior que desktop?',
+                'Em qual etapa o mobile perde mais gente?',
+                'Vale investir na experiência mobile? O que os números dizem?',
+            ]],
+            ['Carrinho abandonado', [
+                'Quantos carrinhos foram abandonados e quanto valem?',
+                'Quanto recuperamos de carrinho abandonado?',
+                'A recuperação está melhorando?',
+            ]],
+            ['Clientes', [
+                'Quantos clientes novos × recorrentes compraram?',
+                'Qual a taxa de recompra?',
+                'Quais segmentos RFM concentram receita?',
+                'Quais clientes estão em risco de sumir?',
+            ]],
+            ['Geografia e pagamento', [
+                'De onde vêm os clientes recorrentes?',
+                'A recusa de pagamento está derrubando a conversão?',
+            ]],
+            ['Diagnóstico', [
+                'Faça o resumo executivo de conversão.',
+                'Qual o maior gargalo de conversão hoje?',
+                'O que eu deveria testar primeiro para melhorar a conversão?',
+            ]],
+        ],
+    ];
+
+    /** Perguntas de aprofundamento — valem para qualquer agente, no 2º turno. */
+    private const APROFUNDAR = [
+        'E por marca?', 'E por categoria?', 'E por canal?', 'Qual o impacto em reais?',
+        'Quais os 5 produtos que mais explicam isso?', 'O que você recomenda fazer primeiro?',
+        'Que dado eu precisaria cadastrar para completar essa análise?', 'Isso é tendência ou um mês fora da curva?',
+    ];
+
+    /** @return array<string, array{nome:string, curto:string, sugestoes:string[], perguntas:array, aprofundar:string[]}> */
     public static function catalogoParaTela(): array
     {
-        return self::TELA;
+        $out = [];
+        foreach (self::TELA as $codigo => $t) {
+            $t['perguntas'] = array_map(
+                fn($g) => ['tema' => $g[0], 'itens' => $g[1]],
+                self::PERGUNTAS[$codigo] ?? []
+            );
+            $t['aprofundar'] = self::APROFUNDAR;
+            $out[$codigo] = $t;
+        }
+        return $out;
     }
 
     private IAOrchestrator    $orq;
@@ -360,6 +505,29 @@ class IAAgenteService
             $ferramentas = [];
         }
         return ['conversa' => $c, 'turnos' => $turnos];
+    }
+
+    /**
+     * Lista para o botão "Histórico" do drawer: as conversas da pessoa com
+     * este agente + as do sistema. Só metadados — o conteúdo vem por
+     * historico() quando a pessoa abre uma.
+     */
+    public function listarConversas(string $agente, ?int $usuarioId, int $limite = 20): array
+    {
+        if (!in_array($agente, IAAgenteGateway::AGENTES, true)) return [];
+        $out = [];
+        foreach ($this->conversas->listarPorAgente($agente, $usuarioId, $limite) as $c) {
+            $out[] = [
+                'uuid'    => $c['uuid'],
+                'titulo'  => (string) ($c['titulo'] ?? ''),
+                'modo'    => $c['modo'],
+                'pagina'  => $c['pagina'],
+                'periodo' => $c['periodo'],
+                'minha'   => $c['usuario_id'] !== null,
+                'quando'  => $c['atualizado_em'],
+            ];
+        }
+        return $out;
     }
 
     /** A última análise agendada de um agente — o "resumo executivo de hoje". */

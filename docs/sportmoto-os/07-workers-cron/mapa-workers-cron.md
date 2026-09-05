@@ -125,6 +125,20 @@ Ver [[../12-decisoes-tecnicas/bi-indice|índice do BI]] e
 # ⏳ ainda NÃO instalado
 */5 * * * * cd /home/DOMINIO/public_html && php cli/clearsale-worker.php >> storage/logs/clearsale-worker.log 2>&1
 
+# Cartões temporários — apaga o que o cliente pediu para NÃO salvar
+# Quando ele desmarca "salvar cartão para as próximas compras", o cartão ainda
+# vai para os cofres das adquirentes (é de lá que sai a referência de
+# cobrança). A limpeza normal é no fim da compra; este cron é a rede embaixo:
+# navegador fechado no desafio 3DS, PHP morto no meio, pagamento pendente que
+# ninguém retomou.
+# SEM ELE O CARTÃO FICA NOS COFRES PARA SEMPRE, contra a vontade de quem
+# digitou — e contando contra o limite de cartões por cliente da adquirente.
+# Janela padrão 60 min, mínimo 15. Precisa ser MAIOR que a validade de um
+# desafio 3DS: apagar cartão de compra em andamento faz a cobrança falhar
+# sozinha.
+# ⏳ ainda NÃO instalado
+*/5 * * * * cd /home/DOMINIO/public_html && php cli/cartoes-temporarios-purgar.php --aplicar >> storage/logs/cartoes-temporarios.log 2>&1
+
 # Cartões salvos — preenche titular e validade lendo a adquirente
 # Uso único, não é cron. Os cartões antigos ficaram com 'TITULAR' e '12/99'
 # cravados; isto lê o dado real. Roda em simulação por padrão.
@@ -315,3 +329,49 @@ Instalador do fluxo-modelo (roda uma vez, nao e cron):
 Nasce em rascunho de proposito: o bloco msg_template precisa do nome de um HSM
 aprovado na Meta, e o validador do publicar() recusa enquanto estiver em branco.
 Enquanto e rascunho o despachante nao o encontra e nenhum evento dispara.
+
+
+## Motor de automação v1 — APOSENTADO (04/09/2026)
+
+**Remova este cron do servidor.** `cli/automacao-worker.php` foi substituído
+pelo motor v2 (`cli/fluxo-worker.php`) e agora recusa rodar: imprime um aviso
+e sai com código 0.
+
+    # REMOVER do crontab -u www-data:
+    # */5 * * * * ... php cli/automacao-worker.php ...
+
+Sai com 0, e não 1, de propósito: se o cron ainda estiver ativo no servidor, um
+código de erro encheria o log a cada 5 minutos sem nada a corrigir.
+
+Escape hatch de diagnóstico: `php cli/automacao-worker.php --forcar`.
+**Não é dry-run** — roda detecção e despacho de verdade e volta a escrever na
+`automacao_fila`. Para só inspecionar, use `--forcar --apenas-detectar`.
+
+Porquê e o que falta para o v2 cobrir tudo:
+[[../12-decisoes-tecnicas/automacao-motor-v1-aposentado]].
+
+
+# Radar de clientes
+
+Detecta **estados que amadurecem sozinhos** — aniversário, inatividade, crédito
+prestes a expirar — e emite eventos no stream. O radar DETECTA; quem DECIDE e
+AGE é o motor v2, no ciclo seguinte do `fluxo-worker`.
+
+    30 8 * * *  cd /home/homo-v2.sportmoto.com.br/public_html && /usr/local/lsws/lsphp82/bin/php cli/cliente-radar.php --verbose >> storage/logs/cliente-radar.log 2>&1
+
+De manhã e **depois** do fluxo-worker acordar. Lock próprio em `storage/locks/`.
+
+**Antes de ligar o cron, rode o dry-run** — a primeira varredura enxerga o
+cadastro inteiro de uma vez (todo mundo inativo há 90 dias, todos os
+aniversariantes de hoje):
+
+    php cli/cliente-radar.php --dry-run --verbose
+
+Se o volume de inativos for grande, publique os fluxos já com `cap_max_semana`
+ligado para não disparar uma enxurrada no primeiro dia.
+
+> **Depende de `usuarios.ultimo_login`.** As três sondas de inatividade exigem
+> a coluna preenchida (por desenho: "inativo" pressupõe já ter sido ativo).
+> Quem nunca logou é caso do Bloco 2. Ver
+> [[../04-bugs/Bugs para resolver]] sobre a divergência de fuso entre os dois
+> pontos que gravam essa coluna.
