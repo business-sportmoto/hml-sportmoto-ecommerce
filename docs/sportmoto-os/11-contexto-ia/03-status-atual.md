@@ -156,6 +156,13 @@ Em **pagamentos**, há um defeito aberto:
   `pgto_gateways.front_api_key`. Detalhe e finais das chaves em
   [[../12-decisoes-tecnicas/pagamentos-checklist-producao#Cartão]].
 
+## A fazer no servidor (Central de IA)
+
+- **`php cli/ia-refazer-estatisticas.php`** (simula) e depois `--aplicar`: os
+  contadores de `ia_modelos` estão zerados desde sempre por causa do HY093 em
+  `atualizarEstatisticas()`. Enquanto não rodar, a trava que impede excluir
+  modelo já usado continua solta. Ver [[../04-bugs/resolvidos/Bugs resolvidos]].
+
 ## Próximos passos
 
 0. **Chat/IA** — deploy do lote ([[chat-ia-instagram-checklist]]); ativar um

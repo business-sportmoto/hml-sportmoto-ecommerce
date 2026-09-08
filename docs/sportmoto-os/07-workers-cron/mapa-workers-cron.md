@@ -370,6 +370,21 @@ AGE é o motor v2, no ciclo seguinte do `fluxo-worker`.
 
 De manhã e **depois** do fluxo-worker acordar. Lock próprio em `storage/locks/`.
 
+> **A migration do radar precisa rodar ANTES do cron.** Em homologacao o cron
+> foi ligado sem a tabela e o log encheu:
+> `1146 Table 'homo_ecommerce_db.cliente_radar_emissoes' doesn't exist`
+> — 162x em `reservar`, 9x em `purge`.
+>
+> **Nada foi emitido em duplicidade**, e nem emitido: `reservar()` devolve
+> `false` no catch ("na duvida, nao emite") e as tres sondas so emitem quando
+> ele devolve `true`. O fail-safe segurou. Mas tambem nao emitiu nada util —
+> o radar rodou dias a toa.
+>
+>     mysql -u USER -p BANCO < sql/cliente-radar-migration.sql
+>
+> A migration vivia so dentro de `admin/views/email-marketing/claude/`, que e
+> pasta de views. Copiada para `sql/`, que e onde se procura migration.
+
 **Antes de ligar o cron, rode o dry-run** — a primeira varredura enxerga o
 cadastro inteiro de uma vez (todo mundo inativo há 90 dias, todos os
 aniversariantes de hoje):

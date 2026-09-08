@@ -64,7 +64,11 @@ na página real, não numa página montada para o teste.
   de placeholder**. Num `UNION` que repete a mesma condição dos dois lados, cada
   lado precisa de nome próprio (`:pid_a`, `:pid_b`). `array_merge($par, $par)`
   com chave string **sobrescreve em vez de duplicar** e o erro que aparece é
-  `SQLSTATE[HY093] Invalid parameter number`.
+  `SQLSTATE[HY093] Invalid parameter number`. Já aconteceu duas vezes (log do
+  Bling e `IAOrchestrator::atualizarEstatisticas()`); a segunda ficou meses
+  invisível porque um `catch` engolia. **Antes de subir, rode
+  `php tests/lint-pdo-placeholders.php`** — ele varre todo `prepare()` da base
+  atrás de placeholder repetido.
 - **`UNIQUE` com coluna anulável não protege nada.** No MySQL, NULL é sempre
   distinto de NULL num índice único. Se o UNIQUE inclui coluna que aceita NULL,
   ele deixa passar duplicata. Solução usada em `bi_metas`: coluna gerada não-nula

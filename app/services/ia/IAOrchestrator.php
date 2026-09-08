@@ -630,7 +630,20 @@ class IAOrchestrator
         }
     }
 
-    /** total_execucoes/total_falhas + média móvel do tempo (80/20). */
+    /**
+     * total_execucoes/total_falhas + média móvel do tempo (80/20).
+     *
+     * `:t1` e `:t2` carregam o MESMO valor de propósito. Sem emulação de
+     * prepare (config/database.php), o MySQL exige um valor por OCORRÊNCIA do
+     * placeholder — e um array PHP não repete chave. Reusar `:t` nos dois
+     * lugares mandava 3 valores para 4 posições e devolvia
+     * `SQLSTATE[HY093] Invalid parameter number`.
+     *
+     * O erro era engolido pelo catch: a geração seguia normal e só as
+     * estatísticas ficavam paradas — com isso `total_execucoes` nunca passava
+     * de 0, a trava que impede excluir modelo já usado não segurava nada, e a
+     * tela de configuração mostrava todo modelo como "nunca usado".
+     */
     private function atualizarEstatisticas(int $modeloId, bool $ok, int $tempoMs): void
     {
         try {
@@ -638,10 +651,11 @@ class IAOrchestrator
                 'UPDATE ia_modelos
                     SET total_execucoes = total_execucoes + 1,
                         total_falhas    = total_falhas + :f,
-                        tempo_medio_ms  = ROUND(COALESCE(tempo_medio_ms, :t) * 0.8 + :t * 0.2)
+                        tempo_medio_ms  = ROUND(COALESCE(tempo_medio_ms, :t1) * 0.8 + :t2 * 0.2)
                   WHERE id = :id LIMIT 1'
             );
-            $stmt->execute([':f' => $ok ? 0 : 1, ':t' => max(0, $tempoMs), ':id' => $modeloId]);
+            $ms = max(0, $tempoMs);
+            $stmt->execute([':f' => $ok ? 0 : 1, ':t1' => $ms, ':t2' => $ms, ':id' => $modeloId]);
         } catch (Throwable $e) {
             LogService::error('ia_stats_erro', ['modelo_id' => $modeloId, 'erro' => $e->getMessage()]);
         }
