@@ -134,6 +134,15 @@ $migrations = [
     ['2026-09-08_ia_intencao_cliente.sql', 'Intencao de compra por cliente (Fase 3)',
         fn () => $temTabela('ia_cliente_intencao')],
 ];
+
+/*
+ * NÃO entra aqui: sql/bi-fase5-email.sql (as views bi_fato_email_*).
+ *
+ * Elas dependem da camada de BI e do módulo de e-mail inteiro; a Central NÃO
+ * depende delas. Registrá-las neste runner inverteria a dependência —
+ * instalar a Central num banco sem BI passaria a falhar por causa de uma view
+ * de relatório. Seguem o caminho dos demais sql/bi-*.sql.
+ */
 /* ------------------------------------------------------------------ */
 /* Splitter de instruções: respeita aspas e comentários                 */
 /* ------------------------------------------------------------------ */

@@ -40,12 +40,21 @@ class EmailTrackingController extends Controller
                 && hash_equals((string)$destinatario['token_open'], $token)
                 && (int)$link['campanha_id'] === (int)$destinatario['campanha_id']) {
 
-                (new EmailTrackingService())->registrarClique(
+                $svc = new EmailTrackingService();
+                $svc->registrarClique(
                     $destinatario, $link,
                     $_SERVER['REMOTE_ADDR'] ?? null,
                     $_SERVER['HTTP_USER_AGENT'] ?? null
                 );
-                $url = $link['url_destino'];
+                // Marca a chegada. É isto que liga o clique ao PEDIDO: o
+                // ClickCaptureService lê a utm na landing e o checkout congela
+                // em pedidos.utm_campaign. Sem a marcação, a cadeia de
+                // atribuição existe e nunca enxerga e-mail.
+                $url = $svc->comUtm(
+                    $link['url_destino'],
+                    (int) $link['campanha_id'],
+                    (int) $link['id']
+                );
             }
         } catch (Throwable $e) {
             if (class_exists('LogService')) LogService::error('email_click: ' . $e->getMessage());

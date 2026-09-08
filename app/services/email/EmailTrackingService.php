@@ -78,6 +78,69 @@ class EmailTrackingService
     }
 
     /**
+     * Acrescenta as UTMs de campanha ao destino, no momento do redirect.
+     *
+     * POR QUE AQUI, E NÃO NO HTML DO E-MAIL
+     *   O link do e-mail já aponta para o redirect rastreado; o destino real
+     *   fica em email_links.url_destino. Marcar no redirect mantém o destino
+     *   armazenado limpo e garante a UTM mesmo em template escrito à mão, que
+     *   ninguém lembraria de marcar.
+     *
+     * POR QUE ISSO IMPORTA
+     *   É o que fecha o ciclo até a venda. O ClickCaptureService já grava a
+     *   UTM da chegada em tracking_clicks, e o CheckoutController congela a
+     *   atribuição em pedidos.utm_campaign. Sem esta marcação, aquela cadeia
+     *   inteira existia e nunca via um clique de e-mail — o banco tinha 417
+     *   linhas em tracking_clicks e utm_source 100% NULL.
+     *
+     * NÃO SOBRESCREVE o que já estiver na URL: se quem montou o template pôs
+     * a própria marcação, ela vence. Só preenche o que falta.
+     *
+     * @param  string $url         destino real
+     * @param  int    $campanhaId  vira utm_campaign = camp_<id>
+     * @param  int    $linkId      vira utm_content — diz QUAL link converteu
+     * @return string
+     */
+    public function comUtm($url, $campanhaId, $linkId = 0)
+    {
+        $url = (string) $url;
+        if ($url === '' || !preg_match('#^https?://#i', $url)) {
+            return $url;   // âncora, mailto:, relativo — não marca
+        }
+
+        // O fragmento fica SEMPRE no fim: parâmetro depois do # some.
+        $frag = '';
+        if (($p = strpos($url, '#')) !== false) {
+            $frag = substr($url, $p);
+            $url  = substr($url, 0, $p);
+        }
+
+        $partes = explode('?', $url, 2);
+        $base   = $partes[0];
+        $query  = [];
+        if (isset($partes[1]) && $partes[1] !== '') {
+            parse_str($partes[1], $query);
+        }
+
+        $utm = [
+            'utm_source'   => 'email_marketing',
+            'utm_medium'   => 'email',
+            'utm_campaign' => 'camp_' . (int) $campanhaId,
+        ];
+        if ((int) $linkId > 0) {
+            $utm['utm_content'] = 'link_' . (int) $linkId;
+        }
+
+        foreach ($utm as $chave => $valor) {
+            if (!array_key_exists($chave, $query) || $query[$chave] === '') {
+                $query[$chave] = $valor;
+            }
+        }
+
+        return $base . '?' . http_build_query($query) . $frag;
+    }
+
+    /**
      * Injeta o pixel de abertura antes de </body>, ou no final do HTML.
      */
     public function injetarPixel($html, $tokenOpen)
