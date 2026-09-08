@@ -282,7 +282,7 @@
         var btn = document.getElementById('adminTemaBtn');
         if (!btn) return;
 
-        // aplicar(lerPreferencia());   // sincroniza o rotulo do botao com o que o <head> ja aplicou
+        aplicar(lerPreferencia());   // sincroniza o rotulo do botao com o que o <head> ja aplicou
 
         btn.addEventListener('click', function () {
             aplicar(lerPreferencia() === 'escuro' ? 'claro' : 'escuro');
@@ -290,9 +290,9 @@
     });
 
     // Outra aba mudou o tema: acompanha, para nao ficarem divergentes.
-    window.addEventListener('storage', function (e) {
-        if (e.key === CHAVE && (e.newValue === 'claro' || e.newValue === 'escuro')) {
-            aplicar(e.newValue);
-        }
-    });
+    // window.addEventListener('storage', function (e) {
+    //     if (e.key === CHAVE && (e.newValue === 'claro' || e.newValue === 'escuro')) {
+    //         aplicar(e.newValue);
+    //     }
+    // });
 })();
