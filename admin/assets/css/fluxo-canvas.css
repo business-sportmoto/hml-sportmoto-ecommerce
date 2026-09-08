@@ -183,7 +183,12 @@ body:has(.fx-tela) .admin-content > .fx-editor { height: 100%; }
 }
 .fx-pal-item:hover { background: rgba(0,0,0,.05); }
 .fx-pal-item:active { cursor: grabbing; }
-.fx-pal-item i { font-size: 14px; width: 18px; text-align: center; }
+/* Os ícones são SVG do IconLibrary (o admin não carrega Bootstrap Icons).
+   currentColor deixa a cor do grupo, aplicada no <span>, chegar ao traço. */
+.fx-pal-ico, .fx-no-ico { display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; flex: 0 0 auto; }
+.fx-pal-ico svg, .fx-no-ico svg { width: 15px; height: 15px; stroke: currentColor; }
+.fxa_ic svg { width: 15px; height: 15px; stroke: currentColor; }
 
 /* ── Canvas ─────────────────────────────────────────────────────────────── */
 #fx-canvas {

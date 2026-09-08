@@ -92,6 +92,33 @@ class IconLibrary
         return $svg;
     }
 
+    /**
+     * Mapa {chave: svg} pronto para virar objeto JavaScript.
+     *
+     * O JS não tem como chamar o render(): quem monta a linha da timeline de
+     * automações e o item do sino é script, não view. Em vez de duplicar os
+     * SVGs no bundle, o layout publica este mapa em `window.ICONES`.
+     *
+     * SEMPRE passar as chaves usadas. Sem filtro isto serializa os 155 ícones
+     * do catálogo em toda página do admin — dezenas de KB por request para
+     * usar meia dúzia.
+     */
+    public static function paraJs(array $chaves = []): string
+    {
+        $mapa = [];
+        foreach (self::getAll() as $icon) {
+            $k = (string) ($icon['key'] ?? '');
+            if ($k === '') continue;
+            if ($chaves && !in_array($k, $chaves, true)) continue;
+            $mapa[$k] = trim((string) $icon['svg']);
+        }
+
+        return json_encode(
+            $mapa,
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP
+        ) ?: '{}';
+    }
+
     public static function getOptionsHtml(?string $selected = null): string
     {
         $selected = (string) $selected;

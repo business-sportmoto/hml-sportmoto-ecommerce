@@ -49,7 +49,7 @@ $base = defined('BASE_URL') ? BASE_URL : '';
         <div style="display:flex;gap:10px;align-items:center;">
           <input type="file" id="ntfa-img-file" accept="image/jpeg,image/png,image/webp" style="display:none;">
           <button type="button" id="ntfa-img-btn" class="ntfa-btn-sec">
-            <i class="bi bi-image"></i> Escolher imagem
+            <?= IconLibrary::render('gallery', 'icon icon--sm') ?> Escolher imagem
           </button>
           <span id="ntfa-img-nome" style="font-size:12px;color:var(--em-text-muted);"></span>
         </div>
@@ -73,7 +73,7 @@ $base = defined('BASE_URL') ? BASE_URL : '';
         </div>
 
         <button type="button" id="ntfa-enviar" class="ntfa-btn-pri">
-          <i class="bi bi-send"></i> Enviar notificação
+          <?= IconLibrary::render('mark_email_read', 'icon icon--sm') ?> Enviar notificação
         </button>
         <p id="ntfa-feedback" style="font-size:12px;margin:10px 0 0;display:none;"></p>
       </div>
@@ -86,7 +86,7 @@ $base = defined('BASE_URL') ? BASE_URL : '';
         <?php if (empty($historico)): ?>
           <p style="padding:24px;text-align:center;color:var(--em-text-muted);font-size:13px;">Nenhum envio ainda.</p>
         <?php else: foreach ($historico as $h):
-          $est = $estilos[$h['categoria']] ?? ['icone' => 'bi-bell', 'cor' => 'var(--text-3)'];
+          $est = $estilos[$h['categoria']] ?? ['icone' => 'alerta', 'cor' => 'var(--text-3)'];
           $alvoLabel = [
             'individual'     => 'Individual',
             'selecionados'   => 'Selecionados',
@@ -102,7 +102,7 @@ $base = defined('BASE_URL') ? BASE_URL : '';
         ?>
         <div style="display:flex;gap:11px;padding:13px 16px;border-bottom:0.5px solid var(--em-border);">
           <div style="width:32px;height:32px;border-radius:9px;background:<?= $est['cor'] ?>18;color:<?= $est['cor'] ?>;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;">
-            <i class="bi <?= $est['icone'] ?>"></i>
+            <?= IconLibrary::render($est['icone'], 'icon icon--sm') ?>
           </div>
           <div style="flex:1;min-width:0;">
             <p style="font-size:13px;font-weight:600;margin:0 0 2px;"><?= htmlspecialchars($h['titulo']) ?></p>
@@ -238,10 +238,11 @@ $base = defined('BASE_URL') ? BASE_URL : '';
       }
     }
 
-    var $btn = $(this).prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Enviando…');
+    var $btn = $(this).prop('disabled', true)
+      .html((window.icone ? window.icone('relogio', 'icon icon--sm') : '') + ' Enviando…');
 
     $.post(BASE + '/admin/notificacoes/enviar', dados, function (r) {
-      $btn.prop('disabled', false).html('<i class="bi bi-send"></i> Enviar notificação');
+      $btn.prop('disabled', false).html((window.icone ? window.icone('mark_email_read', 'icon icon--sm') : '') + ' Enviar notificação');
       if (r.ok) {
         feedback(r.msg || 'Enviado!', true);
         // limpa o formulário
@@ -255,7 +256,7 @@ $base = defined('BASE_URL') ? BASE_URL : '';
         feedback(r.erro || 'Falha ao enviar.', false);
       }
     }, 'json').fail(function () {
-      $btn.prop('disabled', false).html('<i class="bi bi-send"></i> Enviar notificação');
+      $btn.prop('disabled', false).html((window.icone ? window.icone('mark_email_read', 'icon icon--sm') : '') + ' Enviar notificação');
       feedback('Erro de conexão.', false);
     });
   });

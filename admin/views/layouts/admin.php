@@ -191,6 +191,10 @@ include __DIR__ . '/../partials/_sprite.php';
 
           <div class="ntf-modal-foot">
             <button type="button" id="ntf-carregar-mais" class="ntf-link-btn" style="display:none;">Carregar mais</button>
+            <a href="<?= BASE_URL ?>/admin/notificacoes" class="ntf-foot-link">
+              <?= IconLibrary::render('campaign', 'icon icon--sm') ?>
+              Central de notificações
+            </a>
           </div>
         </div>
       </div>
@@ -251,6 +255,32 @@ include __DIR__ . '/../partials/_sprite.php';
   document.querySelectorAll('.observe-animate').forEach(el => observer.observe(el));
 </script>
 
+<?php // ── Ícones para o JavaScript ──────────────────────────────────────
+      // O admin não carrega Bootstrap Icons (nunca carregou): os ícones são
+      // SVG inline do IconLibrary. Quem monta HTML no script — o item do sino
+      // e a timeline de automações — não tem como chamar o render(), então o
+      // subconjunto que eles usam vai por aqui. Lista explícita de propósito:
+      // sem ela seriam os 155 ícones do catálogo em toda página. ?>
+<script>
+  window.ICONES = <?= IconLibrary::paraJs([
+      // sino / notificações
+      'package','campaign','settings','shelves','cash','person-circle','chat-info','alerta',
+      // timeline e paleta das automações
+      'play-arrow','check-circle','external-link','x-circle','mail','whatsapp','label',
+      'discount','webhook','relogio','history-toggle-off','rule','cancel','question-circle',
+      'lightning-charge','arrow-right','power','two-wheeler','award','automation',
+      'shield-check','stacks','info',
+      'alert-triangle','docs','help','mark_email_read','timeline',
+  ]) ?>;
+
+  /** SVG do ícone pela chave do IconLibrary. '' quando a chave não existe —
+   *  ícone que falta nunca deve derrubar a linha que o contém. */
+  window.icone = function (chave, classe) {
+    var svg = (window.ICONES || {})[chave];
+    if (!svg) return '';
+    return classe ? svg.replace('<svg', '<svg class="' + classe + '"') : svg;
+  };
+</script>
 <script src="<?= PerformanceHelper::assetVersion('js/toast.js', false) ?>"></script>
 <script src="<?= PerformanceHelper::assetVersion('js/lightbox.js', false) ?>"></script>
 <script src="<?= PerformanceHelper::assetVersion('js/admin-core.js', true) ?>"></script>

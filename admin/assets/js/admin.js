@@ -438,6 +438,27 @@ $(function () {
       });
     }
 
+    // Roda do mouse rola a faixa de filtros na horizontal.
+    // O toque e o trackpad ja funcionam sozinhos com overflow-x:auto; a roda
+    // nao — o navegador manda o wheel vertical para a pagina. Converte aqui, e
+    // so quando ha o que rolar, para nao sequestrar a rolagem da pagina quando
+    // os chips cabem todos.
+    $(document).on('wheel', '#ntf-filtros', function (e) {
+      var el = this;
+      if (el.scrollWidth <= el.clientWidth) return;
+
+      var d = e.originalEvent.deltaY || e.originalEvent.deltaX || 0;
+      if (!d) return;
+
+      // No fim da faixa devolve a rolagem para a pagina em vez de travar.
+      var noInicio = el.scrollLeft <= 0;
+      var noFim    = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
+      if ((d < 0 && noInicio) || (d > 0 && noFim)) return;
+
+      e.preventDefault();
+      el.scrollLeft += d;
+    });
+
     $(document).on('click', '.ntf-chip', function () {
       $('.ntf-chip').removeClass('ntf-chip-ativa');
       $(this).addClass('ntf-chip-ativa');
@@ -467,7 +488,7 @@ $(function () {
 
         var $ic = $('<div class="ntf-item-icone"></div>')
           .css({ background: it.cor + '18', color: it.cor })
-          .append($('<i>').addClass('bi ' + it.icone));
+          .html(window.icone ? window.icone(it.icone, 'icon icon--sm') : '');
 
         var $corpo = $('<div class="ntf-item-corpo"></div>')
           .append($('<p class="ntf-item-titulo">').text(it.titulo));

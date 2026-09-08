@@ -20,7 +20,7 @@ $base = defined('BASE_URL') ? BASE_URL : '';
         emails e mensagens enviados, condições avaliadas, erros. Atualiza sozinho.</p>
     </div>
     <a href="<?= $base ?>/admin/fluxos" class="fxa_btn">
-      <i class="bi bi-diagram-3"></i> Fluxos
+      <?= IconLibrary::render('automation', 'icon icon--sm') ?> Fluxos
     </a>
   </div>
 

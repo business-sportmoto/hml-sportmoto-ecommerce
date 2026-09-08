@@ -244,9 +244,13 @@ input, select, textarea { font-family: var(--font); }
 .ntf-modal-title{font-size:15px;font-weight:600;color:#0f0f10}
 .ntf-link-btn{background:none;border:none;color:#0a66c2;font-size:12px;cursor:pointer;padding:4px}
 .ntf-link-btn:hover{text-decoration:underline}
-.ntf-filtros{display:flex;gap:6px;padding:10px 16px;overflow-x:auto;border-bottom:0.5px solid #f0f0f2;scrollbar-width:none}
+.ntf-filtros{display:flex;gap:6px;padding:10px 16px;overflow-x:auto;border-bottom:0.5px solid #f0f0f2;scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
 .ntf-filtros::-webkit-scrollbar{display:none}
-.ntf-chip{background:#f4f4f5;border:none;border-radius:14px;font-size:12px;padding:5px 12px;cursor:pointer;white-space:nowrap;color:#52525b;transition:all .15s}
+/* `flex:0 0 auto` e o que faz a faixa rolar. O overflow-x:auto acima ja estava
+   la, mas nao adiantava: num container flex os filhos encolhem por padrao, e os
+   chips iam se espremendo em vez de transbordar. Sem transbordo nao ha rolagem
+   — e o white-space:nowrap so fazia o texto vazar do chip amassado. */
+.ntf-chip{flex:0 0 auto;background:#f4f4f5;border:none;border-radius:14px;font-size:12px;padding:5px 12px;cursor:pointer;white-space:nowrap;color:#52525b;transition:all .15s}
 .ntf-chip-ativa{background:#0f0f10;color:#fff}
 .ntf-lista{max-height:420px;overflow-y:auto}
 .ntf-item{display:flex;gap:12px;padding:13px 16px;border-bottom:0.5px solid #f6f6f7;cursor:pointer;transition:background .12s;position:relative}
@@ -262,6 +266,13 @@ input, select, textarea { font-family: var(--font); }
 .ntf-dot{width:8px;height:8px;background:#0a66c2;border-radius:50%;position:absolute;top:16px;right:12px}
 .ntf-vazio{padding:40px 16px;text-align:center;color:#a1a1aa;font-size:13px}
 .ntf-modal-foot{padding:8px;text-align:center;border-top:0.5px solid #f0f0f2}
+/* Vira coluna quando o "Carregar mais" aparece: os dois empilham em vez de
+   disputar a linha. Com a lista curta so o link fica, centralizado. */
+.ntf-foot-link{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  width:100%;padding:7px 8px;font-size:12px;font-weight:600;color:#0a66c2;
+  text-decoration:none;border-radius:8px;transition:background .12s}
+.ntf-foot-link:hover{background:#f4f4f5;text-decoration:none}
+.ntf-foot-link .icon{width:15px;height:15px;flex:0 0 auto}
 @media(prefers-color-scheme:dark){
   html:not([data-theme="light"]) .ntf-modal {background:#1c1c1e;border-color:#2c2c2e}
   html:not([data-theme="light"]) .ntf-modal-head, html:not([data-theme="light"]) .ntf-filtros, html:not([data-theme="light"]) .ntf-modal-foot {border-color:#2c2c2e}
@@ -5688,6 +5699,7 @@ html[data-theme="dark"] .ntf-modal {
   box-shadow: var(--shadow-lg);
 }
 html[data-theme="dark"] .ntf-modal-head, html[data-theme="dark"] .ntf-filtros, html[data-theme="dark"] .ntf-modal-foot { border-color: #263244; }
+html[data-theme="dark"] .ntf-foot-link:hover { background: #232325; }
 html[data-theme="dark"] .ntf-modal-title, html[data-theme="dark"] .ntf-item-titulo { color: var(--text); }
 html[data-theme="dark"] .ntf-item { border-color: #202b3a; }
 html[data-theme="dark"] .ntf-item:hover { background: #182230; }

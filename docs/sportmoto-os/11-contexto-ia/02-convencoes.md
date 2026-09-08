@@ -169,3 +169,38 @@ Confira sempre com `git diff --stat` depois de mexer.
 - `AuthHelper::usuarioId()` para autoria/auditoria; `Session::get('admin_id')`
   só no domínio de pedidos. Ver `CLAUDE.md` §4.1 — trocar os dois corrompe a
   trilha em silêncio.
+
+
+## Ícones: IconLibrary, nunca Bootstrap Icons
+
+**O admin não carrega Bootstrap Icons.** Não há `<link>`, não há `@font-face`,
+nunca houve. Todo `<i class="bi bi-x"></i>` no projeto é resquício de antes da
+migração e **desenha nada** — silenciosamente, que é o pior tipo de falha
+visual: nenhum erro no console, só um espaço vazio.
+
+Em 05/09/2026 havia **131** dessas tags no admin. As dos módulos de
+notificações e automações foram corrigidas; o resto continua lá.
+
+**Em PHP:**
+
+```php
+<?= IconLibrary::render('package', 'icon icon--sm') ?>
+```
+
+**Em JavaScript** — que não pode chamar o helper — o layout publica um
+subconjunto do catálogo:
+
+```js
+window.icone('package', 'icon icon--sm')   // devolve o SVG, ou '' se faltar
+```
+
+A lista de chaves publicadas fica em `admin/views/layouts/admin.php`, e é
+**explícita de propósito**: sem filtro, `IconLibrary::paraJs()` serializa os 155
+ícones do catálogo em toda página do admin. Ícone novo usado por script precisa
+entrar naquela lista.
+
+> **As chaves são as de `assets/icons.json`, e não dá para adivinhá-las pelo
+> nome do Bootstrap.** `bi-hand-index` e `bi-person-badge` parecem virar
+> `hand-index` e `person-badge` — nenhum dos dois existe. Conferir contra o
+> arquivo antes de usar; ícone ausente sai como string vazia e o defeito volta
+> a ser invisível.

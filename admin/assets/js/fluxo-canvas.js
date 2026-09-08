@@ -26,7 +26,7 @@ var FLUXO_UI = {
     ia:       { label: 'BI & IA',   cor: '#7c3aed' }
   },
   nos: {
-    trigger_evento: { cat: 'trigger', label: 'Evento do site', icone: 'bi-lightning-charge',
+    trigger_evento: { cat: 'trigger', label: 'Evento do site', icone: 'lightning-charge',
       campos: [
         { k: 'evento', label: 'Evento', tipo: 'select', ops: ['produto_visto','categoria_vista','catalogo_moto_visto','busca','banner_click','pagina_vista','pedido_criado', 'dica_cuidado_clicada',
           // Radar de clientes (cli/cliente-radar.php) — estados que
@@ -50,22 +50,22 @@ var FLUXO_UI = {
         { k: 'janela_dias', label: 'Janela (dias)', tipo: 'number', def: 7 },
         { k: 'apenas_logados', label: 'Apenas logados', tipo: 'checkbox', def: true }
       ] },
-    trigger_manual: { cat: 'trigger', label: 'Disparo manual', icone: 'bi-hand-index', campos: [] },
+    trigger_manual: { cat: 'trigger', label: 'Disparo manual', icone: 'power', campos: [] },
 
-    esperar: { cat: 'fluxo', label: 'Esperar', icone: 'bi-hourglass-split',
+    esperar: { cat: 'fluxo', label: 'Esperar', icone: 'relogio',
       campos: [
         { k: 'minutos', label: 'Minutos', tipo: 'number', def: 0 },
         { k: 'horas',   label: 'Horas',   tipo: 'number', def: 0 },
         { k: 'dias',    label: 'Dias',    tipo: 'number', def: 0 }
       ] },
-    split_ab: { cat: 'fluxo', label: 'Split A/B', icone: 'bi-signpost-split',
+    split_ab: { cat: 'fluxo', label: 'Split A/B', icone: 'rule',
       campos: [
         { k: 'peso_a', label: 'Peso A (%)', tipo: 'number', def: 50 },
         { k: 'peso_b', label: 'Peso B (%)', tipo: 'number', def: 50 }
       ] },
-    encerrar: { cat: 'fluxo', label: 'Encerrar', icone: 'bi-stop-circle', campos: [] },
+    encerrar: { cat: 'fluxo', label: 'Encerrar', icone: 'cancel', campos: [] },
 
-    cond_evento_ocorreu: { cat: 'condicao', label: 'Evento ocorreu?', icone: 'bi-activity',
+    cond_evento_ocorreu: { cat: 'condicao', label: 'Evento ocorreu?', icone: 'timeline',
       campos: [
         { k: 'evento', label: 'Evento', tipo: 'select', ops: ['produto_visto','categoria_vista','busca','pagina_vista','pedido_criado',
           'aniversario','inativo_30d','inativo_60d','inativo_90d','saldo_expirando'] },
@@ -73,31 +73,31 @@ var FLUXO_UI = {
         { k: 'min', label: 'Mín. vezes', tipo: 'number', def: 1 },
         { k: 'mesma_entidade', label: 'Mesmo produto do contexto', tipo: 'checkbox', def: false }
       ] },
-    cond_total_gasto: { cat: 'condicao', label: 'Total gasto', icone: 'bi-cash-stack',
+    cond_total_gasto: { cat: 'condicao', label: 'Total gasto', icone: 'cash',
       campos: [
         { k: 'operador', label: 'Operador', tipo: 'select', ops: ['>=','>','<=','<','='] },
         { k: 'valor', label: 'Valor (R$)', tipo: 'number', def: 500 },
         { k: 'janela_dias', label: 'Janela (dias, vazio = sempre)', tipo: 'number', def: '' }
       ] },
-    cond_tem_tag: { cat: 'condicao', label: 'Tem tag?', icone: 'bi-tag',
+    cond_tem_tag: { cat: 'condicao', label: 'Tem tag?', icone: 'label',
       campos: [ { k: 'tag', label: 'Tag', tipo: 'text', def: '' } ] },
-    cond_aceita_marketing: { cat: 'condicao', label: 'Aceita marketing?', icone: 'bi-envelope-check',
+    cond_aceita_marketing: { cat: 'condicao', label: 'Aceita marketing?', icone: 'mark_email_read',
       campos: [ { k: 'canal', label: 'Canal', tipo: 'select', ops: ['email','whatsapp','sms'] } ] },
-    cond_tem_moto: { cat: 'condicao', label: 'Tem moto?', icone: 'bi-bicycle', campos: [] },
+    cond_tem_moto: { cat: 'condicao', label: 'Tem moto?', icone: 'two-wheeler', campos: [] },
 
-    acao_email: { cat: 'acao', label: 'Enviar email', icone: 'bi-envelope',
+    acao_email: { cat: 'acao', label: 'Enviar email', icone: 'mail',
       campos: [
         { k: 'template_id', label: 'Template', tipo: 'select_template' },
         { k: 'quiet_hours', label: 'Respeitar horário (8h–21h)', tipo: 'checkbox', def: false }
       ] },
-    acao_notificacao: { cat: 'acao', label: 'Notificação in-app', icone: 'bi-bell',
+    acao_notificacao: { cat: 'acao', label: 'Notificação in-app', icone: 'alerta',
       campos: [
         { k: 'categoria', label: 'Categoria', tipo: 'select', ops: ['promocao','pedido','sistema','estoque','financeiro','conta'] },
         { k: 'titulo', label: 'Título (aceita {{vars}})', tipo: 'text', def: '' },
         { k: 'mensagem', label: 'Mensagem', tipo: 'textarea', def: '' },
         { k: 'url', label: 'Link (opcional)', tipo: 'text', def: '' }
       ] },
-    acao_whatsapp: { cat: 'acao', label: 'WhatsApp (HSM)', icone: 'bi-whatsapp',
+    acao_whatsapp: { cat: 'acao', label: 'WhatsApp (HSM)', icone: 'whatsapp',
       campos: [
         { k: 'template', label: 'Nome do template HSM', tipo: 'text', def: '' },
         { k: 'body_params', label: 'Params do body (1 por linha, {{vars}})', tipo: 'textarea_lista' },
@@ -105,12 +105,12 @@ var FLUXO_UI = {
         { k: 'botao_url_param', label: 'Sufixo do botão URL (opcional)', tipo: 'text', def: '' },
         { k: 'quiet_hours', label: 'Respeitar horário (8h–21h)', tipo: 'checkbox', def: true }
       ] },
-    acao_tag: { cat: 'acao', label: 'Adicionar/remover tag', icone: 'bi-tags',
+    acao_tag: { cat: 'acao', label: 'Adicionar/remover tag', icone: 'label',
       campos: [
         { k: 'acao', label: 'Ação', tipo: 'select', ops: ['adicionar','remover'] },
         { k: 'tag', label: 'Tag', tipo: 'text', def: '' }
       ] },
-    esperar_evento: { cat: 'fluxo', label: 'Esperar evento', icone: 'bi-hourglass-bottom',
+    esperar_evento: { cat: 'fluxo', label: 'Esperar evento', icone: 'history-toggle-off',
       campos: [
         { k: 'evento', label: 'Evento aguardado', tipo: 'select',
           ops: ['produto_visto','categoria_vista','busca','banner_click','pagina_vista','pedido_criado','email_aberto',
@@ -121,13 +121,13 @@ var FLUXO_UI = {
         { k: 'timeout_minutos', label: 'Timeout — minutos', tipo: 'number', def: 0 }
       ] },
 
-    acao_webhook: { cat: 'acao', label: 'Webhook (POST)', icone: 'bi-hdd-network',
+    acao_webhook: { cat: 'acao', label: 'Webhook (POST)', icone: 'webhook',
       campos: [
         { k: 'url', label: 'URL de destino', tipo: 'text', def: '' },
         { k: 'hmac_secret', label: 'Segredo HMAC (opcional)', tipo: 'text', def: '' },
         { k: 'parar_se_falhar', label: 'Parar a jornada se falhar', tipo: 'checkbox', def: false }
       ] },
-    acao_cupom: { cat: 'acao', label: 'Gerar cupom', icone: 'bi-ticket-perforated',
+    acao_cupom: { cat: 'acao', label: 'Gerar cupom', icone: 'discount',
       campos: [
         { k: 'pct',          label: 'Desconto (%)',            tipo: 'number', def: 10 },
         { k: 'dias_validade',label: 'Validade (dias)',         tipo: 'number', def: 15 },
@@ -135,7 +135,7 @@ var FLUXO_UI = {
         { k: 'nome',         label: 'Nome do cupom (pro cliente)', tipo: 'text', def: 'Cupom exclusivo' },
         { k: 'valor_minimo', label: 'Pedido mínimo (R$, 0 = sem)', tipo: 'number', def: 0 }
       ] },
-    cond_veio_de_vendedor: { cat: 'condicao', label: 'Veio de vendedor?', icone: 'bi-person-badge',
+    cond_veio_de_vendedor: { cat: 'condicao', label: 'Veio de vendedor?', icone: 'award',
       campos: [
         { k: 'escopo', label: 'Onde procurar', tipo: 'select',
           ops: ['auto', 'contexto', 'cliente_ultimo', 'cliente_primeiro'] },
@@ -147,7 +147,7 @@ var FLUXO_UI = {
     // vivem no backend (FluxoNoCondPerfil): combinacao invalida cai em 'false',
     // nunca vira SQL. Por isso o form aqui pode ser o declarativo de sempre.
     // Campo texto (genero) so respeita = e != ; os numericos aceitam os seis.
-    cond_perfil: { cat: 'condicao', label: 'Perfil do cliente', icone: 'bi-person-vcard',
+    cond_perfil: { cat: 'condicao', label: 'Perfil do cliente', icone: 'person-circle',
       campos: [
         { k: 'campo', label: 'Campo', tipo: 'select',
           ops: ['genero', 'saldo_disponivel', 'newsletter', 'verificado'] },
@@ -156,7 +156,7 @@ var FLUXO_UI = {
         { k: 'valor', label: 'Valor (genero: M/F/O/N)', tipo: 'text', def: '' }
       ] },
 
-    acao_notificar_vendedor: { cat: 'acao', label: 'Avisar vendedor', icone: 'bi-megaphone',
+    acao_notificar_vendedor: { cat: 'acao', label: 'Avisar vendedor', icone: 'campaign',
       campos: [
         { k: 'canal',     label: 'Canal', tipo: 'select', ops: ['auto', 'notificacao', 'email'] },
         { k: 'categoria', label: 'Categoria', tipo: 'select',
@@ -171,7 +171,7 @@ var FLUXO_UI = {
     // ia_resumo, ia_recomendacoes, ia_resposta, ia_conversa_uuid, ia_custo_usd,
     // ia_url (ou ia_erro na porta 'erro'). Tudo vira {{var}} nos nós seguintes,
     // junto com o que veio do evento: {{titulo}} {{nivel}} {{detalhe}} {{pct}}…
-    agente_ia: { cat: 'ia', label: 'Agente de IA', icone: 'bi-robot',
+    agente_ia: { cat: 'ia', label: 'Agente de IA', icone: 'automation',
       campos: [
         { k: 'agente',   label: 'Agente', tipo: 'select_fonte', fonte: 'FX_AGENTES_BI', def: 'auto' },
         { k: 'pergunta', label: 'Pergunta (aceita {{vars}} do evento)', tipo: 'textarea', def: '' },
@@ -179,22 +179,22 @@ var FLUXO_UI = {
         { k: 'pagina',   label: 'Página do BI (dados pré-carregados)', tipo: 'select_fonte', fonte: 'FX_PAGINAS_BI',
           vazio: '(página padrão do agente)' }
       ] },
-    cond_prioridade: { cat: 'ia', label: 'Prioridade da IA ≥', icone: 'bi-exclamation-diamond',
+    cond_prioridade: { cat: 'ia', label: 'Prioridade da IA ≥', icone: 'alert-triangle',
       campos: [ { k: 'minimo', label: 'Prioridade mínima', tipo: 'select', ops: ['Alta', 'Média', 'Baixa'], def: 'Alta' } ] },
-    cond_contexto: { cat: 'ia', label: 'Valor do contexto', icone: 'bi-braces',
+    cond_contexto: { cat: 'ia', label: 'Valor do contexto', icone: 'docs',
       campos: [
         { k: 'campo',    label: 'Campo (ex.: pct, nivel, ia_custo_usd)', tipo: 'text', def: '' },
         { k: 'operador', label: 'Operador', tipo: 'select', ops: ['=', '!=', '>=', '>', '<=', '<', 'contem', 'existe'], def: '=' },
         { k: 'valor',    label: 'Valor', tipo: 'text', def: '' }
       ] },
-    acao_sino_admins: { cat: 'ia', label: 'Sino dos admins', icone: 'bi-bell-fill',
+    acao_sino_admins: { cat: 'ia', label: 'Sino dos admins', icone: 'alerta',
       campos: [
         { k: 'categoria', label: 'Categoria', tipo: 'select', ops: ['sistema', 'financeiro', 'estoque', 'pedido', 'promocao'], def: 'sistema' },
         { k: 'titulo',    label: 'Título (aceita {{vars}})', tipo: 'text', def: '{{titulo}} · prioridade {{ia_prioridade}}' },
         { k: 'mensagem',  label: 'Mensagem', tipo: 'textarea', def: '{{ia_resumo}}' },
         { k: 'url',       label: 'Link (opcional)', tipo: 'text', def: '{{ia_url}}' }
       ] },
-    acao_email_gestor: { cat: 'ia', label: 'E-mail ao gestor', icone: 'bi-envelope-at',
+    acao_email_gestor: { cat: 'ia', label: 'E-mail ao gestor', icone: 'mail',
       campos: [
         { k: 'para',     label: 'Para (até 5, separados por vírgula)', tipo: 'text', def: '' },
         { k: 'assunto',  label: 'Assunto (aceita {{vars}})', tipo: 'text', def: '{{titulo}} · prioridade {{ia_prioridade}}' },
@@ -400,11 +400,12 @@ if (typeof window !== 'undefined' && window.jQuery && window.Drawflow) {
 
   /** HTML interno do nó no canvas. */
   function htmlNo(tipo, cfg) {
-    var m = FLUXO_UI.nos[tipo] || { label: tipo, icone: 'bi-question', cat: 'fluxo' };
+    var m = FLUXO_UI.nos[tipo] || { label: tipo, icone: 'question-circle', cat: 'fluxo' };
     var cor = FLUXO_UI.categorias[m.cat].cor;
     return '' +
       '<div class="fx-no-head" style="border-left:3px solid ' + cor + '">' +
-        '<i class="bi ' + m.icone + '" style="color:' + cor + '"></i>' +
+        '<span class="fx-no-ico" style="color:' + cor + '">' +
+          (window.icone ? window.icone(m.icone) : '') + '</span>' +
         '<span class="fx-no-titulo">' + esc(m.label) + '</span>' +
       '</div>' +
       '<div class="fx-no-resumo df-resumo">' + esc(FLUXO_UI.resumo(tipo, cfg)) + '</div>';
@@ -475,7 +476,8 @@ if (typeof window !== 'undefined' && window.jQuery && window.Drawflow) {
         $sec.append(
           $('<div class="fx-pal-item" draggable="true">')
             .attr('data-tipo', tipo)
-            .append($('<i>').addClass('bi ' + m.icone).css('color', grupo.cor))
+            .append($('<span class="fx-pal-ico">').css('color', grupo.cor)
+              .html(window.icone ? window.icone(m.icone) : ''))
             .append($('<span>').text(m.label))
         );
       });
@@ -630,7 +632,7 @@ if (typeof window !== 'undefined' && window.jQuery && window.Drawflow) {
       }
       (st.erros || []).forEach(function (e) {
         $atv.append($('<div class="fx-atv-erro">')
-          .append($('<i class="bi bi-exclamation-triangle">'))
+          .append($('<span class="fx-pal-ico">').html(window.icone ? window.icone('alert-triangle') : ''))
           .append($('<span>').text(e.detalhe || 'erro')));
       });
       $f.append($atv);
@@ -689,7 +691,7 @@ if (typeof window !== 'undefined' && window.jQuery && window.Drawflow) {
       var $b = $('<div class="fx-no-stats">');
       $b.append($('<span class="fx-stat-total">')
         .attr('title', 'Execuções deste nó (v' + STATS_VERSAO + ')')
-        .append('<i class="bi bi-activity"></i>')
+        .append(window.icone ? window.icone('timeline') : '')
         .append($('<span>').text(formatarN(s.total))));
 
       // Nós com 2+ portas ganham o racha (ex.: true 62% · false 38%)
@@ -703,7 +705,7 @@ if (typeof window !== 'undefined' && window.jQuery && window.Drawflow) {
       if ((s.portas || {})['__erro']) {
         $b.append($('<span class="fx-stat-erro">')
           .attr('title', 'Erros neste nó')
-          .append('<i class="bi bi-exclamation-triangle"></i>')
+          .append(window.icone ? window.icone('alert-triangle') : '')
           .append($('<span>').text(s.portas['__erro'])));
       }
       $no.append($b);
@@ -790,23 +792,23 @@ if (typeof window !== 'undefined' && window.jQuery && window.Drawflow) {
   var maisAntigo = false;  // true quando o botão "carregar mais" foi usado
   var timer = null;
 
-  // Como cada tipo de linha aparece: [ícone bi-*, classe de cor, rótulo]
+  // Como cada tipo de linha aparece: [chave do IconLibrary, classe de cor, rótulo]
   var APRESENTACAO = {
-    '__inicio':         ['bi-play-circle',        'fxa_ini',   'Jornada iniciada'],
-    '__fim:concluido':  ['bi-check-circle',       'fxa_ok',    'Jornada concluída'],
-    '__fim:saiu':       ['bi-box-arrow-right',    'fxa_neutro','Saiu (exit condition)'],
-    '__fim:erro':       ['bi-x-circle',           'fxa_erro',  'Jornada com erro'],
-    'acao_email':       ['bi-envelope',           'fxa_acao',  'Email'],
-    'acao_whatsapp':    ['bi-whatsapp',           'fxa_acao',  'WhatsApp'],
-    'acao_notificacao': ['bi-bell',               'fxa_acao',  'Notificação'],
-    'acao_tag':         ['bi-tags',               'fxa_acao',  'Tag'],
-    'acao_cupom':       ['bi-ticket-perforated',  'fxa_acao',  'Cupom gerado'],
-    'acao_webhook':     ['bi-hdd-network',        'fxa_acao',  'Webhook'],
-    'acao_notificar_vendedor': ['bi-megaphone',   'fxa_acao',  'Vendedor avisado'],
-    'esperar':          ['bi-hourglass-split',    'fxa_neutro','Esperar'],
-    'esperar_evento':   ['bi-hourglass-bottom',   'fxa_neutro','Esperar evento'],
-    'split_ab':         ['bi-signpost-split',     'fxa_neutro','Split A/B'],
-    'encerrar':         ['bi-stop-circle',        'fxa_neutro','Encerrar']
+    '__inicio':         ['play-arrow',        'fxa_ini',   'Jornada iniciada'],
+    '__fim:concluido':  ['check-circle',       'fxa_ok',    'Jornada concluída'],
+    '__fim:saiu':       ['external-link',    'fxa_neutro','Saiu (exit condition)'],
+    '__fim:erro':       ['x-circle',           'fxa_erro',  'Jornada com erro'],
+    'acao_email':       ['mail',           'fxa_acao',  'Email'],
+    'acao_whatsapp':    ['whatsapp',           'fxa_acao',  'WhatsApp'],
+    'acao_notificacao': ['alerta',               'fxa_acao',  'Notificação'],
+    'acao_tag':         ['label',               'fxa_acao',  'Tag'],
+    'acao_cupom':       ['discount',  'fxa_acao',  'Cupom gerado'],
+    'acao_webhook':     ['webhook',        'fxa_acao',  'Webhook'],
+    'acao_notificar_vendedor': ['campaign',   'fxa_acao',  'Vendedor avisado'],
+    'esperar':          ['relogio',    'fxa_neutro','Esperar'],
+    'esperar_evento':   ['history-toggle-off',   'fxa_neutro','Esperar evento'],
+    'split_ab':         ['rule',     'fxa_neutro','Split A/B'],
+    'encerrar':         ['cancel',        'fxa_neutro','Encerrar']
   };
 
   function apresentar(item) {
@@ -817,12 +819,12 @@ if (typeof window !== 'undefined' && window.jQuery && window.Drawflow) {
 
     // Condições e triggers genéricos
     if (item.tipo_no.indexOf('cond_') === 0) {
-      return { icone: 'bi-question-diamond', classe: 'fxa_cond', rotulo: 'Condição' };
+      return { icone: 'help', classe: 'fxa_cond', rotulo: 'Condição' };
     }
     if (item.tipo_no.indexOf('trigger') === 0) {
-      return { icone: 'bi-lightning-charge', classe: 'fxa_ini', rotulo: 'Trigger' };
+      return { icone: 'lightning-charge', classe: 'fxa_ini', rotulo: 'Trigger' };
     }
-    return { icone: 'bi-arrow-right-circle', classe: 'fxa_neutro', rotulo: item.tipo_no };
+    return { icone: 'arrow-right', classe: 'fxa_neutro', rotulo: item.tipo_no };
   }
 
   function descrever(item) {
@@ -861,7 +863,7 @@ if (typeof window !== 'undefined' && window.jQuery && window.Drawflow) {
     }
 
     $li.append($('<div class="fxa_ic ' + ap.classe + '">')
-      .append('<i class="bi ' + ap.icone + '"></i>'));
+      .html(window.icone ? window.icone(ap.icone) : ''));
 
     var $c = $('<div class="fxa_corpo">');
     var $t = $('<div class="fxa_titulo">');
@@ -906,7 +908,7 @@ if (typeof window !== 'undefined' && window.jQuery && window.Drawflow) {
 
       if (!r.itens.length && !anexar) {
         $l.append($('<div class="fxa_vazio">')
-          .append('<i class="bi bi-moon-stars"></i>')
+          .append(window.icone ? window.icone('info') : '')
           .append($('<div class="fxa_vazio_t">').text('Nada por aqui ainda'))
           .append($('<p class="fxa_vazio_p">').text(
             'Assim que um fluxo publicado rodar, cada passo aparece nesta linha do tempo.')));

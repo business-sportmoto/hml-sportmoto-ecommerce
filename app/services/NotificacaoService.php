@@ -45,13 +45,18 @@ class NotificacaoService
 
     /** Ícone (Bootstrap Icons) e cor por categoria — usado no modal */
     public const ESTILO_CATEGORIA = [
-        'pedido'     => ['icone' => 'bi-box-seam',      'cor' => '#0a66c2'],
-        'promocao'   => ['icone' => 'bi-megaphone',     'cor' => '#e53935'],
-        'sistema'    => ['icone' => 'bi-gear',          'cor' => '#71717a'],
-        'estoque'    => ['icone' => 'bi-clipboard-data','cor' => '#f59e0b'],
-        'financeiro' => ['icone' => 'bi-cash-coin',     'cor' => '#16a34a'],
-        'conta'      => ['icone' => 'bi-person',        'cor' => '#6366f1'],
-        'atendimento'=> ['icone' => 'bi-chat-dots',     'cor' => '#0891b2'],
+        // Chaves do IconLibrary (assets/icons.json), NAO nomes do Bootstrap
+        // Icons: o admin nunca carregou aquela fonte, entao os 'bi-*' que
+        // moravam aqui nao desenhavam nada — nem no sino, nem na tela de envio.
+        // O NotificacaoPresenter descarta este campo e manda `categoria`, entao
+        // o app mobile nao se importa com o que esta escrito aqui.
+        'pedido'     => ['icone' => 'package',      'cor' => '#0a66c2'],
+        'promocao'   => ['icone' => 'campaign',     'cor' => '#e53935'],
+        'sistema'    => ['icone' => 'settings',     'cor' => '#71717a'],
+        'estoque'    => ['icone' => 'shelves',      'cor' => '#f59e0b'],
+        'financeiro' => ['icone' => 'cash',         'cor' => '#16a34a'],
+        'conta'      => ['icone' => 'person-circle','cor' => '#6366f1'],
+        'atendimento'=> ['icone' => 'chat-info',    'cor' => '#0891b2'],
     ];
 
     /** Batch do fan-out de broadcast */
@@ -288,7 +293,7 @@ class NotificacaoService
 
             // Anexa estilo da categoria
             foreach ($rows as &$r) {
-                $est = self::ESTILO_CATEGORIA[$r['categoria']] ?? ['icone' => 'bi-bell', 'cor' => '#71717a'];
+                $est = self::ESTILO_CATEGORIA[$r['categoria']] ?? ['icone' => 'alerta', 'cor' => '#71717a'];
                 $r['icone']           = $est['icone'];
                 $r['cor']             = $est['cor'];
                 $r['categoria_label'] = self::LABELS_CATEGORIA[$r['categoria']] ?? $r['categoria'];
