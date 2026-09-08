@@ -46,21 +46,113 @@ class SafraPayClient
     /** Cache do JWT em memória (por request) — [token, expira_em] */
     private static array $tokenCache = [];
 
+    /**
+     * Credenciais lidas de pgto_gateways, cache por request.
+     * @var array{merchant_id:string,api_key:string,sandbox:bool,ativo:bool}|null
+     */
+    private static ?array $cadastro = null;
+
     public function __construct(
         string $merchantId = '',
         string $merchantToken = '',
         string $ambiente = '',
         int    $timeout = 0
     ) {
-        $this->merchantId    = $merchantId    !== '' ? $merchantId    : self::cfg('SAFRAPAY_MERCHANT_ID');
-        $this->merchantToken = $merchantToken !== '' ? $merchantToken : self::cfg('SAFRAPAY_MERCHANT_TOKEN');
+        // ORDEM DE PRECEDÊNCIA: argumento → cadastro do admin → .env
+        //
+        // O cadastro em /admin/pagamentos/adquirentes é a fonte de verdade:
+        // com várias adquirentes, cada uma tem credencial própria e trocá-la
+        // não pode exigir deploy. O .env fica como retaguarda para o caso de
+        // o banco estar fora ou a adquirente ainda não ter sido cadastrada —
+        // sem isso, uma falha de banco derrubaria o checkout inteiro.
+        $cad = self::cadastro();
 
-        $amb = strtolower($ambiente !== '' ? $ambiente : (self::cfg('SAFRAPAY_AMBIENTE') ?: 'hml'));
+        $this->merchantId = $merchantId !== ''
+            ? $merchantId
+            : ($cad['merchant_id'] !== '' ? $cad['merchant_id'] : self::cfg('SAFRAPAY_MERCHANT_ID'));
+
+        $this->merchantToken = $merchantToken !== ''
+            ? $merchantToken
+            : ($cad['api_key'] !== '' ? $cad['api_key'] : self::cfg('SAFRAPAY_MERCHANT_TOKEN'));
+
+        // `sandbox` do cadastro decide o ambiente. Só cai no .env quando não
+        // há linha cadastrada — apontar produção para o HML (ou o contrário)
+        // é o tipo de engano que só aparece com dinheiro real em jogo.
+        if ($ambiente !== '') {
+            $amb = strtolower($ambiente);
+        } elseif ($cad['existe']) {
+            $amb = $cad['sandbox'] ? 'hml' : 'prod';
+        } else {
+            $amb = strtolower(self::cfg('SAFRAPAY_AMBIENTE') ?: 'hml');
+        }
         $this->ambiente = isset(self::BASES[$amb]) ? $amb : 'hml';
 
         $t = $timeout > 0 ? $timeout : (int) (self::cfg('SAFRAPAY_TIMEOUT') ?: 20);
         // Teto de 45s: isto roda com o cliente esperando no checkout.
         $this->timeout = max(5, min($t, 45));
+    }
+
+    /**
+     * Lê a linha de pgto_gateways uma vez por request.
+     *
+     * Nunca lança: se o banco estiver indisponível, devolve vazio e o
+     * construtor cai no .env. Pagamento não pode morrer por causa da leitura
+     * de configuração.
+     *
+     * @return array{existe:bool,merchant_id:string,api_key:string,sandbox:bool,ativo:bool}
+     */
+    private static function cadastro(): array
+    {
+        if (self::$cadastro !== null) {
+            return self::$cadastro;
+        }
+
+        $vazio = ['existe' => false, 'merchant_id' => '', 'api_key' => '', 'sandbox' => true, 'ativo' => false];
+
+        try {
+            $st = Database::getInstance()->getConnection()->prepare(
+                "SELECT merchant_id, api_key, sandbox, ativo
+                   FROM pgto_gateways WHERE codigo = 'safrapay' LIMIT 1"
+            );
+            $st->execute();
+            $row = $st->fetch(PDO::FETCH_ASSOC);
+
+            if (!$row) {
+                return self::$cadastro = $vazio;
+            }
+
+            return self::$cadastro = [
+                'existe'      => true,
+                'merchant_id' => trim((string) ($row['merchant_id'] ?? '')),
+                'api_key'     => trim((string) ($row['api_key'] ?? '')),
+                'sandbox'     => (bool) ($row['sandbox'] ?? 1),
+                'ativo'       => (bool) ($row['ativo'] ?? 0),
+            ];
+        } catch (\Throwable $e) {
+            // NUNCA registrar o conteúdo — só o fato de não ter conseguido ler.
+            if (class_exists('LogService')) {
+                LogService::warning('Safra: falha ao ler credenciais de pgto_gateways, usando .env', [
+                    'erro' => $e->getMessage(),
+                ], 'pagamento');
+            }
+            return self::$cadastro = $vazio;
+        }
+    }
+
+    /** Descarta o cadastro em cache (após editar no admin, ou em testes). */
+    public static function limparCadastroCache(): void
+    {
+        self::$cadastro = null;
+        self::$tokenCache = [];
+    }
+
+    /** De onde vieram as credenciais em uso — para a tela de diagnóstico. */
+    public function origemCredenciais(): string
+    {
+        $cad = self::cadastro();
+        if (!$cad['existe'])                        return 'env (sem cadastro)';
+        if ($cad['merchant_id'] === '' || $cad['api_key'] === '') return 'env (cadastro incompleto)';
+        return 'pgto_gateways';
     }
 
     public function configurado(): bool

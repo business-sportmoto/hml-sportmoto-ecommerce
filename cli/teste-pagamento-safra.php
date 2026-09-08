@@ -91,6 +91,21 @@ function diagnostico(): void
 ", $token ? substr($token, 0, 5) . '... (' . strlen($token) . ' chars)' : '(vazio)');
     printf("  base                   = %s
 ", $base);
+
+    // De onde vem a credencial EM USO: cadastro do admin ou .env.
+    try {
+        $cli = new SafraPayClient();
+        printf("  origem das credenciais = %s
+", $cli->origemCredenciais());
+        printf("  ambiente efetivo       = %s (%s)
+", $cli->ambiente(), $cli->baseGateway());
+        $base = $cli->baseGateway();
+        $token = (string) (new ReflectionProperty(SafraPayClient::class, 'merchantToken'))
+                 ->getValue($cli) ?: $token;
+    } catch (\Throwable $e) {
+        printf("  origem das credenciais = ERRO: %s
+", $e->getMessage());
+    }
     printf("  PHP                    = %s | curl = %s
 ", PHP_VERSION,
         (curl_version()['version'] ?? '?'));
