@@ -195,7 +195,16 @@ final class ConversionDispatcher
                 $res->httpStatus,
             ]);
         } catch (\Throwable $e) {
-            error_log('[Dispatcher] dead_letter falhou: ' . $e->getMessage());
+            // CRITICAL e não error: o dead_letter é a última rede. Se a
+            // gravação AQUI falha, o evento não está em lugar nenhum —
+            // saiu da fila e não virou registro. É o único ponto do
+            // pipeline onde a perda é definitiva e silenciosa.
+            LogService::exception($e, 'critical', 'tracking', [
+                'origem'     => 'ConversionDispatcher::dead_letter',
+                'event_id'   => $ev['event_id']   ?? null,
+                'event_name' => $ev['event_name'] ?? null,
+                'destino'    => $destino,
+            ]);
         }
     }
 }

@@ -68,7 +68,9 @@ final class GoogleAuthService
             return $token;
 
         } catch (\Throwable $e) {
-            error_log('[GoogleAuth] ' . $e->getMessage());
+            LogService::exception($e, 'error', 'tracking', [
+                'origem' => 'GoogleAuthService::token',
+            ]);
             return null;
         }
     }
@@ -82,7 +84,10 @@ final class GoogleAuthService
 
         // Campos essenciais do JSON de service account
         if (!is_array($sa) || empty($sa['client_email']) || empty($sa['private_key'])) {
-            error_log('[GoogleAuth] JSON de service account inválido');
+            LogService::error('JSON de service account inválido', [
+                'origem'  => 'GoogleAuthService::lerServiceAccount',
+                'arquivo' => $this->keyFilePath,
+            ], 'tracking');
             return null;
         }
         return $sa;
@@ -147,7 +152,14 @@ final class GoogleAuthService
         curl_close($ch);
 
         if ($status < 200 || $status >= 300) {
-            error_log('[GoogleAuth] token HTTP ' . $status . ': ' . mb_substr((string)$resp, 0, 300));
+            // O corpo de um 4xx/5xx aqui é o erro OAuth ({"error":
+            // "invalid_grant"...}), nunca um token — por isso pode ir
+            // pro contexto. A redação do LogService cobre o resto.
+            LogService::error('Falha ao trocar JWT por access_token', [
+                'origem'      => 'GoogleAuthService::pedirToken',
+                'http_status' => $status,
+                'resposta'    => mb_substr((string)$resp, 0, 300),
+            ], 'tracking');
             return null;
         }
 

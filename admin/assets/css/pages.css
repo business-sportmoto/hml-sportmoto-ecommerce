@@ -1294,6 +1294,11 @@ margin-bottom: 15px;}
 .lw-clean{display:flex;align-items:center;gap:8px;margin:0;padding:10px 0;font-size:13px;color:var(--lw-ok);font-weight:500}
 .lw-clean svg{width:16px;height:16px;flex-shrink:0}
 .lw-nums{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+/* Variante de 4 colunas — usada pelo widget de tracking, que tem quatro
+   contadores acionáveis (presos/atrasados/falhados/dead letter). Em telas
+   estreitas vira 2x2 para o número não espremer. */
+.lw-nums--4{grid-template-columns:repeat(4,1fr)}
+@media (max-width:640px){.lw-nums--4{grid-template-columns:repeat(2,1fr)}}
 .lw-num{display:flex;flex-direction:column;gap:2px;padding:10px 12px;text-decoration:none;border:1px solid var(--lw-line);border-radius:8px;transition:background .15s var(--lw-ease),border-color .15s var(--lw-ease),transform .12s var(--lw-ease);will-change:transform}
 .lw-num:hover{transform:translateY(-1px)}
 .lw-num:active{transform:translateY(0)}

@@ -102,6 +102,11 @@ class SafraPayAdapter implements AdquirenteInterface
      */
     public function autorizarCartao(array $d): PagamentoClassificacao
     {
+        return $this->comRetentativa('autorizacao_cartao', fn(): PagamentoClassificacao => $this->autorizarCartaoUmaVez($d));
+    }
+
+    private function autorizarCartaoUmaVez(array $d): PagamentoClassificacao
+    {
         $payload = $this->montarPayloadCartao($d);
 
         $resp = $this->client->chamar('POST', '/v2/charge/authorization', $payload);
@@ -231,6 +236,14 @@ class SafraPayAdapter implements AdquirenteInterface
 
     private function criarCobranca(string $recurso, array $charge, array $d, string $metodo): PagamentoClassificacao
     {
+        return $this->comRetentativa(
+            'criar_' . $metodo,
+            fn(): PagamentoClassificacao => $this->criarCobrancaUmaVez($recurso, $charge, $d, $metodo)
+        );
+    }
+
+    private function criarCobrancaUmaVez(string $recurso, array $charge, array $d, string $metodo): PagamentoClassificacao
+    {
         $payload = ['charge' => $charge];
         if (!empty($d['ip_cliente'])) {
             $payload['remoteIp'] = (string) $d['ip_cliente'];
@@ -328,6 +341,98 @@ class SafraPayAdapter implements AdquirenteInterface
         return $c;
     }
 
+
+    // =========================================================================
+    // RETENTATIVA DE INDISPONIBILIDADE TRANSITÓRIA
+    // =========================================================================
+
+    /** 1 chamada original + até 2 retentativas. */
+    private const RETENTATIVAS_MAX = 3;
+
+    /** Espera antes da 2ª e da 3ª chamada, em milissegundos. */
+    private const RETENTATIVA_ESPERA_MS = [250, 750];
+
+    /**
+     * Teto de tempo TOTAL gasto em retentativas.
+     *
+     * Isto roda com o cliente parado na tela do checkout. Três chamadas de 20s
+     * cada somariam um minuto de espera — pior experiência do que a falha.
+     */
+    private const RETENTATIVA_BUDGET_MS = 6000;
+
+    /**
+     * Executa a operação e retenta APENAS em indisponibilidade transitória.
+     *
+     * PALIATIVO, não solução. A resposta certa para adquirente fora do ar é o
+     * motor de roteamento cair para OUTRA adquirente. Enquanto só existe a
+     * Safra, retentar nela é o melhor disponível.
+     *
+     * TRÊS TRAVAS, todas contra cobrança dupla:
+     *
+     *  1. Só porta INDISPONIVEL. Timeout e HTTP 500 viram INCERTO — ali a
+     *     autorização PODE ter passado e a resposta se perdido; retentar
+     *     cobraria de novo. Esses exigem consulta, nunca retentativa.
+     *  2. Só transitório. `reversivel === false` marca config permanente
+     *     (lojista não credenciado, meio não habilitado): insistir não muda
+     *     nada e só atrasa o cliente.
+     *  3. merchantTransactionId NÃO muda entre as tentativas. É a mesma
+     *     tentativa lógica — o que a própria doc da Safra pede. Se a premissa
+     *     "nada chegou à adquirente" estiver errada, o id repetido dá a ela a
+     *     chance de deduplicar em vez de criar uma segunda cobrança.
+     */
+    private function comRetentativa(string $rotulo, callable $operacao): PagamentoClassificacao
+    {
+        $inicio = microtime(true);
+        $c      = $operacao();
+        $c->tentativasAdquirente = 1;
+
+        for ($n = 2; $n <= self::RETENTATIVAS_MAX; $n++) {
+            if (!self::valeRetentar($c)) {
+                return $c;
+            }
+
+            $espera    = self::RETENTATIVA_ESPERA_MS[$n - 2] ?? 1000;
+            $decorrido = (int) round((microtime(true) - $inicio) * 1000);
+
+            if ($decorrido + $espera > self::RETENTATIVA_BUDGET_MS) {
+                LogService::warning('Safra indisponivel — orcamento de retentativa esgotado', [
+                    'operacao'   => $rotulo,
+                    'tentativas' => $n - 1,
+                    'decorrido'  => $decorrido,
+                ], 'pagamento');
+                break;
+            }
+
+            LogService::info('Safra indisponivel — retentando', [
+                'operacao'  => $rotulo,
+                'tentativa' => $n,
+                'classe'    => $c->classeErro,
+                'trace_key' => $c->traceKey,
+            ], 'pagamento');
+
+            usleep($espera * 1000);
+
+            $c = $operacao();
+            $c->tentativasAdquirente = $n;
+        }
+
+        if ($c->tentativasAdquirente > 1 && $c->sucesso()) {
+            LogService::info('Safra respondeu apos retentativa', [
+                'operacao'   => $rotulo,
+                'tentativas' => $c->tentativasAdquirente,
+            ], 'pagamento');
+        }
+
+        return $c;
+    }
+
+    /** Só indisponibilidade transitória e inequívoca. */
+    private static function valeRetentar(PagamentoClassificacao $c): bool
+    {
+        return $c->porta === PagamentoClassificacao::INDISPONIVEL
+            && $c->reversivel !== false   // trava 2: config permanente não
+            && !$c->exigeConsulta;        // trava 1: incerteza nunca
+    }
 
     // =========================================================================
     // MONTAGEM DO PAYLOAD

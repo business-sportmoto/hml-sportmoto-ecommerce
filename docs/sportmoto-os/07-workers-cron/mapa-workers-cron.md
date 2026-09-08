@@ -416,3 +416,38 @@ simulacao, leia a saida, e so entao aplique.
 
 Toda mudanca deixa evento status_alterado na trilha, com meta.correcao =
 'reconciliacao_3_8'. Idempotente.
+
+# Vigia do tracking (conversoes Meta/CAPI)
+
+  php cli/tracking-vigia.php                          checa a fila
+  php cli/tracking-vigia.php --reconciliar            reconcilia ontem
+  php cli/tracking-vigia.php --reconciliar=2026-09-07 dia especifico
+  php cli/tracking-vigia.php ... --silencioso         so age, nao imprime
+
+Cron (duas cadencias, o mesmo arquivo):
+
+  */10 * * * * cd /caminho && php cli/tracking-vigia.php --silencioso >> storage/logs/tracking-vigia.log 2>&1
+  0 6 * * *    cd /caminho && php cli/tracking-vigia.php --reconciliar --silencioso >> storage/logs/tracking-vigia.log 2>&1
+
+SOMENTE LEITURA sobre o tracking: observa e avisa, nunca reprocessa.
+
+Por que as duas checagens. A da fila so enxerga eventos que NASCERAM; se o
+gatilho do Purchase nao disparar, nao existe linha para ficar pendente e a
+fila fica verde com a venda nao reportada. So a reconciliacao contra
+`pedidos` (LEFT JOIN por `tracking_events.event_id = pedidos.codigo`) pega
+esse caso.
+
+Exit codes: 0 saudavel, 2 problema encontrado, 1 erro de execucao.
+
+Alertas (TrackingAlertaService): LogService canal `tracking` + notificacao
+in-app broadcast `todos_admins`, com janela de silencio de 6h por tipo — sem
+ela, rodando de 10 em 10 min, uma fila parada geraria ~288 avisos/dia. O
+alerta de dead letter olha a janela de 24h, e nao o acumulado, que so desce
+quando existir a ferramenta de reprocesso.
+
+Cuidado com dias antigos na reconciliacao: eventos gravados ANTES da correcao
+do event_id (que passou a mandar `codigo` em vez do id numerico) nao casam e
+aparecem como 'ausentes'. O CLI avisa quando o dia da 100% ausente.
+
+Relacionado: cli/conversion-dispatch.php (quem de fato envia) e o widget
+`admin/views/dashboard/tracking-widget.php` (mesma medicao, na tela).

@@ -120,6 +120,12 @@ que dispensa tabela de 301. Ver
 
 ## Bugs prioritários
 
+- **Credenciais dos Correios estão erradas no banco (08/09/2026).** O autofill
+  do navegador gravou a senha de login do painel por cima das duas. O defeito
+  foi corrigido, mas o valor não volta sozinho: precisa ser redigitado em
+  `/admin/logistica/transportadoras`. A reversa provavelmente está fora do ar
+  até lá. Passo a passo em [[../04-bugs/Bugs para resolver]].
+
 Do ciclo de painel de 03/09/2026 (detalhe em
 [[../04-bugs/Bugs para resolver]]):
 

@@ -91,6 +91,11 @@ class TransportadoraController extends Controller
             'cep_origem'         => $_POST['cep_origem'] ?? '',
             'contrato'           => $_POST['contrato'] ?? '',
             'config'             => is_array($_POST['config'] ?? null) ? $_POST['config'] : [],
+            // Quais segredos o operador escolheu trocar/apagar. Sem esta
+            // declaração o service ignora o valor recebido e mantém o salvo —
+            // é o que impede o autofill do navegador de sobrescrever credencial.
+            'config_alterar'     => is_array($_POST['config_alterar'] ?? null) ? $_POST['config_alterar'] : [],
+            'config_remover'     => is_array($_POST['config_remover'] ?? null) ? $_POST['config_remover'] : [],
             'prazo_preparo_dias' => $_POST['prazo_preparo_dias'] ?? 0,
             'margem_tipo'        => $_POST['margem_tipo'] ?? 'nenhum',
             'margem_percentual'  => $_POST['margem_percentual'] ?? 0,

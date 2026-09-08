@@ -129,8 +129,13 @@ final class ConsentService
             ]);
         } catch (\Throwable $e) {
             // Registro de evidência NÃO pode quebrar a navegação, mas
-            // é importante — loga o erro pra não perder silenciosamente
-            error_log('[Consent] falha ao registrar evidência: ' . $e->getMessage());
+            // é importante — loga o erro pra não perder silenciosamente.
+            // O cookie ainda é setado abaixo, então o gate de LGPD segue
+            // funcionando; o que se perde é a PROVA do consentimento.
+            LogService::exception($e, 'error', 'tracking', [
+                'origem'          => 'ConsentService::registrar',
+                'politica_versao' => self::POLITICA_VERSAO,
+            ]);
         }
 
         // 2. Cookie com o estado (leitura rápida pelo gate)

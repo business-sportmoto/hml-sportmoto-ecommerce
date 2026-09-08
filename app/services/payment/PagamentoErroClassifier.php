@@ -29,6 +29,35 @@ declare(strict_types=1);
  */
 class PagamentoErroClassifier
 {
+    /**
+     * errorCode da Safra que significa "a adquirente está fora do meu alcance"
+     * — e não "seu payload está errado". Ambos chegam como HTTP 400.
+     *
+     * Fonte: /primeiros-passos#codigos-de-erros (nomes oficiais do enum).
+     * [classe_erro, é permanente?]
+     *
+     * Permanente = configuração comercial do estabelecimento; não adianta
+     * reapresentar na mesma adquirente, hoje nem amanhã.
+     */
+    private const ERRO_INFRA_ADQUIRENTE = [
+        10  => ['adquirente_inalcancavel', false],  // UnreachableAcquirer
+        11  => ['adquirente_invalida',     true],   // InvalidAcquirer
+        34  => ['adquirente_invalida',     true],   // InvalidAcquirerId
+        49  => ['nao_credenciado',         true],   // UnsupportedTransaction — lojista sem credenciamento
+        58  => ['operacao_nao_suportada',  true],   // UnsupportedOperationByAcquirer
+        186 => ['meio_nao_suportado',      true],   // UnsupportedPaymentTypeByAcquirer
+        198 => ['perfil_ausente',          true],   // AcquirerProfileNotFound
+    ];
+
+    /** errorCode do primeiro erro do envelope, ou null. */
+    private static function errorCodeSafra(array $body): ?int
+    {
+        $e = $body['errors'][0] ?? null;
+        return is_array($e) && isset($e['errorCode']) && is_numeric($e['errorCode'])
+            ? (int) $e['errorCode']
+            : null;
+    }
+
     // =========================================================================
     // CAMADA DE TRANSPORTE — rede e HTTP, antes de olhar o corpo
     // =========================================================================
@@ -123,10 +152,31 @@ class PagamentoErroClassifier
             return $c;
         }
 
-        // ── 4xx de contrato: payload recusado na validação ──────────────
-        // Nada foi processado, então cair para a próxima é seguro. Mas
-        // costuma ser bug nosso, e o log precisa dizer isso.
+        // ── 4xx: separar culpa NOSSA de indisponibilidade DELES ─────────
+        //
+        // A Safra devolve 400 tanto para payload malformado quanto para "não
+        // consegui falar com a adquirente". Tratar os dois como 'contrato'
+        // mentia no log de erro: uma queda da adquirente aparecia como bug de
+        // integração, e o cliente lia "tente novamente" quando a resposta
+        // certa era tentar OUTRA adquirente.
         if ($http >= 400 && $http < 500) {
+            $codigo = self::errorCodeSafra($resp['body'] ?? []);
+
+            if ($codigo !== null && isset(self::ERRO_INFRA_ADQUIRENTE[$codigo])) {
+                [$classe, $permanente] = self::ERRO_INFRA_ADQUIRENTE[$codigo];
+
+                $c->porta             = PagamentoClassificacao::INDISPONIVEL;
+                $c->classeErro        = $classe;
+                $c->podeCairParaOutra = true;
+                $c->mensagemCliente   = 'Estamos com instabilidade no pagamento. Tentando outra opção...';
+                // Config permanente (lojista não credenciado, meio não
+                // suportado) nunca melhora sozinha: reapresentar na MESMA
+                // adquirente é desperdício. Quem lê isto no dashboard sabe
+                // que a correção é comercial, não de código.
+                $c->reversivel        = !$permanente;
+                return $c;
+            }
+
             $c->porta             = PagamentoClassificacao::ERRO_TECNICO;
             $c->classeErro        = 'contrato';
             $c->podeCairParaOutra = true;

@@ -70,6 +70,7 @@ $statusLabels = [
   </div>
 
   <?php include ADMIN_PATH . '/views/dashboard/log-widget.php'; ?>
+  <?php include ADMIN_PATH . '/views/dashboard/tracking-widget.php'; ?>
   
 
   <!-- ── Stats cards ──────────────────────────────────────── -->

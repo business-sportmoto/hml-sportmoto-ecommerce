@@ -82,8 +82,13 @@ final class ClickCaptureService
                          $utmSource, $utmMedium, $utmCampaign);
 
         } catch (\Throwable $e) {
-            // captura NUNCA quebra a navegação
-            error_log('[ClickCapture] ' . $e->getMessage());
+            // captura NUNCA quebra a navegação.
+            // warning e não error: perder uma captura degrada o match
+            // quality do clique, mas não perde conversão — o Purchase
+            // nasce do pedido no servidor, independente disto.
+            LogService::exception($e, 'warning', 'tracking', [
+                'origem' => 'ClickCaptureService::capturar',
+            ]);
         }
     }
 
@@ -136,7 +141,9 @@ final class ClickCaptureService
                 'click_id'     => $r['gclid'] ?: ($r['fbclid'] ?: null),
             ];
         } catch (\Throwable $e) {
-            error_log('[ClickCapture] atribuicaoAtual: ' . $e->getMessage());
+            LogService::exception($e, 'warning', 'tracking', [
+                'origem' => 'ClickCaptureService::atribuicaoAtual',
+            ]);
             return $vazio;
         }
     }

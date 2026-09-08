@@ -85,6 +85,17 @@ final class PagamentoClassificacao
     /** Cancelamento aceito porém ainda em processamento na adquirente (D+N). */
     public bool $cancelamentoPendente = false;
 
+    /**
+     * Quantas chamadas foram feitas à adquirente até chegar neste resultado.
+     *
+     * 1 = passou de primeira. Maior que 1 = houve retentativa por
+     * indisponibilidade transitória. Gravado para que o dashboard mostre a
+     * instabilidade REAL da adquirente: sem isto, um retry silencioso faz
+     * três falhas parecerem uma só, e a operação nunca descobre que o
+     * parceiro está caindo.
+     */
+    public int $tentativasAdquirente = 1;
+
     // ── 3-D Secure ──────────────────────────────────────────────────────────
     /**
      * RESULTADO DO 3DS, NÃO O PROTOCOLO DELE.

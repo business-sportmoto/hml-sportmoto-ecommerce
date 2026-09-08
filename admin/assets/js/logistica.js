@@ -325,25 +325,130 @@
         }).join('');
     }
 
-    function camposCredencial(adapter, preenchida) {
+    /* ---------------------------------------------------- credenciais
+
+       Segredo já salvo NÃO nasce como input.
+
+       Em 08/09/2026 as duas senhas dos Correios foram substituídas pela senha
+       de login do painel: o Chrome ignora `autocomplete="off"` em campo
+       `type=password` e autopreencheu os dois. Chegaram não-vazias no POST e a
+       regra da época ("vazio mantém o salvo") deixou passar.
+
+       Agora o campo guardado é um chip com o botão "Alterar". Sem input não há
+       o que o gerenciador de senhas preencher — e quando o operador abre o
+       campo de propósito, o nome entra em config_alterar[], que é o que
+       autoriza o backend a gravar. Ausência passou a significar "mantém", e
+       isso não depende de o navegador se comportar.
+
+       O input aberto é type=text mascarado por CSS, não type=password, para
+       não acordar o gerenciador de senhas. O olho revela — ver o que se digita
+       é metade de não errar.                                                */
+
+    var ANTI_AUTOFILL =
+        ' autocomplete="new-password" autocorrect="off" autocapitalize="off"' +
+        ' spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore' +
+        ' data-form-type="other"';
+
+    function inputSecreto(nome, valor) {
+        return '<div class="log_secret_edit">' +
+            '<input type="text" class="log_input log_input--mascarado"' +
+                ' name="config[' + nome + ']" value="' + attr(valor || '') + '"' +
+                ANTI_AUTOFILL + '>' +
+            '<button type="button" class="log_btn log_btn--xs js-cred-ver"' +
+                ' aria-pressed="false">Mostrar</button>' +
+        '</div>';
+    }
+
+    /** Corpo do campo secreto conforme o estado: guardado | alterando | removendo. */
+    function corpoSecreto(c, estado) {
+        if (estado === 'alterando') {
+            return inputSecreto(c.nome, '') +
+                '<span class="log_secret_aviso">Vai substituir o valor salvo.' +
+                ' <button type="button" class="log_link js-cred-cancelar">Cancelar</button></span>';
+        }
+        // .log_field é coluna flex: sem esta linha própria o chip e os botões
+        // viram três blocos empilhados na largura toda.
+        if (estado === 'removendo') {
+            return '<div class="log_secret_acoes">' +
+                '<span class="log_secret_chip is-remover">Será apagado ao salvar</span>' +
+                '<button type="button" class="log_btn log_btn--xs js-cred-desfazer">Desfazer</button>' +
+            '</div>';
+        }
+        return '<div class="log_secret_acoes">' +
+            '<span class="log_secret_chip is-salvo">' +
+                '<svg class="log_ico" aria-hidden="true" focusable="false"><use href="#i-check-circle"></use></svg>' +
+                'Salvo' +
+            '</span>' +
+            '<button type="button" class="log_btn log_btn--xs js-cred-alterar">Alterar</button>' +
+            (c.obrigatorio ? '' :
+                '<button type="button" class="log_btn log_btn--xs log_btn--danger js-cred-remover">Remover</button>') +
+        '</div>';
+    }
+
+    function campoHtml(c, temSalvo, valorTexto) {
+        var secreto = c.tipo === 'secret';
+        var col     = c.col === 'curta' ? ' log_field--curta' : (c.col === 'larga' ? ' log_field--larga' : '');
+        var ajuda   = c.ajuda ? '<span class="log_hint">' + esc(c.ajuda) + '</span>' : '';
+
+        var corpo;
+        if (!secreto) {
+            corpo = '<input type="text" class="log_input" name="config[' + c.nome + ']"' +
+                    ' value="' + attr(valorTexto || '') + '" autocomplete="off">';
+        } else if (temSalvo) {
+            corpo = corpoSecreto(c, 'guardado');
+        } else {
+            corpo = inputSecreto(c.nome, '');
+        }
+
+        return '<div class="log_field' + col + (secreto ? ' log_field--secreto' : '') + '"' +
+                ' id="fld-config-' + c.nome + '"' +
+                ' data-campo="' + attr(c.nome) + '"' +
+                ' data-secreto="' + (secreto ? 1 : 0) + '"' +
+                ' data-tem-salvo="' + (temSalvo ? 1 : 0) + '"' +
+                ' data-obrigatorio="' + (c.obrigatorio ? 1 : 0) + '">' +
+            '<label>' + esc(c.label) + (c.obrigatorio ? ' <span class="log_req">*</span>' : '') + '</label>' +
+            corpo + ajuda +
+        '</div>';
+    }
+
+    function camposCredencial(adapter, preenchida, cfg) {
         var campos = (CAT[adapter] && CAT[adapter].campos) || [];
+        var grupos = (CAT[adapter] && CAT[adapter].grupos) || {};
         preenchida = preenchida || {};
+        cfg = cfg || {};
+
         if (!campos.length) {
             return '<p class="log_muted">Este adapter não requer credenciais.</p>';
         }
-        return campos.map(function (c) {
-            var tipo = c.tipo === 'secret' ? 'password' : 'text';
-            var hint = '';
-            if (c.tipo === 'secret' && preenchida[c.nome]) {
-                hint = '<span class="log_secret_hint"><svg class="log_ico" aria-hidden="true" focusable="false"><use href="#i-check-circle"></use></svg> valor salvo — deixe em branco para manter</span>';
-            }
-            var ph = c.tipo === 'secret' && preenchida[c.nome] ? '••••••••' : '';
-            return '<div class="log_field" id="fld-config-' + c.nome + '">' +
-                '<label>' + esc(c.label) + (c.obrigatorio ? ' *' : '') + '</label>' +
-                '<input type="' + tipo + '" class="log_input" name="config[' + c.nome + ']" autocomplete="off" placeholder="' + ph + '">' +
-                hint +
+
+        // Sem grupos declarados, uma seção só e sem título. O wrapper .log_grupo
+        // vem junto porque é ele que carrega o grid de larguras (curta/larga).
+        if (!Object.keys(grupos).length) {
+            return '<div class="log_grupo"><div class="log_form_grid">' + campos.map(function (c) {
+                return campoHtml(c, !!preenchida[c.nome], cfg[c.nome]);
+            }).join('') + '</div></div>';
+        }
+
+        // Com grupos: uma seção por grupo, na ordem declarada no catálogo.
+        var ordem = Object.keys(grupos);
+        var soltos = campos.filter(function (c) { return ordem.indexOf(c.grupo) < 0; });
+        var html = ordem.map(function (g) {
+            var doGrupo = campos.filter(function (c) { return c.grupo === g; });
+            if (!doGrupo.length) { return ''; }
+            return '<div class="log_grupo">' +
+                '<h5 class="log_grupo_tit">' + esc(grupos[g]) + '</h5>' +
+                '<div class="log_form_grid">' + doGrupo.map(function (c) {
+                    return campoHtml(c, !!preenchida[c.nome], cfg[c.nome]);
+                }).join('') + '</div>' +
             '</div>';
         }).join('');
+
+        if (soltos.length) {
+            html += '<div class="log_grupo"><div class="log_form_grid">' +
+                soltos.map(function (c) { return campoHtml(c, !!preenchida[c.nome], cfg[c.nome]); }).join('') +
+            '</div></div>';
+        }
+        return html;
     }
 
     function servicoRow(s) {
@@ -401,7 +506,7 @@
             '</div>' +
 
             '<div class="log_fieldset"><h4>Credenciais</h4>' +
-                '<div class="log_form_grid" id="logCredenciais">' + camposCredencial(adapter, preenchida) + '</div>' +
+                '<div id="logCredenciais">' + camposCredencial(adapter, preenchida, cfg) + '</div>' +
             '</div>' +
 
             '<div class="log_fieldset"><h4>Origem e comercial</h4>' +
@@ -451,6 +556,20 @@
             if ($i.attr('type') === 'checkbox') { d[name] = $i.is(':checked') ? 1 : 0; return; }
             d[name] = $i.val();
         });
+
+        // Intenção explícita sobre cada segredo. O estado mora na classe do
+        // campo, não num input escondido — hidden que espelha estado é hidden
+        // que dessincroniza. Campo guardado não tem input, então nem aparece
+        // no laço acima: para o backend ele simplesmente não veio, e não veio
+        // significa "mantém o que está salvo".
+        d.config_alterar = [];
+        d.config_remover = [];
+        $b.find('.log_field[data-secreto="1"]').each(function () {
+            var $f = $(this), nome = String($f.data('campo') || '');
+            if (!nome) { return; }
+            if ($f.hasClass('is-alterando') || $f.data('tem-salvo') !== 1) { d.config_alterar.push(nome); }
+            if ($f.hasClass('is-removendo')) { d.config_remover.push(nome); }
+        });
         // Serviços (repeater) -> array
         d.servicos = [];
         $b.find('#logServicos .log_svc').each(function () {
@@ -474,12 +593,62 @@
         });
 
         // Troca de adapter -> recarrega credenciais + ambientes + descrição.
+        // Voltar ao adapter original restaura o que estava salvo; qualquer
+        // outro começa em branco, porque a credencial de um adapter não vale
+        // para outro.
+        var adapterOrig = (t && t.adapter) || null;
         drawer.escutar('change', '.js-adapter', function () {
             var $b = $(drawer.corpo());
             var adapter = $b.find('.js-adapter').val();
-            $b.find('#logCredenciais').html(camposCredencial(adapter, {})); // adapter novo: sem segredos salvos
+            var voltou  = adapter === adapterOrig;
+            $b.find('#logCredenciais').html(camposCredencial(
+                adapter,
+                voltou ? ((t && t.config_preenchida) || {}) : {},
+                voltou ? ((t && t.config) || {}) : {}
+            ));
             $b.find('.js-ambiente').html(opcoesAmbiente(adapter, $b.find('.js-ambiente').val()));
             $b.find('.js-adapter-desc').text((CAT[adapter] && CAT[adapter].descricao) || '');
+        });
+
+        /* -------- intenção sobre segredos -------- */
+
+        function trocarEstado($campo, estado) {
+            var nome = String($campo.data('campo') || '');
+            // O fallback lê data-obrigatorio do próprio campo: sem isso, um
+            // catálogo que não resolvesse ofereceria "Remover" num segredo
+            // obrigatório, que é o botão que não pode existir ali.
+            var c = ((CAT[$(drawer.corpo()).find('.js-adapter').val()] || {}).campos || [])
+                    .filter(function (x) { return x.nome === nome; })[0] ||
+                    { nome: nome, obrigatorio: $campo.data('obrigatorio') === 1 };
+            $campo.removeClass('is-alterando is-removendo')
+                  .addClass(estado === 'guardado' ? '' : 'is-' + estado);
+            $campo.find('.log_secret_edit, .log_secret_acoes, .log_secret_aviso').remove();
+            $campo.find('label').after(corpoSecreto(c, estado));
+            if (estado === 'alterando') { $campo.find('input').trigger('focus'); }
+        }
+
+        drawer.escutar('click', '.js-cred-alterar', function (ev) {
+            trocarEstado($(ev.target).closest('.log_field'), 'alterando');
+        });
+        drawer.escutar('click', '.js-cred-cancelar', function (ev) {
+            trocarEstado($(ev.target).closest('.log_field'), 'guardado');
+        });
+        drawer.escutar('click', '.js-cred-remover', function (ev) {
+            trocarEstado($(ev.target).closest('.log_field'), 'removendo');
+        });
+        drawer.escutar('click', '.js-cred-desfazer', function (ev) {
+            trocarEstado($(ev.target).closest('.log_field'), 'guardado');
+        });
+
+        // Olho: revela o que está sendo digitado. Ver o valor é metade de não
+        // errar — e o campo só existe depois de um clique deliberado.
+        drawer.escutar('click', '.js-cred-ver', function (ev) {
+            var $btn = $(ev.target).closest('.js-cred-ver');
+            var $inp = $btn.closest('.log_secret_edit').find('input');
+            var oculto = $inp.hasClass('log_input--mascarado');
+            $inp.toggleClass('log_input--mascarado', !oculto);
+            $btn.text(oculto ? 'Ocultar' : 'Mostrar')
+                .attr('aria-pressed', oculto ? 'true' : 'false');
         });
         drawer.escutar('click', '.js-svc-add', function () {
             $(drawer.corpo()).find('#logServicos').append(servicoRow({ habilitado: 1 }));

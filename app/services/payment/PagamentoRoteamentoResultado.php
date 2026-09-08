@@ -107,17 +107,47 @@ final class PagamentoRoteamentoResultado
         return $this->classificacao?->tresDsDesafioUrl;
     }
 
-    /** Resumo para log e dashboard. */
+    /**
+     * Resumo para log e dashboard.
+     *
+     * Traz o desfecho do FLUXO e o erro da ADQUIRENTE juntos. Sem a segunda
+     * metade, "porta_final: erro_tecnico" não diz nada acionável: não dá para
+     * saber se foi payload inválido, credencial, adquirente fora do ar ou
+     * emissão recusada — que exigem correções completamente diferentes.
+     *
+     * O `trace_key` é o identificador que o suporte da Safra pede em
+     * investigação; jogá-lo fora obriga a reproduzir o erro para pedir ajuda.
+     *
+     * `detalhe_adquirente` é mensagem do gateway, nunca dado do comprador —
+     * PAN e CVV já foram redigidos no adapter antes de chegar aqui.
+     */
     public function resumo(): array
     {
-        return [
+        $c = $this->classificacao;
+
+        $base = [
             'ok'          => $this->ok,
             'motivo'      => $this->motivo,
             'adquirente'  => $this->adquirenteUsada,
             'tentativas'  => $this->tentativas,
             'fluxo'       => $this->fluxoId . 'v' . $this->fluxoVersao,
             'caminho'     => implode(' > ', $this->caminho),
-            'porta_final' => $this->classificacao?->porta,
+            'porta_final' => $c?->porta,
         ];
+
+        if ($c === null) {
+            return $base;
+        }
+
+        return $base + array_filter([
+            'classe_erro'        => $c->classeErro,
+            'detalhe_adquirente' => $c->mensagemAdquirente,
+            'http'               => $c->httpStatus,
+            'trace_key'          => $c->traceKey,
+            'chamadas_adquirente'=> $c->tentativasAdquirente > 1 ? $c->tentativasAdquirente : null,
+            'codigo_abecs'       => $c->codigoAdquirente,
+            'mac'                => $c->merchantAdviceCode,
+            'duracao_ms'         => $c->duracaoMs ?: null,
+        ], static fn($v): bool => $v !== null && $v !== '');
     }
 }

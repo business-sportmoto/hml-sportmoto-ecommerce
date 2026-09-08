@@ -156,6 +156,57 @@ muda esse estado chama o método.
 
 ---
 
+## Segredo em formulário: ausente ≠ vazio
+
+**O Chrome ignora `autocomplete="off"` em campo `type="password"`.** É
+deliberado desde 2014, para não atrapalhar gerenciador de senha. O navegador
+preenche com a senha que ele tem guardada **para o domínio** — no painel, a
+senha de login do próprio admin.
+
+Em 08/09/2026 isso substituiu as duas credenciais dos Correios
+(`codigo_acesso` e `reversa_ws_senha`) pela senha do painel. O formulário
+guardava segredo com a regra "campo vazio mantém o que está salvo" — e o valor
+autopreenchido **não chega vazio**. Passou pela regra, gravou por cima, e não
+houve erro, aviso nem como recuperar o valor anterior.
+
+**A regra certa é ausente = mantém, não vazio = mantém.**
+
+- Segredo já salvo **não vira input**. Vira um chip "Salvo" com um botão
+  "Alterar". Sem campo na tela, não há o que autopreencher.
+- Ao clicar em Alterar, o nome do campo entra numa lista explícita
+  (`config_alterar[]`) que o backend exige para gravar. Segredo que chega sem
+  estar declarado é **ignorado**, não gravado.
+- O input que nasce é `type="text"` mascarado por CSS
+  (`-webkit-text-security: disc`), com botão Mostrar/Ocultar. Não é
+  `type="password"` justamente para o gerenciador de senha não se interessar.
+  `autocomplete="new-password"`, `data-lpignore`, `data-1p-ignore` ajudam, mas
+  são reforço — a garantia é não existir o campo.
+- Para apagar de fato, lista própria (`config_remover[]`). Intenção explícita
+  nos dois sentidos.
+
+Implementação de referência: `TransportadoraAdminService::mesclarConfig()` e
+`camposCredencial()` em `admin/assets/js/logistica.js`.
+
+## Campo que o formulário não repovoa é campo que ele apaga
+
+O mesmo formulário renderizava os campos **de texto** sem `value`. Na edição
+eles nasciam vazios, e como texto vazio é gravado normalmente, salvar sem
+tocar em nada limpava 18 campos de configuração de uma vez.
+
+Formulário de edição que não carrega o valor atual não é "incompleto": ele é
+**destrutivo**. Se o campo entra no POST, ele precisa entrar preenchido.
+
+## Chave interna de adapter não viaja para o navegador
+
+Adapter que cacheia credencial na própria config (o `CorreiosAdapter` grava
+`_token` e `_token_exp`, um bearer JWT vivo) cria uma chave que **não está no
+catálogo** — então nenhuma redação baseada em "campos secret" a cobre, e ela
+saía em texto puro no JSON de `/obter` e `/dados`.
+
+Convenção: prefixo `_` marca chave interna. `TransportadoraManager::ehCampoInterno()`
+é o teste; a redação remove essas chaves na leitura e a mesclagem as ignora na
+escrita, para o formulário nunca sobrescrever cache do adapter.
+
 ## Fim de linha
 
 Os arquivos **variam** entre CRLF e LF, inclusive dentro da mesma pasta. Detecte

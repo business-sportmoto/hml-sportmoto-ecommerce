@@ -207,7 +207,13 @@ final class ConversionService
                 json_encode($payload, JSON_UNESCAPED_UNICODE),
             ]);
         } catch (\Throwable $e) {
-            error_log('[Conversion] falha ao gravar evento: ' . $e->getMessage());
+            // Falha aqui = o evento nunca entrou no ledger. Não há retry
+            // possível depois: a fila só reprocessa o que foi gravado.
+            LogService::exception($e, 'error', 'tracking', [
+                'origem'     => 'ConversionService::registrar',
+                'event_name' => $eventName,
+                'event_id'   => $eventId ?? null,
+            ]);
         }
     }
 

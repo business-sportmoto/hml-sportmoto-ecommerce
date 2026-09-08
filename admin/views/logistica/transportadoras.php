@@ -145,5 +145,10 @@ $ambBadge = static function (string $a): array {
 
 <script>
     window.LOG_TRANSP_BASE = '/admin/logistica/transportadoras';
-    window.LOG_CATALOGO    = <?= json_encode($catalogo ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+    // Os JSON_HEX_* impedem que um rótulo ou texto de ajuda feche a tag
+    // <script>. Sem eles, um "</script>" ou um & no catálogo derruba o bloco
+    // inteiro — e a tela abre sem catálogo nenhum, sem erro no PHP.
+    window.LOG_CATALOGO    = <?= json_encode($catalogo ?? [],
+        JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 </script>

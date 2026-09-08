@@ -140,11 +140,13 @@ class TransportadoraAdminService
             return ['ok' => false, 'erro' => 'Transportadora não encontrada.'];
         }
 
-        // Monta config preservando segredos em branco.
+        // Monta config preservando segredos não declarados.
         $configFinal = $this->mesclarConfig(
             $existente['config'] ?? null,
             $dados['config'] ?? [],
-            $adapter
+            $adapter,
+            (array)($dados['config_alterar'] ?? []),
+            (array)($dados['config_remover'] ?? [])
         );
 
         $campos = [
@@ -367,28 +369,69 @@ class TransportadoraAdminService
         }
     }
 
-    /** Mescla config nova sobre a existente, preservando segredos em branco. */
-    private function mesclarConfig($existenteJson, array $nova, string $adapter): array
-    {
+    /**
+     * Mescla config nova sobre a existente.
+     *
+     * Segredo só é gravado quando o formulário DECLARA a intenção de trocá-lo
+     * (`config_alterar[]`). Antes bastava chegar não-vazio, e isso custou caro:
+     * o Chrome ignora `autocomplete="off"` em campo `type=password` e
+     * autopreencheu as duas senhas dos Correios com a senha de login do painel.
+     * Elas chegaram não-vazias, passaram pela regra antiga e substituíram as
+     * credenciais reais — sem erro, sem aviso, e sem como recuperar o valor.
+     *
+     * "Ausente = mantém" é uma garantia estrutural; "vazio = mantém" dependia
+     * de o navegador se comportar. Para apagar de fato, o formulário manda o
+     * nome em `config_remover[]` — intenção explícita nos dois sentidos.
+     *
+     * Chave interna do adapter (`_token`) nunca vem do formulário e sobrevive
+     * porque a mesclagem é sobre a config existente, não uma substituição.
+     */
+    private function mesclarConfig(
+        $existenteJson,
+        array $nova,
+        string $adapter,
+        array $alterar = [],
+        array $remover = []
+    ): array {
         $existente = is_array($existenteJson) ? $existenteJson : (json_decode((string)$existenteJson, true) ?: []);
-        $secretos = TransportadoraManager::camposSecretos($adapter);
+        $secretos  = TransportadoraManager::camposSecretos($adapter);
+        $declarado = array_flip(array_map('strval', $alterar));
 
         foreach ($nova as $k => $v) {
-            $isSecret = in_array($k, $secretos, true);
-            if ($isSecret && trim((string)$v) === '') {
-                continue; // mantém o segredo já salvo
+            if (TransportadoraManager::ehCampoInterno((string)$k)) {
+                continue; // formulário não mexe em cache do adapter
+            }
+            if (in_array($k, $secretos, true)) {
+                if (!isset($declarado[$k]))   continue; // não declarado -> mantém o salvo
+                if (trim((string)$v) === '')  continue; // declarado e vazio -> mantém (use config_remover)
             }
             $existente[$k] = $v;
         }
+
+        foreach ($remover as $k) {
+            $k = (string)$k;
+            if (in_array($k, $secretos, true)) $existente[$k] = '';
+        }
+
         return $existente;
     }
 
-    /** Substitui valores de segredos por máscara antes de exibir. */
+    /**
+     * Substitui valores sensíveis por máscara antes de exibir.
+     *
+     * Cobre os campos 'secret' do catálogo E as chaves internas do adapter:
+     * `_token` é um bearer JWT vivo dos Correios e estava sendo enviado em
+     * texto puro para o navegador em /obter e /dados. Ele não some do banco —
+     * só não viaja.
+     */
     private function redigirConfig($configJson, string $adapter): array
     {
         $cfg = is_array($configJson) ? $configJson : (json_decode((string)$configJson, true) ?: []);
         foreach (TransportadoraManager::camposSecretos($adapter) as $campo) {
             if (!empty($cfg[$campo])) $cfg[$campo] = '';
+        }
+        foreach (array_keys($cfg) as $chave) {
+            if (TransportadoraManager::ehCampoInterno((string)$chave)) unset($cfg[$chave]);
         }
         return $cfg;
     }

@@ -2346,3 +2346,145 @@ box-shadow:none
 .log_pdf_open:hover, .log_pdf_x:hover { background: rgba(37, 99, 235, .08); }
 .log_pdf_frame { flex: 1 1 auto; width: 100%; border: 0; background: #525659; }
 @media (prefers-color-scheme: dark) { html:not([data-theme="light"]) .log_pdf_box { background: var(--log-surface, #1f2937); } }
+
+/* ── Credenciais de transportadora ─────────────────────────────────────────
+   Grid de 4 colunas dentro de cada grupo: campo normal ocupa 2, "curta"
+   (UF, nº, hora de corte) ocupa 1 e "larga" (URL, faixas de CEP) ocupa a
+   linha. Um CEP num campo da largura de um logradouro convida ao erro. */
+
+.log_grupo + .log_grupo {
+margin-top:16px;
+padding-top:14px;
+border-top:1px dashed var(--log-border)
+}
+
+.log_grupo_tit {
+margin:0 0 10px;
+font-size:11.5px;
+font-weight:640;
+letter-spacing:.02em;
+color:var(--log-ink-2)
+}
+
+.log_grupo .log_form_grid {
+grid-template-columns:repeat(4,minmax(0,1fr))
+}
+
+.log_grupo .log_field {
+grid-column:span 2
+}
+
+.log_grupo .log_field--curta {
+grid-column:span 1
+}
+
+.log_grupo .log_field--larga {
+grid-column:1 / -1
+}
+
+.log_req {
+color:var(--log-danger);
+font-weight:700
+}
+
+.log_hint {
+display:block;
+margin-top:4px;
+font-size:11px;
+line-height:1.35;
+color:var(--log-ink-2)
+}
+
+/* ── Campo secreto ─────────────────────────────────────────────────────────
+   O input aberto é type=text mascarado aqui, e não type=password, porque o
+   Chrome ignora autocomplete="off" em campo de senha e autopreenche com a
+   senha salva do domínio — foi assim que a senha do painel substituiu a
+   credencial dos Correios. Sem type=password o gerenciador não se interessa.
+   Firefox < 119 não suporta -webkit-text-security e mostra o texto: aceitável,
+   já que o campo só existe depois de um clique deliberado em "Alterar" e
+   existe o botão Mostrar/Ocultar ao lado. */
+
+.log_input--mascarado {
+-webkit-text-security:disc;
+text-security:disc;
+font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+letter-spacing:.08em
+}
+
+.log_secret_edit {
+display:flex;
+align-items:center;
+gap:6px
+}
+
+.log_secret_edit .log_input {
+flex:1;
+min-width:0
+}
+
+.log_secret_chip {
+display:inline-flex;
+align-items:center;
+gap:5px;
+padding:5px 9px;
+border-radius:999px;
+font-size:11.5px;
+font-weight:560;
+line-height:1
+}
+
+.log_secret_chip.is-salvo {
+color:var(--log-ok);
+background:var(--log-ok-soft)
+}
+
+.log_secret_chip.is-remover {
+color:var(--log-danger);
+background:var(--log-danger-soft)
+}
+
+.log_secret_acoes {
+display:flex;
+align-items:center;
+flex-wrap:wrap;
+gap:6px;
+min-height:34px
+}
+
+.log_field--secreto.is-alterando {
+padding:8px;
+margin:-8px;
+border-radius:var(--log-radius-sm);
+background:var(--log-brand-soft)
+}
+
+.log_secret_aviso {
+display:block;
+margin-top:5px;
+font-size:11px;
+color:var(--log-ink-2)
+}
+
+.log_link {
+padding:0;
+border:0;
+background:none;
+font:inherit;
+color:var(--log-brand);
+cursor:pointer;
+text-decoration:underline
+}
+
+@media (max-width: 760px) {
+.log_grupo .log_form_grid {
+grid-template-columns:repeat(2,minmax(0,1fr))
+}
+
+.log_grupo .log_field {
+grid-column:1 / -1
+}
+
+.log_grupo .log_field--curta {
+grid-column:span 1
+}
+}

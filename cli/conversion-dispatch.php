@@ -37,7 +37,13 @@ try {
         $resumo['msg'] ?? ''
     );
 } catch (\Throwable $e) {
-    error_log('[conversion-dispatch] ' . $e->getMessage());
+    // critical: se o runner morre, a fila inteira para de escoar e
+    // nenhum evento chega na Meta até alguém perceber. O echo abaixo
+    // continua indo pro log do cron; o LogService é o que torna a
+    // falha visível de dentro do sistema (dashboard/alerta).
+    LogService::exception($e, 'critical', 'tracking', [
+        'origem' => 'cli/conversion-dispatch.php',
+    ]);
     echo '[ERRO] ' . $e->getMessage() . "\n";
     exit(1);
 }
