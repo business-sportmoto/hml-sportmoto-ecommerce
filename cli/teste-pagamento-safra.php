@@ -106,6 +106,17 @@ function diagnostico(): void
         printf("  origem das credenciais = ERRO: %s
 ", $e->getMessage());
     }
+    // Janela do simulador: fora dela, cobranca falha com errorCode 10 mesmo
+    // com a autenticacao devolvendo 200. E a causa mais comum de "parou de
+    // funcionar" em homologacao.
+    if (class_exists('SafraPayAdapter')) {
+        $dentro = SafraPayAdapter::dentroDaJanelaSimulador();
+        $hora   = (new DateTimeImmutable('now', new DateTimeZone('America/Sao_Paulo')))->format('H:i');
+        printf("  janela do simulador    = %s (agora %s Brasilia, atende 09:30-17:30)
+",
+            $dentro ? 'ABERTA' : 'FECHADA  <<< cobrancas vao falhar com errorCode 10',
+            $hora);
+    }
     printf("  PHP                    = %s | curl = %s
 ", PHP_VERSION,
         (curl_version()['version'] ?? '?'));

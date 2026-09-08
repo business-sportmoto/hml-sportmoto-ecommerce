@@ -86,22 +86,20 @@ final class MetaCapiAdapter implements ConversionAdapter
     {
         $ud = [];
 
-        // external_id: id do cliente, hasheado, estável por pessoa
+        // PII hasheada — MESMA fonte que o Advanced Matching do Pixel
+        // usa no navegador (ConversionService::piiHasheada). Os hashes
+        // TÊM que ser idênticos nos dois lados, senão a Meta não casa
+        // os sinais da mesma pessoa e ninguém avisa que falhou.
         if (!empty($evento['cliente_id'])) {
-            $ext = HashingService::externalId((int)$evento['cliente_id']);
-            if ($ext) $ud['external_id'] = $ext;
+            $pii = ConversionService::piiHasheada((int)$evento['cliente_id']);
 
-            // Busca PII do cliente pra hashear (email, telefone, nome)
-            $pii = $this->buscarPiiCliente((int)$evento['cliente_id']);
-            if ($pii) {
-                if (!empty($pii['em'])) $ud['em'] = [$pii['em']];
-                if (!empty($pii['ph'])) $ud['ph'] = [$pii['ph']];
-                if (!empty($pii['fn'])) $ud['fn'] = [$pii['fn']];
-                if (!empty($pii['ln'])) $ud['ln'] = [$pii['ln']];
-                if (!empty($pii['ct'])) $ud['ct'] = [$pii['ct']];
-                if (!empty($pii['st'])) $ud['st'] = [$pii['st']];
-                if (!empty($pii['zp'])) $ud['zp'] = [$pii['zp']];
-                $ud['country'] = [HashingService::country('BR')];
+            // O CAPI quer cada campo em array; o Pixel quer escalar.
+            // A diferença é só o envelope — o valor é bit a bit igual.
+            foreach (['em','ph','fn','ln','ct','st','zp','country'] as $k) {
+                if (!empty($pii[$k])) $ud[$k] = [$pii[$k]];
+            }
+            if (!empty($pii['external_id'])) {
+                $ud['external_id'] = $pii['external_id'];
             }
         }
 
@@ -127,43 +125,6 @@ final class MetaCapiAdapter implements ConversionAdapter
             }
         }
         return $cd;
-    }
-
-    /** Busca e hasheia a PII do cliente (uma query, no envio). */
-    private function buscarPiiCliente(int $clienteId): ?array
-    {
-        try {
-            $db = Database::getInstance()->getConnection();
-            $st = $db->prepare(
-                "SELECT u.nome, u.email, c.telefone,
-                        e.cidade, e.estado, e.cep
-                 FROM clientes c
-                 JOIN usuarios u ON u.id = c.usuario_id
-                 LEFT JOIN enderecos e ON e.cliente_id = c.id AND e.principal = 1
-                 WHERE c.id = ? LIMIT 1"
-            );
-            $st->execute([$clienteId]);
-            $r = $st->fetch();
-            if (!$r) return null;
-
-            // Separa nome em primeiro/último
-            $nome = trim((string)($r['nome'] ?? ''));
-            $partes = preg_split('/\s+/', $nome);
-            $primeiro = $partes[0] ?? '';
-            $ultimo   = count($partes) > 1 ? end($partes) : '';
-
-            return [
-                'em' => HashingService::email($r['email'] ?? null),
-                'ph' => HashingService::phone($r['telefone'] ?? null),
-                'fn' => HashingService::name($primeiro),
-                'ln' => HashingService::name($ultimo),
-                'ct' => HashingService::name($r['cidade'] ?? null),
-                'st' => HashingService::name($r['estado'] ?? null),
-                'zp' => HashingService::zip($r['cep'] ?? null),
-            ];
-        } catch (\Throwable $e) {
-            return null; // sem PII, envia só com o que tem
-        }
     }
 
     /** Busca fbc/fbp mais recentes do visitante (tracking_clicks). */

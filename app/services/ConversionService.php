@@ -165,6 +165,71 @@ final class ConversionService
         return $this->ultimoEventId;
     }
 
+    /**
+     * PII do cliente já normalizada e hasheada (SHA-256), no formato
+     * que Meta espera — chaves em/ph/fn/ln/ct/st/zp/country/external_id.
+     *
+     * FONTE ÚNICA DE PROPÓSITO. Consomem daqui:
+     *   - MetaCapiAdapter (servidor), que embrulha cada valor em array;
+     *   - Advanced Matching do Pixel (navegador), que usa escalar.
+     *
+     * Os dois lados PRECISAM produzir o hash idêntico para a mesma
+     * pessoa; se a normalização divergir por uma letra, os hashes não
+     * casam, o match não acontece e nenhuma plataforma avisa. Por isso
+     * a regra mora aqui, e não copiada em cada consumidor.
+     *
+     * Valores nulos são omitidos — sha256('') é lixo que derruba a
+     * qualidade em vez de somar (ver HashingService).
+     *
+     * @return array<string,string> vazio se não houver cliente/registro
+     */
+    public static function piiHasheada(int $clienteId): array
+    {
+        if ($clienteId <= 0) return [];
+
+        try {
+            $db = Database::getInstance()->getConnection();
+            $st = $db->prepare(
+                "SELECT u.nome, u.email, c.telefone,
+                        e.cidade, e.estado, e.cep
+                 FROM clientes c
+                 JOIN usuarios u ON u.id = c.usuario_id
+                 LEFT JOIN enderecos e ON e.cliente_id = c.id AND e.principal = 1
+                 WHERE c.id = ? LIMIT 1"
+            );
+            $st->execute([$clienteId]);
+            $r = $st->fetch();
+            if (!$r) return [];
+
+            // Nome -> primeiro / último (mesma regra dos dois lados)
+            $nome     = trim((string)($r['nome'] ?? ''));
+            $partes   = preg_split('/\s+/', $nome) ?: [];
+            $primeiro = $partes[0] ?? '';
+            $ultimo   = count($partes) > 1 ? end($partes) : '';
+
+            $pii = [
+                'external_id' => HashingService::externalId($clienteId),
+                'em'          => HashingService::email($r['email'] ?? null),
+                'ph'          => HashingService::phone($r['telefone'] ?? null),
+                'fn'          => HashingService::name($primeiro),
+                'ln'          => HashingService::name($ultimo),
+                'ct'          => HashingService::name($r['cidade'] ?? null),
+                'st'          => HashingService::name($r['estado'] ?? null),
+                'zp'          => HashingService::zip($r['cep'] ?? null),
+                'country'     => HashingService::country('BR'),
+            ];
+
+            return array_filter($pii, static fn($v) => $v !== null && $v !== '');
+
+        } catch (\Throwable $e) {
+            LogService::exception($e, 'warning', 'tracking', [
+                'origem'     => 'ConversionService::piiHasheada',
+                'cliente_id' => $clienteId,
+            ]);
+            return []; // sem PII o evento ainda vale; só perde match
+        }
+    }
+
     // ══════════════════════════════════════════════════
     // NÚCLEO
     // ══════════════════════════════════════════════════

@@ -45,7 +45,22 @@
       s.parentNode.insertBefore(t,s)}(window,document,'script',
       'https://connect.facebook.net/en_US/fbevents.js');
 
-    fbq('init', window.META_PIXEL_ID);
+    // Advanced Matching: window.SM_AM vem do partial
+    // pixel-advanced-matching.php com a PII do cliente logado JÁ em
+    // SHA-256 — os mesmos hashes que o CAPI manda, para a Meta casar
+    // os dois lados. O partial só publica com consentimento de
+    // marketing, então aqui não há gate extra a fazer.
+    //
+    // Valores hasheados são entregues como estão: o fbevents.js
+    // reconhece SHA-256 (64 hex) e NÃO hasheia de novo — hash de hash
+    // não casaria com nada.
+    var am = window.SM_AM;
+    if (am && typeof am === 'object' && Object.keys(am).length > 0) {
+      fbq('init', window.META_PIXEL_ID, am);
+    } else {
+      fbq('init', window.META_PIXEL_ID);
+    }
+
     pixelCarregado = true;
     return true;
   }

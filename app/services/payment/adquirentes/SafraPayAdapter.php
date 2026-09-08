@@ -423,7 +423,59 @@ class SafraPayAdapter implements AdquirenteInterface
             ], 'pagamento');
         }
 
+        return $this->anotarJanelaSimulador($c);
+    }
+
+    /**
+     * Em homologação, avisa quando a falha coincide com o simulador fechado.
+     *
+     * O ambiente de certificação da Safra só responde das 09:30 às 17:30
+     * (Brasília). Fora disso a AUTENTICAÇÃO continua devolvendo 200 — é outro
+     * serviço — mas qualquer cobrança volta errorCode 10 (UnreachableAcquirer).
+     *
+     * Sem esta anotação o sintoma é indistinguível de uma queda real: já
+     * custou uma investigação inteira, com hipóteses de IP, credencial e
+     * diferença entre CLI e checkout, para no fim ser só o relógio.
+     *
+     * SÓ em hml. Em produção não existe janela, e sugerir isso mascararia
+     * uma indisponibilidade de verdade.
+     */
+    private function anotarJanelaSimulador(PagamentoClassificacao $c): PagamentoClassificacao
+    {
+        if ($c->classeErro !== 'adquirente_inalcancavel' || $this->client->ambiente() !== 'hml') {
+            return $c;
+        }
+        if (self::dentroDaJanelaSimulador()) {
+            return $c;
+        }
+
+        $c->classeErro         = 'simulador_fora_da_janela';
+        $c->mensagemAdquirente = ($c->mensagemAdquirente ?? '')
+            . ' | HOMOLOGACAO: simulador da Safra atende 09:30-17:30 (Brasilia); agora sao '
+            . self::agoraBrasilia()->format('H:i') . '. Provavel causa da falha.';
+
+        LogService::warning('Safra HML fora da janela do simulador (09:30-17:30)', [
+            'hora_brasilia' => self::agoraBrasilia()->format('H:i'),
+            'trace_key'     => $c->traceKey,
+        ], 'pagamento');
+
         return $c;
+    }
+
+    public static function dentroDaJanelaSimulador(): bool
+    {
+        $agora = self::agoraBrasilia();
+        $dow   = (int) $agora->format('N');          // 1=seg … 7=dom
+        $min   = ((int) $agora->format('H')) * 60 + (int) $agora->format('i');
+
+        // Fim de semana não é documentado como exceção, então não é tratado
+        // como fora da janela — só o horário, que a doc afirma.
+        return $dow >= 1 && $min >= 570 && $min <= 1050;   // 09:30 … 17:30
+    }
+
+    private static function agoraBrasilia(): DateTimeImmutable
+    {
+        return new DateTimeImmutable('now', new DateTimeZone('America/Sao_Paulo'));
     }
 
     /** Só indisponibilidade transitória e inequívoca. */
