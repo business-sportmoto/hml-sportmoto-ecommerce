@@ -30,7 +30,12 @@ class EmailService {
     /**
      * Notifica o cliente sobre mudança de status do pedido.
      */
-    public function statusPedido(array $pedido, string $novoStatus, ?string $observacao = null): bool {
+    public function statusPedido(
+        array   $pedido,
+        string  $novoStatus,
+        ?string $observacao = null,
+        ?int    $templateId = null
+    ): bool {
         $statusLabels = [
             'aguardando_pagamento' => 'Aguardando pagamento',
             'pagamento_aprovado'   => 'Pagamento aprovado',
@@ -43,9 +48,79 @@ class EmailService {
 
         $statusLabel = $statusLabels[$novoStatus] ?? $novoStatus;
         $assunto     = "Pedido #{$pedido['codigo']} — {$statusLabel}";
-        $corpo       = $this->templateStatusPedido($pedido, $novoStatus, $statusLabel, $observacao);
+        $corpo       = null;
 
-        return $this->enviar($pedido['cliente_email'], $assunto, $corpo);
+        // Template escolhido em /admin/configuracoes/status-pedidos. Se falhar
+        // por qualquer motivo — template apagado, arquivado, HTML quebrado —
+        // cai no embutido em vez de o cliente ficar sem aviso nenhum.
+        if ($templateId) {
+            try {
+                $st = Database::getInstance()->getConnection()->prepare(
+                    "SELECT assunto, html FROM email_templates WHERE id = ? AND status = 'ativo' LIMIT 1"
+                );
+                $st->execute([$templateId]);
+                $tpl = $st->fetch(\PDO::FETCH_ASSOC);
+
+                if ($tpl && trim((string)$tpl['html']) !== '') {
+                    $para = (string)($pedido['cliente_email'] ?? '');
+
+                    // Mesmas globais do EmailTransacionalService::enviar(). Os
+                    // templates saem do MESMO editor, então um feito para o
+                    // transacional precisa renderizar aqui sem buracos — foi
+                    // assim que `{{status_pedido}}` apareceu literal no teste.
+                    $vars = [
+                        'logo_url'    => BASE_URL . '/uploads' . ConfigHelper::get('site_logo'),
+                        'logo_loja'   => BASE_URL . '/uploads' . ConfigHelper::get('site_logo'),
+                        'site_nome'   => ConfigHelper::get('site_nome') ?: $this->siteNome,
+                        'site_url'    => ConfigHelper::get('site_url'),
+                        'ano'         => date('Y'),
+                        'data_atual'  => date('d/m/Y'),
+                        'cor_padrao'  => ConfigHelper::get('cor_padrao', '#000'),
+                        'empresa_endereco' => ConfigHelper::get('empresa_endereco'),
+                        'empresa_cnpj'     => ConfigHelper::get('empresa_cnpj'),
+                        'atendimento_url'  => BASE_URL . '/contato',
+                        'politica_privacidade_url' => BASE_URL . '/politica-de-privacidade',
+                        'descadastro_url' => BASE_URL . '/email/descadastrar/' . urlencode($para),
+                        'url_descadastro' => BASE_URL . '/email/descadastrar/' . urlencode($para),
+
+                        'nome'          => $pedido['cliente_nome']   ?? '',
+                        'primeiro_nome' => trim(explode(' ', (string)($pedido['cliente_nome'] ?? ''))[0]),
+                        'email'         => $para,
+
+                        'pedido_codigo' => $pedido['codigo']         ?? '',
+                        'pedido_id'     => $pedido['id']             ?? '',
+                        'pedido_total'  => 'R$ ' . number_format((float)($pedido['total'] ?? 0), 2, ',', '.'),
+                        'pedido_url'    => rtrim(BASE_URL, '/') . '/conta/pedidos/' . ($pedido['id'] ?? ''),
+                        'rastreio'      => $pedido['codigo_rastreio'] ?? '',
+
+                        // `status_pedido` e `observacao_pedido` são os nomes que
+                        // os templates existentes usam. Os curtos ficam como
+                        // apelido para quem escrever um template novo.
+                        'status_pedido'     => $statusLabel,
+                        'status'            => $statusLabel,
+                        'status_slug'       => $novoStatus,
+                        'observacao_pedido' => (string)$observacao,
+                        'observacao'        => (string)$observacao,
+                    ];
+
+                    $svc     = new EmailTemplateService();
+                    $corpo   = $svc->render($tpl['html'], $vars);
+                    $assunto = trim((string)$tpl['assunto']) !== ''
+                        ? $svc->renderInline($tpl['assunto'], $vars)
+                        : $assunto;
+                }
+            } catch (\Throwable $e) {
+                error_log("[EmailService] template #{$templateId} falhou, usando o embutido: " . $e->getMessage());
+                $corpo = null;
+            }
+        }
+
+        if ($corpo === null) {
+            $corpo = $this->templateStatusPedido($pedido, $novoStatus, $statusLabel, $observacao);
+        }
+
+        return $this->enviar($pedido['cliente_email'], $assunto, $corpo, 'status_pedido',
+            isset($pedido['cliente_id']) ? (int)$pedido['cliente_id'] : null);
     }
 
     /**

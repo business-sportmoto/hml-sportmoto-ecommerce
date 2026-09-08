@@ -279,6 +279,31 @@ $coresPossiveis = [
             <span class="toggle-slider"></span>
             <span>Notificar cliente por e-mail</span>
           </label>
+          <label class="toggle-field">
+            <input type="checkbox" id="sp-notifica-app" checked>
+            <span class="toggle-slider"></span>
+            <span>Notificar no app (sino)</span>
+          </label>
+        </div>
+
+        <?php // ── Template do e-mail ────────────────────────────────────
+              // Separado dos toggles porque e uma escolha, nao um liga/desliga. ?>
+        <div style="margin-top:14px;">
+          <label class="form-label-xs">Template do e-mail</label>
+          <select id="sp-email-template" class="form-control">
+            <option value="">Template padrao do sistema</option>
+            <?php foreach (($templates ?? []) as $t): ?>
+              <option value="<?= (int)$t['id'] ?>">
+                <?= htmlspecialchars($t['nome']) ?><?= !empty($t['assunto']) ? ' — ' . htmlspecialchars(mb_strimwidth($t['assunto'], 0, 48, '…')) : '' ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+          <p style="font-size:11.5px;color:var(--c-muted,#71717a);margin:6px 0 0;">
+            Deixe em "padrao do sistema" para usar o e-mail embutido.
+            Os templates vem de
+            <a href="<?= BASE_URL ?>/admin/email-marketing/templates" target="_blank">E-mail marketing &rarr; Templates</a>
+            e so aparecem aqui quando estao <b>ativos</b>.
+          </p>
         </div>
       </div>
 

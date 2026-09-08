@@ -177,7 +177,35 @@ class AdminPedidoService {
 
         if ($deveNotificar) {
             $pedido['cliente_email'] = $pedido['cliente_email'] ?? '';
-            $this->email->statusPedido($pedido, $novoStatus, $observacao);
+            $this->email->statusPedido(
+                $pedido, $novoStatus, $observacao,
+                !empty($statusDef['email_template_id']) ? (int)$statusDef['email_template_id'] : null
+            );
+        }
+
+        // ── Notificação in-app (o sino) ────────────────────────────────────
+        // Flag própria, e não a mesma do e-mail: os dois têm custo e tolerância
+        // diferentes, e é legítimo querer o sino sem o e-mail (ou o contrário).
+        //
+        // Fora de qualquer transação e sem poder derrubar a mudança de status:
+        // o NotificacaoService já engole as próprias exceções e devolve null,
+        // mas o try/catch aqui protege também o class_exists e o resto.
+        if (!empty($statusDef['notifica_app']) && !empty($pedido['cliente_id'])
+            && class_exists('NotificacaoService')) {
+            try {
+                $rotulo = $statusDef['label'] ?? $novoStatus;
+                NotificacaoService::criar([
+                    'categoria' => 'pedido',
+                    'tipo'      => 'pedido_' . $novoStatus,
+                    'titulo'    => "Pedido #{$pedido['codigo']} — {$rotulo}",
+                    'mensagem'  => trim((string)$observacao) !== ''
+                                 ? mb_strimwidth((string)$observacao, 0, 160, '…')
+                                 : 'Toque para ver os detalhes do pedido.',
+                    'url'       => '/conta/pedidos/' . (int)$pedido['id'],
+                ], [['tipo' => 'cliente', 'id' => (int)$pedido['cliente_id']]]);
+            } catch (\Throwable $e) {
+                error_log('[AdminPedidoService] notificacao in-app: ' . $e->getMessage());
+            }
         }
 
         // Monta avisos (retroação de status)

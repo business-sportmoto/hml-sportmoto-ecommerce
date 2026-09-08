@@ -100,8 +100,8 @@ class PedidoStatus {
             "INSERT INTO pedido_status
              (slug, label, cor, icone_key, padrao, ativo, ordenacao,
               estorna_estoque, cancela_cupom, bloqueia_edicao_itens, notifica_cliente,
-              classe_bi)
-             VALUES (?,?,?,?,0,?,?,?,?,?,?,?)"
+              email_template_id, notifica_app, classe_bi)
+             VALUES (?,?,?,?,0,?,?,?,?,?,?,?,?,?)"
         )->execute([
             $slug,
             trim($dados['label']),
@@ -113,6 +113,11 @@ class PedidoStatus {
             (int)($dados['cancela_cupom']          ?? 0),
             (int)($dados['bloqueia_edicao_itens']  ?? 1),
             (int)($dados['notifica_cliente']       ?? 1),
+            // Template vazio vira NULL, e não 0: a FK aponta para
+            // email_templates(id) e 0 não é um id válido. NULL significa
+            // "usa o template embutido no EmailService".
+            !empty($dados['email_template_id']) ? (int)$dados['email_template_id'] : null,
+            (int)($dados['notifica_app']           ?? 1),
             self::normalizarClasseBi($dados['classe_bi'] ?? null),
         ]);
 
@@ -156,6 +161,7 @@ class PedidoStatus {
                 cancela_cupom         = COALESCE(?, cancela_cupom),
                 bloqueia_edicao_itens = COALESCE(?, bloqueia_edicao_itens),
                 notifica_cliente      = COALESCE(?, notifica_cliente),
+                notifica_app          = COALESCE(?, notifica_app),
                 slug                  = COALESCE(?, slug),
                 classe_bi             = COALESCE(?, classe_bi)
              WHERE id = ?"
@@ -169,12 +175,25 @@ class PedidoStatus {
             isset($dados['cancela_cupom'])          ? (int)$dados['cancela_cupom']        : null,
             isset($dados['bloqueia_edicao_itens'])  ? (int)$dados['bloqueia_edicao_itens']: null,
             isset($dados['notifica_cliente'])       ? (int)$dados['notifica_cliente']     : null,
+            isset($dados['notifica_app'])           ? (int)$dados['notifica_app']         : null,
             $dados['slug'] ?? null,
             array_key_exists('classe_bi', $dados)
                 ? self::normalizarClasseBi($dados['classe_bi'])
                 : null,
             $id,
         ]);
+
+        // email_template_id fica FORA do COALESCE de propósito. Naquele
+        // padrão, NULL quer dizer "não mexe" — e aqui NULL é um valor legítimo
+        // ("voltar para o template embutido"), então não haveria como limpar a
+        // escolha depois de feita. Statement próprio, e só quando a chave veio.
+        if (array_key_exists('email_template_id', $dados)) {
+            $tid = $dados['email_template_id'];
+            $tid = (!$tid || (int)$tid <= 0) ? null : (int)$tid;
+            $this->db->prepare(
+                "UPDATE pedido_status SET email_template_id = ? WHERE id = ?"
+            )->execute([$tid, $id]);
+        }
 
         self::$cache = [];
         return true;

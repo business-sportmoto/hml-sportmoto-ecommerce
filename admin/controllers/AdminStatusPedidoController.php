@@ -19,7 +19,24 @@ class AdminStatusPedidoController extends Controller {
     // ── GET /admin/configuracoes/status-pedidos ───────────
     public function index(): void {
         $statusList = $this->model->getAll();
-        $this->render('config/status-pedidos', compact('statusList'), 'admin');
+
+        // Templates para o select de e-mail do status. Só os ativos: oferecer
+        // rascunho ou arquivado seria configurar um envio que falha depois.
+        $templates = [];
+        try {
+            $templates = Database::getInstance()->getConnection()->query(
+                "SELECT id, nome, assunto
+                   FROM email_templates
+                  WHERE status = 'ativo'
+                  ORDER BY nome ASC"
+            )->fetchAll(\PDO::FETCH_ASSOC);
+        } catch (\Throwable $e) {
+            // Sem a lista o select fica vazio e o status usa o template
+            // embutido — a tela continua utilizável.
+            error_log('[AdminStatusPedido] templates: ' . $e->getMessage());
+        }
+
+        $this->render('config/status-pedidos', compact('statusList', 'templates'), 'admin');
     }
 
     // ── POST /admin/configuracoes/status-pedidos/salvar ───
@@ -39,7 +56,17 @@ class AdminStatusPedidoController extends Controller {
             'cancela_cupom'         => (int)($_POST['cancela_cupom']                       ?? 0),
             'bloqueia_edicao_itens' => (int)($_POST['bloqueia_edicao_itens']               ?? 1),
             'notifica_cliente'      => (int)($_POST['notifica_cliente']                    ?? 1),
+            'notifica_app'          => (int)($_POST['notifica_app']                        ?? 1),
         ];
+
+        // Mesmo cuidado do classe_bi logo abaixo: só entra em $dados se veio no
+        // POST. Um form antigo, que não conhece o campo, apagaria a escolha de
+        // template em silêncio se aqui houvesse um default.
+        if (array_key_exists('email_template_id', $_POST)) {
+            $dados['email_template_id'] = $_POST['email_template_id'] !== ''
+                ? (int)$_POST['email_template_id']
+                : null;
+        }
 
         // classe_bi só entra em $dados se veio no POST. Se entrasse
         // sempre com um default, qualquer edição feita por um form

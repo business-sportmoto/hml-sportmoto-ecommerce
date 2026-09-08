@@ -81,6 +81,10 @@ $(function () {
           cancela_cupom:         $('#sp-cancela-cupom').is(':checked') ? 1 : 0,
           bloqueia_edicao_itens: $('#sp-bloqueia-edicao').is(':checked') ? 1 : 0,
           notifica_cliente:      $('#sp-notifica-cliente').is(':checked') ? 1 : 0,
+          notifica_app:          $('#sp-notifica-app').is(':checked') ? 1 : 0,
+          // String vazia = "template padrao do sistema". O controller converte
+          // para NULL, que e o que a coluna espera para cair no embutido.
+          email_template_id:     $('#sp-email-template').val() || '',
           classe_bi:             $('#sp-classe-bi').val() || 'pre_venda'
       };
 
@@ -140,6 +144,8 @@ $(function () {
       document.getElementById('sp-cancela-cupom').checked          = s ? !!s.cancela_cupom : false;
       document.getElementById('sp-bloqueia-edicao').checked        = s ? !!s.bloqueia_edicao_itens : true;
       document.getElementById('sp-notifica-cliente').checked       = s ? !!s.notifica_cliente : true;
+      document.getElementById('sp-notifica-app').checked           = s ? !!s.notifica_app : true;
+      document.getElementById('sp-email-template').value           = (s && s.email_template_id) ? String(s.email_template_id) : '';
       document.getElementById('sp-classe-bi').value = (s && s.classe_bi) ? s.classe_bi : 'pre_venda';
 
       // Slug
