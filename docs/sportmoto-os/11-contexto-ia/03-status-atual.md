@@ -239,8 +239,11 @@ do impasse do Mercado Pago.
   `layouts/minimal` não existem em `admin/views/`, então **toda negação de
   permissão em navegação normal, no painel inteiro, vira `RuntimeException`**.
 - **`storage/ia-worker.lock` versionado** no git.
-- **O pacote `admin/views/ia/completo/` está commitado dentro do webroot** do
-  painel.
+- ~~O pacote `admin/views/ia/completo/` commitado dentro do webroot~~ —
+  **resolvido em 08/09/2026** (commit `v22.1`). Eram 55 arquivos de código e
+  tela, sem `.env`, chave ou seed: uma varredura por segredo embutido no
+  conteúdo apagado não achou nada, então o que fica no histórico do git é só
+  código duplicado.
 - **Divergência com o `CLAUDE.md`:** a §4.8.1 diz que `gerente` e `vendedor`
   não existem no ENUM `admins.nivel`. **Já existem** — a `migration-cargos.sql`
   rodou no dev. O documento está desatualizado nesse ponto.

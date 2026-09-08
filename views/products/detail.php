@@ -257,38 +257,35 @@ function swatchTipo(array $membro, string $atributoSlug): string {
       <!-- ── INFO ── -->
       <div class="product-info" id="product-info">
 
-        <!-- Banner de compatibilidade (moto) -->
         <?php
-        if(Product::temBuscaMoto((int)$product['id'])):
-          $veiculoAtivo = $_SESSION['meu_veiculo'] ?? null;
-          if ($veiculoAtivo):
-              $svc          = new VeiculoService();
-              $ehCompativel = $svc->isProdutoCompativel((int)$product['id']);
-          ?>
-          <div class="prod-compat-banner <?= $ehCompativel ? 'is-compat' : 'is-nc' ?>" id="prod-compat-banner">
-            <?php if ($ehCompativel): ?>
-            <div class="prod-compat-icon prod-compat-icon--ok">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-            </div>
-            <div class="prod-compat-info">
-              <strong>Compatível com sua moto</strong>
-              <span><?= View::e($veiculoAtivo['label']) ?></span>
-            </div>
-            <?php else: ?>
-            <div class="prod-compat-icon prod-compat-icon--nc">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            </div>
-            <div class="prod-compat-info">
-              <strong>Compatibilidade não confirmada</strong>
-              <span>Não encontramos compatibilidade para <em><?= View::e($veiculoAtivo['label']) ?></em>.
-                <a href="#tab-compatibilidade" class="prod-compat-link">Ver motos compatíveis</a>
-              </span>
-            </div>
-            <?php endif; ?>
-            <button type="button" class="prod-compat-trocar" id="prod-compat-trocar">Trocar moto</button>
-          </div>
-          <?php endif; ?>
-        <?php endif; ?>
+        // ── Compatibilidade ──────────────────────────────────────────────
+        // O módulo é montado aqui e RENDERIZADO abaixo do preço: encaixe vem
+        // antes de tamanho e de frete, mas depois do preço, que é o gancho.
+        // O banner antigo saiu: ele só existia para cliente logado (a barra
+        // que popula $_SESSION['meu_veiculo'] começa com um return para
+        // deslogado), e apontava para uma âncora #tab-compatibilidade que não
+        // existia em lugar nenhum. Agora a âncora é o próprio módulo.
+        $compat = $compatSvc = $motoAtiva = null;
+        $montadorasCompat = [];
+        $waCanalCompat    = null;
+
+        if (Product::temBuscaMoto((int)$product['id'])) {
+            $compatSvc = new CompatibilidadeService();
+            $motoAtiva = (new VeiculoService())->getAtivo();
+            $compat    = $compatSvc->avaliar((int)$product['id'], $motoAtiva);
+
+            // Só paga o custo do seletor e do contato se o módulo vai aparecer.
+            if ($compat['estado'] !== CompatibilidadeService::SEM_LINHAS) {
+                $montadorasCompat = Database::getInstance()->getConnection()
+                    ->query("SELECT id, nome FROM moto_montadoras WHERE ativo = 1 ORDER BY ordem ASC, nome ASC")
+                    ->fetchAll(PDO::FETCH_ASSOC);
+
+                foreach (AjudaPresenter::contato() as $canal) {
+                    if (($canal['tipo'] ?? '') === 'whatsapp') { $waCanalCompat = $canal; break; }
+                }
+            }
+        }
+        ?>
 
         <?php
           // ── Variáveis de preço/parcelamento ──
@@ -418,6 +415,18 @@ function swatchTipo(array $membro, string $atributoSlug): string {
             }
           });
         </script>
+
+        <!-- Serve na sua moto? — antes do frete de propósito: ninguém calcula
+             entrega de peça que não serve. -->
+        <?php if ($compat): ?>
+          <?php View::partial('partials/produto-compatibilidade', [
+            'product'    => $product,
+            'compat'     => $compat,
+            'compatSvc'  => $compatSvc,
+            'montadoras' => $montadorasCompat,
+            'waCanal'    => $waCanalCompat,
+          ]); ?>
+        <?php endif; ?>
 
         <!-- Cálculo de frete (partial com JS próprio — #fpFrete) -->
         <?php include __DIR__ . '/../partials/frete-produto.php'; ?>

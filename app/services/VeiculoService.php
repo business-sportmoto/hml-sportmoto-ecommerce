@@ -45,7 +45,127 @@ class VeiculoService {
 
     // ── Veículo ativo ───────────────────────────────────────
     public function getAtivo(): ?array {
-        return $_SESSION['meu_veiculo'] ?? null;
+        if (!empty($_SESSION['meu_veiculo'])) return $_SESSION['meu_veiculo'];
+        return $this->restaurarDoCookie();
+    }
+
+    /* ══════════════════════════════════════════════════════════
+       MOTO NA SESSÃO — o caminho do visitante anônimo
+       ══════════════════════════════════════════════════════════
+       Separado da garagem de propósito. adicionar() exige cliente_id e
+       grava em cliente_veiculos; o visitante deslogado não tem onde cair,
+       e é por isso que a moto dele nunca existia. Aqui a moto vive em
+       sessão + cookie, igual ao CEP: segue o cliente pelo site e não
+       escreve nada no banco. A garagem continua com os endpoints dela
+       em /minha-conta/garagem. */
+
+    private const COOKIE_MOTO = 'sm_moto';
+    private const COOKIE_DIAS = 180;
+    private const ANO_MIN     = 1950;
+
+    /**
+     * Define a moto ativa só na sessão (+ cookie). Revalida montadora,
+     * modelo e ano contra o banco — o que chega do cliente é entrada,
+     * nunca verdade.
+     *
+     * @param bool $persistirCookie false quando a chamada JÁ veio do cookie
+     *                              (restauração no meio do render não pode
+     *                              tentar reemitir header).
+     */
+    public function definirNaSessao(
+        int $montadoraId,
+        ?int $modeloId,
+        ?int $ano,
+        bool $persistirCookie = true
+    ): ?array {
+        if ($montadoraId <= 0) return null;
+
+        $stmt = $this->db->prepare(
+            "SELECT mm.id AS montadora_id, mm.nome AS montadora_nome, mm.slug AS montadora_slug,
+                    mo.id AS modelo_id,    mo.nome AS modelo_nome,    mo.slug AS modelo_slug
+             FROM moto_montadoras mm
+             LEFT JOIN moto_modelos mo
+                    ON mo.id = ? AND mo.montadora_id = mm.id AND mo.ativo = 1
+             WHERE mm.id = ? AND mm.ativo = 1
+             LIMIT 1"
+        );
+        $stmt->execute([$modeloId ?: null, $montadoraId]);
+        $info = $stmt->fetch();
+        if (!$info) return null;
+
+        // Modelo que não pertence à montadora é recusado, não aceito calado.
+        if ($modeloId && empty($info['modelo_id'])) return null;
+
+        $anoLimite = (int)date('Y') + 1;
+        $ano = ($ano && $ano >= self::ANO_MIN && $ano <= $anoLimite) ? $ano : null;
+
+        // O formato precisa ser o MESMO que buscarPorId() devolve para a moto
+        // da garagem — é o mesmo $_SESSION['meu_veiculo'] que a barra do header
+        // e os presenters consomem. 'apelido' e 'cor' só existem em
+        // cliente_veiculos, mas as chaves têm que estar aqui: quem lê faz
+        // $veiculo['apelido'] direto, e a ausência vira warning em tela.
+        $veiculo = [
+            'id'             => null,      // não é registro de garagem
+            'origem'         => 'sessao',
+            'montadora_id'   => (int)$info['montadora_id'],
+            'montadora_nome' => $info['montadora_nome'],
+            'montadora_slug' => $info['montadora_slug'],
+            'modelo_id'      => $info['modelo_id'] ? (int)$info['modelo_id'] : null,
+            'modelo_nome'    => $info['modelo_nome'] ?: null,
+            'modelo_slug'    => $info['modelo_slug'] ?: null,
+            'ano'            => $ano,
+            'apelido'        => null,
+            'cor'            => null,
+            'placa'          => null,
+            'principal'      => 0,
+        ];
+        $veiculo['label'] = $this->buildLabel($veiculo, $ano);
+
+        $_SESSION['meu_veiculo'] = $veiculo;
+        if ($persistirCookie) $this->gravarCookieMoto($veiculo);
+
+        return $veiculo;
+    }
+
+    /** Esquece a moto ativa (sessão + cookie). Não toca na garagem. */
+    public function esquecerDaSessao(): void {
+        unset($_SESSION['meu_veiculo']);
+        if (!headers_sent()) {
+            setcookie(self::COOKIE_MOTO, '', [
+                'expires' => time() - 3600, 'path' => '/', 'samesite' => 'Lax',
+            ]);
+        }
+        unset($_COOKIE[self::COOKIE_MOTO]);
+    }
+
+    private function gravarCookieMoto(array $v): void {
+        if (headers_sent()) return;
+        setcookie(self::COOKIE_MOTO, (string)json_encode([
+            'mo' => $v['montadora_id'],
+            'md' => $v['modelo_id'],
+            'an' => $v['ano'],
+        ]), [
+            'expires'  => time() + self::COOKIE_DIAS * 86400,
+            'path'     => '/',
+            'secure'   => !empty($_SERVER['HTTPS']),
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+    }
+
+    private function restaurarDoCookie(): ?array {
+        $raw = $_COOKIE[self::COOKIE_MOTO] ?? '';
+        if (!$raw) return null;
+
+        $d = json_decode($raw, true);
+        if (!is_array($d) || empty($d['mo'])) return null;
+
+        return $this->definirNaSessao(
+            (int)$d['mo'],
+            isset($d['md']) ? (int)$d['md'] : null,
+            isset($d['an']) ? (int)$d['an'] : null,
+            false
+        );
     }
 
     // ── Adicionar nova moto à garagem ───────────────────────

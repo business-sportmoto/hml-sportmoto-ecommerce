@@ -53,7 +53,7 @@ if (empty($motoUrlOverride) && $veiculoAtivo) {
         <?= IconLibrary::render('motorcycle', 'icon icon--md') ?>
         <span class="hv-label">
           <strong>Você está vendo peças da sua moto</strong>
-          <em><?= View::e($veiculoAtivo['apelido'] ?: $veiculoAtivo['label']) ?></em>
+          <em><?= View::e(($veiculoAtivo['apelido'] ?? '') ?: ($veiculoAtivo['label'] ?? '')) ?></em>
         </span>
       </span>
       <?php else: ?>
@@ -63,8 +63,8 @@ if (empty($motoUrlOverride) && $veiculoAtivo) {
               style="background:<?= View::e($veiculoAtivo['cor'] ?? '#22c55e') ?>"></span>
         <?= IconLibrary::render('motorcycle', 'icon icon--md') ?>
         <span class="hv-label">
-          <strong><?= View::e($veiculoAtivo['apelido'] ?: $veiculoAtivo['label']) ?></strong>
-          <?php if ($veiculoAtivo['apelido'] && $veiculoAtivo['label']): ?>
+          <strong><?= View::e(($veiculoAtivo['apelido'] ?? '') ?: ($veiculoAtivo['label'] ?? '')) ?></strong>
+          <?php if (!empty($veiculoAtivo['apelido']) && !empty($veiculoAtivo['label'])): ?>
           <em><?= View::e($veiculoAtivo['label']) ?></em>
           <?php endif; ?>
         </span>

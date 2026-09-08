@@ -22,24 +22,26 @@ class VeiculoController extends Controller {
             $this->json(['ok' => false, 'msg' => 'Selecione uma montadora.']);
         }
 
-        $ok = $this->svc->salvar($montadoraId, $modeloId, $ano, $apelido);
+        // Sessão + cookie, nunca cliente_veiculos: esta rota atende o visitante
+        // anônimo e não é a garagem. Quem quer salvar a moto na conta usa
+        // /minha-conta/garagem/adicionar.
+        $veiculo = $this->svc->definirNaSessao($montadoraId, $modeloId, $ano);
 
-        if ($ok) {
-            $veiculo = $this->svc->getAtivo();
+        if ($veiculo) {
             $this->json([
                 'ok'      => true,
-                'msg'     => 'Veículo salvo!',
+                'msg'     => 'Moto selecionada!',
                 'veiculo' => $veiculo,
             ]);
         } else {
-            $this->json(['ok' => false, 'msg' => 'Montadora inválida.']);
+            $this->json(['ok' => false, 'msg' => 'Moto inválida.']);
         }
     }
 
     // POST /meu-veiculo/remover
     public function remover(): void {
         $this->verifyCsrf();
-        $this->svc->remover();
+        $this->svc->esquecerDaSessao();
         $this->json(['ok' => true]);
     }
 

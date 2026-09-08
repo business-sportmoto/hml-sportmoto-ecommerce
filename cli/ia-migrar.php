@@ -13,6 +13,9 @@
  *   ambiente que não fosse o dev elas simplesmente não existiam. Agora moram
  *   em sql/ia/ e este script sabe dizer o que já foi aplicado.
  *
+ *   Aquele pacote foi apagado em 08/09/2026; a pasta citada acima não existe
+ *   mais, e o caminho fica aqui só para explicar de onde as migrations vieram.
+ *
  *   Nenhuma delas é idempotente (os ALTERs quebram na segunda execução), por
  *   isso cada uma tem um DETECTOR: uma coluna, um valor de ENUM ou uma tabela
  *   que só existe depois dela. O script só executa o que o detector diz que

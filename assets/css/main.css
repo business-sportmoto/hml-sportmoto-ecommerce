@@ -10939,6 +10939,9 @@ to{opacity:1;transform:scale(1)}
   --pdx-ink:#14161c; --pdx-text:#33373f; --pdx-muted:#767b85; --pdx-faint:#9aa0aa;
   --pdx-line:#e7e9ee; --pdx-line-2:#f0f2f5; --pdx-bg:#f6f7f9; --pdx-surface:#fff;
   --pdx-success:#0a8f5b; --pdx-success-wash:#e8f5ee; --pdx-sale:#d1362f;
+  /* Âmbar do "confira o ano": o mundo tinha só verde e vermelho, e o
+     quase-acerto não é nenhum dos dois. 5:1 sobre branco. */
+  --pdx-warn:#a86500; --pdx-warn-wash:#fdf3e3;
   --pdx-r-sm:8px; --pdx-r-md:12px; --pdx-r-lg:18px;
   --pdx-sh-sm:0 1px 3px rgba(20,22,28,.06),0 1px 2px rgba(20,22,28,.04);
   --pdx-sh-md:0 6px 20px -6px rgba(20,22,28,.12);
@@ -11031,6 +11034,97 @@ to{opacity:1;transform:scale(1)}
 /* o #sku-preco-valor (hook do product.js) vive dentro do painel */
 .pdx #sku-preco-wrapper{display:block}
 .pdx #sku-preco-valor{font-size:36px;font-weight:800;color:var(--pdx-ink);letter-spacing:-.02em;line-height:1}
+
+/* ═══ COMPATIBILIDADE — "serve na sua moto?" (.pcm) ═══════════════════
+   Único bloco com moldura própria na coluna de compra, e de propósito: é a
+   pergunta que decide a compra de uma peça, e precisa de peso diferente do
+   preço e do frete. A cor do estado vive na marca e no texto — sem faixa
+   colorida na lateral, sem painel inteiro tingido. */
+.pdx .pcm{margin:0 0 18px;padding:16px;border:1px solid var(--pdx-line);border-radius:var(--pdx-r-md);background:var(--pdx-surface);box-shadow:var(--pdx-sh-sm)}
+.pdx .pcm__titulo{margin:0;font-size:15px;font-weight:700;color:var(--pdx-ink);line-height:1.3}
+.pdx .pcm__sub{margin:4px 0 0;font-size:13px;line-height:1.5;color:var(--pdx-text)}
+.pdx .pcm__sub strong{color:var(--pdx-ink);font-weight:700}
+
+.pdx .pcm__veredito{display:flex;align-items:flex-start;gap:11px}
+.pdx .pcm__marca{flex:0 0 auto;width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;margin-top:1px}
+.pdx .pcm__marca svg{width:15px;height:15px}
+.pdx .pcm__marca--ok{background:var(--pdx-success-wash);color:var(--pdx-success)}
+.pdx .pcm__marca--atencao{background:var(--pdx-warn-wash);color:var(--pdx-warn)}
+.pdx .pcm__marca--neutro{background:var(--pdx-line-2);color:var(--pdx-muted)}
+.pdx .pcm--serve .pcm__titulo{color:var(--pdx-success)}
+.pdx .pcm--ano_fora .pcm__titulo{color:var(--pdx-warn)}
+
+/* Observação do cadastro: é conteúdo do lojista, o dado mais específico que
+   existe aqui. Nota, não alerta — e sem caixa preenchida com canto arredondado,
+   que logo acima dos selects lia como um campo desabilitado. */
+.pdx .pcm__obs{margin:11px 0 0;padding:0;list-style:none}
+.pdx .pcm__obs li{position:relative;padding-left:21px;font-size:12.5px;line-height:1.5;color:var(--pdx-text)}
+.pdx .pcm__obs li::before{content:"";position:absolute;left:0;top:2px;width:14px;height:14px;
+  background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a86500' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 11v5'/%3E%3Cpath d='M12 8h.01'/%3E%3C/svg%3E");
+  background-size:contain;background-repeat:no-repeat}
+.pdx .pcm__obs li+li{margin-top:6px}
+
+.pdx .pcm__form{margin-top:13px}
+.pdx .pcm__campos{display:grid;grid-template-columns:1fr 1fr .8fr;gap:8px}
+.pdx .pcm__campo{display:flex;flex-direction:column;gap:4px;min-width:0}
+.pdx .pcm__rotulo{font-size:11.5px;font-weight:600;color:var(--pdx-muted);letter-spacing:.01em}
+.pdx .pcm__opcional{font-weight:400;color:var(--pdx-faint)}
+.pdx .pcm__campo select{width:100%;height:40px;padding:0 30px 0 10px;border:1.5px solid var(--pdx-line);border-radius:var(--pdx-r-sm);background:var(--pdx-surface);color:var(--pdx-ink);font-size:13.5px;font-family:inherit;cursor:pointer;appearance:none;
+  background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23767b85' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 9px center;background-size:15px}
+.pdx .pcm__campo select:hover:not(:disabled){border-color:var(--pdx-muted)}
+.pdx .pcm__campo select:disabled{background-color:var(--pdx-line-2);color:var(--pdx-faint);cursor:not-allowed}
+
+.pdx .pcm__acoes{display:flex;align-items:center;gap:10px;margin-top:10px}
+.pdx .pcm__btn{height:40px;padding:0 20px;border:none;border-radius:var(--pdx-r-sm);background:var(--pdx-ink);color:#fff;font-size:13.5px;font-weight:700;font-family:inherit;cursor:pointer;transition:background .16s}
+.pdx .pcm__btn:hover{background:#000}
+.pdx .pcm__btn[disabled]{background:var(--pdx-line-2);color:var(--pdx-faint);cursor:not-allowed}
+.pdx .pcm__limpar{border:none;background:none;padding:0;font-size:13px;font-family:inherit;color:var(--pdx-accent);cursor:pointer}
+.pdx .pcm__limpar:hover{text-decoration:underline}
+.pdx .pcm__erro{margin:9px 0 0;font-size:12.5px;color:var(--pdx-sale)}
+
+/* A lista de motos. <details> nativo: teclado e leitor de tela corretos sem
+   uma linha de JS. */
+.pdx .pcm__lista{margin-top:13px;border-top:1px dashed var(--pdx-line);padding-top:11px}
+.pdx .pcm__lista summary{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--pdx-accent);cursor:pointer;list-style:none}
+.pdx .pcm__lista summary::-webkit-details-marker{display:none}
+.pdx .pcm__lista summary::before{content:"";width:14px;height:14px;flex:0 0 auto;
+  background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23398de6' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='m9 6 6 6-6 6'/%3E%3C/svg%3E");
+  background-size:contain;background-repeat:no-repeat;transition:transform .18s var(--pdx-ease)}
+.pdx .pcm__lista[open] summary::before{transform:rotate(90deg)}
+.pdx .pcm__lista summary:hover{text-decoration:underline}
+.pdx .pcm__grupos{margin-top:11px;max-height:280px;overflow-y:auto}
+.pdx .pcm__grupo+.pcm__grupo{margin-top:13px}
+.pdx .pcm__montadora{margin:0 0 5px;font-size:11.5px;font-weight:700;color:var(--pdx-muted);text-transform:uppercase;letter-spacing:.05em}
+.pdx .pcm__grupo ul{margin:0;padding:0;list-style:none}
+.pdx .pcm__grupo li{padding:5px 0;border-bottom:1px solid var(--pdx-line-2);font-size:13px;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 9px}
+.pdx .pcm__grupo li:last-child{border-bottom:none}
+.pdx .pcm__modelo{color:var(--pdx-ink);font-weight:600}
+.pdx .pcm__anos{color:var(--pdx-muted);font-size:12.5px;font-variant-numeric:tabular-nums}
+.pdx .pcm__nota{flex-basis:100%;color:var(--pdx-warn);font-size:12px;line-height:1.4}
+.pdx .pcm__rodape{margin:11px 0 0;font-size:12px;color:var(--pdx-muted);line-height:1.5}
+
+.pdx .pcm__loja{margin-top:12px;display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border:1.5px solid var(--pdx-line);border-radius:var(--pdx-r-sm);color:var(--pdx-ink);font-size:13.5px;font-weight:600;text-decoration:none;transition:border-color .16s,background .16s}
+.pdx .pcm__loja svg{width:17px;height:17px;color:var(--pdx-success)}
+.pdx .pcm__loja:hover{border-color:var(--pdx-ink);background:#fcfcfd}
+
+/* Foco visível. A página tem 28 `outline:none` e nenhuma regra de
+   :focus-visible — quem navega por teclado atravessa a coluna de compra às
+   cegas. Este módulo não vai nascer assim. */
+.pdx .pcm select:focus-visible,
+.pdx .pcm button:focus-visible,
+.pdx .pcm summary:focus-visible,
+.pdx .pcm a:focus-visible{outline:2px solid var(--pdx-accent);outline-offset:2px;border-radius:var(--pdx-r-sm)}
+
+@media (max-width:520px){
+  .pdx .pcm__campos{grid-template-columns:1fr 1fr}
+  .pdx .pcm__campo--ano{grid-column:1 / -1}
+  .pdx .pcm__acoes{flex-wrap:wrap}
+  .pdx .pcm__btn{flex:1 1 auto}
+}
+@media (prefers-reduced-motion:reduce){
+  .pdx .pcm__lista summary::before{transition:none}
+}
 
 /* ═══ VARIAÇÕES (hooks reais, re-vestidas) ═══ */
 .pdx .product-variations{margin-bottom:7px; margin-top: 7px;}

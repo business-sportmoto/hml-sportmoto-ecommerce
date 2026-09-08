@@ -1496,5 +1496,125 @@ $(function () {
         $more.contents().first()[0].nodeValue = open ? 'Ver menos ' : 'Ver descrição completa';
       });
     }
+
+    /* ══════════════════════════════════════════════════════════════
+       COMPATIBILIDADE — "serve na sua moto?"
+       ══════════════════════════════════════════════════════════════
+       A resposta é renderizada no servidor (é ele quem tem o cadastro),
+       então gravar a moto recarrega a página e reancora no módulo. Sem
+       montar a resposta duas vezes, em dois lugares, com duas chances de
+       divergir — foi assim que o parcelamento acabou dizendo 10x de um
+       lado e 12x do outro. */
+    var $pcmForm = $('#pcm-form');
+    if ($pcmForm.length) {
+      var $mont  = $('#pcm-montadora');
+      var $mod   = $('#pcm-modelo');
+      var $ano   = $('#pcm-ano');
+      var $erro  = $('#pcm-erro');
+      var $enviar = $('#pcm-conferir');
+
+      function pcmErro(msg) {
+        if (!msg) { $erro.attr('hidden', true).text(''); return; }
+        $erro.removeAttr('hidden').text(msg);
+      }
+
+      function pcmPreencher($sel, itens, valor, chave, rotulo, vazio) {
+        var html = '<option value="">' + vazio + '</option>';
+        itens.forEach(function (i) {
+          var v = i[chave], t = i[rotulo];
+          html += '<option value="' + v + '"' + (String(v) === String(valor) ? ' selected' : '') + '>' + t + '</option>';
+        });
+        $sel.html(html).prop('disabled', false);
+      }
+
+      function pcmCarregarModelos(montadoraId, preSel) {
+        if (!montadoraId) {
+          $mod.html('<option value="">Selecione a marca</option>').prop('disabled', true);
+          $ano.html('<option value="">Todos</option>').prop('disabled', true);
+          return $.Deferred().resolve().promise();
+        }
+        $mod.html('<option value="">Carregando…</option>').prop('disabled', true);
+        return $.getJSON(BASE_URL + '/meu-veiculo/modelos', { montadora_id: montadoraId })
+          .done(function (lista) {
+            pcmPreencher($mod, lista || [], preSel, 'id', 'nome', 'Todos os modelos');
+          })
+          .fail(function () {
+            $mod.html('<option value="">Erro ao carregar</option>');
+            pcmErro('Não foi possível carregar os modelos. Tente de novo.');
+          });
+      }
+
+      function pcmCarregarAnos(modeloId, preSel) {
+        if (!modeloId) {
+          $ano.html('<option value="">Todos</option>').prop('disabled', true);
+          return $.Deferred().resolve().promise();
+        }
+        $ano.html('<option value="">Carregando…</option>').prop('disabled', true);
+        return $.getJSON(BASE_URL + '/meu-veiculo/anos', { modelo_id: modeloId })
+          .done(function (lista) {
+            pcmPreencher($ano, lista || [], preSel, 'ano', 'ano', 'Todos os anos');
+          })
+          .fail(function () {
+            $ano.html('<option value="">Todos</option>').prop('disabled', false);
+          });
+      }
+
+      // Reidrata os selects quando já existe moto na sessão.
+      if ($mont.val()) {
+        pcmCarregarModelos($mont.val(), $pcmForm.data('modelo')).always(function () {
+          if ($pcmForm.data('modelo')) pcmCarregarAnos($pcmForm.data('modelo'), $pcmForm.data('ano'));
+        });
+      }
+
+      $mont.on('change', function () {
+        pcmErro(null);
+        pcmCarregarModelos(this.value, null);
+        $ano.html('<option value="">Todos</option>').prop('disabled', true);
+      });
+
+      $mod.on('change', function () {
+        pcmErro(null);
+        pcmCarregarAnos(this.value, null);
+      });
+
+      $pcmForm.on('submit', function (e) {
+        e.preventDefault();
+        pcmErro(null);
+
+        if (!$mont.val()) { pcmErro('Escolha a marca da sua moto.'); $mont.trigger('focus'); return; }
+
+        $enviar.prop('disabled', true).text('Conferindo…');
+
+        $.post(BASE_URL + '/meu-veiculo/salvar', {
+          montadora_id: $mont.val(),
+          modelo_id   : $mod.val() || '',
+          ano         : $ano.val() || '',
+          _csrf_token : CSRF_TOKEN
+        }, function (res) {
+          if (!res || !res.ok) {
+            $enviar.prop('disabled', false).text('Conferir');
+            pcmErro((res && res.msg) || 'Não foi possível salvar a moto.');
+            return;
+          }
+          // Volta direto no módulo, não no topo da página.
+          window.location.hash = 'tab-compatibilidade';
+          window.location.reload();
+        }, 'json').fail(function () {
+          $enviar.prop('disabled', false).text('Conferir');
+          pcmErro('Não foi possível salvar a moto. Tente de novo.');
+        });
+      });
+
+      $('#pcm-limpar').on('click', function () {
+        var $b = $(this).prop('disabled', true);
+        $.post(BASE_URL + '/meu-veiculo/remover', { _csrf_token: CSRF_TOKEN }, function () {
+          window.location.hash = 'tab-compatibilidade';
+          window.location.reload();
+        }, 'json').fail(function () {
+          $b.prop('disabled', false);
+          pcmErro('Não foi possível trocar a moto. Tente de novo.');
+        });
+      });
+    }
   });
 });

@@ -51,6 +51,17 @@ class CategoryController extends Controller {
             $filters['montadora_id'] = $montadoraId;
             if ($modeloId > 0) $filters['modelo_id'] = $modeloId;
             if ($ano      > 0) $filters['ano']        = $ano;
+
+            // A moto do filtro passa a ser a moto do visitante. Sem isto, a
+            // categoria pergunta em qual moto ele anda e a página de produto
+            // esquece a resposta — que era exatamente o buraco entre as duas
+            // telas. Vale para deslogado: mora em sessão + cookie, não na
+            // garagem.
+            (new VeiculoService())->definirNaSessao(
+                $montadoraId,
+                $modeloId ?: null,
+                $ano      ?: null
+            );
         }
 
         // ── Paginação e dados ─────────────────────────────────
