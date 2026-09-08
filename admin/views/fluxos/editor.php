@@ -48,7 +48,7 @@ $configJson = $fluxo['config_json'] ?: "{\n  \"reentrada\": \"nunca\",\n  \"sair
     <div class="fx-barra">
       <div class="fx-grupo fx-flut">
         <a href="<?= $base ?>/admin/fluxos" class="fx-btn fx-btn-icon" title="Voltar para a lista">
-          <i class="bi bi-arrow-left"><?= IconLibrary::render('arrow-back') ?></i>
+          <?= IconLibrary::render('arrow-back') ?>
         </a>
         <span class="fx-nome" title="<?= htmlspecialchars($fluxo['nome']) ?>">
           <?= htmlspecialchars($fluxo['nome']) ?>
@@ -59,28 +59,28 @@ $configJson = $fluxo['config_json'] ?: "{\n  \"reentrada\": \"nunca\",\n  \"sair
       </div>
 
       <div class="fx-grupo fx-flut">
-        <button type="button" id="fx-zoom-out"   class="fx-btn fx-btn-icon" title="Zoom −"><i class="bi bi-zoom-out"><?= IconLibrary::render('zoom-out') ?></i></button>
-        <button type="button" id="fx-zoom-reset" class="fx-btn fx-btn-icon" title="Zoom 100%"><i class="bi bi-aspect-ratio"><?= IconLibrary::render('aspect-ratio') ?></i></button>
-        <button type="button" id="fx-zoom-in"    class="fx-btn fx-btn-icon" title="Zoom +"><i class="bi bi-zoom-in"><?= IconLibrary::render('zoom-in') ?></i></button>
+        <button type="button" id="fx-zoom-out"   class="fx-btn fx-btn-icon" title="Zoom −"><?= IconLibrary::render('zoom-out') ?></button>
+        <button type="button" id="fx-zoom-reset" class="fx-btn fx-btn-icon" title="Zoom 100%"><?= IconLibrary::render('aspect-ratio') ?></button>
+        <button type="button" id="fx-zoom-in"    class="fx-btn fx-btn-icon" title="Zoom +"><?= IconLibrary::render('zoom-in') ?></button>
 
         <span class="fx-sep"></span>
 
         <button type="button" id="fx-cfg-toggle" class="fx-btn" title="Reentrada e exit conditions">
-          <i class="bi bi-shield-check"></i> Guard-rails
+          <?= IconLibrary::render('shield-check', 'icon icon--sm') ?> Guard-rails
         </button>
         <button type="button" id="fx-salvar" class="fx-btn">
-          <i class="bi bi-save"></i> Salvar rascunho
+          <?= IconLibrary::render('save', 'icon icon--sm') ?> Salvar rascunho
         </button>
         <button type="button" id="fx-publicar" class="fx-btn fx-btn-pri">
-          <i class="bi bi-rocket-takeoff"><?= IconLibrary::render('rocket-launch') ?></i> Publicar
+          <?= IconLibrary::render('rocket-launch', 'icon icon--sm') ?> Publicar
         </button>
         <?php if ($fluxo['status'] === 'publicado'): ?>
           <button type="button" class="fx-btn fx-status-btn" data-status="pausado">
-            <i class="bi bi-pause-circle"></i> Pausar
+            <?= IconLibrary::render('power', 'icon icon--sm') ?> Pausar
           </button>
         <?php elseif ($fluxo['status'] === 'pausado'): ?>
           <button type="button" class="fx-btn fx-status-btn" data-status="publicado">
-            <i class="bi bi-play-circle"></i> Reativar
+            <?= IconLibrary::render('play-arrow', 'icon icon--sm') ?> Reativar
           </button>
         <?php endif; ?>
       </div>
@@ -104,7 +104,7 @@ $configJson = $fluxo['config_json'] ?: "{\n  \"reentrada\": \"nunca\",\n  \"sair
       <div id="fx-painel-campos"></div>
       <div class="fx-painel-foot">
         <button type="button" id="fx-del-no" class="fx-btn-del">
-          <i class="bi bi-trash"></i> Excluir nó
+          <?= IconLibrary::render('trash', 'icon icon--sm') ?> Excluir nó
         </button>
       </div>
     </div>

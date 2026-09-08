@@ -7,16 +7,20 @@ declare(strict_types=1);
  * Runner do cron. Chama o dispatcher pra processar um lote.
  * Roda via bootstrap CLI (mesma infra dos outros crons do projeto).
  *
- * Cron sugerido (a cada minuto):
- *   * * * * * cd /home/ploi/hml.sportmoto.com.br && php cli/conversion-dispatch.php >> storage/logs/conversion.log 2>&1
+ * Cron (a cada minuto):
+ *   * * * * * cd /caminho/do/site && php cli/conversion-dispatch.php >> storage/logs/conversion.log 2>&1
  *
- * NUNCA LIGAR EM PRODUÇÃO até a política de privacidade estar
- * publicada. Em homologação, com META_TEST_EVENT_CODE setado,
- * os eventos aparecem no "Test Events" do Events Manager sem
- * afetar dados reais.
+ * ATIVO EM PRODUÇÃO (Meta). O bloqueio antigo — "não ligar até a
+ * política de privacidade estar publicada" — foi atendido; a política
+ * está no ar. O gate de LGPD que continua valendo é o do dispatcher:
+ * adapter que exige marketing + consent_marketing=0 → skipped.
+ *
+ * Em homologação, com META_TEST_EVENT_CODE setado, os eventos vão pro
+ * "Test Events" do Events Manager sem afetar dados reais. Essa variável
+ * NÃO pode existir no .env de produção.
  */
 
-require_once __DIR__ . '/../bootstrap-cli.php'; // ajustar ao seu bootstrap CLI
+require_once __DIR__ . '/../bootstrap-cli.php';
 
 try {
     $dispatcher = new ConversionDispatcher();

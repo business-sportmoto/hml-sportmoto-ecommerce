@@ -110,8 +110,30 @@ $migrations = [
     // Detector: o modo `delegado` no ENUM — nasce junto com o Diretor.
     ['2026-09-05_ia_agente_diretor.sql', 'Fase B — o Diretor (perguntar_agente) e o modo delegado',
         fn () => $enumTem('ia_agente_conversas', 'modo', 'delegado')],
+    // Detector: a tabela de procedência. O INSERT do tipo é condicional
+    // (NOT EXISTS), então um falso "pendente" não duplica o email_layout.
+    // DEPENDÊNCIA EXTERNA: `email_templates`, do módulo de e-mail marketing.
+    ['2026-09-08_ia_email_layout.sql', 'Gerador de layout de e-mail (Fase 1)',
+        fn () => $temTabela('ia_email_layout_geracao')],
+    // Independente da anterior: a ligação entre esqueleto e campanha é por
+    // template_id em runtime, não por schema. Também depende de
+    // `email_templates`, do módulo de e-mail marketing.
+    ['2026-09-08_ia_email_conteudo.sql', 'Conteúdo de e-mail por segmento (Fase 2)',
+        fn () => $temTabela('ia_email_conteudo_geracao')],
+    // Detector: as instruções da Fase 1 já exigem copy por marcador. O UPDATE
+    // é condicional (só reescreve se ainda não fala de titulo_principal), então
+    // um falso "pendente" é no-op e ajuste manual na tela é respeitado.
+    ['2026-09-08_ia_email_layout_copy.sql', 'Fase 1 passa a expor a copy como variável',
+        function () use ($pdo, $temTabela) {
+            if (!$temTabela('ia_tipos_conteudo')) { return false; }
+            $i = $pdo->query("SELECT instrucoes_sistema FROM ia_tipos_conteudo WHERE codigo = 'email_layout' LIMIT 1")->fetchColumn();
+            return $i !== false && str_contains((string) $i, 'titulo_principal');
+        }],
+    // Detector: a tabela do perfil. O INSERT do tipo e condicional.
+    // DEPENDENCIA EXTERNA: `clientes` e `historico_navegacao`, da loja.
+    ['2026-09-08_ia_intencao_cliente.sql', 'Intencao de compra por cliente (Fase 3)',
+        fn () => $temTabela('ia_cliente_intencao')],
 ];
-
 /* ------------------------------------------------------------------ */
 /* Splitter de instruções: respeita aspas e comentários                 */
 /* ------------------------------------------------------------------ */

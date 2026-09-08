@@ -51,6 +51,9 @@ return [
         'wishlist_produto_id',      // int
         'visualizou_produto_id',    // int
         'visualizou_categoria_id',  // int
+        // Perfil inferido pela Central de IA (ia_cliente_intencao). O valor
+        // e o rotulo do segmento, ex: 'capacete-urbano'.
+        'intencao',                   // string (rotulo)
         'genero',                   // M|F|Outro
         'mes_aniversario',          // 1..12
         'valor_comprado_min',       // decimal

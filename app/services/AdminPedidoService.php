@@ -617,8 +617,14 @@ class AdminPedidoService {
                 $numItems += (int)($item['qtd'] ?? $item['quantidade'] ?? 1);
             }
 
+            // 'codigo' é OBRIGATÓRIO aqui: o ConversionService monta o
+            // event_id com `codigo ?? id`, e o Pixel da página de sucesso
+            // (CheckoutController::$purchasePixel) usa o codigo. Omitir
+            // esta chave faz o CAPI mandar o id numérico, os dois lados
+            // divergem e a Meta conta a MESMA compra duas vezes.
             (new ConversionService())->purchase([
                 'id'          => $pedidoId,
+                'codigo'      => $pedido['codigo'] ?? null,
                 'total'       => (float)($pedido['total'] ?? 0),
                 'content_ids' => $contentIds,
                 'num_items'   => $numItems,

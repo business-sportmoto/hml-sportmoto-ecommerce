@@ -2634,13 +2634,13 @@ function fecharModal(id) {
     if (!regras.length) {
       $alvo.append(
         $('<div class="vu_vazio">')
-          .append('<i class="bi bi-clipboard-check"></i>')
+          .append(window.icone ? window.icone('regras') : '')
           .append($('<div class="vu_vazio_t">').text('Nenhuma regra ainda'))
           .append($('<p class="vu_vazio_p">').text(
             'Comece pelos itens que se desgastam: pneus, óleo, pastilhas de freio. ' +
             'Prazos conservadores funcionam melhor — é melhor lembrar cedo do que tarde.'))
           .append($('<button type="button" class="vu_btn vu_pri" id="vu-novo-vazio">')
-            .append('<i class="bi bi-plus-lg"></i>')
+            .append(window.icone ? window.icone('plus') : '')
             .append($('<span>').text('Criar a primeira regra')))
       );
       return;
@@ -2687,15 +2687,15 @@ function fecharModal(id) {
 
       var $acoes = $('<div class="vu_acoes">')
         .append($('<button type="button" class="vu_btn_mini vu-editar">')
-          .append('<i class="bi bi-pencil"></i>')
+          .append(window.icone ? window.icone('pencil') : '')
           .append($('<span>').text('Editar')))
         .append($('<button type="button" class="vu_ic vu-pausar">')
           .attr('title', r.ativo ? 'Pausar regra' : 'Ativar regra')
           .attr('aria-label', r.ativo ? 'Pausar regra' : 'Ativar regra')
-          .append(r.ativo ? '<i class="bi bi-pause"></i>' : '<i class="bi bi-play"></i>'))
+          .append(window.icone ? window.icone(r.ativo ? 'power' : 'play-arrow') : ''))
         .append($('<button type="button" class="vu_ic vu_perigo vu-excluir">')
           .attr('title', 'Excluir regra').attr('aria-label', 'Excluir regra')
-          .append('<i class="bi bi-trash"></i>'));
+          .append(window.icone ? window.icone('trash') : ''));
 
       $tr.append($('<td>').append($acoes));
       $tb.append($tr);
@@ -2738,7 +2738,7 @@ function fecharModal(id) {
       conteudo: montarForm(regra),
       tamanho: 'md',
       acoes: '<button type="button" class="vu_btn vu_pri vu-salvar">' +
-             '<i class="bi bi-check-lg"></i> Salvar regra</button>'
+             (window.icone ? window.icone('save', 'icon icon--sm') : '') + ' Salvar regra</button>'
     });
 
     // Preenche os valores depois de montado (evita escapar HTML na mão)
@@ -2763,8 +2763,9 @@ function fecharModal(id) {
 
     if (!novo) {
       $c.find('.vu-drawer-pausar').html(
-        regra.ativo ? '<i class="bi bi-pause"></i> Pausar regra'
-                    : '<i class="bi bi-play"></i> Ativar regra');
+        regra.ativo
+          ? (window.icone ? window.icone('power', 'icon icon--sm') : '') + ' Pausar regra'
+          : (window.icone ? window.icone('play-arrow', 'icon icon--sm') : '') + ' Ativar regra');
       drawer.escutar('click', '.vu-drawer-pausar', function () {
         pausar(regra.id, !regra.ativo);
         drawer.fechar('pausada', { force: true });
@@ -2847,13 +2848,13 @@ function fecharModal(id) {
           '<div class="vu_form_foot">' +
             '<button type="button" class="vu_btn_sec vu-drawer-pausar"></button>' +
             '<button type="button" class="vu_btn_sec vu_perigo_txt vu-drawer-excluir">' +
-              '<i class="bi bi-trash"></i> Excluir regra</button>' +
+              (window.icone ? window.icone('trash', 'icon icon--sm') : '') + ' Excluir regra</button>' +
           '</div>') +
 
         '<div class="vu_preview_wrap">' +
           '<div class="vu_preview_lbl">Como o cliente vai ver</div>' +
           '<div class="vu_notif">' +
-            '<div class="vu_notif_ic"><i class="bi bi-tools"></i></div>' +
+            '<div class="vu_notif_ic">' + (window.icone ? window.icone('build-circle') : '') + '</div>' +
             '<div class="vu_notif_corpo">' +
               '<div class="vu_notif_t vu-pv-titulo"></div>' +
               '<div class="vu_notif_m vu-pv-dica"></div>' +

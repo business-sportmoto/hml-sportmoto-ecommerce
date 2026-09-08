@@ -4765,3 +4765,33 @@ html[data-theme="dark"] .fp-selo{background:var(--pgto-surface-2) !important;col
 .ia_form_agente textarea.ia_input_mono { font-size: 12.5px; }
 .ia_form_agente .ia_form_rodape { margin-top: var(--ia-e-4); }
 @media (max-width: 560px) { .ia_ag_paginas { grid-template-columns: 1fr; } }
+
+/* ── Gerador de layout de e-mail (/admin/ia/email-layout) ──────────────
+   O palco centraliza o iframe e dá fundo neutro: o e-mail tem fundo
+   próprio (quase sempre branco) e precisa ser visto contra algo que não
+   seja a superfície do painel, senão a borda do template some no escuro. */
+.eml_palco {
+  display: flex;
+  justify-content: center;
+  padding: var(--ia-e-3);
+  background: var(--surface2, #f1f5f9);
+  border: 1px solid var(--ia-borda-campo);
+  border-radius: var(--r-lg);
+  overflow-x: auto;
+}
+.eml_frame {
+  width: 600px;
+  height: 640px;
+  border: 0;
+  border-radius: var(--r-lg);
+  background: #fff;              /* fixo: é a folha do e-mail, não do painel */
+  box-shadow: 0 2px 10px rgba(16, 24, 40, .10);
+  transition: width var(--t, .18s) ease;
+  flex: 0 0 auto;
+}
+.eml_view { font-size: var(--ia-t-apoio); padding: 6px 12px; }
+.eml_view_ativo {
+  border-color: var(--ia-azul, #2563eb);
+  color: var(--ia-azul-txt, #1d4ed8);
+  font-weight: 700;
+}

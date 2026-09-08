@@ -129,21 +129,60 @@ class EmailSegmentService
                     )";
                     break;
 
+                // CORRIGIDO 08/09/2026 — estas duas consultavam h.usuario_id,
+                // h.produto_id e h.categoria_id, que NÃO EXISTEM em
+                // historico_navegacao. Ela guarda `tipo` ('produto',
+                // 'categoria', 'marca', 'busca', 'clip') + `referencia_id`.
+                // Qualquer segmento que usasse estes campos estourava com
+                // "Unknown column 'h.usuario_id'" — nunca funcionaram.
                 case 'visualizou_produto_id':
                     $params[":vpid_$i"] = (int)$val;
                     $clauses[] = "EXISTS (
                         SELECT 1 FROM historico_navegacao h
-                        WHERE (h.cliente_id = ec.cliente_id OR h.usuario_id = ec.usuario_id)
-                          AND h.produto_id = :vpid_$i
+                        WHERE h.cliente_id = ec.cliente_id
+                          AND h.tipo = 'produto'
+                          AND h.referencia_id = :vpid_$i
                     )";
                     break;
 
                 case 'visualizou_categoria_id':
-                    $params[":vcat_$i"] = (int)$val;
+                    // Dois placeholders para o MESMO valor: o PDO do projeto roda
+                    // com EMULATE_PREPARES = false, e aí reusar `:vcat_$i` nas
+                    // duas pernas do OR dá "Invalid parameter number".
+                    $params[":vcat_$i"]  = (int)$val;
+                    $params[":vcatp_$i"] = (int)$val;
+                    // Duas formas de "viu a categoria": abrir a página dela, ou
+                    // abrir um produto que pertence a ela. Quem monta a campanha
+                    // quer as duas — a segunda é, de longe, a mais comum.
                     $clauses[] = "EXISTS (
                         SELECT 1 FROM historico_navegacao h
-                        WHERE (h.cliente_id = ec.cliente_id OR h.usuario_id = ec.usuario_id)
-                          AND h.categoria_id = :vcat_$i
+                        WHERE h.cliente_id = ec.cliente_id
+                          AND (
+                                (h.tipo = 'categoria' AND h.referencia_id = :vcat_$i)
+                             OR (h.tipo = 'produto' AND EXISTS (
+                                    SELECT 1 FROM produtos p
+                                    WHERE p.id = h.referencia_id
+                                      AND p.categoria_id = :vcatp_$i
+                                ))
+                          )
+                    )";
+                    break;
+
+                // Perfil inferido pela Central de IA (Fase 3). Guardado com
+                // EXISTS na tabela do módulo de IA, não com JOIN: se a Central
+                // não estiver instalada, a regra tem de casar ZERO — e não
+                // derrubar a montagem do segmento inteiro com "table doesn't
+                // exist". O `intencaoDisponivel()` decide isso uma vez.
+                case 'intencao':
+                    if (!$this->intencaoDisponivel()) {
+                        $clauses[] = '1 = 0';
+                        break;
+                    }
+                    $params[":int_$i"] = mb_substr((string)$val, 0, 60);
+                    $clauses[] = "EXISTS (
+                        SELECT 1 FROM ia_cliente_intencao ici
+                        WHERE ici.cliente_id = ec.cliente_id
+                          AND ici.segmento = :int_$i
                     )";
                     break;
 
@@ -215,6 +254,33 @@ class EmailSegmentService
     }
 
     /** Conta o total estimado de um conjunto de regras. */
+    /**
+     * A Central de IA está instalada neste banco?
+     *
+     * O módulo de e-mail não pode depender dela para funcionar: em ambiente
+     * sem a Central, a regra `intencao` casa zero em vez de estourar.
+     * Memorizado porque `build()` roda por regra, e a consulta é sempre a mesma.
+     */
+    private ?bool $temIntencao = null;
+
+    private function intencaoDisponivel(): bool
+    {
+        if ($this->temIntencao !== null) {
+            return $this->temIntencao;
+        }
+        try {
+            $st = $this->db->prepare(
+                'SELECT COUNT(*) FROM information_schema.tables
+                  WHERE table_schema = DATABASE() AND table_name = ?'
+            );
+            $st->execute(['ia_cliente_intencao']);
+            $this->temIntencao = (int) $st->fetchColumn() > 0;
+        } catch (\Throwable $e) {
+            $this->temIntencao = false;
+        }
+        return $this->temIntencao;
+    }
+
     public function estimar(array $regras)
     {
         $built = $this->build($regras);

@@ -228,12 +228,12 @@ $(function () {
             '    ' + descHtml,
             '    <span class="hf-td-slug">' + $('<div>').text(cat.slug).html() + '</span>',
             '  </td>',
-            '  <td><a href="/admin/help-faq/perguntas?categoria_id=' + cat.id + '" class="hf-count-link">0 <i class="bi bi-arrow-right-short"></i></a></td>',
+            '  <td><a href="/admin/help-faq/perguntas?categoria_id=' + cat.id + '" class="hf-count-link">0 ' + (window.icone ? window.icone('arrow-right') : '') + '</a></td>',
             '  <td style="font-size:.855rem;font-weight:600">' + cat.ordem + '</td>',
             '  <td><span class="hf-badge ' + badgeClass + '">' + badgeLabel + '</span></td>',
             '  <td class="text-end">',
-            '    <button type="button" class="hf-btn hf-btn-ghost hf-btn-xs js-editar-cat" data-id="' + cat.id + '" title="Editar"><i class="bi bi-pencil"></i></button>',
-            '    <button type="button" class="hf-btn hf-btn-danger hf-btn-xs js-excluir-cat" data-id="' + cat.id + '" data-nome="' + $('<div>').text(cat.nome).html() + '" data-tem-perguntas="0" title="Excluir"><i class="bi bi-trash"></i></button>',
+            '    <button type="button" class="hf-btn hf-btn-ghost hf-btn-xs js-editar-cat" data-id="' + cat.id + '" title="Editar">' + (window.icone ? window.icone('pencil') : '') + '</button>',
+            '    <button type="button" class="hf-btn hf-btn-danger hf-btn-xs js-excluir-cat" data-id="' + cat.id + '" data-nome="' + $('<div>').text(cat.nome).html() + '" data-tem-perguntas="0" title="Excluir">' + (window.icone ? window.icone('trash') : '') + '</button>',
             '  </td>',
             '</tr>',
         ].join(''));
@@ -276,7 +276,7 @@ $(function () {
             tamanho: 'md',
         });
  
-        drawer.setConteudo('<div class="hf-drawer-loading"><i class="bi bi-arrow-repeat hf-spin"></i> Carregando…</div>');
+        drawer.setConteudo('<div class="hf-drawer-loading"><span class="hf-spin">' + (window.icone ? window.icone('sync') : '') + '</span> Carregando…</div>');
  
         var url = catId
             ? BASE_URL + '/admin/help-faq/categoria/form?id=' + catId
@@ -284,13 +284,13 @@ $(function () {
  
         CK.get(url).done(function (res) {
             if (!res.ok) {
-                drawer.setConteudo('<div class="hf-drawer-erro"><i class="bi bi-exclamation-triangle"></i> ' + (res.msg || 'Erro ao carregar.') + '</div>');
+                drawer.setConteudo('<div class="hf-drawer-erro">' + (window.icone ? window.icone('alert-triangle') : '') + ' ' + (res.msg || 'Erro ao carregar.') + '</div>');
                 return;
             }
             drawer.setConteudo(res.html);
             iniciarFormCategoria(drawer, catId);
         }).fail(function () {
-            drawer.setConteudo('<div class="hf-drawer-erro"><i class="bi bi-wifi-off"></i> Erro de conexão.</div>');
+            drawer.setConteudo('<div class="hf-drawer-erro">' + (window.icone ? window.icone('wifi-off') : '') + ' Erro de conexão.</div>');
         });
     }
  
@@ -370,7 +370,7 @@ $(function () {
         drawer.setConteudo([
             '<div class="hf-drawer-confirm">',
             '  <div class="hf-drawer-confirm-icon danger">',
-            '    <i class="bi bi-trash3"></i>',
+            '    ' + (window.icone ? window.icone('trash') : ''),
             '  </div>',
             '  <p class="hf-drawer-confirm-msg">',
             '    Tem certeza que deseja excluir a categoria<br>',
@@ -380,7 +380,7 @@ $(function () {
             '  <div class="hf-drawer-confirm-actions">',
             '    <button type="button" class="hf-btn hf-btn-secondary js-cancelar-excluir">Cancelar</button>',
             '    <button type="button" class="hf-btn hf-btn-danger js-confirmar-excluir-cat" data-id="' + id + '">',
-            '      <i class="bi bi-trash"></i> Excluir',
+            '      ' + (window.icone ? window.icone('trash') : '') + ' Excluir',
             '    </button>',
             '  </div>',
             '</div>',
@@ -411,9 +411,9 @@ $(function () {
                         if ($('#tbodyCategorias tr').length === 0) {
                             $('#tbodyCategorias').html(
                                 '<tr id="trVazio"><td colspan="7">' +
-                                '<div class="hf-empty"><i class="bi bi-inbox"></i>' +
+                                '<div class="hf-empty">' + (window.icone ? window.icone('inbox') : '') +
                                 '<p>Nenhuma categoria cadastrada.</p>' +
-                                '<button type="button" class="hf-btn hf-btn-primary hf-btn-sm" id="btnNovaCategoriaEmpty"><i class="bi bi-plus-lg"></i> Criar primeira</button>' +
+                                '<button type="button" class="hf-btn hf-btn-primary hf-btn-sm" id="btnNovaCategoriaEmpty">' + (window.icone ? window.icone('plus') : '') + ' Criar primeira</button>' +
                                 '</div></td></tr>'
                             );
                         }

@@ -10796,6 +10796,15 @@ to{opacity:1;transform:scale(1)}
 .hc-faq-group{margin-bottom:34px}
 .hc-group-title{display:flex;align-items:center;gap:10px;margin:0 0 14px;padding:0 0 12px;border-bottom:1px solid var(--hc-border);color:var(--hc-ink-2);font-size:13px;font-weight:900;letter-spacing:.065em;text-transform:uppercase}
 .hc-group-title i{display:grid;place-items:center;width:30px;height:30px;border-radius:10px;background:var(--hc-blue-light);color:var(--hc-blue);font-size:15px}
+/* Os icones da Central de Ajuda viraram SVG inline (o site nao carrega
+   Bootstrap Icons, e nunca carregou). O <i> continua sendo o CONTAINER — e
+   nele que moram badge, largura e alinhamento. Esta regra faz o SVG herdar o
+   tamanho pelo font-size que cada contexto ja define, entao nada precisou de
+   numero novo. `stroke:currentColor` mantem a cor que a regra do container da. */
+.hc-search-icon i svg,.hc-cat-icon svg,.hc-cat-arrow svg,.hc-group-title i svg,
+.hc-faq-icon i svg,.hc-empty i svg,.hc-breadcrumb-sep i svg,.hc-sidebar-link i svg,
+.hc-cat-main-icon svg,.hc-breadcrumb a i svg,.hc-feedback-btn i svg,.hc-fb-ok svg{
+  width:1em;height:1em;stroke:currentColor;flex-shrink:0}
 .hc-faq-list{display:flex;flex-direction:column;gap:10px}
 .hc-faq-item{overflow:hidden;background:#fffffff5;border:1px solid var(--hc-border);border-radius:18px;box-shadow:var(--hc-shadow-xs);transition:border-color var(--hc-transition),box-shadow var(--hc-transition),transform var(--hc-transition)}
 .hc-faq-item:hover{border-color:var(--hc-blue-border);box-shadow:var(--hc-shadow-sm)}

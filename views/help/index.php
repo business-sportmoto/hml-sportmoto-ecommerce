@@ -17,8 +17,8 @@
 
         <form action="/ajuda/busca" method="GET" role="search">
             <div class="hc-search">
-                <span class="hc-search-icon"><i class="bi bi-search">
-                    <?= IconLibrary::render('help') ?>
+                <span class="hc-search-icon"><i aria-hidden="true">
+                    <?= IconLibrary::render('search') ?>
                 </i></span>
                 <input
                     type="search"
@@ -50,7 +50,7 @@
             </div>
             <div class="hc-cat-name"><?= htmlspecialchars($cat['nome']) ?></div>
             <div class="hc-cat-count"><?= (int)$cat['total_perguntas'] ?> pergunta<?= $cat['total_perguntas'] != 1 ? 's' : '' ?></div>
-            <i class="bi bi-arrow-up-right hc-cat-arrow" aria-hidden="true">
+            <i class="hc-cat-arrow" aria-hidden="true">
                 <?= IconLibrary::render('arrow-forward') ?>
             </i>
         </a>
@@ -71,14 +71,14 @@
 
         <?php if (empty($resultados)): ?>
             <div class="hc-empty">
-                <i class="bi bi-search" aria-hidden="true"></i>
+                <i aria-hidden="true"><?= IconLibrary::render('search') ?></i>
                 Tente outras palavras-chave ou navegue pelas categorias acima.
             </div>
         <?php else: ?>
             <?php foreach ($resultados as $r): ?>
             <a href="/ajuda/categoria/<?= $r['categoria_slug'] ?>" class="hc-result-item">
                 <div class="hc-result-cat">
-                    <i class="bi <?= htmlspecialchars($r['categoria_icone']) ?>" aria-hidden="true"></i>
+                    <?= IconLibrary::render(preg_replace('/^bi-/', '', (string)$r['categoria_icone'])) ?>
                     <?= htmlspecialchars($r['categoria_nome']) ?>
                 </div>
                 <div class="hc-result-q"><?= htmlspecialchars($r['pergunta']) ?></div>
@@ -98,7 +98,7 @@
         ?>
         <div class="hc-faq-group">
             <div class="hc-group-title">
-                <i class="bi <?= htmlspecialchars($cat['icone']) ?>" aria-hidden="true"></i>
+                <i aria-hidden="true"><?= IconLibrary::render(preg_replace('/^bi-/', '', (string)$cat['icone'])) ?></i>
                 <?= htmlspecialchars($cat['nome']) ?>
             </div>
             <div class="hc-faq-list">
@@ -112,7 +112,7 @@
                     >
                         <span><?= htmlspecialchars($p['pergunta']) ?></span>
                         <span class="hc-faq-icon" aria-hidden="true">
-                            <i class="bi bi-chevron-down"></i>
+                            <i aria-hidden="true"><?= IconLibrary::render('key-arrpw-down') ?></i>
                         </span>
                     </button>
                     <div class="hc-faq-body" id="hcfaq-<?= $p['id'] ?>" role="region">

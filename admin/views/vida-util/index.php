@@ -22,7 +22,7 @@ $base = defined('BASE_URL') ? BASE_URL : '';
       </p>
     </div>
     <button type="button" class="vu_btn vu_pri" id="vu-novo">
-      <i class="bi bi-plus-lg"></i> Nova regra
+      <?= IconLibrary::render('plus', 'icon icon--sm') ?> Nova regra
     </button>
   </div>
 

@@ -182,8 +182,21 @@ nunca houve. Todo `<i class="bi bi-x"></i>` no projeto é resquício de antes da
 migração e **desenha nada** — silenciosamente, que é o pior tipo de falha
 visual: nenhum erro no console, só um espaço vazio.
 
-Em 05/09/2026 havia **131** dessas tags no admin. As dos módulos de
-notificações e automações foram corrigidas; o resto continua lá.
+Em 05/09/2026 havia **131** dessas tags no admin. Em 08/09 o admin foi varrido
+por completo: **zero** restantes. A varredura separou tres situacoes, e cada uma
+pedia coisa diferente —
+
+| situacao | como estava | o que era |
+|---|---|---|
+| quebrado | `<i class="bi bi-x"></i>` vazio | nao desenhava nada |
+| vestigial | `<i class="bi bi-x">` em volta de um `IconLibrary::render()` | desenhava; a classe era lixo |
+| morto | mapa `bi-* => rotulo` declarado e nunca lido | 19 chaves sem efeito |
+
+**A LOJA tambem nao carrega Bootstrap Icons.** Os icones da FAQ
+(`views/help/`) estavam quebrados para o CLIENTE, nao so no admin — e o banco
+ja guardava chave do IconLibrary (`truck`, `card`, `undo`), enquanto a view
+renderizava `<i class="bi truck">`. Os que vem de dado foram corrigidos;
+sobraram **12 icones de interface** nas duas paginas da FAQ da loja.
 
 **Em PHP:**
 

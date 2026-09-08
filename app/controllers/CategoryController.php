@@ -160,8 +160,14 @@ class CategoryController extends Controller {
         }
 
         // ── Barra de veículo: só exibe se a moto tiver produtos nesta categoria ──
-        // Evita mostrar "seus produtos compatíveis" quando não há nenhum.
-        if ($veiculoAtivo && !empty($veiculoAtivo['modelo_id'])) {
+        // Duas portas, nesta ordem.
+        // 1. A barra só existe onde encaixe é assunto: categoria (ou ancestral)
+        //    com busca_moto ligada. Sem esta porta, vestuário e capacete
+        //    passavam a exibir a barra assim que o visitante tivesse uma moto
+        //    na sessão — e agora ele tem, porque a moto o acompanha pelo site.
+        // 2. Depois, evita anunciar "seus produtos compatíveis" quando não há
+        //    nenhum nesta categoria.
+        if ($temBuscaMoto && $veiculoAtivo && !empty($veiculoAtivo['modelo_id'])) {
             $stmtVeiculo = $db->prepare(
                 "SELECT 1 FROM produto_compatibilidade pc
                  JOIN produtos p           ON p.id = pc.produto_id

@@ -17,27 +17,13 @@ $modo = $modo ?? null;
 $editando = $modo === 'editar' && $categoria;
 $titulo   = $editando ? 'Editar categoria' : 'Nova categoria';
 
-// Mantém compatibilidade com registros antigos salvos como "bi-*".
-$iconesDisponiveis = [
-    'bi-truck'            => 'Entrega',
-    'bi-credit-card'      => 'Pagamento',
-    'bi-arrow-left-right' => 'Troca',
-    'bi-gear'             => 'Peças',
-    'bi-person-circle'    => 'Conta',
-    'bi-shield-check'     => 'Garantia',
-    'bi-question-circle'  => 'Dúvidas',
-    'bi-box-seam'         => 'Produto',
-    'bi-bag-check'        => 'Compra',
-    'bi-telephone'        => 'Contato',
-    'bi-chat-dots'        => 'Chat',
-    'bi-star'             => 'Avaliação',
-    'bi-lock'             => 'Segurança',
-    'bi-map'              => 'Endereço',
-    'bi-wrench'           => 'Técnico',
-    'bi-file-text'        => 'Documentos',
-];
+// O mapa de ícones que existia aqui era CÓDIGO MORTO: declarado e nunca
+// lido. Quem alimenta o seletor é $icones, vindo de
+// HelpFaqController::listaIcones(), que já usa chaves do IconLibrary. A
+// compatibilidade com registros antigos salvos como "bi-*" continua garantida
+// pelo hf_icon_name() logo acima, que tira o prefixo.
 
-$iconeAtual = $editando ? ($categoria['icone'] ?? 'bi-question-circle') : 'bi-question-circle';
+$iconeAtual = $editando ? ($categoria['icone'] ?? 'question-circle') : 'question-circle';
 ?>
 
 <div class="container-fluid py-4 hf-admin-page hf-admin-page--form">

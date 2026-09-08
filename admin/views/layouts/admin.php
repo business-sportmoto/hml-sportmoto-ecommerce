@@ -270,6 +270,8 @@ include __DIR__ . '/../partials/_sprite.php';
       'discount','webhook','relogio','history-toggle-off','rule','cancel','question-circle',
       'lightning-charge','arrow-right','power','two-wheeler','award','automation',
       'shield-check','stacks','info',
+      'inbox','sync','wifi-off',
+      'build-circle','pencil','plus','regras','save','trash',
       'alert-triangle','docs','help','mark_email_read','timeline',
   ]) ?>;
 

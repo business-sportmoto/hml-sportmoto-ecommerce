@@ -210,6 +210,14 @@
     }).finally(function () {
       banner.classList.remove("is-open");
       modal.classList.remove("is-open");
+
+      // Avisa o pixel.js que o consentimento mudou. Tem que ser AQUI,
+      // depois da resposta: quem grava o cookie sm_consent é o
+      // ConsentService (Set-Cookie), e o listener do pixel relê o
+      // cookie pra decidir. Disparar antes do fetch resolver faria o
+      // pixel ler o estado velho e não carregar — o usuário aceitaria
+      // e só seria rastreado na página seguinte.
+      window.dispatchEvent(new Event('sm:consent-updated'));
     });
   }
 

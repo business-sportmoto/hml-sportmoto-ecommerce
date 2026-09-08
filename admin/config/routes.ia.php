@@ -64,6 +64,28 @@ AdminRouter::post('/ia/agentes/salvar',             'IAAgenteController@salvar')
 AdminRouter::post('/ia/agentes/alternar',           'IAAgenteController@alternar');
 AdminRouter::post('/ia/agentes/excluir',            'IAAgenteController@excluir');
 
+// ── IA · Layout de e-mail (Fase 1 da integração com e-mail marketing) ──
+// Permissão marketing_ia. A tela vive na Central porque só ela fala com IA;
+// o módulo de e-mail recebe um template pronto, como rascunho.
+AdminRouter::get ('/ia/email-layout',               'IAEmailLayoutController@index');
+AdminRouter::post('/ia/email-layout/gerar',         'IAEmailLayoutController@gerar');
+AdminRouter::post('/ia/email-layout/salvar',        'IAEmailLayoutController@salvar');
+
+// ── IA · Conteúdo de e-mail por segmento (Fase 2) ─────────
+// Monta a campanha: esqueleto + produtos (SQL) + copy (IA) → template novo.
+AdminRouter::get ('/ia/email-conteudo',             'IAEmailConteudoController@index');
+AdminRouter::post('/ia/email-conteudo/produtos',    'IAEmailConteudoController@produtos');
+AdminRouter::post('/ia/email-conteudo/gerar',       'IAEmailConteudoController@gerar');
+AdminRouter::post('/ia/email-conteudo/montar',      'IAEmailConteudoController@montar');
+AdminRouter::post('/ia/email-conteudo/salvar',      'IAEmailConteudoController@salvar');
+
+// ── IA · Intenção de compra por cliente (Fase 3) ──────────
+// Perfil inferido do historico_navegacao. Vira audiência de campanha pela
+// regra `intencao` dos segmentos de e-mail. Lote no cli/ia-intencao.php.
+AdminRouter::get ('/ia/intencao',                   'IAIntencaoController@index');
+AdminRouter::get ('/ia/intencao/detalhe',           'IAIntencaoController@detalhe');
+AdminRouter::post('/ia/intencao/recalcular',        'IAIntencaoController@recalcular');
+
 // ── IA · Histórico e curadoria (Fase 1) ───────────────────
 AdminRouter::get ('/ia/historico',                  'IAGeracaoController@historico');
 AdminRouter::get ('/ia/historico/linhas',           'IAGeracaoController@historicoLinhas');

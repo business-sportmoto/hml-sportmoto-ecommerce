@@ -94,7 +94,12 @@ final class ConversionService
         // o Pixel (página de sucesso) e o CAPI (webhook) usam o
         // MESMO valor → a Meta deduplica. Prefixo 'order_' opcional,
         // mas tem que ser IDÊNTICO ao que o Pixel usa (ver peça 5).
-        $orderId = (string)($pedido['codigo'] ?? $pedido['id'] ?? '');
+        // `?:` e não `??`: um 'codigo' presente porém VAZIO (string vazia
+        // vinda do banco) passaria pelo `??` e viraria event_id ''. Aí o
+        // CAPI manda vazio, o Pixel manda o codigo real, e a dedup morre
+        // sem erro nenhum — o mesmo modo de falha que trouxe este método
+        // até aqui. Com `?:` o vazio cai no id.
+        $orderId = (string)(($pedido['codigo'] ?? '') ?: ($pedido['id'] ?? ''));
 
         $this->registrar(self::PURCHASE, [
             'value'        => (float)($pedido['total'] ?? 0),

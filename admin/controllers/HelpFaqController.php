@@ -63,7 +63,7 @@ class HelpFaqController extends Controller {
 
             $modo = 'editar';
             $icones = self::listaIcones();
-            $iconeAtual  = $categoria ? $categoria['icone'] : 'bi-question-circle';
+            $iconeAtual  = $categoria ? $categoria['icone'] : 'question-circle';
             $categoriaId = 0;
 
             ob_start();
@@ -84,7 +84,10 @@ class HelpFaqController extends Controller {
         $isAjax = $this->isAjax();
 
         $nome      = trim($_POST['nome']      ?? '');
-        $icone     = trim($_POST['icone']     ?? 'bi-question-circle');
+        // Default em chave do IconLibrary: categoria salva sem ícone escolhido
+        // nascia com 'bi-question-circle', que não existe no catálogo e some na
+        // renderização.
+        $icone     = trim($_POST['icone']     ?? 'question-circle');
         $descricao = trim($_POST['descricao'] ?? '');
         $ordem     = (int)($_POST['ordem']    ?? 0);
         $ativo     = isset($_POST['ativo'])   ? 1 : 0;

@@ -17,7 +17,7 @@ $badge = [
       <p style="font-size:13px;color:var(--em-text-muted);margin:0;">Motor de grafo com condições, esperas e múltiplos canais.</p>
     </div>
     <button type="button" id="fx-novo" class="ntfa-btn-pri" style="width:auto;padding:9px 18px;">
-      <i class="bi bi-plus-lg"></i> Novo fluxo
+      <?= IconLibrary::render('plus', 'icon icon--sm') ?> Novo fluxo
     </button>
     <a href="<?= $base; ?>/admin/fluxos/atividade">Atividades</a>
   </div>

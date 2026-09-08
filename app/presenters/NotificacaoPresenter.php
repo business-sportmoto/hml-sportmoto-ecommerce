@@ -3,7 +3,8 @@
 // Notificações do cliente.
 //
 // NotificacaoService::listar() já devolve `icone` e `cor` prontos para a web —
-// mas `icone` é um nome do Bootstrap Icons ("bi-bell") e `cor` é um hex fixo.
+// mas `icone` é uma chave do IconLibrary ("alerta", "package") e `cor` é um
+// hex fixo.
 // Nenhum dos dois serve aqui: o app tem Material Symbols e um tema que muda com
 // o esquema de cor. Então o presenter descarta os dois e manda `categoria`, que
 // é o dado real; o app decide como desenha.

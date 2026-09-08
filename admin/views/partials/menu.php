@@ -292,7 +292,10 @@
         $uriIa       = $_SERVER['REQUEST_URI'] ?? '';
         $ehCampanhas = str_contains($uriIa, '/admin/ia/campanha');
         $ehAgentes   = str_contains($uriIa, '/admin/ia/agentes');
-        $ehCentral   = str_contains($uriIa, '/admin/ia/') && !$ehCampanhas && !$ehAgentes;
+        $ehEmailLay  = str_contains($uriIa, '/admin/ia/email-layout');
+        $ehEmailCont = str_contains($uriIa, '/admin/ia/email-conteudo');
+        $ehIntencao  = str_contains($uriIa, '/admin/ia/intencao');
+        $ehCentral   = str_contains($uriIa, '/admin/ia/') && !$ehCampanhas && !$ehAgentes && !$ehEmailLay && !$ehEmailCont && !$ehIntencao;
       ?>
       <a href="<?= BASE_URL ?>/admin/ia/gerar" class="admin-nav-item<?= $ehCentral ? ' active' : '' ?>">
         <span class="admin-nav-icon">
@@ -306,6 +309,30 @@
           <?= IconLibrary::render('stacks', 'icon icon--md') ?>
         </span>
         Campanhas de IA
+      </a>
+
+      <?php // Gera o esqueleto do template; o e-mail em si sai do módulo de e-mail. ?>
+      <a href="<?= BASE_URL ?>/admin/ia/email-layout" class="admin-nav-item<?= $ehEmailLay ? ' active' : '' ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('mail', 'icon icon--md') ?>
+        </span>
+        Layout de e-mail
+      </a>
+
+      <?php // Monta a campanha a partir de um layout: produtos + copy. ?>
+      <a href="<?= BASE_URL ?>/admin/ia/email-conteudo" class="admin-nav-item<?= $ehEmailCont ? ' active' : '' ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('campaign', 'icon icon--md') ?>
+        </span>
+        Conteúdo de e-mail
+      </a>
+
+      <?php // Perfil de intenção: vira audiência de campanha por segmento. ?>
+      <a href="<?= BASE_URL ?>/admin/ia/intencao" class="admin-nav-item<?= $ehIntencao ? ' active' : '' ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('funnel', 'icon icon--md') ?>
+        </span>
+        Intenção do cliente
       </a>
 
       <?php // Agentes de BI: quem responde no botão "Analisar com IA" do painel. ?>

@@ -12,15 +12,15 @@
     <div class="hc-cat-hero-inner">
         <nav class="hc-breadcrumb" aria-label="Navegação estrutural">
             <a href="/ajuda">
-                <i class="bi bi-house-door" aria-hidden="true"></i>
+                <i aria-hidden="true"><?= IconLibrary::render('home') ?></i>
                 Central de Ajuda
             </a>
-            <span class="hc-breadcrumb-sep" aria-hidden="true"><i class="bi bi-chevron-right"></i></span>
+            <span class="hc-breadcrumb-sep" aria-hidden="true"><i><?= IconLibrary::render('arrow-right') ?></i></span>
             <span><?= htmlspecialchars($categoria['nome']) ?></span>
         </nav>
 
         <h1>
-            <i class="bi <?= htmlspecialchars($categoria['icone']) ?>" aria-hidden="true"></i>
+            <?= IconLibrary::render(preg_replace('/^bi-/', '', (string)$categoria['icone'])) ?>
             <?= htmlspecialchars($categoria['nome']) ?>
         </h1>
         <?php if (!empty($categoria['descricao'])): ?>
@@ -41,16 +41,14 @@
             class="hc-sidebar-link <?= $cat['slug'] === $categoria['slug'] ? 'is-active' : '' ?>"
             <?= $cat['slug'] === $categoria['slug'] ? 'aria-current="page"' : '' ?>
         >
-            <i class="bi <?= htmlspecialchars($cat['icone']) ?>" aria-hidden="true">
-                <?= IconLibrary::render($cat['icone']) ?>
-            </i>
+            <i aria-hidden="true"><?= IconLibrary::render(preg_replace('/^bi-/', '', (string)$cat['icone'])) ?></i>
             <?= htmlspecialchars($cat['nome']) ?>
         </a>
         <?php endforeach; ?>
 
         <hr class="hc-sidebar-divider">
         <a href="/ajuda" class="hc-sidebar-link">
-            <i class="bi bi-arrow-left" aria-hidden="true">
+            <i aria-hidden="true">
                 <?= IconLibrary::render('arrow-back') ?>
             </i>
             Todas as categorias
@@ -75,7 +73,7 @@
 
         <?php if (empty($perguntas)): ?>
             <div class="hc-empty">
-                <i class="bi bi-chat-square-dots" aria-hidden="true">
+                <i aria-hidden="true">
                     <?= IconLibrary::render('chat-dashed') ?>
                 </i>
                 Nenhuma pergunta disponível nesta categoria ainda.
@@ -92,7 +90,7 @@
                     >
                         <span><?= htmlspecialchars($p['pergunta']) ?></span>
                         <span class="hc-faq-icon" aria-hidden="true">
-                            <i class="bi bi-chevron-down">
+                            <i aria-hidden="true">
                                 <?= IconLibrary::render('key-arrpw-down') ?>
                             </i>
                         </span>
@@ -110,10 +108,10 @@
             <p>Esta página foi útil?</p>
             <div class="hc-feedback-btns">
                 <button class="hc-feedback-btn" type="button" onclick="hcVote(true)">
-                    <i class="bi bi-hand-thumbs-up" aria-hidden="true"></i> Sim
+                    <i aria-hidden="true"><?= IconLibrary::render('check') ?></i> Sim
                 </button>
                 <button class="hc-feedback-btn" type="button" onclick="hcVote(false)">
-                    <i class="bi bi-hand-thumbs-down" aria-hidden="true"></i> Não
+                    <i aria-hidden="true"><?= IconLibrary::render('close') ?></i> Não
                 </button>
             </div>
         </div>
@@ -137,7 +135,7 @@
 function hcVote(positivo) {
     var box = document.getElementById('hcFeedback');
     box.innerHTML = '<p style="color:var(--hc-blue);font-weight:500">'
-        + '<i class="bi bi-check-circle me-1"></i>'
+        + <?= json_encode('<i class="hc-fb-ok">' . IconLibrary::render('check-circle') . '</i> ') ?>
         + (positivo ? 'Obrigado pelo feedback!' : 'Anotado. Vamos melhorar esta página.')
         + '</p>';
 }
