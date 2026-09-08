@@ -1987,7 +1987,9 @@ class CheckoutController extends Controller {
         }
 
         $msg_credito_after_aprove = ($creditoAplicado > 0) ? 'Você aplicou um crédito de R$ ' . number_format($creditoAplicado, 2, ',', '.') . ' nesta compra. Se a compra não for aprovada, o crédito voltará para sua conta.' : '';
-        $this->service->mudarStatus($pedidoId, 'aguardando_pagamento', 'Pedido criado com sucesso.' . $msg_credito_after_aprove, 0, false);
+        // null (e não false) = quem decide é o `notifica_cliente` do status,
+        // configurável em /admin/configuracoes/status-pedidos.
+        $this->service->mudarStatus($pedidoId, 'aguardando_pagamento', 'Pedido criado com sucesso.' . $msg_credito_after_aprove, 0, null);
     
         // O gateway cobra o que SOBRA depois do crédito.
         //
@@ -2193,13 +2195,15 @@ class CheckoutController extends Controller {
         if ($statusPedidoFinal === 'em_analise') {
             $this->service->mudarStatus(
                 $pedidoId, 'em_analise',
+                // Explicitamente false: 'em_analise' expõe o antifraude ao
+                // cliente. A config do status também está com notifica=0.
                 'Retido pelo antifraude para análise.', 0, false
             );
         }
 
         if($statusPedidoFinal === 'pagamento_aprovado') {
             $msg_credito = 'Você utilizou um crédito de R$ ' . number_format($creditoAplicado, 2, ',', '.') . ' nesta compra.';
-            $this->service->mudarStatus($pedidoId, 'pagamento_aprovado', 'Pagamento aprovado. ' . $msg_credito, 0, false);
+            $this->service->mudarStatus($pedidoId, 'pagamento_aprovado', 'Pagamento aprovado. ' . $msg_credito, 0, null);
         }
 
         // → Bling: ENFILEIRA sempre após criação, independente do status

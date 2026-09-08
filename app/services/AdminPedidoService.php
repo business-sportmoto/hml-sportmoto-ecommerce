@@ -66,7 +66,7 @@ class AdminPedidoService {
         string $novoStatus,
         ?string $observacao,
         int    $adminId,
-        bool   $notificar = false,
+        ?bool  $notificar = null,
         ?int   $motivoCancelamentoId = null,
         ?string $motivoCancelamentoObs = null
     ): array {
@@ -159,12 +159,23 @@ class AdminPedidoService {
             }
         }
 
-        // Notificação pelo flag do status (só se $notificar = true)
-        // (o flag notifica_cliente é informativo para o painel;
-        //  a decisão final é do admin via checkbox na UI)
+        // ── Notificação por e-mail (fora da transação) ─────────────────
+        // `notifica_cliente` da tabela `pedido_status` deixou de ser
+        // "informativo para o painel" e passou a DECIDIR. Ela já vinha
+        // preenchida e coerente (8 status marcados, 3 não) e era ignorada:
+        // quem mandava era só o checkbox do admin, e todo caminho automático
+        // passava `false` — por isso 'pagamento_aprovado' nunca notificava.
+        //
+        // O parâmetro virou tri-estado, para o admin continuar podendo mandar
+        // no caso concreto sem que isso vire a regra:
+        //   null  → obedece a configuração do status  (padrão)
+        //   true  → força o envio   (checkbox marcado, webhook da Safra)
+        //   false → suprime         (quem manda e-mail próprio, ex. devoluções)
+        $deveNotificar = $notificar === null
+            ? (bool) ($statusDef['notifica_cliente'] ?? false)
+            : $notificar;
 
-        // Notificação por e-mail (fora da transação)
-        if ($notificar) {
+        if ($deveNotificar) {
             $pedido['cliente_email'] = $pedido['cliente_email'] ?? '';
             $this->email->statusPedido($pedido, $novoStatus, $observacao);
         }

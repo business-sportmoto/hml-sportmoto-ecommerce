@@ -282,7 +282,7 @@
         var btn = document.getElementById('adminTemaBtn');
         if (!btn) return;
 
-        aplicar(lerPreferencia());   // sincroniza o rotulo do botao com o que o <head> ja aplicou
+        // aplicar(lerPreferencia());   // sincroniza o rotulo do botao com o que o <head> ja aplicou
 
         btn.addEventListener('click', function () {
             aplicar(lerPreferencia() === 'escuro' ? 'claro' : 'escuro');

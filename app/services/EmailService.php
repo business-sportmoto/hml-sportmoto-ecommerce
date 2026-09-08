@@ -248,18 +248,57 @@ HTML;
     ): bool {
         if (empty($para)) return false;
 
-        $headers  = "MIME-Version: 1.0\r\n";
-        $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
-        $headers .= "From: =?UTF-8?B?" . base64_encode($this->fromName) . "?= <{$this->from}>\r\n";
-        $headers .= "Reply-To: {$this->from}\r\n";
-        $headers .= "X-Mailer: PHP/" . phpversion() . "\r\n";
+        // ── Envio pelo provedor configurado ───────────────────────────
+        // Antes isto era `@mail()`, e ali estava o defeito: o `mail()` não
+        // conhece a tabela `email_provedores`, então as credenciais do
+        // Mailgun/SES cadastradas no painel nunca eram usadas para e-mail de
+        // pedido — só para o transacional (senha, verificação), que já usava
+        // o EmailProviderService.
+        //
+        // E o `mail()` mentia: ele devolve `true` quando o binário local
+        // ACEITA a mensagem, não quando ela é entregue. Sem MTA com relay a
+        // mensagem morre ali e o `emails_log` registrava "enviado". Foram 62
+        // registros assim — 100% de sucesso aparente, zero e-mail chegando.
+        $result = false;
+        $erro   = null;
 
-        $assutoCodificado = "=?UTF-8?B?" . base64_encode($assunto) . "?=";
-        $result = @mail($para, $assutoCodificado, $corpo, $headers);
-        $erro   = $result ? null : (error_get_last()['message'] ?? 'Falha desconhecida');
+        try {
+            $db  = Database::getInstance()->getConnection();
+            $cfg = $db->query(
+                "SELECT * FROM email_provedores WHERE ativo = 1 AND padrao = 1 LIMIT 1"
+            )->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$cfg) {
+                $cfg = $db->query(
+                    "SELECT * FROM email_provedores WHERE ativo = 1 LIMIT 1"
+                )->fetch(\PDO::FETCH_ASSOC);
+            }
+
+            if (!$cfg) {
+                // Sem fallback para mail() de propósito: voltar para ele seria
+                // reintroduzir a falha silenciosa que este patch corrige. Melhor
+                // falhar visível, com o motivo no log.
+                $erro = 'nenhum provedor de email ativo';
+            } else {
+                $r = (new EmailProviderService())->build($cfg['id'])->send([
+                    'from_email' => $cfg['remetente_email'] ?: $this->from,
+                    'from_name'  => $cfg['remetente_nome']  ?: $this->fromName,
+                    'reply_to'   => $cfg['reply_to'] ?: null,
+                    'to_email'   => $para,
+                    'to_name'    => '',
+                    'subject'    => $assunto,
+                    'html'       => $corpo,
+                    'text'       => null,
+                ]);
+                $result = (bool) $r->success;
+                $erro   = $r->success ? null : ($r->error ?: 'falha desconhecida no provedor');
+            }
+        } catch (\Throwable $e) {
+            $erro = $e->getMessage();
+        }
 
         if (!$result) {
-            error_log("[EmailService] Falha ao enviar para {$para} — assunto: {$assunto}");
+            error_log("[EmailService] Falha ao enviar para {$para} — {$assunto} — {$erro}");
         }
 
         // ── Log de envio ─────────────────────────────────
