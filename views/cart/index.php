@@ -52,9 +52,20 @@ $cepInfo       = CepController::getCepAtivo();
       <div class="cart-items-section set-itens-cart">
         <div class="cart-header">
           <label class="cart-select-all-label">
-            <input type="checkbox" id="cart-select-all" checked>
+            <?php
+            // O mestre nasce marcado só quando TODOS os itens estão. O estado
+            // indeterminado (alguns marcados) quem aplica é o cart.js.
+            $todosMarcados = true;
+            foreach ($items as $__i) {
+                if (array_key_exists('selecionado', $__i) && (int) $__i['selecionado'] !== 1) {
+                    $todosMarcados = false;
+                    break;
+                }
+            }
+            ?>
+            <input type="checkbox" id="cart-select-all" <?= $todosMarcados ? 'checked' : '' ?>>
             <span class="cart-check-custom"></span>
-            <span>Selecionar todos
+            <span>Todos os produtos
               <em id="cart-selected-count">(<?= $totalItens ?> itens)</em>
             </span>
           </label>
@@ -99,11 +110,17 @@ $cepInfo       = CepController::getCepAtivo();
                data-peso="<?= (float)($item['peso_kg'] ?? 0) ?>">
 
             <!-- Checkbox -->
+            <?php
+            // Sem isto o checkbox nascia SEMPRE marcado: o cliente desmarcava,
+            // recarregava a página e a escolha dele tinha sumido.
+            $itemSelecionado = !array_key_exists('selecionado', $item)
+                            || (int) $item['selecionado'] === 1;
+            ?>
             <label class="cart-item-check">
               <input type="checkbox"
                     class="cart-item-checkbox"
                     data-id="<?= (int)$item['id'] ?>"
-                    checked>
+                    <?= $itemSelecionado ? 'checked' : '' ?>>
               <span class="cart-check-custom"></span>
             </label>
 
@@ -195,9 +212,23 @@ $cepInfo       = CepController::getCepAtivo();
             </div>
 
             <!-- Preço unitário -->
+            <?php
+            // Só vira etiqueta quando há desconto de verdade. Uma diferença de
+            // centavos por arredondamento viraria "0% OFF", que confunde mais
+            // do que informa — daí o piso de 1%.
+            $precoDe  = (float) ($item['preco_original'] ?? 0);
+            $precoPor = (float) ($item['preco_unitario'] ?? 0);
+            $pctOff   = ($precoDe > 0 && $precoPor > 0 && $precoDe > $precoPor)
+                      ? (int) floor((($precoDe - $precoPor) / $precoDe) * 100)
+                      : 0;
+            ?>
             <div class="cart-item-price">
               <span class="item-price-label">Preço</span>
-              <span class="item-price-value cart-item-unit-price"><?= PriceHelper::format($item['preco_unitario']) ?> / un.</span>
+              <?php if ($pctOff >= 1): ?>
+                <span class="cart-item-price-de"><?= PriceHelper::format($precoDe) ?></span>
+                <span class="cart-item-price-off"><?= $pctOff ?>% OFF</span>
+              <?php endif; ?>
+              <span class="item-price-value cart-item-unit-price"><?= PriceHelper::format($precoPor) ?> / un.</span>
             </div>
 
             <!-- Subtotal do item -->
@@ -413,51 +444,41 @@ $cepInfo       = CepController::getCepAtivo();
         <!-- ── Resumo do pedido (existente) ─────────────────────── -->
         <!-- ── Resumo do pedido ──────────────────────────── -->
         <!-- Resumo -->
-    <?php include __DIR__ . '/../partials/cart-promo-preview.php'; ?>
-    <div class="cart-summary" id="cart-summary">
-      <h3 class="cart-summary-title">Resumo do pedido</h3>
-
-      <!-- Contador de itens selecionados -->
-      <div class="cart-summary-row">
-        <span>
-          Itens selecionados
-          <strong id="summary-itens-count" class="cart-summary-badge">0</strong>
+    <!-- ── ENVIO ────────────────────────────────────────────────
+         Escolher para onde e por qual serviço é uma DECISÃO, e estava
+         espremida dentro do resumo — que é onde se confere, não onde se
+         decide. Aqui vira bloco próprio, com o mesmo desenho do widget da
+         página de produto: CEP com "Alterar" e a lista atrás de "Ver mais
+         opções", para não empurrar o resumo para fora da tela. -->
+    <div class="cart-envio" id="cart-envio">
+      <div class="cart-envio-head">
+        <span class="cart-envio-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round"><rect x="1" y="7" width="14" height="10" rx="1.5"/><path d="M15 10h4l3 3v4h-7z"/><circle cx="6" cy="18.5" r="1.6"/><circle cx="18" cy="18.5" r="1.6"/></svg>
         </span>
-        <span id="summary-subtotal">R$ 0,00</span>
+        <div class="cart-envio-head-txt">
+          <span class="cart-envio-label">Enviar para</span>
+          <strong id="cart-envio-cep">
+            <?= $cepInfo['tem_cep'] ? View::e($cepInfo['cep_fmt']) : 'Informe seu CEP' ?>
+          </strong>
+        </div>
+        <!-- Reaproveita a modal de localização que já existe no site — o
+             mesmo gesto do header e da página de produto. -->
+        <button type="button" class="cart-envio-alterar btn-open-location">
+          <?= $cepInfo['tem_cep'] ? 'Alterar' : 'Informar' ?>
+        </button>
       </div>
 
-      <!-- Desconto (cupom) -->
-      <div class="cart-summary-row cart-summary-row--discount"
-           id="summary-desconto-row" style="display:none;">
-        <span>Desconto</span>
-        <span id="summary-desconto" class="text-success">− R$ 0,00</span>
+      <!-- Opção escolhida -->
+      <div class="cart-envio-escolhido" id="cart-envio-escolhido"
+           <?= $cepInfo['tem_cep'] ? '' : 'style="display:none;"' ?>>
+        <span id="cart-envio-servico">Calculando…</span>
+        <span id="cart-envio-valor"></span>
       </div>
 
-      <!-- Desconto (promoção automática) -->
-      <div class="cart-summary-row cart-summary-row--promo"
-           id="summary-promo-row" style="display:none;">
-        <span id="summary-promo-label" style="display:flex;align-items:center;gap:6px;">
-          <span style="font-size:11px;font-weight:700;background:#eff6ff;color:#1d4ed8;
-                       padding:1px 7px;border-radius:99px;">PROMO</span>
-          Promoção
-        </span>
-        <span id="summary-promo" class="text-success">− R$ 0,00</span>
-      </div>
-
-      <!-- Frete -->
-      <div class="cart-summary-row" id="summary-frete-row">
-        <span>Frete</span>
-        <span id="summary-frete" class="location-cep-input">
-          <?php if ($cepInfo['tem_cep']): ?>
-            <?= View::e($cepInfo['cep_fmt']) ?>
-          <?php else: ?>
-          <button type="button" class="cart-frete-calcular btn-open-location" id="btn-calcular-frete">Calcular</button>
-          <?php endif; ?>
-        </span>
-      </div>
-
-      <!-- CEP para frete -->
-      <div class="cart-frete-form" id="cart-frete-form" style="display:none;">
+      <!-- CEP manual: só para quem ainda não tem um ativo -->
+      <div class="cart-frete-form" id="cart-frete-form"
+           <?= $cepInfo['tem_cep'] ? 'style="display:none;"' : '' ?>>
         <div class="cart-frete-input-wrap">
           <input type="text" id="cart-cep-input"
                  class="form-control form-control--sm cep-mask"
@@ -465,7 +486,61 @@ $cepInfo       = CepController::getCepAtivo();
           <button type="button" class="btn btn-outline btn-sm"
                   id="btn-frete-buscar">OK</button>
         </div>
-        <div id="cart-frete-resultado" style="display:none;"></div>
+      </div>
+
+      <button type="button" class="cart-envio-mais" id="btn-ver-mais-frete"
+              style="display:none;">
+        Ver mais opções
+      </button>
+
+      <div id="cart-frete-resultado" style="display:none;"></div>
+    </div>
+
+    <?php include __DIR__ . '/../partials/cart-promo-preview.php'; ?>
+    <div class="cart-summary" id="cart-summary">
+      <h3 class="cart-summary-title">Resumo da compra</h3>
+
+      <!-- Produtos (n) — a contagem é da SELEÇÃO, não do carrinho -->
+      <div class="cart-summary-row">
+        <span>Produtos (<span id="summary-itens-count">0</span>)</span>
+        <span id="summary-subtotal">R$ 0,00</span>
+      </div>
+
+      <!-- ORDEM DO ANEXO: produtos, desconto de produtos, envios, cupom.
+           O desconto automático vem logo abaixo do subtotal porque incide
+           sobre ele; o cupom fica por último, junto do total, porque é o
+           único que o cliente controla. -->
+
+      <!-- Desconto de produtos (promoção automática) -->
+      <div class="cart-summary-row cart-summary-row--promo"
+           id="summary-promo-row" style="display:none;">
+        <span>Desconto de produtos</span>
+        <span id="summary-promo" class="text-success">− R$ 0,00</span>
+      </div>
+
+      <!-- Envios: só o VALOR.
+           Escolher o frete é ação, e ação não mora em resumo — foi para o
+           bloco "Enviar para", acima. -->
+      <div class="cart-summary-row" id="summary-frete-row">
+        <span>Envios</span>
+        <span>
+          <span id="summary-frete-cheio" class="cart-summary-riscado"></span>
+          <span id="summary-frete">—</span>
+        </span>
+      </div>
+
+      <!-- Cupom aplicado.
+           UM cupom por pedido — por isso "Cupom aplicado", e não a fração de
+           uso que o anexo mostra. Dizer "1/3" prometeria acúmulo que o
+           checkout não faz. -->
+      <div class="cart-summary-row cart-summary-row--discount"
+           id="summary-desconto-row" style="display:none;">
+        <span class="cart-summary-cupom-label">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+          Cupom aplicado
+        </span>
+        <span id="summary-desconto" class="text-success">− R$ 0,00</span>
       </div>
 
       <!-- Cupom -->
@@ -488,23 +563,28 @@ $cepInfo       = CepController::getCepAtivo();
 
       <!-- Total -->
       <div class="cart-summary-total">
-        <strong>Total selecionado</strong>
-        <strong id="summary-total">R$ 0,00</strong>
+        <strong>Total</strong>
+        <span>
+          <span id="summary-total-cheio" class="cart-summary-riscado"></span>
+          <strong id="summary-total">R$ 0,00</strong>
+        </span>
+      </div>
+
+      <!-- Quanto o cliente economizou — só aparece quando há economia -->
+      <div class="cart-summary-economia" id="summary-economia" style="display:none;">
+        Economize <strong id="summary-economia-valor">R$ 0,00</strong>
       </div>
 
       <div class="cart-summary-installment" id="summary-parcela"></div>
 
-      <!-- Botão checkout -->
+      <!-- Botão checkout: a contagem no rótulo é o que liga o botão à
+           seleção. Sem ela o cliente desmarca itens e não tem confirmação
+           de quantos está levando. -->
       <button type="button"
               class="btn btn-primary btn-full cart-checkout-btn"
               id="btn-checkout"
               disabled>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-             stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-          <path d="M9 12l2 2 4-4"/>
-          <path d="M12 2a10 10 0 100 20 10 10 0 000-20z"/>
-        </svg>
-        Finalizar compra
+        <span id="btn-checkout-label">Continuar</span>
       </button>
 
       <p class="cart-summary-obs" id="cart-sem-selecao"

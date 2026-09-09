@@ -182,6 +182,170 @@ $faqs = [
     </div>
   </div>
 
+  <?php
+  // ══ CONCLUIR O PAGAMENTO ══════════════════════════════
+  //
+  // Pedido esperando pagamento não tinha saída nenhuma nesta tela: o cliente
+  // via "aguardando pagamento" e precisava achar o e-mail ou refazer a compra.
+  // Cada método tem UMA ação útil, e só ela aparece.
+  //
+  // A mesma condição do checkout/success (CheckoutController::success), para
+  // as duas telas não discordarem sobre o que ainda dá para pagar.
+  $podeConcluir = !$aprovado && !$isCancelado && in_array(
+      $statusPagamento, ['pendente', 'aguardando', 'recusado', 'erro', 'falhou'], true
+  );
+
+  $pixCopiaCola = $pedido['pix_copia_cola'] ?? null;
+  $pixQrImg     = $pedido['pix_qr_code']    ?? null;
+  $pixExpiraEm  = $pedido['pix_expira_em']  ?? null;
+
+  // Pix vencido não é pagável: o banco recusa o QR e a adquirente já baixou a
+  // cobrança. Mostrar o código nesse caso só produz uma tentativa frustrada.
+  $pixNoPrazo = $pixCopiaCola
+             && (empty($pixExpiraEm) || strtotime((string) $pixExpiraEm) > time());
+
+  $boletoUrl   = $pedido['boleto_url']             ?? null;
+  $boletoLinha = $pedido['boleto_linha_digitavel'] ?? null;
+  $boletoVenc  = $pedido['boleto_vencimento']      ?? null;
+
+  $urlTrocar = BASE_URL . '/checkout/pagamento/trocar/' . rawurlencode((string) $pedido['codigo']);
+  ?>
+
+  <?php if ($podeConcluir): ?>
+  <!-- ══ CONCLUIR O PAGAMENTO ══════════════════════════ -->
+  <div class="od-pagar-card">
+    <div class="od-pagar-head">
+      <span class="od-pagar-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round"><circle cx="12" cy="12" r="9"/><polyline points="12,7 12,12 15,14"/></svg>
+      </span>
+      <div class="od-pagar-head-txt">
+        <strong>Falta concluir o pagamento</strong>
+        <span>Seu pedido fica reservado até a confirmação.</span>
+      </div>
+    </div>
+
+    <div class="od-pagar-body">
+
+      <?php if ($metodo === 'pix' && $pixNoPrazo): ?>
+        <!-- Pix ainda no prazo: tudo que o cliente precisa para pagar agora -->
+        <div class="od-pagar-pix">
+          <?php if ($pixQrImg): ?>
+            <img src="<?= View::e($pixQrImg) ?>" alt="QR Code do Pix" class="od-pagar-qr">
+          <?php endif; ?>
+
+          <div class="od-pagar-pix-info">
+            <p class="od-pagar-hint">
+              Abra o app do seu banco, escolha <strong>Pix Copia e Cola</strong>
+              e cole o código abaixo.
+            </p>
+
+            <div class="od-pagar-code" id="od-pix-code"><?= View::e($pixCopiaCola) ?></div>
+
+            <button type="button" class="btn btn-primary od-pagar-btn"
+                    data-copiar-pgto="<?= View::e($pixCopiaCola) ?>">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2.2" stroke-linecap="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>
+              <span>Copiar código Pix</span>
+            </button>
+
+            <?php if ($pixExpiraEm): ?>
+              <p class="od-pagar-prazo">
+                Válido até <?= date('d/m/Y \à\s H:i', strtotime((string) $pixExpiraEm)) ?>
+              </p>
+            <?php endif; ?>
+          </div>
+        </div>
+
+      <?php elseif ($metodo === 'pix'): ?>
+        <!-- Pix vencido: o único caminho é escolher outra forma -->
+        <p class="od-pagar-hint">
+          O prazo deste Pix venceu. Você pode escolher outra forma de pagamento
+          sem perder os itens do pedido.
+        </p>
+        <a href="<?= $urlTrocar ?>" class="btn btn-primary od-pagar-btn"
+           data-confirmar-pgto="Isto devolve os itens ao carrinho para você escolher outra forma de pagamento. Continuar?">
+          Escolher outra forma de pagamento
+        </a>
+
+      <?php elseif ($metodo === 'boleto' && $boletoUrl): ?>
+        <!-- Boleto: só o botão de baixar, como pede a ideia -->
+        <?php if ($boletoVenc): ?>
+          <p class="od-pagar-hint">
+            Vencimento em <strong><?= date('d/m/Y', strtotime((string) $boletoVenc)) ?></strong>.
+            O pagamento leva até 3 dias úteis para compensar.
+          </p>
+        <?php endif; ?>
+
+        <a href="<?= View::e($boletoUrl) ?>" target="_blank" rel="noopener"
+           class="btn btn-primary od-pagar-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span>Baixar boleto</span>
+        </a>
+
+        <?php if ($boletoLinha): ?>
+          <div class="od-pagar-code od-pagar-code--linha"><?= View::e($boletoLinha) ?></div>
+          <button type="button" class="od-pagar-link" data-copiar-pgto="<?= View::e($boletoLinha) ?>">
+            Copiar linha digitável
+          </button>
+        <?php endif; ?>
+
+      <?php elseif ($isCartao): ?>
+        <!-- Cartão: a ação é trocar a forma, igual ao checkout/success -->
+        <p class="od-pagar-hint">
+          <?= $statusPagamento === 'recusado'
+              ? 'O pagamento não foi autorizado pelo emissor do cartão.'
+              : 'Ainda não recebemos a confirmação do pagamento.' ?>
+          Você pode tentar com outro cartão ou escolher Pix ou boleto.
+        </p>
+        <a href="<?= $urlTrocar ?>" class="btn btn-primary od-pagar-btn"
+           data-confirmar-pgto="Isto devolve os itens ao carrinho para você escolher outra forma de pagamento. Continuar?">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2.2" stroke-linecap="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+          <span>Mudar a forma de pagamento</span>
+        </a>
+
+      <?php else: ?>
+        <!-- Boleto sem URL, método desconhecido: não deixa o cliente sem saída -->
+        <p class="od-pagar-hint">
+          Não conseguimos exibir os dados de pagamento deste pedido. Você pode
+          escolher outra forma sem perder os itens.
+        </p>
+        <a href="<?= $urlTrocar ?>" class="btn btn-primary od-pagar-btn"
+           data-confirmar-pgto="Isto devolve os itens ao carrinho para você escolher outra forma de pagamento. Continuar?">
+          Escolher outra forma de pagamento
+        </a>
+      <?php endif; ?>
+
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    // Confirmação antes de trocar: a ação devolve os itens ao carrinho e
+    // cancela o pedido atual. Um clique sem querer não pode fazer isso.
+    document.addEventListener('click', function (e) {
+      var alvo = e.target.closest('[data-confirmar-pgto]');
+      if (alvo && !window.confirm(alvo.getAttribute('data-confirmar-pgto'))) e.preventDefault();
+    });
+
+    // Copiar Pix / linha digitável.
+    document.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-copiar-pgto]');
+      if (!b || !navigator.clipboard) return;
+      navigator.clipboard.writeText(b.getAttribute('data-copiar-pgto')).then(function () {
+        var alvo = b.querySelector('span') || b;
+        var txt  = alvo.textContent;
+        alvo.textContent = 'Copiado!';
+        b.classList.add('is-copiado');
+        setTimeout(function () { alvo.textContent = txt; b.classList.remove('is-copiado'); }, 1800);
+      });
+    });
+  })();
+  </script>
+  <?php endif; ?>
+
   <!-- ══ TIMELINE ══════════════════════════════════════ -->
   <div class="od-timeline-card <?= $isCancelado ? 'od-timeline-card--cancelled' : '' ?>">
     <div class="odtl-header">
@@ -1361,6 +1525,55 @@ $faqs = [
 }
 @keyframes od-spin { to { transform: rotate(360deg); } }
 .od-dev-spin { animation: od-spin .9s linear infinite; flex-shrink: 0; }
+
+/* ── Concluir o pagamento (pedido ainda não pago) ── */
+.od-pagar-card {
+  background:#fff;border:1px solid #fde68a;border-left:3px solid #f59e0b;
+  border-radius:12px;margin-bottom:16px;overflow:hidden;
+}
+.od-pagar-head {
+  display:flex;align-items:center;gap:12px;
+  padding:14px 20px;background:#fffbeb;border-bottom:1px solid #fde68a;
+}
+.od-pagar-icon { display:flex;color:#b45309;flex-shrink:0; }
+.od-pagar-icon svg { width:22px;height:22px; }
+.od-pagar-head-txt { display:flex;flex-direction:column;gap:2px;min-width:0; }
+.od-pagar-head-txt strong { font-size:14px;font-weight:800;color:#92400e; }
+.od-pagar-head-txt span   { font-size:12.5px;color:#b45309; }
+
+.od-pagar-body { padding:18px 20px; }
+.od-pagar-hint { font-size:13px;line-height:1.55;color:#475569;margin:0 0 14px; }
+
+.od-pagar-pix { display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap; }
+.od-pagar-qr {
+  width:168px;height:168px;flex-shrink:0;
+  border:1px solid #e2e8f0;border-radius:10px;background:#fff;padding:6px;
+}
+.od-pagar-pix-info { flex:1;min-width:240px; }
+
+.od-pagar-code {
+  font-family:'SF Mono',Monaco,Consolas,monospace;font-size:11.5px;line-height:1.5;
+  color:#0f172a;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;
+  padding:10px 12px;margin-bottom:12px;word-break:break-all;
+  max-height:88px;overflow-y:auto;
+}
+.od-pagar-code--linha { text-align:center;font-size:13px;letter-spacing:.3px;margin-top:12px; }
+
+.od-pagar-btn { display:inline-flex;align-items:center;gap:7px;font-size:13.5px; }
+.od-pagar-btn.is-copiado { background:#16a34a; }
+
+.od-pagar-link {
+  display:block;width:100%;margin-top:2px;padding:6px;
+  background:none;border:0;cursor:pointer;
+  font-size:12.5px;font-weight:700;color:#2563eb;
+}
+.od-pagar-prazo { font-size:12px;color:#94a3b8;margin:10px 0 0; }
+
+@media (max-width:560px) {
+  .od-pagar-pix { flex-direction:column;align-items:center; }
+  .od-pagar-pix-info { min-width:0;width:100%; }
+  .od-pagar-btn { width:100%;justify-content:center; }
+}
 </style>
 
 <!-- ══ MODAL FAQ ════════════════════════════════════════ -->

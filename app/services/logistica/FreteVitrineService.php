@@ -276,6 +276,17 @@ class FreteVitrineService
                 'prazo_dias'     => (int)($o['prazo_dias'] ?? 0),
                 'valor'          => round((float)($o['valor_final'] ?? $o['valor'] ?? 0), 2),
                 'valor_fmt'      => PriceHelper::format(round((float)($o['valor_final'] ?? $o['valor'] ?? 0), 2)),
+                // VALOR CHEIO, antes de regra de frete grátis ou desconto.
+                //
+                // Ele já existia aqui dentro (`valor` cru, ao lado do
+                // `valor_final`), mas os dois eram colapsados num campo só na
+                // saída — então a vitrine não tinha como mostrar "de R$ 176
+                // por R$ 166". Só sai quando é MAIOR que o cobrado: igual
+                // viraria um riscado sem desconto nenhum.
+                'valor_cheio'     => self::cheioSeHouver($o),
+                'valor_cheio_fmt' => self::cheioSeHouver($o) !== null
+                                   ? PriceHelper::format(self::cheioSeHouver($o))
+                                   : null,
                 'frete_gratis'   => !empty($o['frete_gratis']),
                 'mais_barato'    => $i === $barato,
                 'mais_rapido'    => $i === $rapido,
@@ -285,6 +296,21 @@ class FreteVitrineService
         // Mais barato sempre primeiro (a vitrine destaca a opção[0]).
         usort($out, static fn($a, $b) => ($a['valor'] ?? INF) <=> ($b['valor'] ?? INF));
         return $out;
+    }
+
+    /**
+     * Valor antes do desconto, ou null quando não houve desconto.
+     *
+     * Frete grátis é o caso que mais importa: `valor_final` vira 0 e o valor
+     * cru continua sendo o que a entrega custaria. É o número que o cliente
+     * precisa ver riscado para entender o que ganhou.
+     */
+    private static function cheioSeHouver(array $o): ?float
+    {
+        $final = (float) ($o['valor_final'] ?? $o['valor'] ?? 0);
+        $cheio = (float) ($o['valor'] ?? 0);
+
+        return ($cheio > $final + 0.001) ? round($cheio, 2) : null;
     }
 
     private function contextoBase(array $req, string $cep, string $uf, int $pesoG, array $itens): array

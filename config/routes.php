@@ -100,6 +100,7 @@ Router::get( '/carrinho/recuperar/{token}',        'CarrinhoRecuperacaoControlle
 Router::post('/carrinho/adicionar',       'CartController@add');
 Router::post('/carrinho/remover',         'CartController@remove');
 Router::post('/carrinho/atualizar',       'CartController@update');
+Router::post('/carrinho/selecionar',      'CartController@selecionar');
 Router::post('/carrinho/cupom',           'CartController@applyCoupon');
 Router::post('/carrinho/cupom/remover',   'CartController@removeCoupon');
 Router::post('/carrinho/frete',           'CartController@calcShipping');

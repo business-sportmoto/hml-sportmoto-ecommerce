@@ -2622,7 +2622,13 @@ class CheckoutController extends Controller {
         // $data['checkoutFrete'] = $this->state->getFrete();
         // $data['checkoutCupom'] = $this->state->getCupom();
 
-        $totals = $this->cartService->getTotals((int)$carrinhoId);
+        // SÓ O QUE ENTRA NA COMPRA.
+        //
+        // Sem o recorte, /checkout/address e /checkout/payment listavam os
+        // itens desmarcados no resumo lateral — e somavam o subtotal deles.
+        // O /checkout/summary já usava getItensComVariacoes() e mostrava o
+        // conjunto certo, então as duas telas do mesmo checkout discordavam.
+        $totals = $this->cartService->getTotals((int)$carrinhoId, true);
 
         $data['cartItens']     = $totals['items'];
         $data['cartTotais']    = $totals;
@@ -2743,6 +2749,18 @@ class CheckoutController extends Controller {
             $this->json(['ok' => false, 'msg' => 'Nenhum item selecionado.']);
         }
 
+        // A SELEÇÃO É DADO, não sessão.
+        //
+        // Esta chave de sessão existia e nunca foi lida por ninguém — o
+        // checkout montava o pedido com o carrinho inteiro. Agora quem manda é
+        // `carrinho_itens.selecionado`, e este POST é a última sincronização
+        // antes do checkout: se algum clique não chegou a gravar, é aqui que o
+        // banco volta a concordar com a tela.
+        $carrinho = (new Cart())->getOrCreate();
+        (new Cart())->sincronizarSelecao((int) $carrinho['id'], $itemIds);
+
+        // Mantida por compatibilidade com quem ainda leia a chave; a fonte da
+        // verdade é a coluna.
         Session::set('checkout_itens_selecionados', $itemIds);
         Session::set('checkout_frete_valor',        $freteValor);
         Session::set('checkout_frete_servico',      $freteServico);
@@ -2990,18 +3008,51 @@ class CheckoutController extends Controller {
      */
     private function cancelarCobrancaPendente(\PDO $db, string $orderIdLoja): void
     {
-        $st = $db->prepare(
-            'SELECT charge_id, adquirente_codigo FROM pgto_transacoes
-              WHERE order_id_loja = ? AND status IN ("pendente","aguardando") LIMIT 1'
-        );
-        $st->execute([$orderIdLoja]);
-        $tx = $st->fetch(\PDO::FETCH_ASSOC);
-
-        if (!$tx || empty($tx['charge_id'])) return;
-
+        // TUDO dentro do try, INCLUSIVE A CONSULTA.
+        //
+        // O comentário acima promete que falhar aqui não impede a troca, mas o
+        // try cobria só a chamada à adquirente. A consulta ficava de fora — e
+        // ela pedia `adquirente_codigo`, coluna que NUNCA existiu em
+        // `pgto_transacoes` (a adquirente é guardada por `gateway_id`, e o
+        // código vive em `pgto_gateways`).
+        //
+        // O 1054 virava fatal e derrubava a troca de forma de pagamento
+        // inteira: o cliente clicava em "Mudar a forma de pagamento" e nada
+        // acontecia — pedido não cancelava, carrinho não remontava, e o erro
+        // não aparecia em lugar nenhum porque o ErrorHandler respondia a
+        // requisição antes de qualquer efeito.
         try {
-            $adapter = AdquirenteFactory::porCodigo((string) $tx['adquirente_codigo']);
+            $st = $db->prepare(
+                'SELECT t.charge_id, t.provedor_real, g.codigo AS adquirente_codigo
+                   FROM pgto_transacoes t
+              LEFT JOIN pgto_gateways g ON g.id = t.gateway_id
+                  WHERE t.order_id_loja = ?
+                    AND t.status IN ("pendente", "aguardando")
+               ORDER BY t.id DESC
+                  LIMIT 1'
+            );
+            $st->execute([$orderIdLoja]);
+            $tx = $st->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$tx || empty($tx['charge_id'])) return;
+
+            // `provedor_real` como reserva: com orquestrador no meio, o
+            // gateway cadastrado é o intermediário e quem processou de fato
+            // está nessa coluna.
+            $codigo = trim((string) ($tx['adquirente_codigo'] ?? ''));
+            if ($codigo === '') $codigo = trim((string) ($tx['provedor_real'] ?? ''));
+
+            if ($codigo === '') {
+                LogService::warning('Cobranca pendente sem adquirente identificavel', [
+                    'order_id_loja' => $orderIdLoja,
+                    'charge_id'     => $tx['charge_id'],
+                ], 'pagamento');
+                return;
+            }
+
+            $adapter = AdquirenteFactory::porCodigo($codigo);
             $adapter?->cancelar((string) $tx['charge_id']);
+
         } catch (\Throwable $e) {
             LogService::exception($e, 'error', 'pagamento', [
                 'acao' => 'cancelar_para_trocar_pagamento', 'order_id_loja' => $orderIdLoja,

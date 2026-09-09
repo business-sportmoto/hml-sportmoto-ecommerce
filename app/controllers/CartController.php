@@ -12,20 +12,6 @@ class CartController extends Controller {
     }
 
     // ── Página do carrinho ────────────────────────────────────
-
-    // public function index(): void {
-    //     $carrinho = $this->cartModel->getOrCreate();
-    //     $totals   = $this->cartModel->getTotals((int)$carrinho['id']);
-
-    //     SeoHelper::setTitle('Meu Carrinho');
-
-    //     $this->render('cart/index', [
-    //         'carrinho' => $carrinho,
-    //         'totals'   => $totals,
-    //     ]);
-    // }
-    
-
     public function index(): void {
         $carrinhoId = $this->getCarrinhoId();
         $db         = Database::getInstance()->getConnection();
@@ -376,6 +362,47 @@ class CartController extends Controller {
         ]);
     }
 
+    /**
+     * POST /carrinho/selecionar
+     *
+     * Persiste o checkbox do carrinho. Antes a seleção vivia só no DOM: o
+     * resumo da página respondia certo, mas o checkout montava o pedido com o
+     * carrinho inteiro e cobrava o que o cliente tinha desmarcado.
+     *
+     * Aceita um item (`item_id` + `selecionado`) ou o carrinho todo (`todos`),
+     * que é o "Todos os produtos" do topo.
+     */
+    public function selecionar(): void {
+        $this->verifyCsrf();
+
+        $carrinho   = $this->cartModel->getOrCreate();
+        $carrinhoId = (int) $carrinho['id'];
+
+        if (array_key_exists('todos', $_POST)) {
+            $marcar = (bool) SecurityHelper::sanitizeInt($_POST['todos'] ?? 0);
+            $this->cartModel->definirSelecaoTodos($carrinhoId, $marcar);
+        } else {
+            $itemId = SecurityHelper::sanitizeInt($_POST['item_id'] ?? 0);
+            if ($itemId <= 0) {
+                $this->json(['ok' => false, 'msg' => 'Item inválido.']);
+            }
+            $marcar = (bool) SecurityHelper::sanitizeInt($_POST['selecionado'] ?? 0);
+            $this->cartModel->definirSelecao($itemId, $carrinhoId, $marcar);
+        }
+
+        // Devolve os totais do que ficou marcado: é com eles que o resumo e o
+        // botão "Continuar (n)" se atualizam sem recarregar a página.
+        $sel = $this->cartModel->getTotaisSelecionados($carrinhoId);
+
+        $this->json([
+            'ok'           => true,
+            'linhas'       => $sel['linhas'],
+            'unidades'     => $sel['unidades'],
+            'subtotal'     => $sel['subtotal'],
+            'subtotal_fmt' => 'R$ ' . number_format($sel['subtotal'], 2, ',', '.'),
+        ]);
+    }
+
     // ── Atualizar quantidade ──────────────────────────────────
 
     public function update(): void {
@@ -497,7 +524,19 @@ class CartController extends Controller {
         if (strlen($cep) !== 8) { $this->json(['ok' => false, 'erro' => 'CEP inválido.']); return; }
 
         $carrinho = $this->cartModel->getOrCreate();
-        $totals   = $this->cartModel->getTotals((int)$carrinho['id']);
+
+        // SÓ OS ITENS QUE ENTRAM NA COMPRA — o recorte é do modelo, para não
+        // existir uma segunda regra de "o que conta" espalhada por aqui.
+        // Cotar o carrinho cheio faria o cliente pagar frete de item que
+        // desmarcou, e o valor do resumo não bateria com o do pedido.
+        $totals = $this->cartModel->getTotals((int)$carrinho['id'], true);
+
+        // Nada marcado: não há o que cotar, e devolver as opções do carrinho
+        // cheio seria mentir sobre o valor.
+        if (empty($totals['items'])) {
+            $this->json(['ok' => false, 'erro' => 'Selecione ao menos um item.']);
+            return;
+        }
 
         $itens = [];
         foreach ($totals['items'] as $item) {
@@ -516,12 +555,18 @@ class CartController extends Controller {
             ];
         }
 
+        // Já é o subtotal do recorte — `getTotals(.., true)` somou só o
+        // que está marcado.
+        $subtotalSelecionado = (float) $totals['subtotal'];
+
         $res = (new FreteVitrineService())->cotar([
             'cep_destino'      => $cep,
             'itens'            => $itens,
-            'valor_mercadoria' => $totals['subtotal'],
+            // O valor da mercadoria também é o dos selecionados: é ele que
+            // decide frete grátis por faixa de preço.
+            'valor_mercadoria' => $subtotalSelecionado,
             // CTA no carrinho: "você já tem frete grátis?" (preco_produto=0)
-            'cta'              => ['subtotal_atual' => (float)$totals['subtotal'], 'preco_produto' => 0],
+            'cta'              => ['subtotal_atual' => $subtotalSelecionado, 'preco_produto' => 0],
         ]);
 
         $this->json($res);

@@ -162,9 +162,15 @@ class Cart extends Model {
                 ci.sku_id,
                 ci.quantidade,
                 ci.preco_unitario,
+                ci.selecionado,
                 ci.quantidade * ci.preco_unitario AS subtotal,
                 p.nome          AS nome_produto,
                 p.slug          AS produto_slug,
+                -- Preço de tabela, para a etiqueta de desconto. O
+                -- `preco_unitario` do item é o CONGELADO — o que o cliente
+                -- aceitou —, então a diferença entre os dois é o desconto real
+                -- daquela linha, não uma promoção que mudou depois.
+                p.preco         AS preco_original,
                 p.estoque_total AS estoque_produto,
                 pi.arquivo      AS imagem,
                 ps.sku          AS sku_codigo,
@@ -373,11 +379,26 @@ class Cart extends Model {
     /**
      * Calcula e retorna todos os totais do carrinho.
      */
-    public function getTotals(int $carrinhoId): array {
+    /**
+     * @param bool $apenasSelecionados Soma só o que o cliente marcou.
+     *
+     * O padrão é FALSE porque a página do carrinho precisa mostrar o total
+     * cheio ao lado do selecionado. Quem fala de compra — checkout, frete —
+     * passa true, e aí a lista e os valores concordam com o pedido que vai
+     * nascer. Antes, o resumo lateral do checkout somava o carrinho inteiro e
+     * divergia do /checkout/summary.
+     */
+    public function getTotals(int $carrinhoId, bool $apenasSelecionados = false): array {
         $state         = new CheckoutState();
 
         $items    = $this->getItems($carrinhoId);
         $carrinho = $this->find($carrinhoId);
+
+        if ($apenasSelecionados) {
+            $items = array_values(array_filter($items, static fn(array $i): bool =>
+                !array_key_exists('selecionado', $i) || (int) $i['selecionado'] === 1
+            ));
+        }
 
         $subtotal = array_sum(array_column($items, 'subtotal'));
         $frete    = (float)($carrinho['frete_valor'] ?? 0);
@@ -822,6 +843,18 @@ class Cart extends Model {
      * Requer: produto_atributos, produto_atributo_valores, sku_atributo_valores
      * Se essas tabelas não existirem, retorna sem variacao_label.
      */
+    /**
+     * Itens que ENTRAM NA COMPRA — só os marcados pelo cliente.
+     *
+     * O filtro mora aqui, e não em cada chamador, de propósito: este método
+     * alimenta os totais, o cupom, a promoção, a conversão, os itens do pedido
+     * e o checkout do app. Se cada um filtrasse por conta, bastaria um
+     * esquecer para o cliente ganhar desconto calculado sobre item que não
+     * comprou — e o próximo consumidor nasceria errado.
+     *
+     * A página do carrinho NÃO usa este método: ela lê por getItems(), que
+     * mostra tudo. É o que permite o item desmarcado continuar visível.
+     */
     public function getItensComVariacoes(int $clienteId): array {
         $carrinho = $this->getByCliente($clienteId);
         if (!$carrinho) return [];
@@ -862,6 +895,7 @@ class Cart extends Model {
              LEFT JOIN produto_imagens pi ON pi.produto_id = p.id AND pi.principal = 1
              WHERE ci.carrinho_id = ?
                AND p.ativo = 1
+               AND ci.selecionado = 1
              ORDER BY ci.id ASC"
         );
         $stmt->execute([(int)$carrinho['id']]);
@@ -882,6 +916,92 @@ class Cart extends Model {
         unset($item);
 
         return $itens;
+    }
+
+    /**
+     * Marca ou desmarca UM item.
+     *
+     * O `carrinho_id` entra no WHERE por segurança, não por conveniência: sem
+     * ele, mandar um `item_id` qualquer no POST mexeria no carrinho de outra
+     * pessoa.
+     */
+    public function definirSelecao(int $itemId, int $carrinhoId, bool $selecionado): bool {
+        if ($itemId <= 0 || $carrinhoId <= 0) return false;
+
+        $stmt = $this->db->prepare(
+            "UPDATE carrinho_itens SET selecionado = ? WHERE id = ? AND carrinho_id = ?"
+        );
+        $stmt->execute([$selecionado ? 1 : 0, $itemId, $carrinhoId]);
+
+        return $stmt->rowCount() > 0;
+    }
+
+    /** Marca ou desmarca o carrinho inteiro (o "Todos os produtos"). */
+    public function definirSelecaoTodos(int $carrinhoId, bool $selecionado): int {
+        if ($carrinhoId <= 0) return 0;
+
+        $stmt = $this->db->prepare(
+            "UPDATE carrinho_itens SET selecionado = ? WHERE carrinho_id = ?"
+        );
+        $stmt->execute([$selecionado ? 1 : 0, $carrinhoId]);
+
+        return $stmt->rowCount();
+    }
+
+    /**
+     * Totais considerando SÓ o que está marcado.
+     *
+     * `getTotals()` continua somando o carrinho inteiro — é o que a linha
+     * "Produtos" do resumo mostrava antes de existir seleção. Quem decide a
+     * compra é este aqui.
+     */
+    public function getTotaisSelecionados(int $carrinhoId): array {
+        $stmt = $this->db->prepare(
+            "SELECT
+                COUNT(*)                                    AS linhas,
+                COALESCE(SUM(ci.quantidade), 0)             AS unidades,
+                COALESCE(SUM(ci.quantidade * ci.preco_unitario), 0) AS subtotal
+               FROM carrinho_itens ci
+               JOIN produtos p ON p.id = ci.produto_id
+              WHERE ci.carrinho_id = ? AND ci.selecionado = 1 AND p.ativo = 1"
+        );
+        $stmt->execute([$carrinhoId]);
+        $r = $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
+
+        return [
+            'linhas'   => (int)   ($r['linhas']   ?? 0),
+            'unidades' => (int)   ($r['unidades'] ?? 0),
+            'subtotal' => (float) ($r['subtotal'] ?? 0),
+        ];
+    }
+
+    /**
+     * Deixa marcados EXATAMENTE os ids informados; o resto do carrinho sai.
+     *
+     * É a sincronização de última hora, feita quando o cliente clica em
+     * continuar: se algum POST por clique tiver se perdido no caminho, é aqui
+     * que o banco volta a concordar com a tela.
+     *
+     * @param int[] $itemIds
+     */
+    public function sincronizarSelecao(int $carrinhoId, array $itemIds): void {
+        if ($carrinhoId <= 0) return;
+
+        $ids = array_values(array_unique(array_filter(array_map('intval', $itemIds))));
+
+        if ($ids === []) {
+            // Lista vazia não desmarca o carrinho inteiro: seria transformar
+            // uma falha de front (nenhum id enviado) em compra sem itens.
+            return;
+        }
+
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+
+        $this->db->prepare(
+            "UPDATE carrinho_itens
+                SET selecionado = CASE WHEN id IN ({$ph}) THEN 1 ELSE 0 END
+              WHERE carrinho_id = ?"
+        )->execute([...$ids, $carrinhoId]);
     }
 
     public function getItensComVariacoesByCartId(int $carrinhoId): array {

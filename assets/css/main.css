@@ -5826,6 +5826,97 @@ input:checked + .cart-check-custom::after {
 .cart-summary-divider {
   height: 1px; background: var(--c-border); margin: 12px 0;
 }
+/* Valor cheio riscado, ao lado do cobrado (Envios e Total). */
+.cart-summary-riscado {
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--c-text-muted, #94a3b8);
+  text-decoration: line-through;
+  margin-right: 5px;
+}
+.cart-frete-riscado {
+  font-size: 11px;
+  color: var(--c-text-muted, #94a3b8);
+  margin-right: 3px;
+}
+.cart-summary-cupom-label { display: inline-flex; align-items: center; gap: 5px; }
+.cart-summary-cupom-label svg { opacity: .7; }
+
+/* ── Carrinho: bloco "Enviar para" ──────────────────────────────
+   Card próprio acima do resumo. A lista de opções fica atrás do "Ver mais
+   opções" para não empurrar o resumo e o botão de continuar para fora da
+   tela em telas curtas. */
+.cart-envio {
+  background: #fff;
+  border: 1px solid var(--c-border, #e2e8f0);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.cart-envio-head { display: flex; align-items: center; gap: 10px; }
+.cart-envio-icon { display: flex; color: var(--c-text-muted, #94a3b8); flex-shrink: 0; }
+.cart-envio-icon svg { width: 20px; height: 20px; }
+.cart-envio-head-txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.cart-envio-label {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .5px; color: var(--c-text-muted, #94a3b8);
+}
+.cart-envio-head-txt strong {
+  font-size: 13.5px; color: #0f172a;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cart-envio-alterar {
+  background: none; border: 0; cursor: pointer; flex-shrink: 0;
+  font-size: 12.5px; font-weight: 700; color: #2563eb; padding: 4px 2px;
+}
+.cart-envio-alterar:hover { text-decoration: underline; }
+
+.cart-envio-escolhido {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid var(--c-border, #e2e8f0);
+  font-size: 13px; color: #334155;
+}
+.cart-envio-escolhido span:last-child { font-weight: 700; }
+
+.cart-envio-mais {
+  display: block; width: 100%; margin-top: 10px; padding: 6px;
+  background: none; border: 0; cursor: pointer;
+  font-size: 12.5px; font-weight: 700; color: #2563eb;
+}
+.cart-envio-mais:hover { text-decoration: underline; }
+
+/* ── Carrinho: etiqueta de desconto no item ─────────────────────
+   O anexo de referência mostra "R$ 66 (riscado)  28% OFF" acima do preço
+   pago. Só aparece quando há desconto real na linha — ver o piso de 1% em
+   views/cart/index.php. */
+.cart-item-price-de {
+  font-size: 11.5px;
+  color: var(--c-text-muted, #94a3b8);
+  text-decoration: line-through;
+  margin-right: 6px;
+}
+.cart-item-price-off {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #15803d;
+  background: #dcfce7;
+  border-radius: 4px;
+  padding: 1px 5px;
+  vertical-align: 1px;
+}
+
+/* Economia total, abaixo do total. Verde e discreta: é reforço da decisão,
+   não a informação principal — quem manda ali é o valor a pagar. */
+.cart-summary-economia {
+  text-align: right;
+  font-size: 12px;
+  color: #15803d;
+  margin-top: 2px;
+}
+.cart-summary-economia strong { font-weight: 800; }
+
 .cart-summary-total {
   display: flex; justify-content: space-between; align-items: center;
   font-size: 18px; font-weight: 800; color: var(--c-dark); margin-bottom: 6px;
@@ -11001,7 +11092,7 @@ to{opacity:1;transform:scale(1)}
 .pdx .pdx-thumb-more img{opacity:.5}
 
 .pdx .gallery-main{position:relative}
-.pdx .gallery-zoom-wrapper{ position:relative; aspect-ratio:1; border-radius:var(--pdx-r-sm); overflow:hidden; background:linear-gradient(160deg,#fbfcfd,#eef1f5); border:1px solid var(--pdx-line); cursor:zoom-in; -webkit-border-radius:var(--pdx-r-sm); -moz-border-radius:var(--pdx-r-sm); -ms-border-radius:var(--pdx-r-sm); -o-border-radius:var(--pdx-r-sm); }
+.pdx .gallery-zoom-wrapper{ position:relative; aspect-ratio:1; border-radius:var(--pdx-r-sm); overflow:hidden; background:#fff; border:1px solid var(--pdx-line); cursor:zoom-in; -webkit-border-radius:var(--pdx-r-sm); -moz-border-radius:var(--pdx-r-sm); -ms-border-radius:var(--pdx-r-sm); -o-border-radius:var(--pdx-r-sm); }
 /* contain, não cover: a foto aparece inteira em qualquer proporção. Com cover,
    uma imagem não-quadrada era cortada em silêncio dentro do quadro — e numa
    loja de peças o que fica de fora costuma ser justo a borda que importa (o

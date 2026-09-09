@@ -104,6 +104,29 @@
 .order-card-date  { font-size: 12.5px; color: var(--c-text-muted); }
 .order-card-items-count { font-size: 12px; color: var(--c-text-muted); margin-top: 2px; }
 
+/* Forma de pagamento, forma de envio e status de envio no cartão da lista. */
+.order-card-meta {
+  display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 7px;
+}
+.order-card-meta-item {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11.5px; font-weight: 600; color: var(--c-text-muted);
+  white-space: nowrap;
+}
+.order-card-meta-item svg { width: 13px; height: 13px; opacity: .75; flex-shrink: 0; }
+
+/* O status de envio é o único que muda de estado — ganha cor para não se
+   perder entre os outros dois, que são sempre iguais. */
+.order-card-meta-item--envio {
+  color: #0369a1; background: #f0f9ff; border: 1px solid #bae6fd;
+  border-radius: 999px; padding: 1px 8px;
+}
+
+@media (max-width: 480px) {
+  .order-card-meta { gap: 4px 8px; }
+  .order-card-meta-item { font-size: 11px; }
+}
+
 .order-card-right {
   display: flex; flex-direction: column;
   align-items: flex-end; gap: 6px; flex-shrink: 0;

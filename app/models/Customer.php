@@ -131,6 +131,11 @@ class Customer extends Model {
                 p.id, p.codigo, p.status_pedido, p.status_pagamento,
                 p.forma_pagamento, p.subtotal, p.desconto, p.frete, p.total,
                 p.parcelas, p.criado_em,
+                -- Envio: o cartão da lista mostrava só código, data e total.
+                -- Sem estes campos o cliente precisava abrir cada pedido para
+                -- saber como pagou e por onde vem.
+                p.frete_descricao, p.frete_servico,
+                p.codigo_rastreio, p.enviado_em,
                 -- Primeiro item: imagem e nome
                 (SELECT pit2.produto_id
                 FROM pedido_itens pit2

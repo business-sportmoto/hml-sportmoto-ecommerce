@@ -101,6 +101,33 @@ $filtroStatus = SecurityHelper::sanitizeString($_GET['status'] ?? '');
       $st     = $statusMap[$p['status_pedido']] ?? ['cor'=>'info','label'=>$p['status_pedido']];
       $imgUrl = $p['primeiro_produto_id'] ? ImageHelper::getCartItemImage($p['primeiro_produto_id']) : View::asset('images/placeholder.jpg');
       $totalItens = (int)($p['total_itens'] ?? 0);
+
+      // ── Forma de pagamento ────────────────────────────
+      // Parcelas só entram quando são mais de uma: "Cartão 1x" é ruído.
+      $formaRotulos = [
+          'cartao'  => 'Cartão',
+          'pix'     => 'Pix',
+          'boleto'  => 'Boleto',
+          'credito' => 'Crédito da loja',
+      ];
+      $formaLabel = $formaRotulos[$p['forma_pagamento'] ?? ''] ?? null;
+      if ($formaLabel === 'Cartão' && (int)($p['parcelas'] ?? 1) > 1) {
+          $formaLabel .= ' ' . (int)$p['parcelas'] . 'x';
+      }
+
+      // ── Forma de envio ────────────────────────────────
+      $envioLabel = trim((string)($p['frete_descricao'] ?? $p['frete_servico'] ?? '')) ?: null;
+
+      // ── Status de envio ───────────────────────────────
+      // Deriva do que o pedido já sabe, sem consultar transportadora: a lista
+      // carrega 10 pedidos por página e uma chamada por linha a tornaria lenta
+      // justamente na tela que o cliente mais abre.
+      $envioStatus = match ($p['status_pedido'] ?? '') {
+          'entregue'     => 'Entregue',
+          'enviado'      => !empty($p['codigo_rastreio']) ? 'A caminho' : 'Enviado',
+          'em_separacao' => 'Em preparação',
+          default        => null,
+      };
     ?>
     <a href="<?= BASE_URL ?>/minha-conta/pedido/<?= (int)$p['id'] ?>" data-teste="<?= $p['primeiro_produto_id']; ?>"
        class="order-card">
@@ -121,6 +148,34 @@ $filtroStatus = SecurityHelper::sanitizeString($_GET['status'] ?? '');
         </div>
         <div class="order-card-items-count">
           <?= $totalItens ?> <?= $totalItens === 1 ? 'item' : 'itens' ?>
+        </div>
+
+        <!-- Como pagou e por onde vem.
+             Cada dado só aparece quando existe: pedido sem frete escolhido ou
+             sem rastreio não deve exibir rótulo vazio, que polui mais do que
+             informa. -->
+        <div class="order-card-meta">
+          <?php if ($formaLabel): ?>
+            <span class="order-card-meta-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+              <?= View::e($formaLabel) ?>
+            </span>
+          <?php endif; ?>
+
+          <?php if ($envioLabel): ?>
+            <span class="order-card-meta-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round"><rect x="1" y="7" width="14" height="10" rx="1.5"/><path d="M15 10h4l3 3v4h-7z"/><circle cx="6" cy="18.5" r="1.6"/><circle cx="18" cy="18.5" r="1.6"/></svg>
+              <?= View::e($envioLabel) ?>
+            </span>
+          <?php endif; ?>
+
+          <?php if ($envioStatus): ?>
+            <span class="order-card-meta-item order-card-meta-item--envio">
+              <?= View::e($envioStatus) ?>
+            </span>
+          <?php endif; ?>
         </div>
       </div>
 

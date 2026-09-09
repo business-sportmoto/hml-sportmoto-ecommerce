@@ -421,9 +421,37 @@ $(function () {
               ? '<span class="text-success">Grátis</span>'
               : formatarPreco(freteValor)
           );
+          // O bloco "Enviar para" e o resumo leem a MESMA variável — sincronizar
+          // aqui evita o caso em que o resumo diz um valor e o bloco outro.
+          sincronizarEnvio();
       }
 
       $('#summary-total').text(formatarPreco(Math.max(0, total)));
+
+      // ── Riscados ────────────────────────────────────────
+      // Só aparecem quando há de fato um valor maior antes do desconto.
+      if (freteCheio !== null && freteValor !== null && freteCheio > freteValor) {
+          $('#summary-frete-cheio').text(formatarPreco(freteCheio)).show();
+      } else {
+          $('#summary-frete-cheio').text('').hide();
+      }
+
+      // Total cheio = subtotal + frete cheio, sem nenhum desconto.
+      const totalCheio = subtotal + (freteCheio !== null ? freteCheio : (freteValor || 0));
+      if (totalCheio > Math.max(0, total) + 0.001 && linhas > 0) {
+          $('#summary-total-cheio').text(formatarPreco(totalCheio)).show();
+      } else {
+          $('#summary-total-cheio').text('').hide();
+      }
+
+      // Economia = tudo que saiu do preço cheio (cupom + promoção + frete).
+      const economia = descontoValor + Math.max(0, totalCheio - subtotal - (freteValor || 0));
+      if (economia > 0 && linhas > 0) {
+          $('#summary-economia-valor').text(formatarPreco(economia));
+          $('#summary-economia').show();
+      } else {
+          $('#summary-economia').hide();
+      }
 
       const parcela = calcularMelhorParcela(Math.max(0, total));
       if (parcela && linhas > 0) {
@@ -435,6 +463,9 @@ $(function () {
       }
 
       $('#btn-checkout').prop('disabled', linhas === 0);
+      // "Continuar (2)" — a contagem é de UNIDADES, como no resumo, e não de
+      // linhas: é o que o cliente conta quando olha o carrinho.
+      $('#btn-checkout-label').text(totalQtd > 0 ? 'Continuar (' + totalQtd + ')' : 'Continuar');
       $('#cart-sem-selecao').toggle(linhas === 0);
       $('#btn-remove-selected').toggle(linhas > 0);
 
@@ -453,17 +484,42 @@ $(function () {
       if (freteValor !== null && selecionados.map(i => i.id).join() !== ultimoFreteIds) {
           freteValor = null;
           freteServico = null;
+          freteCheio = null;
+          // A ação de calcular vive no bloco "Enviar para"; aqui é só leitura.
+          $('#cart-envio-servico').text('Selecione o frete');
+          $('#cart-envio-valor').text('');
           $('#summary-frete').html(
-              '<button type="button" class="cart-frete-calcular btn-open-location" id="btn-calcular-frete">Calcular</button>'
+              '—'
           );
           $('#cart-frete-resultado').empty().hide();
       }
       ultimoFreteIds = selecionados.map(i => i.id).join();
   }
 
+    // ── Persistência da seleção ───────────────────────────
+    //
+    // A escolha vivia só no DOM: o resumo respondia certo, mas o checkout
+    // montava o pedido com o carrinho inteiro e cobrava o que o cliente tinha
+    // desmarcado. Agora ela vira dado (carrinho_itens.selecionado).
+    //
+    // O resumo é atualizado ANTES do POST, não no callback: a tela responde
+    // ao clique na hora, e a gravação acontece atrás. Se a rede falhar, o
+    // recarregamento traz o estado do banco de volta — que é a verdade.
+    function salvarSelecao(dados) {
+      $.post(BASE_URL + '/carrinho/selecionar',
+             Object.assign({ _csrf_token: CSRF_TOKEN }, dados), null, 'json')
+       .fail(function () {
+         console.warn('[carrinho] não foi possível salvar a seleção');
+       });
+    }
+
     // ── Checkbox individual ───────────────────────────────
     $(document).on('change', '.cart-item-checkbox', function () {
       atualizarResumo();
+      salvarSelecao({
+        item_id    : $(this).data('id'),
+        selecionado: $(this).is(':checked') ? 1 : 0,
+      });
     });
 
     // ── Selecionar todos ──────────────────────────────────
@@ -471,6 +527,7 @@ $(function () {
       const checked = $(this).is(':checked');
       $('.cart-item-checkbox').prop('checked', checked);
       atualizarResumo();
+      salvarSelecao({ todos: checked ? 1 : 0 });
     });
 
     // ── Clique na linha do item seleciona/deseleciona ─────
@@ -607,74 +664,124 @@ $(function () {
     // ── Calcular frete ────────────────────────────────────
     
 
+    // ── Busca de frete ────────────────────────────────────
+    //
+    // Era só um handler de clique. O form que dispara esse clique nasce
+    // escondido para quem já tem CEP ativo, então a lista nunca era buscada e
+    // o bloco ficava em "Calculando…" para sempre. Virou função para poder ser
+    // chamada também na abertura da página e quando a seleção muda.
+    function buscarFretes(cep, $btn) {
+      cep = String(cep || '').replace(/\D/g, '');
+      if (cep.length !== 8) return;
+
+      const selecionados = itensSelecionados();
+      if (!selecionados.length) {
+        $('#cart-envio-servico').text('Selecione um item');
+        $('#cart-envio-valor').text('');
+        $('#btn-ver-mais-frete').hide();
+        return;
+      }
+
+      if ($btn) $btn.prop('disabled', true).text('...');
+      $('#cart-envio-servico').text('Calculando…');
+
+      const ids = selecionados.map(i => i.id);
+
+      $.get(BASE_URL + '/frete/calcular', {
+        cep      : cep,
+        item_ids : ids.join(','),
+      }, function (res) {
+        if ($btn) $btn.prop('disabled', false).text('OK');
+
+        if (!res.ok || !res.opcoes || !res.opcoes.length) {
+          $('#cart-frete-resultado').html(
+            '<p class="cart-frete-erro">' +
+            (res.erro || 'CEP não encontrado ou frete indisponível.') +
+            '</p>'
+          ).show();
+          $('#cart-envio-servico').text('Frete indisponível');
+          $('#cart-envio-valor').text('');
+          $('#btn-ver-mais-frete').hide();
+          return;
+        }
+
+        let html = '<div class="cart-frete-opcoes">';
+        res.opcoes.forEach(function (op, i) {
+          // NOMES DO SERVIÇO DE COTAÇÃO, não os que o carrinho supunha:
+          // o prazo vem como `prazo_dias` e antes era lido como `prazo` —
+          // a linha saía "undefined dias úteis".
+          const gratis = op.frete_gratis === true || Number(op.valor) === 0;
+          const prazo  = op.prazo_dias != null ? op.prazo_dias : op.prazo;
+          const nome   = op.transportadora
+                       ? op.transportadora + ' · ' + op.servico
+                       : (op.servico || 'Entrega');
+          html += `
+            <label class="cart-frete-opcao ${i === 0 ? 'selected' : ''}">
+              <input type="radio" name="frete_opcao"
+                    value="${op.valor}"
+                    data-servico="${nome}"
+                    data-cheio="${op.valor_cheio != null ? op.valor_cheio : ''}"
+                    ${i === 0 ? 'checked' : ''}>
+              <div class="cart-frete-opcao-info">
+                <span class="cart-frete-nome">${nome}</span>
+                <span class="cart-frete-prazo">${prazo != null ? prazo + ' dias úteis' : 'prazo a confirmar'}</span>
+              </div>
+              <span class="cart-frete-valor ${gratis ? 'text-success' : ''}">
+                ${op.valor_cheio_fmt ? '<s class="cart-frete-riscado">' + op.valor_cheio_fmt + '</s> ' : ''}
+                ${gratis ? 'Grátis' : (op.valor_fmt || formatarPreco(op.valor))}
+              </span>
+            </label>`;
+        });
+        html += '</div>';
+
+        $('#cart-frete-resultado').html(html);
+
+        // Seleciona a primeira automaticamente
+        const primeira = res.opcoes[0];
+        freteValor   = Number(primeira.valor) || 0;
+        freteCheio   = primeira.valor_cheio != null ? Number(primeira.valor_cheio) : null;
+        freteServico = primeira.transportadora
+                     ? primeira.transportadora + ' · ' + primeira.servico
+                     : (primeira.servico || 'Entrega');
+
+        // A lista nasce FECHADA, com a escolha resumida em uma linha. Deixá-la
+        // aberta empurraria o resumo e o botão de continuar para fora da tela
+        // — é o motivo de existir o "Ver mais opções".
+        $('#cart-frete-resultado').hide();
+        $('#btn-ver-mais-frete').show().text('Ver mais opções');
+        $('#cart-frete-form').hide();
+        $('#cart-envio-escolhido').show();
+        sincronizarEnvio();
+
+        atualizarResumo();
+      }, 'json').fail(function () {
+        if ($btn) $btn.prop('disabled', false).text('OK');
+        $('#cart-envio-servico').text('Erro ao calcular');
+        showToast('Erro ao calcular frete.', 'error');
+      });
+    }
+
+    // Clique manual (quem ainda não tem CEP ativo).
     $(document).on('click', '#btn-frete-buscar', function () {
       const cep = $('#cart-cep-input').val().replace(/\D/g, '');
       if (cep.length !== 8) {
         showToast('CEP inválido.', 'error');
         return;
       }
-
-      const selecionados = itensSelecionados();
-      if (!selecionados.length) {
-        showToast('Selecione ao menos um item.', 'error');
-        return;
-      }
-
-      const $btn = $(this);
-      $btn.prop('disabled', true).text('...');
-
-      // Monta lista de itens selecionados para calcular frete
-      const ids = selecionados.map(i => i.id);
-
-      $.get(BASE_URL + '/frete/calcular', {
-        cep         : cep,
-        item_ids    : ids.join(','),
-      }, function (res) {
-        $btn.prop('disabled', false).text('OK');
-
-        if (!res.ok || !res.opcoes || !res.opcoes.length) {
-          $('#cart-frete-resultado').html(
-            '<p class="cart-frete-erro">CEP não encontrado ou frete indisponível.</p>'
-          ).show();
-          return;
-        }
-
-        let html = '<div class="cart-frete-opcoes">';
-        res.opcoes.forEach(function (op, i) {
-          const gratis = op.valor === 0;
-          html += `
-            <label class="cart-frete-opcao ${i === 0 ? 'selected' : ''}">
-              <input type="radio" name="frete_opcao"
-                    value="${op.valor}"
-                    data-servico="${op.servico}"
-                    ${i === 0 ? 'checked' : ''}>
-              <div class="cart-frete-opcao-info">
-                <span class="cart-frete-nome">${op.servico}</span>
-                <span class="cart-frete-prazo">${op.prazo} dias úteis</span>
-              </div>
-              <span class="cart-frete-valor ${gratis ? 'text-success' : ''}">
-                ${gratis ? 'Grátis' : formatarPreco(op.valor)}
-              </span>
-            </label>`;
-        });
-        html += '</div>';
-
-        $('#cart-frete-resultado').html(html).show();
-
-        // Seleciona o primeiro automaticamente
-        freteValor   = res.opcoes[0].valor;
-        freteServico = res.opcoes[0].servico;
-        atualizarResumo();
-      }, 'json').fail(function () {
-        $btn.prop('disabled', false).text('OK');
-        showToast('Erro ao calcular frete.', 'error');
-      });
+      // Guarda para as próximas páginas — é o mesmo cookie da modal.
+      document.cookie = 'ec_cep=' + cep + ';path=/;max-age=' + (86400 * 30) + ';samesite=Lax';
+      window.EC_CEP_ATIVO = cep;
+      $('#cart-envio-cep').text(cep.substring(0, 5) + '-' + cep.substring(5));
+      buscarFretes(cep, $(this));
     });
 
     // Troca de opção de frete
     $(document).on('change', 'input[name="frete_opcao"]', function () {
       freteValor   = parseFloat($(this).val()) || 0;
       freteServico = $(this).data('servico');
+      const cheio  = $(this).data('cheio');
+      freteCheio   = (cheio !== undefined && cheio !== '') ? Number(cheio) : null;
+      sincronizarEnvio();
       $('.cart-frete-opcao').removeClass('selected');
       $(this).closest('.cart-frete-opcao').addClass('selected');
       atualizarResumo();
@@ -731,6 +838,31 @@ $(function () {
       }, 'json');
     });
 
+    // Valor do frete ANTES do desconto, quando existe. Fica ao lado de
+    // `freteValor` porque os dois vêm da mesma opção escolhida — separá-los
+    // em fontes diferentes é como o resumo e o bloco passariam a divergir.
+    let freteCheio = null;
+
+    // ── Bloco "Enviar para" ───────────────────────────────
+    // Espelha no bloco a opção que está valendo. Uma função só, chamada de
+    // todo lugar que mexe no frete, para o bloco e o resumo não divergirem.
+    function sincronizarEnvio() {
+      if (freteValor === null) {
+        $('#cart-envio-servico').text('Selecione o frete');
+        $('#cart-envio-valor').text('');
+        return;
+      }
+      $('#cart-envio-servico').text(freteServico || 'Frete');
+      $('#cart-envio-valor').text(freteValor === 0 ? 'Grátis' : formatarPreco(freteValor));
+    }
+
+    $(document).on('click', '#btn-ver-mais-frete', function () {
+      const $lista = $('#cart-frete-resultado');
+      const aberta = $lista.is(':visible');
+      $lista.toggle(!aberta);
+      $(this).text(aberta ? 'Ver mais opções' : 'Ocultar opções');
+    });
+
     // ── Helpers ───────────────────────────────────────────
     function formatarPreco(valor) {
       return 'R$ ' + parseFloat(valor).toFixed(2)
@@ -755,6 +887,12 @@ $(function () {
 
     // ── Inicializa ────────────────────────────────────────
     atualizarResumo();
+
+    // Com CEP ativo, busca sozinho: quem já informou o CEP não deveria ter de
+    // pedir o frete de novo a cada visita ao carrinho.
+    if (window.EC_CEP_ATIVO && String(window.EC_CEP_ATIVO).replace(/\D/g, '').length === 8) {
+      buscarFretes(window.EC_CEP_ATIVO, null);
+    }
 
   })();
 });
