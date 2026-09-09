@@ -78,6 +78,34 @@ class SafraPayWebhookValidator
     }
 
     /**
+     * Formas que identificam o estabelecimento SEM PROVAR NADA.
+     *
+     * VERIFICADO EM HOMOLOGAÇÃO: a Safra envia `base64(merchantId)`, não o
+     * merchant token — a documentação diz "o merchant token em Base64" e está
+     * errada. Confirmado casando o fingerprint do valor recebido.
+     *
+     * O problema: o MerchantId NÃO É SEGREDO. Ele aparece no portal, vai no
+     * corpo do JWT e é enviado como header em chamadas de API. Qualquer um que
+     * o conheça consegue forjar uma notificação.
+     *
+     * Aceitar é necessário para o webhook funcionar, mas isto é IDENTIFICAÇÃO,
+     * não autenticação. Duas coisas seguram o risco:
+     *   1. O processor RECONSULTA a cobrança antes de qualquer efeito
+     *      financeiro — notificação forjada não cria pagamento.
+     *   2. O segundo fator (customHeaders), que é segredo de verdade.
+     *
+     * @return array<string,string>
+     */
+    private function candidatosFracos(): array
+    {
+        if ($this->merchantId === '') return [];
+        return [
+            'base64(merchantId)' => base64_encode($this->merchantId),
+            'merchantId'         => $this->merchantId,
+        ];
+    }
+
+    /**
      * @param array $headers Cabeçalhos da requisição (chave => valor)
      * @return array{valida:bool, motivo:?string}
      */
@@ -101,12 +129,24 @@ class SafraPayWebhookValidator
         // descobrir o segredo byte a byte medindo o tempo de resposta.
         // Percorre TODOS os candidatos mesmo após achar — sair no primeiro
         // acerto reintroduziria o vazamento por tempo.
-        $ok     = false;
+        $ok      = false;
         $formato = null;
+        $fraco   = false;
+
         foreach ($this->candidatos() as $rotulo => $esperado) {
             if (hash_equals($esperado, $recebido)) {
                 $ok      = true;
                 $formato = $formato ?? $rotulo;
+            }
+        }
+
+        if (!$ok) {
+            foreach ($this->candidatosFracos() as $rotulo => $esperado) {
+                if (hash_equals($esperado, $recebido)) {
+                    $ok      = true;
+                    $fraco   = true;
+                    $formato = $formato ?? $rotulo;
+                }
             }
         }
 
@@ -133,14 +173,27 @@ class SafraPayWebhookValidator
         }
 
         // Segundo fator, quando configurado.
+        $comSegundoFator = false;
         if ($this->headerExtra !== '' && $this->segredoExtra !== '') {
             $extra = self::header($headers, $this->headerExtra);
             if ($extra === '' || !hash_equals($this->segredoExtra, trim($extra))) {
                 return ['valida' => false, 'motivo' => 'header customizado ausente ou inválido'];
             }
+            $comSegundoFator = true;
         }
 
-        return ['valida' => true, 'motivo' => null];
+        // Só o MerchantId autenticando e nenhum segundo fator: a notificação
+        // está sendo aceita com um dado que não é secreto. Não bloqueia — o
+        // processor reconsulta antes de qualquer efeito — mas precisa doer
+        // no log até alguém configurar o customHeaders.
+        if ($fraco && !$comSegundoFator && class_exists('LogService')) {
+            LogService::warning(
+                'Webhook Safra aceito só pelo MerchantId — configure SAFRAPAY_WEBHOOK_SECRET',
+                ['formato' => $formato], 'pagamento'
+            );
+        }
+
+        return ['valida' => true, 'motivo' => null, 'fraca' => $fraco, 'formato' => $formato];
     }
 
     /** Busca cabeçalho sem depender de caixa (HTTP header é case-insensitive). */
