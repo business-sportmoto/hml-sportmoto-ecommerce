@@ -85,12 +85,19 @@ class CartaoSalvo {
     /**
      * Referências do cartão por adquirente, só das adquirentes ativas.
      *
-     * @return array<string, array{gateway_id:int, customer_ref:?string, card_ref:string}>
+     * `idade_seg` e ha quantos segundos a referencia foi estabelecida. So
+     * importa para adquirente cuja referencia EXPIRA — hoje a Safra Pay, cujo
+     * token temporario vale 15 minutos e uma cobranca so. Calculado no MySQL
+     * para nao depender do fuso do PHP bater com o do banco.
+     *
+     * @return array<string, array{gateway_id:int, customer_ref:?string,
+     *                             card_ref:string, idade_seg:int}>
      *         indexado pelo código da adquirente
      */
     public function refsDoCartao(int $cartaoId, int $clienteId): array {
         $stmt = $this->db->prepare(
-            "SELECT g.codigo, a.gateway_id, a.customer_ref, a.card_ref
+            "SELECT g.codigo, a.gateway_id, a.customer_ref, a.card_ref,
+                    TIMESTAMPDIFF(SECOND, a.criado_em, NOW()) AS idade_seg
                FROM cartoes_salvos_adquirentes a
                JOIN cartoes_salvos cs ON cs.id = a.cartao_id
                JOIN pgto_gateways g   ON g.id = a.gateway_id
@@ -105,6 +112,7 @@ class CartaoSalvo {
                 'gateway_id'   => (int) $r['gateway_id'],
                 'customer_ref' => $r['customer_ref'] !== null ? (string) $r['customer_ref'] : null,
                 'card_ref'     => (string) $r['card_ref'],
+                'idade_seg'    => (int) $r['idade_seg'],
             ];
         }
         return $refs;
@@ -219,6 +227,12 @@ class CartaoSalvo {
     /**
      * Liga o cartão a uma adquirente. Idempotente: repetir atualiza a
      * referência em vez de duplicar — o `uk_cartao_gateway` garante.
+     *
+     * `criado_em` e RENOVADO ao revincular, porque o que ele marca e quando
+     * ESTA referencia passou a valer. A diferenca so aparece em adquirente
+     * cuja referencia expira: sem renovar, um cartao re-tokenizado agora
+     * carregaria a data da primeira vez e seria descartado por velho
+     * (ver a guarda da Safra Pay em CheckoutController::finalizar).
      */
     public function vincularAdquirente(int $cartaoId, int $gatewayId, ?string $customerRef, string $cardRef): void {
         if ($cartaoId <= 0 || $gatewayId <= 0 || trim($cardRef) === '') return;
@@ -227,7 +241,8 @@ class CartaoSalvo {
             "INSERT INTO cartoes_salvos_adquirentes (cartao_id, gateway_id, customer_ref, card_ref, ativo)
              VALUES (:c, :g, :cust, :card, 1)
              ON DUPLICATE KEY UPDATE
-                customer_ref = VALUES(customer_ref), card_ref = VALUES(card_ref), ativo = 1"
+                customer_ref = VALUES(customer_ref), card_ref = VALUES(card_ref), ativo = 1,
+                criado_em    = NOW()"
         )->execute([
             ':c'    => $cartaoId,
             ':g'    => $gatewayId,

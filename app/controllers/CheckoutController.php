@@ -32,6 +32,15 @@ declare(strict_types=1);
 
 class CheckoutController extends Controller {
 
+    /**
+     * Vida util aproveitavel do token temporario da Safra Pay.
+     *
+     * A Safra da 15 minutos; usamos 13 para sobrar margem entre a checagem
+     * aqui e a autorizacao de fato. Passar disso e recusa certa — melhor
+     * pedir o cartao de novo com o motivo certo do que gastar a tentativa.
+     */
+    private const SAFRAPAY_TOKEN_VALIDO_SEG = 780;
+
     private Cart                $cartService;
     private CheckoutState       $state;
     private User                $userModel;
@@ -2074,6 +2083,37 @@ class CheckoutController extends Controller {
                         // o adapter recusa com mensagem clara; segue.
                         $tokenCartao = (string) ($cartaoRefs['mercadopago']['card_ref'] ?? '') ?: null;
                     }
+
+                    // SAFRA PAY: a referencia guardada e um token TEMPORARIO
+                    // (uso unico, 15 minutos), nao um cartao de cofre.
+                    //
+                    // Ele presta para a compra que acabou de ser montada. O
+                    // mesmo cartao reapresentado numa proxima visita carrega
+                    // um token ja vencido ou consumido, e cobrar com ele
+                    // voltaria uma recusa que o cliente leria como "meu cartao
+                    // foi negado" — quando o cartao esta perfeito.
+                    //
+                    // O criterio e a IDADE do vinculo, nao a flag `temporario`:
+                    // essa flag e a caixa "salvar cartao", e quem a marca e
+                    // paga em seguida tem um token perfeitamente valido.
+                    //
+                    // A margem de 2 minutos cobre o tempo entre esta checagem e
+                    // a autorizacao de fato (antifraude, retentativa, fila).
+                    if ($tokenCartao === null && isset($cartaoRefs['safrapay'])) {
+                        $idade = (int) ($cartaoRefs['safrapay']['idade_seg'] ?? PHP_INT_MAX);
+
+                        if ($idade <= self::SAFRAPAY_TOKEN_VALIDO_SEG) {
+                            $tokenCartao = (string) $cartaoRefs['safrapay']['card_ref'] ?: null;
+                        } else {
+                            LogService::info('Token temporario da Safra vencido no checkout', [
+                                'cartao_id' => $cartaoSalvoId,
+                                'idade_seg' => $idade,
+                            ], 'pagamento');
+
+                            $this->json(['ok' => false, 'msg' =>
+                                'Por segurança, informe os dados do cartão novamente.']);
+                        }
+                    }
                 } elseif ($cartaoTemp) {
                     $tokenCartao = $cartaoTemp['gateway_token'] ?? $cartaoTemp['token'] ?? null;
 
@@ -3137,6 +3177,8 @@ class CheckoutController extends Controller {
      *   mercadopago → public key (core method createCardToken)
      *   cielo       → AccessToken de 20 min do Silent Order Post (nasce no
      *                 servidor; o par OAuth2 nunca sai daqui)
+     *   safrapay    → CNPJ da loja + MerchantId (checkout transparente).
+     *                 Os dois sao publicos; o merchant token nao sai daqui.
      *
      * A tela de salvar cartão tokeniza em TODAS em paralelo: é o que faz um
      * cartão salvo existir em vários cofres e cair de uma adquirente para
@@ -3178,6 +3220,41 @@ class CheckoutController extends Controller {
                 // Sem o SOP a Cielo fica de fora desta tela; o cartão ainda
                 // salva nas outras. Derrubar a página aqui seria pior.
                 LogService::exception($e, 'warning', 'pagamento', ['acao' => 'sop_acesso']);
+            }
+        }
+
+        // ── SAFRA PAY — checkout transparente ────────────────────────
+        //
+        // O navegador tokeniza direto em payment[-hml].safrapay.com.br com
+        // DUAS credenciais publicas: o CNPJ da loja e o MerchantId. Nenhuma
+        // das duas e segredo — o MerchantId ja viaja como header em toda
+        // chamada de API e o CNPJ esta em qualquer nota fiscal. O merchant
+        // token, esse sim segredo, nunca sai do servidor.
+        //
+        // VERIFICADO EM HOMOLOGACAO: `merchantCredential` e o CNPJ da LOJA
+        // (configuracoes.site_cnpj). O merchantCode que vem dentro do JWT —
+        // 15 digitos — devolve 401. Errar isso da uma recusa que parece
+        // problema do cartao do cliente.
+        if (isset($ativas['safrapay'])) {
+            $c    = PagamentoCredencialService::para('safrapay');
+            $cnpj = preg_replace('/\D/', '', (string) ConfigHelper::get('site_cnpj', '')) ?? '';
+
+            if ($cnpj === '' || (string) $c['merchant_id'] === '') {
+                // Sem isto a Safra sumiria da tela em silencio e o cliente
+                // veria "cartao indisponivel" sem nenhuma pista no log.
+                LogService::warning('Safra Pay fora da tela de cartao: credencial publica ausente', [
+                    'tem_cnpj'        => $cnpj !== '',
+                    'tem_merchant_id' => (string) $c['merchant_id'] !== '',
+                ], 'pagamento');
+            } else {
+                $out['safrapay'] = [
+                    'gateway_id'         => $ativas['safrapay'],
+                    'merchantCredential' => $cnpj,
+                    'merchantId'         => (string) $c['merchant_id'],
+                    // Booleano de verdade: o glue recusa iniciar sem ele,
+                    // para nunca chutar entre homologacao e producao.
+                    'sandbox'            => (bool) $c['sandbox'],
+                ];
             }
         }
 
@@ -3518,22 +3595,32 @@ class CheckoutController extends Controller {
         //   Mercado Pago  32 hexadecimais, sem hifen (uso unico)
         //   Cielo         UUID — e ja e o CardToken do cofre, nao um token
         //                 temporario: o Silent Order Post guardou ao tokenizar
-        $uuid = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i';
-        $hex  = '/^[0-9a-f]{32,33}$/i';
+        //   Safra Pay    `card_` + 32 caracteres do alfabeto base64 — inclui
+        //                 `/` e `+`, entao NAO passa no teste de hexadecimal.
+        //                 Verificado em homologacao: card_/DQWmYEO30jTnjuJ+7Nb...
+        $uuid  = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i';
+        $hex   = '/^[0-9a-f]{32,33}$/i';
+        $safra = '#^card_[A-Za-z0-9+/=_-]{16,120}$#';
+
+        $tokenValido = static function (string $t) use ($uuid, $hex, $safra): bool {
+            return preg_match($uuid, $t) === 1
+                || preg_match($hex, $t) === 1
+                || preg_match($safra, $t) === 1;
+        };
 
         $tokens = [];
         foreach ((array) ($_POST['tokens'] ?? []) as $cod => $tk) {
             $cod = strtolower(trim((string) $cod));
             $tk  = trim((string) $tk);
             if ($cod === '' || $tk === '') continue;
-            if (!preg_match($uuid, $tk) && !preg_match($hex, $tk)) {
+            if (!$tokenValido($tk)) {
                 $this->json(['ok' => false, 'msg' => 'Token inválido. Atualize a página e tente novamente.']);
             }
             $tokens[$cod] = $tk;
         }
 
         if ($tokens === [] && $tokenId !== '') {
-            if (!preg_match($uuid, $tokenId) && !preg_match($hex, $tokenId)) {
+            if (!$tokenValido($tokenId)) {
                 $this->json(['ok' => false, 'msg' => 'Token inválido. Atualize a página e tente novamente.']);
             }
             // Caminho legado: uma adquirente so, escolhida pelo servidor.
@@ -3644,6 +3731,26 @@ class CheckoutController extends Controller {
                     $vinculos[] = [
                         'codigo'       => 'cielo',
                         'gateway_id'   => $gatewayIds['cielo'],
+                        'customer_ref' => null,
+                        'card_ref'     => $tk,
+                    ];
+
+                } elseif ($codigoAdq === 'safrapay') {
+                    // NAO HA CHAMADA A FAZER: o navegador ja tokenizou.
+                    //
+                    // Mas atencao ao que este `card_ref` e: um token
+                    // TEMPORARIO, de uso unico, valido por 15 minutos. Nao e
+                    // referencia de cofre como o CardToken da Cielo ou o
+                    // card_id do Mercado Pago — serve para UMA cobranca, a
+                    // que esta sendo montada agora.
+                    //
+                    // Por isso a Safra so participa de "compra nova" nesta
+                    // fase. Cartao salvo com ela exige o id permanente, que
+                    // so nasce na resposta da cobranca — ver a guarda em
+                    // finalizar(), que recusa um token velho demais.
+                    $vinculos[] = [
+                        'codigo'       => 'safrapay',
+                        'gateway_id'   => $gatewayIds['safrapay'],
                         'customer_ref' => null,
                         'card_ref'     => $tk,
                     ];

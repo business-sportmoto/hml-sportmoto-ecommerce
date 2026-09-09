@@ -48,7 +48,7 @@ $cpfCliente = $cpfCliente ?? '';
         <rect x="3" y="11" width="18" height="11" rx="2"/>
         <path d="M7 11V7a5 5 0 0110 0v4"/>
       </svg>
-      Dados nunca trafegam pelo nosso servidor — vão direto pra Malga
+      Dados nunca trafegam pelo nosso servidor — vão direto para a adquirente
     </p>
   </div>
 
@@ -83,6 +83,7 @@ $cpfCliente = $cpfCliente ?? '';
          cada cofre e o servidor grava uma referencia por adquirente. -->
     <input type="hidden" name="tokens[mercadopago]" id="token-mercadopago">
     <input type="hidden" name="tokens[cielo]"       id="token-cielo">
+    <input type="hidden" name="tokens[safrapay]"    id="token-safrapay">
 
     <!-- ════════ NÚMERO ════════ -->
     <div class="form-group">
@@ -402,6 +403,7 @@ $multi     = $conjunto !== [];
   -->
   <script src="<?= PerformanceHelper::assetVersion('js/checkout-mercadopago.js') ?>" defer></script>
   <script src="<?= PerformanceHelper::assetVersion('js/checkout-cielo-sop.js') ?>" defer></script>
+  <script src="<?= PerformanceHelper::assetVersion('js/checkout-safrapay.js') ?>" defer></script>
 <?php elseif ($adq === 'mercadopago'): ?>
   <!--
     Mercado Pago: numero, validade e CVV ficam em iframes do proprio MP.
@@ -437,6 +439,7 @@ $multi     = $conjunto !== [];
     if (MULTI) {
       var MP    = window.SportMotoMercadoPagoCheckout;
       var CIELO = window.SportMotoCieloSop;
+      var SAFRA = window.SportMotoSafraPay;
       var $err  = $('#card-add-error');
       var $btn  = $('#btn-save-card');
       var enviando = false;
@@ -468,6 +471,17 @@ $multi     = $conjunto !== [];
         var d = digitos($(this).val()).slice(0, 19);
         $(this).val(d.replace(/(\d{4})(?=\d)/g, '$1 '));
         $('#card-prev-number').text((d + '••••••••••••••••').slice(0, 16).replace(/(.{4})/g, '$1 ').trim());
+
+        // Bandeira pela consulta de BIN da Safra, assim que o cliente
+        // completa 6 digitos. Fica em cache no glue: no submit ela ja esta
+        // resolvida, entao nao custa latencia no caminho critico. Importa
+        // porque, com a Safra sozinha, nenhum token de outra adquirente
+        // devolve `brand` — sem isto a coluna nasceria vazia.
+        if (d.length >= 6 && SAFRA && SAFRA.pronto()) {
+          SAFRA.bandeiraPorBin(d).then(function (b) {
+            if (b) $('#card-brand-value').val(b);
+          });
+        }
       });
       $('#card-expiration-date').on('input', function () {
         var d = digitos($(this).val()).slice(0, 4);
@@ -484,6 +498,12 @@ $multi     = $conjunto !== [];
       if (COFRES.cielo && CIELO) {
         CIELO.init(COFRES.cielo);
         promessas.push(Promise.resolve('cielo'));
+      }
+      if (COFRES.safrapay && SAFRA) {
+        // init devolve false quando falta credencial publica ou o ambiente
+        // nao veio explicito. Nesse caso a Safra so nao entra na lista — a
+        // tela segue com as outras em vez de quebrar.
+        if (SAFRA.init(COFRES.safrapay)) promessas.push(Promise.resolve('safrapay'));
       }
 
       Promise.all(promessas).then(function (prontas) {
@@ -525,10 +545,13 @@ $multi     = $conjunto !== [];
         if (COFRES.cielo && CIELO) {
           tarefas.push(CIELO.tokenizar().then(function (t) { return { cofre: 'cielo', t: t }; }));
         }
+        if (COFRES.safrapay && SAFRA && SAFRA.pronto()) {
+          tarefas.push(SAFRA.tokenizar(dados).then(function (t) { return { cofre: 'safrapay', t: t }; }));
+        }
 
         Promise.allSettled(tarefas).then(function (res) {
           var ok = 0, brand = null, last4 = null, motivos = [];
-          $('#token-mercadopago').val(''); $('#token-cielo').val('');
+          $('#token-mercadopago').val(''); $('#token-cielo').val(''); $('#token-safrapay').val('');
 
           res.forEach(function (r) {
             if (r.status !== 'fulfilled') { motivos.push(r.reason && r.reason.message); return; }
@@ -536,6 +559,7 @@ $multi     = $conjunto !== [];
             var v = r.value;
             if (v.cofre === 'mercadopago') { $('#token-mercadopago').val(v.t.tokenId); brand = brand || v.t.brand; last4 = last4 || v.t.last4; }
             if (v.cofre === 'cielo')       { $('#token-cielo').val(v.t.cardToken);   brand = brand || v.t.brand; last4 = last4 || v.t.last4; }
+            if (v.cofre === 'safrapay')    { $('#token-safrapay').val(v.t.cardToken); brand = brand || v.t.brand; last4 = last4 || v.t.last4; }
           });
 
           if (!ok) {
