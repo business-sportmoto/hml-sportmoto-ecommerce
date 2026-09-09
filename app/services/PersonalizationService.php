@@ -19,6 +19,13 @@ class PersonalizationService {
     private const MIN_MARCAS    = 2;
     private const JANELA_DIAS   = 30;
 
+    /**
+     * Id da seção do app. Constante porque três lugares dependem dele: quem
+     * monta, quem pagina e o AppHomeController, que usa este id para tirar a
+     * seção genérica de histórico da home quando esta aparece.
+     */
+    public const SECAO_APP = 'vistos_no_app';
+
     private PDO $db;
 
     private EstoqueService $EstoqueService;
@@ -429,6 +436,156 @@ class PersonalizationService {
     }
 
     // ════════════════════════════════════════════════════
+    // O QUE FOI VISTO NO APP
+    // ════════════════════════════════════════════════════
+    //
+    // Escopo de SESSÃO, não de conta — e é a diferença inteira em relação a
+    // sectionPorHistorico().
+    //
+    // Aquela seção usa `cliente_id` quando há um: o histórico segue a pessoa
+    // entre aparelhos e junta o que ela viu no site. Esta usa sempre o
+    // `sessao_id`, que na API do app é o da ponte por dispositivo — então só
+    // entra o que foi aberto NAQUELE aparelho. Não é uma restrição técnica: é
+    // o recorte pedido, "do app e da sessão, não do usuário".
+    //
+    // A sessão da ponte dura semanas e sobrevive a fechar o app, então o
+    // módulo continua ali quando a pessoa volta amanhã.
+
+    /**
+     * Ids de produtos abertos NESTA sessão.
+     *
+     * Sem `temHistorico()` na frente, ao contrário dos outros coletores: aquele
+     * guarda existe para não consultar histórico de quem nunca navegou, e é
+     * decidido por conta. Aqui a sessão é o próprio critério.
+     *
+     * @return array<int,int>
+     */
+    public function produtosVistosNoApp(): array
+    {
+        if ($this->sessionKey === '') {
+            return [];
+        }
+
+        $st = $this->db->prepare(
+            "SELECT h.referencia_id AS ref, MAX(h.criado_em) AS ultima
+               FROM historico_navegacao h
+              WHERE h.sessao_id = ?
+                AND h.tipo = 'produto'
+                AND h.referencia_id IS NOT NULL
+                AND h.criado_em > DATE_SUB(NOW(), INTERVAL ? DAY)
+           GROUP BY h.referencia_id
+           ORDER BY ultima DESC
+              LIMIT 30"
+        );
+        $st->execute([$this->sessionKey, self::JANELA_DIAS]);
+
+        return array_map('intval', array_column($st->fetchAll(), 'ref'));
+    }
+
+    /**
+     * "Baseado no que você viu no App".
+     *
+     * Recomendação, e não a lista do que foi visto: produtos das mesmas
+     * categorias, sem os que a pessoa já abriu. Mostrar de volta o que ela
+     * acabou de ver não move ninguém.
+     *
+     * Devolve null quando não há histórico de app nenhum — o módulo some da
+     * home em vez de aparecer vazio.
+     */
+    public function secaoVistosNoApp(): ?array
+    {
+        $vistos = $this->produtosVistosNoApp();
+        if ($vistos === []) {
+            return null;
+        }
+
+        $consulta = $this->consultaVistosNoApp($vistos);
+        if ($consulta === null) {
+            return null;
+        }
+
+        $produtos = $this->product->parseClips(
+            $this->product->getByFilters($consulta, self::LIMITE)
+        );
+
+        if ($produtos === []) {
+            return null;
+        }
+
+        return [
+            'id'          => self::SECAO_APP,
+            'badge'       => 'No app',
+            'titulo'      => 'Baseado no que você viu no App',
+            'subtitulo'   => 'Do que você abriu por aqui, separamos mais alguns',
+            'tipo'        => 'personalized',
+            'ver_mais_url'=> null,
+            'produtos'    => $produtos,
+        ];
+    }
+
+    /**
+     * Os filtros do módulo do app.
+     *
+     * Separado de secaoVistosNoApp() porque a paginação do carrossel precisa
+     * remontar a MESMA consulta com outro deslocamento — ver produtosDaSecao().
+     *
+     * @param  array<int,int> $vistos
+     * @return array<string,mixed>|null
+     */
+    private function consultaVistosNoApp(array $vistos): ?array
+    {
+        $cats = $this->categoriasDosProdutos($vistos);
+
+        if ($cats !== []) {
+            // O fallback de comFallbackDeExclusao() vale aqui pelo mesmo motivo
+            // dos outros: se esconder os já vistos zerar o resultado, é melhor
+            // repetir do que sumir com a faixa.
+            return $this->comFallbackDeExclusao($cats, $vistos);
+        }
+
+        // Sem categoria, a MARCA. Produto sem categoria nenhuma existe de
+        // verdade no catálogo — foi assim que este módulo sumiu no primeiro
+        // teste, e não por bug: o produto aberto não tinha categoria em
+        // `produto_categorias` nem em `produtos.categoria_id`. A marca é um
+        // sinal mais fraco, mas "outro item da mesma marca" ainda é melhor do
+        // que a faixa não existir por uma falha de cadastro.
+        $marcas = $this->marcasDosProdutos($vistos);
+        if ($marcas === []) {
+            return null;
+        }
+
+        return [
+            'marcas'      => $marcas,
+            'excluir_ids' => $vistos,
+            'order'       => 'p.criado_em DESC',
+        ];
+    }
+
+    /**
+     * As marcas de um conjunto de produtos.
+     *
+     * @param  array<int,int> $prodIds
+     * @return array<int,int>
+     */
+    private function marcasDosProdutos(array $prodIds): array
+    {
+        if ($prodIds === []) {
+            return [];
+        }
+
+        $ids = array_values(array_map('intval', $prodIds));
+        $in  = implode(',', array_fill(0, count($ids), '?'));
+
+        $st = $this->db->prepare(
+            "SELECT DISTINCT marca_id FROM produtos
+              WHERE id IN ({$in}) AND marca_id IS NOT NULL"
+        );
+        $st->execute($ids);
+
+        return array_map('intval', array_column($st->fetchAll(), 'marca_id'));
+    }
+
+    // ════════════════════════════════════════════════════
     // PAGINAÇÃO DAS SEÇÕES
     // ════════════════════════════════════════════════════
     //
@@ -516,6 +673,10 @@ class PersonalizationService {
 
             case 'por_buscas':
                 return $this->consultaDaBusca();
+
+            case self::SECAO_APP:
+                $vistos = $this->produtosVistosNoApp();
+                return $vistos === [] ? null : $this->consultaVistosNoApp($vistos);
 
             default:
                 return null;

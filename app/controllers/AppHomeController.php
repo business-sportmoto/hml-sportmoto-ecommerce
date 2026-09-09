@@ -34,14 +34,35 @@ class AppHomeController extends AppApiController
             $ctx->sessaoKey
         );
 
-        $secoes = HomeSectionPresenter::colecao(
-            $personalizacao->buildHomeSections(),
-            $ctx
-        );
+        // O módulo "Baseado no que você viu no App" tem POSIÇÃO fixa na home
+        // (logo abaixo da busca por moto), então sai fora de `secoes`, que a
+        // tela renderiza em sequência. Vem antes das seções porque, existindo,
+        // ele substitui a genérica.
+        $vistosNoApp = $personalizacao->secaoVistosNoApp();
+
+        $brutas = $personalizacao->buildHomeSections();
+
+        // Duas faixas "baseado no que você viu" na mesma tela seria confuso, e
+        // para visitante anônimo elas seriam IDÊNTICAS: sem cliente_id,
+        // sectionPorHistorico() também cai no sessao_id. A específica do app é
+        // o recorte mais preciso, então ela fica e a genérica sai.
+        if ($vistosNoApp !== null) {
+            $brutas = array_values(array_filter(
+                $brutas,
+                static fn(array $s) => ($s['id'] ?? '') !== 'por_historico'
+            ));
+        }
+
+        $secoes = HomeSectionPresenter::colecao($brutas, $ctx);
 
         $this->ok([
             'banners'        => $this->banners($ctx),
             'secoes'         => $secoes,
+            // null quando não há histórico de app nenhum: a tela não desenha o
+            // módulo em vez de desenhá-lo vazio.
+            'vistos_no_app'  => $vistosNoApp === null
+                ? null
+                : HomeSectionPresenter::colecao([$vistosNoApp], $ctx)[0] ?? null,
             'clips_destaque' => $this->clipsDestaque($ctx),
             'veiculo_ativo'  => $this->veiculoAtivo($ctx),
             'categorias'     => $this->categorias($ctx),

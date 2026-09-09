@@ -348,6 +348,40 @@ class SafraPayWebhookProcessor
      * Mudança de status do pedido passa por AdminPedidoService, igual ao
      * processor da Malga — é ele que dispara histórico e notificação.
      */
+    /**
+     * Estados em que o pedido ainda ESPERA o pagamento.
+     *
+     * Fora deles, quem definiu o status do pedido foi outro processo — o
+     * antifraude que reteve, o admin, a separação — e o webhook não tem
+     * autoridade para desfazer essa decisão.
+     */
+    private const PEDIDO_AGUARDANDO = ['aguardando_pagamento', 'aguardando'];
+
+    /**
+     * Reflete no pedido o que a adquirente confirmou.
+     *
+     * ── POR QUE NÃO SE ESCREVE `status_pedido` DIRETO AQUI ──────────────
+     *
+     * A versão anterior fazia UPDATE de `status_pedido` e SÓ ENTÃO chamava
+     * mudarStatus() com o status que tinha acabado de gravar. Todo guard
+     * dentro de mudarStatus() compara `novo !== atual` — e o UPDATE já havia
+     * igualado os dois. Resultado: os guards ficavam desarmados nas DUAS
+     * direções.
+     *
+     *   O que devia suprimir e não suprimia:
+     *     histórico, e-mail, sino in-app e WhatsApp saíam de novo, repetindo
+     *     ao cliente um "pagamento aprovado" que o checkout já tinha dado.
+     *
+     *   O que devia disparar e não disparava:
+     *     a conversão Purchase é guardada por `status_pagamento !== 'aprovado'`
+     *     e o UPDATE cru já gravava 'aprovado'. No cartão isso era inofensivo
+     *     (o checkout já tinha disparado), mas no PIX e no boleto a aprovação
+     *     SÓ existe por webhook — e a conversão nunca era registrada. Meta e
+     *     GA não viam nenhuma venda por Pix.
+     *
+     * Agora o webhook é dono só de `status_pagamento`. O `status_pedido` fica
+     * com mudarStatus(), que sabe fazer a transição uma vez só.
+     */
     private function atualizarPedido(int $pedidoId, string $statusPgto): void
     {
         $mapaPedido = [
@@ -360,19 +394,68 @@ class SafraPayWebhookProcessor
             'estornado'   => 'cancelado',
             'reembolsado' => 'cancelado',
         ];
-        $slug   = $mapaPedido[$statusPgto] ?? 'aguardando_pagamento';
-        $pagoEm = $statusPgto === 'aprovado' ? date('Y-m-d H:i:s') : null;
+        $slug = $mapaPedido[$statusPgto] ?? 'aguardando_pagamento';
 
-        $this->db->prepare(
-            "UPDATE pedidos
-                SET status_pagamento = :sp,
-                    status_pedido    = :spd,
-                    pago_em          = COALESCE(:pago, pago_em)
-              WHERE id = :id"
-        )->execute([':sp' => $statusPgto, ':spd' => $slug, ':pago' => $pagoEm, ':id' => $pedidoId]);
+        $st = $this->db->prepare(
+            "SELECT status_pedido, status_pagamento FROM pedidos WHERE id = ? LIMIT 1"
+        );
+        $st->execute([$pedidoId]);
+        $ped = $st->fetch(\PDO::FETCH_ASSOC) ?: [];
 
-        // Histórico e notificação ao cliente. Best-effort: uma falha aqui não
-        // pode desfazer o pagamento já registrado acima.
+        $pedidoAtual = (string) ($ped['status_pedido']    ?? '');
+        $pgtoAtual   = (string) ($ped['status_pagamento'] ?? '');
+
+        // ── status_pagamento ────────────────────────────────────────────
+        // mudarStatus() só trata o caso 'aprovado' (onde também grava
+        // `pago_em`). Os outros desfechos — estornado, recusado, falhou —
+        // ninguém mais grava, então é aqui.
+        if ($statusPgto !== 'aprovado' && $pgtoAtual !== $statusPgto) {
+            $this->db->prepare(
+                "UPDATE pedidos SET status_pagamento = ?, atualizado_em = NOW() WHERE id = ?"
+            )->execute([$statusPgto, $pedidoId]);
+        }
+
+        // ── Nada mudou: registra a confirmação e sai ─────────────────────
+        // O evento VALE no histórico: é a prova de que a adquirente confirmou
+        // por fora do checkout, e é o que distingue "o site achou que
+        // aprovou" de "a Safra confirmou". O que não pode é virar um segundo
+        // aviso ao cliente.
+        if ($pedidoAtual === $slug) {
+            $this->registrarEvento(
+                $pedidoId, $slug,
+                "Confirmado pelo webhook da Safra Pay: {$statusPgto}."
+            );
+            return;
+        }
+
+        // ── O pedido já saiu da espera: preserva a decisão de quem o moveu ──
+        // O caso que dói: antifraude reteve em 'em_analise', o pagamento está
+        // aprovado na adquirente, e o webhook chegava depois devolvendo o
+        // pedido para 'pagamento_aprovado' — liberando para separação uma
+        // compra que tinha sido segurada de propósito.
+        //
+        // Estorno é a exceção: dinheiro devolvido cancela o pedido em
+        // qualquer estágio.
+        $podeAvancar = $pedidoAtual === ''
+                    || in_array($pedidoAtual, self::PEDIDO_AGUARDANDO, true)
+                    || $slug === 'cancelado';
+
+        if (!$podeAvancar) {
+            $this->registrarEvento(
+                $pedidoId, $pedidoAtual,
+                "Webhook da Safra Pay informou '{$statusPgto}', mas o pedido está "
+                . "em '{$pedidoAtual}' — status do pedido preservado."
+            );
+            return;
+        }
+
+        // ── Transição de verdade ────────────────────────────────────────
+        // É por aqui que o Pix e o boleto ganham histórico, e-mail, sino e a
+        // conversão Purchase — uma vez só, porque agora `atual` ainda é o
+        // status antigo quando mudarStatus() compara.
+        //
+        // Best-effort: uma falha aqui não pode desfazer o pagamento já
+        // registrado acima.
         try {
             (new AdminPedidoService())->mudarStatus(
                 $pedidoId, $slug,
@@ -383,6 +466,28 @@ class SafraPayWebhookProcessor
             LogService::exception($e, 'warning', 'pagamento', [
                 'pedido_id' => $pedidoId,
                 'acao'      => 'mudarStatus',
+            ]);
+        }
+    }
+
+    /**
+     * Grava só o evento no histórico, sem mexer no pedido nem avisar ninguém.
+     *
+     * `admin_id` fica NULL de propósito: não foi pessoa nenhuma que fez isso.
+     * Passar 0 fingiria um usuário e sujaria a trilha de auditoria — o mesmo
+     * erro de chave que o CLAUDE.md registra na §4.1.
+     */
+    private function registrarEvento(int $pedidoId, string $status, string $observacao): void
+    {
+        try {
+            $this->db->prepare(
+                "INSERT INTO pedido_historico (pedido_id, status_novo, observacao, admin_id, criado_em)
+                 VALUES (?, ?, ?, NULL, NOW())"
+            )->execute([$pedidoId, $status, $observacao]);
+        } catch (\Throwable $e) {
+            LogService::exception($e, 'warning', 'pagamento', [
+                'pedido_id' => $pedidoId,
+                'acao'      => 'registrarEvento',
             ]);
         }
     }

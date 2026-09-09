@@ -8,6 +8,25 @@
 
 final class MotoPresenter
 {
+    /**
+     * Montadoras e modelos ficam em `uploads/motos/`, e `PresenterContext::url()`
+     * não sabe disso — ela só prefixa a raiz de uploads. Sem a pasta, toda arte
+     * de moto responde 404.
+     *
+     * É a QUARTA vez que este mesmo erro aparece no projeto: já aconteceu com
+     * `avatars/`, `garagem/` e `brands/`. O padrão de correção é sempre este —
+     * a pasta declarada aqui, ao lado de quem monta a URL.
+     */
+    private const PASTA = 'motos/';
+
+    /** Prefixa a pasta antes de absolutizar. Nulo continua nulo. */
+    private static function arquivo(PresenterContext $ctx, ?string $nome): ?string
+    {
+        $nome = trim((string)$nome);
+
+        return $nome === '' ? null : $ctx->url(self::PASTA . $nome);
+    }
+
     /** @return array<int,array> */
     public static function colecao(array $veiculos, PresenterContext $ctx): array
     {
@@ -38,13 +57,13 @@ final class MotoPresenter
                 'id'    => (int)$v['montadora_id'],
                 'nome'  => $v['montadora_nome'] ?? null,
                 'slug'  => $v['montadora_slug'] ?? null,
-                'thumb' => $ctx->url($v['montadora_thumb'] ?? null),
+                'thumb' => self::arquivo($ctx, $v['montadora_thumb'] ?? null),
             ],
             'modelo' => empty($v['modelo_id']) ? null : [
                 'id'    => (int)$v['modelo_id'],
                 'nome'  => $v['modelo_nome'] ?? null,
                 'slug'  => $v['modelo_slug'] ?? null,
-                'thumb' => $ctx->url($v['modelo_thumb'] ?? null),
+                'thumb' => self::arquivo($ctx, $v['modelo_thumb'] ?? null),
             ],
 
             // `principal` é o que o banco guarda; `ativa` é o que vale AGORA na

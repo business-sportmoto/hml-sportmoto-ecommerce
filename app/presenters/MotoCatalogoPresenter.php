@@ -12,6 +12,25 @@
 
 final class MotoCatalogoPresenter
 {
+    /**
+     * Montadoras e modelos ficam em `uploads/motos/`, e `PresenterContext::url()`
+     * não sabe disso — ela só prefixa a raiz de uploads. Sem a pasta, toda arte
+     * de moto responde 404.
+     *
+     * É a QUARTA vez que este mesmo erro aparece no projeto: já aconteceu com
+     * `avatars/`, `garagem/` e `brands/`. O padrão de correção é sempre este —
+     * a pasta declarada aqui, ao lado de quem monta a URL.
+     */
+    private const PASTA = 'motos/';
+
+    /** Prefixa a pasta antes de absolutizar. Nulo continua nulo. */
+    private static function arquivo(PresenterContext $ctx, ?string $nome): ?string
+    {
+        $nome = trim((string)$nome);
+
+        return $nome === '' ? null : $ctx->url(self::PASTA . $nome);
+    }
+
     /** @return array<int,array> */
     public static function montadoras(array $rows, PresenterContext $ctx): array
     {
@@ -27,8 +46,8 @@ final class MotoCatalogoPresenter
             'id'    => (int)$m['id'],
             'nome'  => trim((string)($m['nome'] ?? '')),
             'slug'  => (string)($m['slug'] ?? ''),
-            'logo'  => $ctx->url($m['logo'] ?? null),
-            'thumb' => $ctx->url($m['thumb'] ?? null),
+            'logo'  => self::arquivo($ctx, $m['logo'] ?? null),
+            'thumb' => self::arquivo($ctx, $m['thumb'] ?? null),
 
             // Quantos produtos e modelos existem por trás. É o que diz se vale
             // entrar — uma montadora com 2 peças não merece o mesmo destaque
@@ -46,7 +65,7 @@ final class MotoCatalogoPresenter
                 'id'    => (int)$mo['id'],
                 'nome'  => trim((string)($mo['nome'] ?? '')),
                 'slug'  => (string)($mo['slug'] ?? ''),
-                'thumb' => $ctx->url($mo['thumb'] ?? null),
+                'thumb' => self::arquivo($ctx, $mo['thumb'] ?? null),
                 'total_produtos' => isset($mo['total_produtos']) ? (int)$mo['total_produtos'] : null,
             ],
             $rows
@@ -89,7 +108,7 @@ final class MotoCatalogoPresenter
                 'id'         => (int)$modelo['id'],
                 'nome'       => trim((string)($modelo['nome'] ?? '')),
                 'slug'       => (string)($modelo['slug'] ?? ''),
-                'thumb'      => $ctx->url($modelo['thumb'] ?? null),
+                'thumb'      => self::arquivo($ctx, $modelo['thumb'] ?? null),
                 'cilindrada' => $modelo['cilindrada'] ?? null,
                 'tipo'       => $modelo['tipo'] ?? null,
             ],
