@@ -161,6 +161,14 @@ class AppMotosController extends AppApiController
      * A junção repete a regra de faixa da compatibilidade: uma peça cadastrada
      * como "2015 até 2020" conta para cada ano do intervalo, e uma sem faixa
      * (ano_inicio e ano_fim nulos) conta para todos.
+     *
+     * Só voltam anos COM peça, e isso diverge da web de propósito. A regra "não
+     * ofereça caminho que não leva a lugar nenhum" já vale lá para montadoras e
+     * modelos (`HAVING total_produtos > 0` nas duas); os anos escaparam dela. O
+     * resultado aparece no catálogo real: a C 400 X tem uma peça mapeada para
+     * 2009–2013, e os anos cadastrados do modelo são 2024–2026 — a web oferece
+     * três anos que levam todos a uma tela vazia. Aqui a faixa some, e a pessoa
+     * fica no nível do modelo, onde a peça está.
      */
     private function anosDe(int $modeloId): array
     {
@@ -174,6 +182,7 @@ class AppMotosController extends AppApiController
                 AND (pc.ano_fim    IS NULL OR pc.ano_fim    >= ma.ano)
               WHERE ma.modelo_id = ?
            GROUP BY ma.ano
+             HAVING total_produtos > 0
            ORDER BY ma.ano DESC"
         );
         $st->execute([$modeloId]);

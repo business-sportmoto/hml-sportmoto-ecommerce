@@ -639,18 +639,56 @@ class SafraPayAdapter implements AdquirenteInterface
         return $out;
     }
 
+    /**
+     * Endereço no formato da Safra.
+     *
+     * VÁRIOS NOMES PARA O MESMO CAMPO, de propósito: o endereço chega de
+     * origens diferentes (checkout, CLI de teste, webhook) e cada uma usa o
+     * vocabulário dela. Aceitar as variações é mais barato que padronizar
+     * tudo — e mais seguro, porque um nome não reconhecido não dá erro: dá
+     * string vazia, que a Safra recusa lá na frente com uma mensagem que
+     * parece problema do cliente.
+     *
+     * `estado` é o nome do projeto (é a coluna `enderecos.estado`, char(2)) e
+     * FALTAVA aqui — só `uf` e `state` eram lidos. A cobrança do checkout
+     * voltava "Propriedade 'State' está ausente. [errorCode 1]" com o
+     * endereço inteiro preenchido no banco.
+     */
     private static function montarEndereco(array $e): array
     {
-        return [
+        $out = [
             'street'       => self::apenasAscii((string) ($e['logradouro'] ?? $e['street'] ?? '')),
             'number'       => (string) ($e['numero'] ?? $e['number'] ?? 'S/N'),
             'complement'   => self::apenasAscii((string) ($e['complemento'] ?? $e['complement'] ?? '')),
             'neighborhood' => self::apenasAscii((string) ($e['bairro'] ?? $e['neighborhood'] ?? '')),
             'city'         => self::apenasAscii((string) ($e['cidade'] ?? $e['city'] ?? '')),
-            'state'        => strtoupper(substr((string) ($e['uf'] ?? $e['state'] ?? ''), 0, 2)),
+            'state'        => strtoupper(substr((string) ($e['estado'] ?? $e['uf'] ?? $e['state'] ?? ''), 0, 2)),
             'country'      => 'BR',
             'zipCode'      => preg_replace('/\D/', '', (string) ($e['cep'] ?? $e['zipCode'] ?? '')) ?? '',
         ];
+
+        // CAMPO OBRIGATÓRIO VAZIO É PROBLEMA NOSSO, não do cliente.
+        //
+        // Sem este aviso, a única pista é a recusa da Safra — que nomeia o
+        // campo DELA ('State'), não o nosso, e chega depois de já termos
+        // gasto a chamada. Aqui o log diz o que faltou e com quais chaves o
+        // endereço veio, que é o suficiente para achar o mapeamento errado.
+        $faltando = array_keys(array_filter(
+            ['street' => $out['street'], 'city' => $out['city'],
+             'state'  => $out['state'],  'zipCode' => $out['zipCode']],
+            static fn(string $v): bool => trim($v) === ''
+        ));
+
+        if ($faltando !== [] && class_exists('LogService')) {
+            LogService::warning('Endereco incompleto para a Safra Pay', [
+                'faltando'      => $faltando,
+                // Só os NOMES das chaves recebidas — nunca os valores, que
+                // são endereço residencial do cliente.
+                'chaves_no_endereco' => array_keys($e),
+            ], 'pagamento');
+        }
+
+        return $out;
     }
 
     // =========================================================================
