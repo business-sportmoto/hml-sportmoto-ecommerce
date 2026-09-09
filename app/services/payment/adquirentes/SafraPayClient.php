@@ -146,6 +146,20 @@ class SafraPayClient
         self::$tokenCache = [];
     }
 
+    /**
+     * MerchantToken em uso, resolvido pela mesma precedência do resto.
+     *
+     * Existe para o validador de webhook conferir a assinatura contra a MESMA
+     * credencial que assina as cobranças. Lendo o .env por conta própria, ele
+     * recusaria tudo assim que a credencial fosse trocada no admin.
+     *
+     * Não expor em resposta HTTP nem em log.
+     */
+    public function merchantTokenEmUso(): string
+    {
+        return $this->merchantToken;
+    }
+
     /** De onde vieram as credenciais em uso — para a tela de diagnóstico. */
     public function origemCredenciais(): string
     {

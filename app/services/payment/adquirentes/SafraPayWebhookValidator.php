@@ -32,11 +32,49 @@ class SafraPayWebhookValidator
     private string $headerExtra;
     private string $segredoExtra;
 
+    private string $merchantId;
+
     public function __construct(string $merchantToken = '', string $headerExtra = '', string $segredoExtra = '')
     {
-        $this->merchantToken = $merchantToken !== '' ? $merchantToken : self::cfg('SAFRAPAY_MERCHANT_TOKEN');
+        // MESMA fonte do SafraPayClient: cadastro do admin primeiro, .env como
+        // retaguarda. Antes isto lia só o .env — se a credencial fosse trocada
+        // pelo admin, as cobranças passariam a usar a nova e o webhook
+        // continuaria validando contra a antiga, recusando tudo.
+        $cliente = new SafraPayClient();
+
+        $this->merchantToken = $merchantToken !== '' ? $merchantToken : $cliente->merchantTokenEmUso();
+        $this->merchantId    = $cliente->merchantId();
         $this->headerExtra   = $headerExtra   !== '' ? $headerExtra   : self::cfg('SAFRAPAY_WEBHOOK_HEADER');
         $this->segredoExtra  = $segredoExtra  !== '' ? $segredoExtra  : self::cfg('SAFRAPAY_WEBHOOK_SECRET');
+    }
+
+    /**
+     * Formas de codificar o segredo que a Safra pode enviar no Authorization.
+     *
+     * A doc diz apenas "o merchant token em Base64", o que é ambíguo: pode ser
+     * o token isolado ou o par no formato clássico do HTTP Basic
+     * (base64 de "usuario:senha"). Aceitar as variações é seguro — todas
+     * derivam do MESMO segredo, e quem não o tem não produz nenhuma delas.
+     * Recusar notificação legítima por diferença de formatação é o pior
+     * desfecho: o pagamento fica pendente com o dinheiro pago.
+     *
+     * @return array<string,string> rótulo => valor esperado
+     */
+    private function candidatos(): array
+    {
+        $t   = $this->merchantToken;
+        $mid = $this->merchantId;
+
+        $c = [
+            'base64(token)' => base64_encode($t),
+            'token'         => $t,
+        ];
+        if ($mid !== '') {
+            $c['base64(merchantId:token)'] = base64_encode($mid . ':' . $t);
+            $c['base64(token:merchantId)'] = base64_encode($t . ':' . $mid);
+            $c['merchantId:token']         = $mid . ':' . $t;
+        }
+        return $c;
     }
 
     /**
@@ -59,20 +97,39 @@ class SafraPayWebhookValidator
         $recebido = preg_replace('/^\s*(Basic|Bearer)\s+/i', '', $recebido) ?? $recebido;
         $recebido = trim($recebido);
 
-        $esperado = base64_encode($this->merchantToken);
-
         // hash_equals: comparação em tempo constante. Com == daria para
         // descobrir o segredo byte a byte medindo o tempo de resposta.
-        $ok = hash_equals($esperado, $recebido);
-
-        // Tolera o token puro (sem base64) — algumas contas enviam assim.
-        // Registrado como aceito para que a diferença apareça no log.
-        if (!$ok && hash_equals($this->merchantToken, $recebido)) {
-            $ok = true;
+        // Percorre TODOS os candidatos mesmo após achar — sair no primeiro
+        // acerto reintroduziria o vazamento por tempo.
+        $ok     = false;
+        $formato = null;
+        foreach ($this->candidatos() as $rotulo => $esperado) {
+            if (hash_equals($esperado, $recebido)) {
+                $ok      = true;
+                $formato = $formato ?? $rotulo;
+            }
         }
 
         if (!$ok) {
-            return ['valida' => false, 'motivo' => 'Authorization não confere'];
+            // DIAGNÓSTICO SEM VAZAR O SEGREDO.
+            //
+            // "Authorization não confere" sozinho é indepurável: não dá para
+            // saber se o token está errado, se o formato é outro, ou se veio
+            // truncado. O hash curto permite comparar o recebido com o
+            // esperado sem que nenhum dos dois apareça em log.
+            return [
+                'valida' => false,
+                'motivo' => sprintf(
+                    'Authorization não confere (recebido: %d chars, fp %s; esperados: %s)',
+                    strlen($recebido),
+                    substr(hash('sha256', $recebido), 0, 8),
+                    implode(', ', array_map(
+                        static fn(string $r, string $v): string => $r . ' fp ' . substr(hash('sha256', $v), 0, 8),
+                        array_keys($this->candidatos()),
+                        array_values($this->candidatos())
+                    ))
+                ),
+            ];
         }
 
         // Segundo fator, quando configurado.

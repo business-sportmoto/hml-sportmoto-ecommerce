@@ -600,12 +600,30 @@ class PagamentoRoteador
                 $codigo,
                 $c->codigoAdquirente,
                 mb_substr((string) ($c->mensagemAdquirente ?? ''), 0, 255),
-                $c->pixQrCode,
-                $c->pixQrCodeBase64,
+                self::limitarTexto($c->pixQrCode),
+                // IMAGEM DO QR NAO E PERSISTIDA — de proposito.
+                //
+                // A Safra devolve o QR como BMP NAO COMPRIMIDO em base64:
+                // 113.760 bytes, contra o limite de 65.535 do TEXT. Isso
+                // estourava com "1406 Data too long" e derrubava a gravacao
+                // INTEIRA da transacao. O pedido continuava, o cliente via o
+                // QR — e a linha em pgto_transacoes nunca nascia. Quando o
+                // webhook confirmava o pagamento, o processor nao achava a
+                // transacao e o pedido ficava pendente com o dinheiro pago.
+                //
+                // A imagem tambem nao e lida em lugar nenhum: o checkout usa
+                // o base64 que vem em memoria do roteador. E o copia-e-cola
+                // (191 bytes, gravado acima) determina o QR por completo —
+                // qualquer renderizador refaz a imagem a partir dele.
+                //
+                // Guardar 113 KB de BMP por pedido para nunca ler seria caro
+                // e inutil. Se algum dia precisar reexibir, renderize a
+                // partir de pix_qrcode.
+                null,
                 $c->pixExpiraEm,
                 $c->boletoLinhaDigitavel,
                 $c->boletoCodigoBarras,
-                $c->boletoUrl,
+                self::limitarTexto($c->boletoUrl),
                 $c->boletoVencimento,
                 $ctx['ip_cliente'] ?? null,
                 $status,
@@ -618,6 +636,23 @@ class PagamentoRoteador
                 'order_id_loja' => $ctx['order_id_loja'] ?? null,
             ]);
         }
+    }
+
+    /**
+     * Corta um campo ao limite do TEXT do MySQL (65.535 BYTES, nao caracteres).
+     *
+     * Existe porque a alternativa é pior: um valor grande demais aborta o
+     * INSERT inteiro, e a transacao — que o webhook precisa para confirmar o
+     * pagamento — deixa de existir. Perder o fim de um campo informativo é
+     * aceitável; perder a linha da transacao não é.
+     *
+     * A margem de 512 bytes cobre a diferenca entre bytes e caracteres em
+     * UTF-8 sem precisar contar multibyte na mao.
+     */
+    private static function limitarTexto(?string $v, int $limite = 65000): ?string
+    {
+        if ($v === null || $v === '') return $v;
+        return strlen($v) <= $limite ? $v : mb_strcut($v, 0, $limite);
     }
 
     private function gravarTentativa(

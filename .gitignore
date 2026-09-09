@@ -43,6 +43,7 @@
 /malga-status.sh
 
 # ── STORAGE / CACHE / LOGS (gerados em runtime) ────────────────────────────
+/storage/
 /storage/cache/*
 /storage/ia/*
 /storage/locks/*
