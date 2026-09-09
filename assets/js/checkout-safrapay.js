@@ -127,6 +127,20 @@
    * cliente precisa fazer; se vier um campo novo, mostra o texto da API, que
    * é melhor do que um genérico.
    */
+  /**
+   * Erro NOSSO, com texto já pensado para o cliente.
+   *
+   * A marca existe para o `catch` distinguir o que nós lançamos do que o
+   * navegador lança. Sem ela, um TypeError("Failed to fetch") — que é como
+   * aparece tanto queda de rede quanto bloqueio de CSP — era repassado cru e
+   * chegava em inglês na tela do cliente.
+   */
+  function erroNosso(msg) {
+    var e = new Error(msg);
+    e.nosso = true;
+    return e;
+  }
+
   function mensagemDoErro(erros) {
     var porCampo = {
       cardnumber:         'Número do cartão inválido.',
@@ -285,19 +299,32 @@
             // dados do cartão" faria o cliente redigitar um cartão bom
             // várias vezes enquanto o problema está no cadastro.
             if (r.http === 401 || r.http === 403) {
-              throw new Error('Pagamento por cartão indisponível no momento.');
+              throw erroNosso('Pagamento por cartão indisponível no momento.');
             }
 
-            throw new Error(erros.length ? mensagemDoErro(erros)
+            throw erroNosso(erros.length ? mensagemDoErro(erros)
                                          : 'Não foi possível validar o cartão.');
           })
           .catch(function (e) {
             clearTimeout(relogio);
+
+            if (e && e.nosso) throw e;
+
             if (e && e.name === 'AbortError') {
-              throw new Error('A Safra não respondeu. Tente novamente.');
+              throw erroNosso('A Safra não respondeu. Tente novamente.');
             }
-            if (e instanceof Error) throw e;
-            throw new Error('Não foi possível validar o cartão.');
+
+            // TypeError "Failed to fetch". O navegador NÃO conta o motivo:
+            // rede fora do ar e bloqueio de CSP chegam exatamente iguais aqui
+            // — a diretiva violada só aparece no console. Repassar essa
+            // mensagem crua colocava um texto em inglês na frente do cliente
+            // e ainda sugeria problema no cartão, que está intacto.
+            console.error('[SafraPay] falha de rede ou CSP ao tokenizar:',
+              e && e.message,
+              '— se for CSP, liberar o host em connect-src (SecurityHelper).');
+
+            throw erroNosso('Não foi possível contatar a operadora do cartão. '
+                          + 'Verifique sua conexão e tente novamente.');
           });
       });
     }

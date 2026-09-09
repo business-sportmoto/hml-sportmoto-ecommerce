@@ -161,7 +161,11 @@ class MotoCompatibilidade extends Model {
             default          => "p.destaque DESC, p.vendidos DESC",
         };
 
-        return "{$temEstoque}, {$resto}";
+        // `p.id DESC` fecha os empates. Esta listagem pagina (LIMIT/OFFSET), e
+        // sem critério único o MySQL pode ordenar os empatados de formas
+        // diferentes entre uma página e outra — produtos somem ou repetem na
+        // fronteira. Mesma correção feita em Product::buildOrder.
+        return "{$temEstoque}, {$resto}, p.id DESC";
     }
 
     public function countCompativeis(

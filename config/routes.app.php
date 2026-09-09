@@ -228,6 +228,23 @@ AppRouter::get   ($v . '/conta/pedidos/{codigo}',           'AppContaController@
 AppRouter::get   ($v . '/motos/montadoras',            'AppGaragemController@montadoras');
 AppRouter::get   ($v . '/motos/modelos',               'AppGaragemController@modelos');
 AppRouter::get   ($v . '/motos/anos',                  'AppGaragemController@anos');
+
+// Navegação POR MOTO: montadora → modelo → ano → peças compatíveis. Espelha
+// MotoController da loja.
+//
+// ┌─ ATENÇÃO ────────────────────────────────────────────────────────────────┐
+// │ Estas rotas precisam continuar DEPOIS das literais acima                 │
+// │ (/motos/montadoras, /motos/modelos, /motos/anos). `/motos/{montadora}`   │
+// │ casa qualquer coisa: subindo-a, "montadoras" viraria slug de montadora e │
+// │ a cascata de cadastro da garagem passaria a responder 404.               │
+// └──────────────────────────────────────────────────────────────────────────┘
+AppRouter::get   ($v . '/motos',                      'AppMotosController@montadoras');
+// `\d+` e não `\d{4}`: patternToRegex() recorta o regex do parâmetro com
+// `[^}]+`, que para na PRIMEIRA chave — um `{4}` aqui produz um padrão quebrado
+// que nunca casa, sem erro nenhum, só 404. O ano é conferido no controller.
+AppRouter::get   ($v . '/motos/{montadora}/{modelo}/{ano:\d+}', 'AppMotosController@catalogo');
+AppRouter::get   ($v . '/motos/{montadora}/{modelo}', 'AppMotosController@catalogo');
+AppRouter::get   ($v . '/motos/{montadora}',          'AppMotosController@catalogo');
 AppRouter::get   ($v . '/garagem',                     'AppGaragemController@index');
 AppRouter::post  ($v . '/garagem',                     'AppGaragemController@adicionar');
 // Rotas de foto usam o prefixo literal /garagem/fotos e vêm ANTES de

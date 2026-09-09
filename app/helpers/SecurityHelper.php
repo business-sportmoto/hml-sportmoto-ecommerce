@@ -339,8 +339,25 @@ class SecurityHelper {
                          . 'https://transaction.cieloecommerce.cielo.com.br '
                          . 'https://transactionsandbox.pagador.com.br https://www.pagador.com.br';
 
+            // Checkout transparente da Safra Pay: o navegador posta o cartao
+            // DIRETO nestes hosts (POST /v2/temporary/card) e consulta a
+            // bandeira pelo BIN (GET /v2/Card/Bin). Sem o connect-src o fetch
+            // e bloqueado e a tela mostra apenas "Failed to fetch" — o
+            // motivo real so aparece no console do navegador.
+            //
+            // OS DOIS AMBIENTES ficam liberados de proposito. Qual vale e
+            // decidido em runtime por `pgto_gateways.sandbox`; listar so um
+            // quebraria o checkout no dia em que a loja trocasse de ambiente,
+            // e o CSP nao e o lugar para essa decisao.
+            //
+            // Nao ha entrada em script-src: NAO carregamos a SDK da Safra. O
+            // glue proprio (assets/js/checkout-safrapay.js) fala direto com o
+            // endpoint, entao o CDN deles nao precisa ser confiado aqui.
+            $safraConnect = 'https://payment-hml.safrapay.com.br https://payment.safrapay.com.br';
+
             $pgtoScript  = 'https://sdk.mercadopago.com https://device.clearsale.com.br ' . $sopScript;
-            $pgtoConnect = 'https://*.mercadopago.com https://*.mercadolibre.com ' . $sopConnect;
+            $pgtoConnect = 'https://*.mercadopago.com https://*.mercadolibre.com '
+                         . $sopConnect . ' ' . $safraConnect;
             $pgtoFrame   = 'https://*.mercadopago.com https://*.mercadolibre.com';
 
             // ── 3-D Secure ──────────────────────────────────────────────
