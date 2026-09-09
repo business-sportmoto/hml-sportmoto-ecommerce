@@ -2058,7 +2058,9 @@ class CheckoutController extends Controller {
             // condicoes, antifraude, retencao e as regras de retentativa.
             // Resolvido ANTES do INSERT — ver resolverCartaoParaCobranca().
             // Se houvesse algo errado com o cartão, este pedido não existiria.
-            $tokenCartao   = $cartaoResolvido['token']      ?? null;
+            $tokenCartao   = $cartaoResolvido['token']         ?? null;
+            $cartaoIdCofre = $cartaoResolvido['cartao_id']     ?? null;
+            $clienteCofre  = $cartaoResolvido['cliente_cofre'] ?? null;
             $cartaoSalvo   = $cartaoResolvido['cartao']     ?? null;
             $adquirenteFix = $cartaoResolvido['fix']        ?? '';
             $permitidas    = $cartaoResolvido['permitidas'] ?? [];
@@ -2078,6 +2080,11 @@ class CheckoutController extends Controller {
                 'parcelas'          => (int) $parcelas,
                 'descricao_fatura'  => 'SportMoto ' . $codigo,
                 'token_temporario'  => $tokenCartao,
+                // Cartão já guardado na adquirente: cobra por ele, sem token
+                // e sem pedir nada ao cliente. O adapter prefere este caminho
+                // quando `token_temporario` vem vazio.
+                'cartao_id'          => $cartaoIdCofre,
+                'cliente_id_gateway' => $clienteCofre,
                 'adquirente_fixa'   => $adquirenteFix,
                 // Cartao salvo: em quais adquirentes ele existe e com qual
                 // referencia em cada uma. O roteador so tenta nessas.
@@ -2101,6 +2108,41 @@ class CheckoutController extends Controller {
 
             $c = $rot->classificacao;
             $instrumento = $rot->instrumento();
+
+            // ── O CARTÃO FICOU NO COFRE DA ADQUIRENTE ────────────────────
+            //
+            // A Safra devolve `card.id` com `cof: true` na cobrança aprovada:
+            // ela já guardou o cartão. Esse id é permanente e cobra sozinho —
+            // é o que substitui o token temporário, que morre em 15 minutos.
+            //
+            // Sem isto, "salvar cartão" não salvava nada de útil: a referência
+            // guardada era o token consumido, e a compra seguinte pedia o
+            // cartão de novo — exatamente o que o cadastro deveria evitar.
+            //
+            // SÓ DEPOIS DE APROVAR. Um cartão que o emissor negou não vira
+            // cartão salvo, mesmo que a adquirente tenha devolvido um id.
+            if ($cartaoSalvoId && $rot->aprovado() && !empty($c->cofreCartaoId)) {
+                try {
+                    $gwSafra = $db->prepare(
+                        "SELECT id FROM pgto_gateways WHERE codigo = 'safrapay' AND ativo = 1 LIMIT 1"
+                    );
+                    $gwSafra->execute();
+                    $gwId = (int) ($gwSafra->fetchColumn() ?: 0);
+
+                    if ($gwId > 0) {
+                        (new CartaoSalvo())->vincularAdquirente(
+                            (int) $cartaoSalvoId, $gwId,
+                            $c->cofreClienteId, (string) $c->cofreCartaoId
+                        );
+                    }
+                } catch (\Throwable $e) {
+                    // A compra já foi aprovada. Falhar em guardar a referência
+                    // custa uma redigitação na próxima compra, não esta venda.
+                    LogService::exception($e, 'warning', 'pagamento', [
+                        'acao' => 'guardar_cofre_adquirente', 'pedido_id' => $pedidoId,
+                    ]);
+                }
+            }
 
             // RETIDO NAO E RECUSADO. O dinheiro pode ate estar capturado; o
             // que esta suspenso e a MERCADORIA. Por isso o pagamento fica
@@ -3973,6 +4015,8 @@ class CheckoutController extends Controller {
         int $clienteId
     ): array {
         $tokenCartao   = null;
+        $cartaoIdCofre = null;   // id permanente no cofre da adquirente
+        $clienteCofre  = null;   // customer correspondente na adquirente
         $cartaoSalvo   = null;
         $adquirenteFix = '';
         $permitidas    = [];   // adquirentes em que ESTE cartao existe
@@ -4041,18 +4085,43 @@ class CheckoutController extends Controller {
                 // A margem de 2 minutos cobre o tempo entre esta checagem e
                 // a autorizacao de fato (antifraude, retentativa, fila).
                 if ($tokenCartao === null && isset($cartaoRefs['safrapay'])) {
-                    $idade = (int) ($cartaoRefs['safrapay']['idade_seg'] ?? PHP_INT_MAX);
+                    $ref = (string) ($cartaoRefs['safrapay']['card_ref'] ?? '');
 
-                    if ($idade <= self::SAFRAPAY_TOKEN_VALIDO_SEG) {
-                        $tokenCartao = (string) $cartaoRefs['safrapay']['card_ref'] ?: null;
-                    } else {
-                        LogService::info('Token temporario da Safra vencido no checkout', [
-                            'cartao_id' => $cartaoSalvoId,
-                            'idade_seg' => $idade,
-                        ], 'pagamento');
+                    // DOIS TIPOS DE REFERÊNCIA convivem nesta coluna, e a
+                    // diferença é o prefixo:
+                    //
+                    //   card_XXXX…  token TEMPORÁRIO do checkout
+                    //               transparente — uma cobrança, 15 min.
+                    //               É o que o navegador acabou de gerar.
+                    //
+                    //   UUID        id PERMANENTE do cofre da Safra,
+                    //               colhido da resposta da primeira
+                    //               cobrança aprovada (card.id, cof:true).
+                    //               Cobra sozinho, sem CVV, para sempre.
+                    //
+                    // A primeira compra usa o token; da segunda em diante
+                    // usa o id — que é o que faz "salvar cartão" valer
+                    // alguma coisa.
+                    if (str_starts_with($ref, 'card_')) {
+                        $idade = (int) ($cartaoRefs['safrapay']['idade_seg'] ?? PHP_INT_MAX);
 
-                        $this->json(['ok' => false, 'msg' =>
-                            'Por segurança, informe os dados do cartão novamente.']);
+                        if ($idade <= self::SAFRAPAY_TOKEN_VALIDO_SEG) {
+                            $tokenCartao = $ref ?: null;
+                        } else {
+                            // Token vencido E sem id de cofre: a primeira
+                            // cobrança não chegou a aprovar, então não há
+                            // nada guardado. Só resta pedir de novo.
+                            LogService::info('Token temporario da Safra vencido no checkout', [
+                                'cartao_id' => $cartaoSalvoId,
+                                'idade_seg' => $idade,
+                            ], 'pagamento');
+
+                            $this->json(['ok' => false, 'msg' =>
+                                'Por segurança, informe os dados do cartão novamente.']);
+                        }
+                    } elseif ($ref !== '') {
+                        $cartaoIdCofre = $ref;
+                        $clienteCofre  = $cartaoRefs['safrapay']['customer_ref'] ?? null;
                     }
                 }
             } elseif ($cartaoTemp) {
@@ -4073,21 +4142,30 @@ class CheckoutController extends Controller {
                 $adquirenteFix = $donaDoToken['codigo'] ?? '';
             }
 
-            // Um cartao salvo so na Cielo nao tem token do MP — e nao
-            // precisa: cobra pelo CardToken + CVV. So e erro quando nao
-            // ha NENHUM caminho.
+            // TRÊS CAMINHOS DE COBRANÇA, e só é erro quando não há NENHUM:
+            //
+            //   token temporário  cartão recém-digitado (MP, Safra)
+            //   id do cofre       cartão já guardado na adquirente — cobra
+            //                     sozinho, sem token e sem CVV
+            //   CardToken + CVV   Cielo, que cobra com o código no corpo
+            //
+            // O cofre faltava nesta conta: um cartão salvo na Safra, que é
+            // exatamente o caso que o cadastro existe para atender, era
+            // recusado aqui com "adicione o cartão novamente".
             $temCielo = isset($cartaoRefs['cielo']) && $cvvCielo !== '';
-            if (empty($tokenCartao) && !$temCielo) {
+            if (empty($tokenCartao) && empty($cartaoIdCofre) && !$temCielo) {
                 $this->json(['ok' => false, 'msg' => 'Cartão sem token. Adicione o cartão novamente.']);
             }
         }
         return [
-            'token'      => $tokenCartao,
-            'cartao'     => $cartaoSalvo,
-            'fix'        => $adquirenteFix,
-            'permitidas' => $permitidas,
-            'refs'       => $cartaoRefs,
-            'cvv'        => $cvvCielo,
+            'token'         => $tokenCartao,
+            'cartao_id'     => $cartaoIdCofre,
+            'cliente_cofre' => $clienteCofre,
+            'cartao'        => $cartaoSalvo,
+            'fix'           => $adquirenteFix,
+            'permitidas'    => $permitidas,
+            'refs'          => $cartaoRefs,
+            'cvv'           => $cvvCielo,
         ];
     }
 

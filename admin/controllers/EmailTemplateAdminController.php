@@ -159,10 +159,28 @@ class EmailTemplateAdminController extends Controller
 
     public function index()
     {
-        $itens = $this->model->all(false);
+        // A lista cresce sozinha: cada campanha montada pela Central de IA
+        // deixa um template novo. Sem filtro e paginação vira um paredão.
+        $filtros = [
+            'busca'   => trim((string) ($_GET['busca']   ?? '')),
+            'tipo'    => (string) ($_GET['tipo']    ?? ''),
+            'formato' => (string) ($_GET['formato'] ?? ''),
+            'status'  => (string) ($_GET['status']  ?? ''),
+            'origem'  => (string) ($_GET['origem']  ?? ''),
+            'ordenar' => (string) ($_GET['ordenar'] ?? ''),
+        ];
+
+        // O model revalida tudo contra whitelist — aqui é só transporte.
+        $resultado = $this->model->listarPaginado(
+            $filtros,
+            max(1, (int) ($_GET['pagina'] ?? 1)),
+            20
+        );
+
         $this->render('email-marketing/templates/index', [
-            'itens' => $itens,
-            'titulo' => 'Templates de Email',
+            'resultado' => $resultado,
+            'filtros'   => $filtros,
+            'titulo'    => 'Templates de Email',
         ], 'admin');
     }
 

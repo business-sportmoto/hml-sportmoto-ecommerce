@@ -321,6 +321,12 @@ class PagamentoErroClassifier
         // "Mastercard"); o nível da transação não a traz. Ler só $tx['brand']
         // deixava a coluna vazia no dashboard.
         $c->bandeira           = $tx['card']['brand'] ?? ($tx['brand'] ?? null);
+
+        // Cofre da adquirente. Vem preenchido em QUALQUER desfecho — inclusive
+        // recusa —, então quem chama só deve gravar depois de aprovar: um
+        // cartão que o emissor negou não deve virar cartão salvo.
+        $c->cofreCartaoId  = $tx['card']['id'] ?? null;
+        $c->cofreClienteId = $tx['card']['customerId'] ?? ($charge['customerId'] ?? null);
         $c->merchantAdviceCode = isset($tx['merchantAdviceCode']) && $tx['merchantAdviceCode'] !== ''
             ? (string) $tx['merchantAdviceCode']
             : null;

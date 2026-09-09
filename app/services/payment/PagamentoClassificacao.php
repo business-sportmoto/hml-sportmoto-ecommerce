@@ -68,6 +68,20 @@ final class PagamentoClassificacao
     public ?string $bandeira           = null;
     public ?string $traceKey           = null;  // correlação no suporte da Safra
     public ?string $chargeId           = null;
+
+    /**
+     * Cartão guardado pela adquirente durante ESTA cobrança.
+     *
+     * A Safra devolve `card.id` com `cof: true` (Card on File) na resposta da
+     * autorização: o cartão já ficou no cofre dela. É um id PERMANENTE, ao
+     * contrário do `temporaryCardToken`, que vale uma cobrança e 15 minutos.
+     *
+     * Guardar isto é o que permite a segunda compra não pedir o cartão de
+     * novo — verificado em homologação: cobrança aprovada só com o id, sem
+     * token e sem CVV.
+     */
+    public ?string $cofreCartaoId  = null;
+    public ?string $cofreClienteId = null;
     public ?int    $httpStatus         = null;
     public int     $duracaoMs          = 0;
 

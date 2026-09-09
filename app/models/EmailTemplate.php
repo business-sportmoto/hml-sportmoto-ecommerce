@@ -92,7 +92,15 @@
 class EmailTemplate
 {
     /** @var PDO */
+    /** Espelham os ENUM da tabela. Servem de whitelist para o que vem da URL. */
+    public const TIPOS    = ['marketing', 'transacional'];
+    public const FORMATOS = ['manual', 'visual', 'mjml'];
+    public const STATUS   = ['rascunho', 'ativo', 'arquivado'];
+
     private $db;
+
+    /** A Central de IA está instalada? Memorizado: a consulta é sempre a mesma. */
+    private ?bool $temIa = null;
 
     public function __construct()
     {
@@ -105,6 +113,151 @@ class EmailTemplate
         if ($somenteAtivos) $sql .= " WHERE status = 'ativo'";
         $sql .= " ORDER BY atualizado_em DESC";
         return $this->db->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Lista com filtro, busca e paginação.
+     *
+     * A lista cresce sozinha — cada campanha montada pela Central de IA deixa
+     * um template novo — e sem filtro vira um paredão de linhas onde ninguém
+     * acha nada.
+     *
+     * @param array $filtros busca, tipo, formato, status, origem (ia|humano), ordenar
+     * @return array{itens:array, total:int, pagina:int, por_pagina:int, resumo:array}
+     */
+    public function listarPaginado(array $filtros = [], int $pagina = 1, int $porPagina = 20): array
+    {
+        $pagina    = max(1, $pagina);
+        $porPagina = max(5, min(100, $porPagina));
+
+        // Procedência de IA sai de tabelas do módulo de IA. Se a Central não
+        // estiver instalada, as colunas viram 0 em vez de derrubar a tela —
+        // o e-mail marketing não pode depender dela para funcionar.
+        $temIa = $this->temTabelasIa();
+        $selIa = $temIa
+            ? "EXISTS(SELECT 1 FROM ia_email_layout_geracao   il WHERE il.template_id       = t.id) AS ia_layout,
+               EXISTS(SELECT 1 FROM ia_email_conteudo_geracao ic WHERE ic.template_final_id = t.id) AS ia_conteudo"
+            : '0 AS ia_layout, 0 AS ia_conteudo';
+
+        [$where, $params] = $this->montarFiltro($filtros, $temIa);
+
+        $total = (int) $this->execUm(
+            "SELECT COUNT(*) FROM email_templates t {$where}", $params
+        );
+
+        $ordem = $this->ordenacao((string) ($filtros['ordenar'] ?? ''));
+        $off   = ($pagina - 1) * $porPagina;
+
+        // LIMIT/OFFSET por interpolação de INTEIRO já saneado acima: com
+        // EMULATE_PREPARES = false o MySQL recusa placeholder em LIMIT.
+        $st = $this->db->prepare(
+            "SELECT t.*, {$selIa} FROM email_templates t {$where} ORDER BY {$ordem} LIMIT {$porPagina} OFFSET {$off}"
+        );
+        $st->execute($params);
+        $itens = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        return [
+            'itens'      => $itens,
+            'total'      => $total,
+            'pagina'     => $pagina,
+            'por_pagina' => $porPagina,
+            'resumo'     => $this->resumo($temIa),
+        ];
+    }
+
+    /** Contagens do topo — a leitura rápida antes de filtrar. */
+    private function resumo(bool $temIa): array
+    {
+        $r = ['total' => 0, 'marketing' => 0, 'transacional' => 0, 'ativos' => 0, 'por_ia' => 0];
+        try {
+            $l = $this->db->query(
+                "SELECT COUNT(*) total,
+                        SUM(tipo = 'marketing')    marketing,
+                        SUM(tipo = 'transacional') transacional,
+                        SUM(status = 'ativo')      ativos
+                   FROM email_templates"
+            )->fetch(PDO::FETCH_ASSOC) ?: [];
+            $r = array_merge($r, array_map('intval', array_filter($l, 'is_numeric')));
+
+            if ($temIa) {
+                $r['por_ia'] = (int) $this->db->query(
+                    "SELECT COUNT(DISTINCT id) FROM (
+                        SELECT template_id AS id       FROM ia_email_layout_geracao
+                        UNION SELECT template_final_id FROM ia_email_conteudo_geracao
+                     ) x"
+                )->fetchColumn();
+            }
+        } catch (Throwable $e) {
+            if (class_exists('LogService')) { LogService::error('email_tpl_resumo: ' . $e->getMessage()); }
+        }
+        return $r;
+    }
+
+    /** @return array{0:string, 1:array} WHERE montado e os parâmetros */
+    private function montarFiltro(array $f, bool $temIa): array
+    {
+        $cond = [];
+        $p    = [];
+
+        $busca = trim((string) ($f['busca'] ?? ''));
+        if ($busca !== '') {
+            // Nome e assunto: são os dois campos por onde alguém procura.
+            $cond[] = '(t.nome LIKE :busca OR t.assunto LIKE :busca2)';
+            $p[':busca']  = '%' . $busca . '%';
+            $p[':busca2'] = '%' . $busca . '%';
+        }
+        foreach (['tipo' => self::TIPOS, 'formato' => self::FORMATOS, 'status' => self::STATUS] as $campo => $valores) {
+            $v = (string) ($f[$campo] ?? '');
+            // Whitelist: o valor vem da URL e vai para o WHERE.
+            if ($v !== '' && in_array($v, $valores, true)) {
+                $cond[]         = "t.{$campo} = :{$campo}";
+                $p[":{$campo}"] = $v;
+            }
+        }
+
+        $origem = (string) ($f['origem'] ?? '');
+        if ($temIa && ($origem === 'ia' || $origem === 'humano')) {
+            $existe = "EXISTS(SELECT 1 FROM ia_email_layout_geracao   il WHERE il.template_id       = t.id)
+                    OR EXISTS(SELECT 1 FROM ia_email_conteudo_geracao ic WHERE ic.template_final_id = t.id)";
+            $cond[] = $origem === 'ia' ? "({$existe})" : "NOT ({$existe})";
+        }
+
+        return [$cond === [] ? '' : 'WHERE ' . implode(' AND ', $cond), $p];
+    }
+
+    /** Whitelist de ordenação — o valor vem da URL e entra no ORDER BY. */
+    private function ordenacao(string $chave): string
+    {
+        return [
+            'nome'     => 't.nome ASC',
+            'tipo'     => "t.tipo ASC, t.formato ASC, t.nome ASC",
+            'formato'  => 't.formato ASC, t.nome ASC',
+            'status'   => "FIELD(t.status,'ativo','rascunho','arquivado'), t.nome ASC",
+            'antigos'  => 't.atualizado_em ASC',
+        ][$chave] ?? 't.atualizado_em DESC';
+    }
+
+    private function temTabelasIa(): bool
+    {
+        if ($this->temIa !== null) { return $this->temIa; }
+        try {
+            $st = $this->db->prepare(
+                'SELECT COUNT(*) FROM information_schema.tables
+                  WHERE table_schema = DATABASE() AND table_name IN (?, ?)'
+            );
+            $st->execute(['ia_email_layout_geracao', 'ia_email_conteudo_geracao']);
+            $this->temIa = (int) $st->fetchColumn() === 2;
+        } catch (Throwable $e) {
+            $this->temIa = false;
+        }
+        return $this->temIa;
+    }
+
+    private function execUm(string $sql, array $params)
+    {
+        $st = $this->db->prepare($sql);
+        $st->execute($params);
+        return $st->fetchColumn();
     }
 
     public function find(int $id): ?array

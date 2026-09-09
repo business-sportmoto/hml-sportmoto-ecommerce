@@ -146,6 +146,13 @@ verificação, não defeito:
 
 - **Recorte (2B)** nunca produziu um PNG. `ia_recortes_produto` está vazia.
 - **Compositor (2C)** nunca executou — Imagick ausente no ambiente de dev.
+- **Modo claro do e-mail marketing (09/09/2026)** passou a existir de fato: a
+  camada clara da folha estava escrita mas nunca era alcançada. Auditado o
+  contraste do **texto** — 0 reprovações em claro e escuro, com a lista cheia e
+  vazia. Bordas, ícones e foco não foram medidos, e as outras telas do módulo
+  (campanhas, envios, editor visual) passaram só pela auditoria estática da
+  folha, sem serem abertas no navegador em modo claro. Ver
+  [[../12-decisoes-tecnicas/ia-email-templates-lista-e-tema]].
 - **Campanhas (3A/3B)** exercitadas em transação, nunca com o worker gerando de
   verdade.
 
