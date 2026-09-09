@@ -476,13 +476,20 @@ class SafraPayWebhookProcessor
      * `admin_id` fica NULL de propósito: não foi pessoa nenhuma que fez isso.
      * Passar 0 fingiria um usuário e sujaria a trilha de auditoria — o mesmo
      * erro de chave que o CLAUDE.md registra na §4.1.
+     *
+     * `visivel_cliente = 0`: EVENTO INTERNO. Para a auditoria ele é essencial
+     * — é a prova de que a adquirente confirmou, e o que separa "o site achou
+     * que aprovou" de "a Safra confirmou". Para o cliente é ruído: ele veria o
+     * mesmo status repetido, com um texto que fala de sistema e não da compra
+     * dele. O admin continua vendo tudo.
      */
     private function registrarEvento(int $pedidoId, string $status, string $observacao): void
     {
         try {
             $this->db->prepare(
-                "INSERT INTO pedido_historico (pedido_id, status_novo, observacao, admin_id, criado_em)
-                 VALUES (?, ?, ?, NULL, NOW())"
+                "INSERT INTO pedido_historico
+                     (pedido_id, status_novo, observacao, admin_id, visivel_cliente, criado_em)
+                 VALUES (?, ?, ?, NULL, 0, NOW())"
             )->execute([$pedidoId, $status, $observacao]);
         } catch (\Throwable $e) {
             LogService::exception($e, 'warning', 'pagamento', [

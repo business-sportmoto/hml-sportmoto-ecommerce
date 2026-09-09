@@ -43,6 +43,38 @@ final class DestinoPresenter
         $segundo   = $segmentos[1] ?? null;
         $terceiro  = $segmentos[2] ?? null;
 
+        // ── Pedido: por ID ou por CÓDIGO, e a rota é quem diz qual ──────────
+        //
+        // Não dá para distinguir pelo formato: o código do pedido TAMBÉM é
+        // numérico ("62399744"), então testar dígitos não separa nada. Quem
+        // separa é o caminho:
+        //
+        //   /minha-conta/pedido/{id}   — singular, a rota da loja, recebe ID
+        //   /conta/pedidos/{id}        — o que as notificações gravaram, ID
+        //   /minha-conta/pedidos/{cod} — plural, o que os links do app usam
+        //
+        // A tela do app trabalha com CÓDIGO. Quando chega um id, ele sai daqui
+        // em `pedido_id` e o código fica vazio: quem monta a lista traduz todos
+        // de uma vez, em vez de uma consulta por notificação.
+        $pedidoPorId = $terceiro !== null && (
+            ($primeiro === 'minha-conta' && $segundo === 'pedido') ||
+            ($primeiro === 'conta'       && $segundo === 'pedidos')
+        );
+
+        if ($pedidoPorId) {
+            return [
+                'tipo'   => 'pedido',
+                'params' => ['codigo' => '', 'pedido_id' => (int)$terceiro],
+                'url'    => $base . $caminho,
+            ];
+        }
+
+        // `/conta/...` é o prefixo das notificações; `/minha-conta/...` o das
+        // rotas da loja. Daqui para baixo os dois são a mesma coisa.
+        if ($primeiro === 'conta') {
+            $primeiro = 'minha-conta';
+        }
+
         // Notificação de pedido aponta para /minha-conta/pedidos/{codigo}. Sem
         // este caso a notificação mais comum da loja abriria em WebView, com o
         // cliente logado no app e deslogado na página.

@@ -90,7 +90,10 @@ class EmailService {
                         'pedido_codigo' => $pedido['codigo']         ?? '',
                         'pedido_id'     => $pedido['id']             ?? '',
                         'pedido_total'  => 'R$ ' . number_format((float)($pedido['total'] ?? 0), 2, ',', '.'),
-                        'pedido_url'    => rtrim(BASE_URL, '/') . '/conta/pedidos/' . ($pedido['id'] ?? ''),
+                        // Mesma correção da notificação in-app: a rota é
+                        // `/minha-conta/pedido/{id}`. O link antigo levava o
+                        // cliente a um 404 a partir do e-mail.
+                        'pedido_url'    => rtrim(BASE_URL, '/') . '/minha-conta/pedido/' . ($pedido['id'] ?? ''),
                         'rastreio'      => $pedido['codigo_rastreio'] ?? '',
 
                         // `status_pedido` e `observacao_pedido` são os nomes que

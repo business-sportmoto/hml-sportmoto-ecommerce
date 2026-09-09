@@ -41,7 +41,11 @@ class AppNotificacoesController extends AppApiController
 
         $this->ok(
             [
-                'notificacoes' => NotificacaoPresenter::colecao($itens, $ctx),
+                'notificacoes' => NotificacaoPresenter::colecao(
+                    $itens,
+                    $ctx,
+                    $this->codigosDePedido($itens)
+                ),
                 'nao_lidas'    => NotificacaoService::contarNaoLidas('cliente', (int)$this->clienteId),
             ],
             200,
@@ -93,5 +97,49 @@ class AppNotificacoesController extends AppApiController
         $afetadas = NotificacaoService::marcarTodasLidas('cliente', (int)$this->clienteId);
 
         $this->ok(['marcadas' => $afetadas, 'nao_lidas' => 0]);
+    }
+
+    /**
+     * id do pedido => código, para as notificações desta página.
+     *
+     * UMA consulta para a lista inteira. As notificações de pedido guardam o
+     * id na URL e a tela do app abre por código; sem este mapa, cada
+     * notificação precisaria da própria consulta.
+     *
+     * Filtra por `cliente_id`: um id de pedido de outra pessoa não pode virar
+     * um código navegável só porque apareceu numa URL.
+     *
+     * @param  array<int,array> $itens
+     * @return array<int,string>
+     */
+    private function codigosDePedido(array $itens): array
+    {
+        $ids = NotificacaoPresenter::idsDePedido($itens);
+
+        if ($ids === []) {
+            return [];
+        }
+
+        try {
+            $marcadores = implode(',', array_fill(0, count($ids), '?'));
+            $st = $this->db()->prepare(
+                "SELECT id, codigo FROM pedidos
+                  WHERE id IN ({$marcadores}) AND cliente_id = ?"
+            );
+            $st->execute([...$ids, (int)$this->clienteId]);
+
+            $mapa = [];
+            foreach ($st->fetchAll() as $linha) {
+                $mapa[(int)$linha['id']] = (string)$linha['codigo'];
+            }
+
+            return $mapa;
+        } catch (\Throwable $e) {
+            AppLog::exception($e, ['acao' => 'notificacoes_codigos_pedido']);
+
+            // Sem o mapa, o destino cai para a lista de pedidos — que é uma
+            // degradação aceitável, não um erro de tela.
+            return [];
+        }
     }
 }

@@ -222,7 +222,17 @@ class Customer extends Model {
     }
 
     /**
-     * Histórico de mudanças de status do pedido.
+     * Histórico de mudanças de status do pedido — o que o CLIENTE vê.
+     *
+     * `visivel_cliente = 0` fica de fora: são os eventos de máquina —
+     * confirmação de webhook, NF-e do Bling, parecer de antifraude. Eles
+     * existem para auditoria e aparecem inteiros no painel; na conta do
+     * cliente só produziriam o mesmo status repetido com texto de sistema.
+     *
+     * A coluna nasceu com DEFAULT 1 (migration-historico-visibilidade.sql),
+     * então todo evento antigo e todo INSERT que não a conheça continuam
+     * visíveis — nada some por omissão.
+     *
      * Exige tabela pedido_historico (ver migration abaixo).
      */
     public function getOrderHistory(int $pedidoId): array {
@@ -230,7 +240,7 @@ class Customer extends Model {
             $stmt = $this->db->prepare(
                 "SELECT status_novo, observacao, criado_em
                 FROM pedido_historico
-                WHERE pedido_id = ?
+                WHERE pedido_id = ? AND visivel_cliente = 1
                 ORDER BY criado_em DESC"
             );
             $stmt->execute([$pedidoId]);

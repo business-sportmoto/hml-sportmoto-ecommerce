@@ -1759,6 +1759,31 @@ class CheckoutController extends Controller {
             error_log('[process] congelamento BI falhou: ' . $e->getMessage());
         }
 
+        // ── O CARTÃO É VALIDADO ANTES DE O PEDIDO EXISTIR ───────────────
+        //
+        // Estas checagens moravam DEPOIS do INSERT, junto do roteamento. Toda
+        // recusa de validação — cartão sem adquirente, CVV inválido, token
+        // vencido, cartão sem token — respondia `ok:false` e deixava para trás
+        // um pedido gravado que nunca seria pago. O cliente continuava na mesma
+        // tela, tentava de novo, e CADA tentativa criava outro pedido órfão.
+        //
+        // Nada nessas checagens depende do pedido: só do POST e dos cartões do
+        // cliente. Validando antes, ou o pedido nasce com um meio de pagamento
+        // utilizável, ou não nasce.
+        //
+        // NÃO cobre recusa da adquirente — essa é resposta do emissor, chega
+        // só depois da cobrança, e aí o pedido PRECISA existir: é por ele que
+        // o cliente troca a forma de pagamento e o webhook confirma.
+        //
+        // A condição espelha a do roteamento: crédito que cobre a compra
+        // inteira não passa por gateway nenhum e não precisa de cartão.
+        $cartaoResolvido = null;
+        if ($metodo === 'cartao' && !($conta['a_pagar'] <= 0 && $total > 0)) {
+            $cartaoResolvido = $this->resolverCartaoParaCobranca(
+                $metodo, $cartaoSalvoId, $cartaoTemp, $clienteId
+            );
+        }
+
         // 5. Transação: cria pedido + itens + reserva estoque
         $db->beginTransaction();
         try {
@@ -2031,115 +2056,14 @@ class CheckoutController extends Controller {
             // Substitui o PaymentService, que resolvia UM gateway global. A
             // partir daqui o pagamento passa pelo fluxo publicado do metodo:
             // condicoes, antifraude, retencao e as regras de retentativa.
-            $tokenCartao   = null;
-            $cartaoSalvo   = null;
-            $adquirenteFix = '';
-            $permitidas    = [];   // adquirentes em que ESTE cartao existe
-            $cartaoRefs    = [];   // codigo => [customer_ref, card_ref]
-            $cvvCielo      = '';
-
-            if ($metodo === 'cartao') {
-                if ($cartaoSalvoId) {
-                    // O CARTAO PODE EXISTIR EM VARIAS ADQUIRENTES. Cada uma
-                    // tem a sua referencia (cartoes_salvos_adquirentes), e o
-                    // roteador so apresenta o cartao a quem o conhece — e
-                    // pode cair de uma para outra sem pedir nada ao cliente.
-                    $modelo     = new CartaoSalvo();
-                    $cartaoRefs = $modelo->refsDoCartao((int) $cartaoSalvoId, $clienteId);
-                    $dono       = $modelo->findOwned((int) $cartaoSalvoId, $clienteId);
-
-                    if (!$dono || $cartaoRefs === []) {
-                        LogService::warning('Cartao salvo sem adquirente ativa', [
-                            'cartao_id' => $cartaoSalvoId, 'cliente_id' => $clienteId,
-                        ], 'pagamento');
-                        $this->json(['ok' => false, 'msg' => 'Cartão indisponível. Escolha outro.']);
-                    }
-
-                    $permitidas  = array_keys($cartaoRefs);
-                    $cartaoSalvo = ['bandeira' => (string) ($dono['bandeira'] ?? '')];
-
-                    // MERCADO PAGO: o card_id nao cobra — a Orders API so
-                    // aceita `token`, e um novo so nasce com o CVV. O
-                    // navegador acabou de gerar um a partir do cartao salvo.
-                    $tokenFresco = trim((string) ($_POST['gateway_token'] ?? ''));
-                    if ($tokenFresco !== '') {
-                        if (!preg_match('/^[0-9a-f]{32,33}$/i', $tokenFresco)
-                            && !preg_match('/^[0-9a-f-]{36}$/i', $tokenFresco)) {
-                            $this->json(['ok' => false, 'msg' =>
-                                'Código de segurança inválido. Tente novamente.']);
-                        }
-                        $tokenCartao = $tokenFresco;
-                    }
-
-                    // CIELO: cobra pelo CardToken + CVV no corpo da venda. O
-                    // CVV e transitorio — vai para a adquirente e nao e
-                    // gravado por ninguem.
-                    $cvvCielo = preg_replace('/\D/', '', (string) ($_POST['cvv_cielo'] ?? '')) ?? '';
-
-                    // Sem token fresco do MP e sem CVV da Cielo nao ha como
-                    // cobrar em lugar nenhum — melhor dizer agora.
-                    if ($tokenCartao === null && $cvvCielo === '') {
-                        // Ainda assim, se so a Cielo existir e vier sem CVV,
-                        // o adapter recusa com mensagem clara; segue.
-                        $tokenCartao = (string) ($cartaoRefs['mercadopago']['card_ref'] ?? '') ?: null;
-                    }
-
-                    // SAFRA PAY: a referencia guardada e um token TEMPORARIO
-                    // (uso unico, 15 minutos), nao um cartao de cofre.
-                    //
-                    // Ele presta para a compra que acabou de ser montada. O
-                    // mesmo cartao reapresentado numa proxima visita carrega
-                    // um token ja vencido ou consumido, e cobrar com ele
-                    // voltaria uma recusa que o cliente leria como "meu cartao
-                    // foi negado" — quando o cartao esta perfeito.
-                    //
-                    // O criterio e a IDADE do vinculo, nao a flag `temporario`:
-                    // essa flag e a caixa "salvar cartao", e quem a marca e
-                    // paga em seguida tem um token perfeitamente valido.
-                    //
-                    // A margem de 2 minutos cobre o tempo entre esta checagem e
-                    // a autorizacao de fato (antifraude, retentativa, fila).
-                    if ($tokenCartao === null && isset($cartaoRefs['safrapay'])) {
-                        $idade = (int) ($cartaoRefs['safrapay']['idade_seg'] ?? PHP_INT_MAX);
-
-                        if ($idade <= self::SAFRAPAY_TOKEN_VALIDO_SEG) {
-                            $tokenCartao = (string) $cartaoRefs['safrapay']['card_ref'] ?: null;
-                        } else {
-                            LogService::info('Token temporario da Safra vencido no checkout', [
-                                'cartao_id' => $cartaoSalvoId,
-                                'idade_seg' => $idade,
-                            ], 'pagamento');
-
-                            $this->json(['ok' => false, 'msg' =>
-                                'Por segurança, informe os dados do cartão novamente.']);
-                        }
-                    }
-                } elseif ($cartaoTemp) {
-                    $tokenCartao = $cartaoTemp['gateway_token'] ?? $cartaoTemp['token'] ?? null;
-
-                    // CARTAO NOVO TAMBEM PRENDE A ADQUIRENTE.
-                    //
-                    // O token nasceu no navegador, com a chave publica de UMA
-                    // adquirente, e so ela consegue decifra-lo. Sem prender,
-                    // uma falha tecnica autoriza o motor a cair para outra
-                    // adquirente — que receberia um token que nao entende e
-                    // recusaria por um motivo falso, gastando uma tentativa e
-                    // sujando o historico do cliente.
-                    //
-                    // O cartao salvo ja tinha essa trava; o novo nao tinha
-                    // porque nenhuma falha tecnica chegava ate aqui.
-                    $donaDoToken   = $this->adquirenteDoCartao();
-                    $adquirenteFix = $donaDoToken['codigo'] ?? '';
-                }
-
-                // Um cartao salvo so na Cielo nao tem token do MP — e nao
-                // precisa: cobra pelo CardToken + CVV. So e erro quando nao
-                // ha NENHUM caminho.
-                $temCielo = isset($cartaoRefs['cielo']) && $cvvCielo !== '';
-                if (empty($tokenCartao) && !$temCielo) {
-                    $this->json(['ok' => false, 'msg' => 'Cartão sem token. Adicione o cartão novamente.']);
-                }
-            }
+            // Resolvido ANTES do INSERT — ver resolverCartaoParaCobranca().
+            // Se houvesse algo errado com o cartão, este pedido não existiria.
+            $tokenCartao   = $cartaoResolvido['token']      ?? null;
+            $cartaoSalvo   = $cartaoResolvido['cartao']     ?? null;
+            $adquirenteFix = $cartaoResolvido['fix']        ?? '';
+            $permitidas    = $cartaoResolvido['permitidas'] ?? [];
+            $cartaoRefs    = $cartaoResolvido['refs']       ?? [];
+            $cvvCielo      = $cartaoResolvido['cvv']        ?? '';
 
             $cliente = $this->buildCustomerData($clienteId, $endereco);
 
@@ -4028,6 +3952,145 @@ class CheckoutController extends Controller {
      * Se você ainda não coleta CPF do cliente, vai falhar na primeira tentativa
      * real — adicione um campo de CPF no cadastro / no fluxo de identify.
      */
+    /**
+     * Resolve e valida o meio de pagamento em cartão, SEM tocar no pedido.
+     *
+     * Roda antes do INSERT de propósito. Toda saída de erro aqui é uma recusa
+     * de VALIDAÇÃO — dado que o cliente pode corrigir na hora —, e responder
+     * com um pedido já gravado transformaria cada tentativa dele num pedido
+     * abandonado no relatório.
+     *
+     * Sai por $this->json(), que encerra a requisição: quem chama só recebe
+     * retorno quando há um cartão cobrável.
+     *
+     * @return array{token:?string, cartao:?array, fix:string,
+     *               permitidas:array, refs:array, cvv:string}
+     */
+    private function resolverCartaoParaCobranca(
+        string $metodo,
+        $cartaoSalvoId,
+        ?array $cartaoTemp,
+        int $clienteId
+    ): array {
+        $tokenCartao   = null;
+        $cartaoSalvo   = null;
+        $adquirenteFix = '';
+        $permitidas    = [];   // adquirentes em que ESTE cartao existe
+        $cartaoRefs    = [];   // codigo => [customer_ref, card_ref]
+        $cvvCielo      = '';
+
+        if ($metodo === 'cartao') {
+            if ($cartaoSalvoId) {
+                // O CARTAO PODE EXISTIR EM VARIAS ADQUIRENTES. Cada uma
+                // tem a sua referencia (cartoes_salvos_adquirentes), e o
+                // roteador so apresenta o cartao a quem o conhece — e
+                // pode cair de uma para outra sem pedir nada ao cliente.
+                $modelo     = new CartaoSalvo();
+                $cartaoRefs = $modelo->refsDoCartao((int) $cartaoSalvoId, $clienteId);
+                $dono       = $modelo->findOwned((int) $cartaoSalvoId, $clienteId);
+
+                if (!$dono || $cartaoRefs === []) {
+                    LogService::warning('Cartao salvo sem adquirente ativa', [
+                        'cartao_id' => $cartaoSalvoId, 'cliente_id' => $clienteId,
+                    ], 'pagamento');
+                    $this->json(['ok' => false, 'msg' => 'Cartão indisponível. Escolha outro.']);
+                }
+
+                $permitidas  = array_keys($cartaoRefs);
+                $cartaoSalvo = ['bandeira' => (string) ($dono['bandeira'] ?? '')];
+
+                // MERCADO PAGO: o card_id nao cobra — a Orders API so
+                // aceita `token`, e um novo so nasce com o CVV. O
+                // navegador acabou de gerar um a partir do cartao salvo.
+                $tokenFresco = trim((string) ($_POST['gateway_token'] ?? ''));
+                if ($tokenFresco !== '') {
+                    if (!preg_match('/^[0-9a-f]{32,33}$/i', $tokenFresco)
+                        && !preg_match('/^[0-9a-f-]{36}$/i', $tokenFresco)) {
+                        $this->json(['ok' => false, 'msg' =>
+                            'Código de segurança inválido. Tente novamente.']);
+                    }
+                    $tokenCartao = $tokenFresco;
+                }
+
+                // CIELO: cobra pelo CardToken + CVV no corpo da venda. O
+                // CVV e transitorio — vai para a adquirente e nao e
+                // gravado por ninguem.
+                $cvvCielo = preg_replace('/\D/', '', (string) ($_POST['cvv_cielo'] ?? '')) ?? '';
+
+                // Sem token fresco do MP e sem CVV da Cielo nao ha como
+                // cobrar em lugar nenhum — melhor dizer agora.
+                if ($tokenCartao === null && $cvvCielo === '') {
+                    // Ainda assim, se so a Cielo existir e vier sem CVV,
+                    // o adapter recusa com mensagem clara; segue.
+                    $tokenCartao = (string) ($cartaoRefs['mercadopago']['card_ref'] ?? '') ?: null;
+                }
+
+                // SAFRA PAY: a referencia guardada e um token TEMPORARIO
+                // (uso unico, 15 minutos), nao um cartao de cofre.
+                //
+                // Ele presta para a compra que acabou de ser montada. O
+                // mesmo cartao reapresentado numa proxima visita carrega
+                // um token ja vencido ou consumido, e cobrar com ele
+                // voltaria uma recusa que o cliente leria como "meu cartao
+                // foi negado" — quando o cartao esta perfeito.
+                //
+                // O criterio e a IDADE do vinculo, nao a flag `temporario`:
+                // essa flag e a caixa "salvar cartao", e quem a marca e
+                // paga em seguida tem um token perfeitamente valido.
+                //
+                // A margem de 2 minutos cobre o tempo entre esta checagem e
+                // a autorizacao de fato (antifraude, retentativa, fila).
+                if ($tokenCartao === null && isset($cartaoRefs['safrapay'])) {
+                    $idade = (int) ($cartaoRefs['safrapay']['idade_seg'] ?? PHP_INT_MAX);
+
+                    if ($idade <= self::SAFRAPAY_TOKEN_VALIDO_SEG) {
+                        $tokenCartao = (string) $cartaoRefs['safrapay']['card_ref'] ?: null;
+                    } else {
+                        LogService::info('Token temporario da Safra vencido no checkout', [
+                            'cartao_id' => $cartaoSalvoId,
+                            'idade_seg' => $idade,
+                        ], 'pagamento');
+
+                        $this->json(['ok' => false, 'msg' =>
+                            'Por segurança, informe os dados do cartão novamente.']);
+                    }
+                }
+            } elseif ($cartaoTemp) {
+                $tokenCartao = $cartaoTemp['gateway_token'] ?? $cartaoTemp['token'] ?? null;
+
+                // CARTAO NOVO TAMBEM PRENDE A ADQUIRENTE.
+                //
+                // O token nasceu no navegador, com a chave publica de UMA
+                // adquirente, e so ela consegue decifra-lo. Sem prender,
+                // uma falha tecnica autoriza o motor a cair para outra
+                // adquirente — que receberia um token que nao entende e
+                // recusaria por um motivo falso, gastando uma tentativa e
+                // sujando o historico do cliente.
+                //
+                // O cartao salvo ja tinha essa trava; o novo nao tinha
+                // porque nenhuma falha tecnica chegava ate aqui.
+                $donaDoToken   = $this->adquirenteDoCartao();
+                $adquirenteFix = $donaDoToken['codigo'] ?? '';
+            }
+
+            // Um cartao salvo so na Cielo nao tem token do MP — e nao
+            // precisa: cobra pelo CardToken + CVV. So e erro quando nao
+            // ha NENHUM caminho.
+            $temCielo = isset($cartaoRefs['cielo']) && $cvvCielo !== '';
+            if (empty($tokenCartao) && !$temCielo) {
+                $this->json(['ok' => false, 'msg' => 'Cartão sem token. Adicione o cartão novamente.']);
+            }
+        }
+        return [
+            'token'      => $tokenCartao,
+            'cartao'     => $cartaoSalvo,
+            'fix'        => $adquirenteFix,
+            'permitidas' => $permitidas,
+            'refs'       => $cartaoRefs,
+            'cvv'        => $cvvCielo,
+        ];
+    }
+
     private function buildCustomerData(int $clienteId, array $endereco): array
     {
         $db = Database::getInstance()->getConnection();

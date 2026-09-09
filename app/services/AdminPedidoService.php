@@ -201,7 +201,12 @@ class AdminPedidoService {
                     'mensagem'  => trim((string)$observacao) !== ''
                                  ? mb_strimwidth((string)$observacao, 0, 160, '…')
                                  : 'Toque para ver os detalhes do pedido.',
-                    'url'       => '/conta/pedidos/' . (int)$pedido['id'],
+                    // `/minha-conta/pedido/{id}` é a rota que EXISTE
+                    // (config/routes.php). A anterior era `/conta/pedidos/{id}`,
+                    // que dá 404 no site — e no app caía no navegador em vez de
+                    // abrir a tela do pedido, porque nenhum destino a
+                    // reconhecia.
+                    'url'       => '/minha-conta/pedido/' . (int)$pedido['id'],
                 ], [['tipo' => 'cliente', 'id' => (int)$pedido['cliente_id']]]);
             } catch (\Throwable $e) {
                 error_log('[AdminPedidoService] notificacao in-app: ' . $e->getMessage());
