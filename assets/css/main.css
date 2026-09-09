@@ -11002,7 +11002,14 @@ to{opacity:1;transform:scale(1)}
 
 .pdx .gallery-main{position:relative}
 .pdx .gallery-zoom-wrapper{ position:relative; aspect-ratio:1; border-radius:var(--pdx-r-sm); overflow:hidden; background:linear-gradient(160deg,#fbfcfd,#eef1f5); border:1px solid var(--pdx-line); cursor:zoom-in; -webkit-border-radius:var(--pdx-r-sm); -moz-border-radius:var(--pdx-r-sm); -ms-border-radius:var(--pdx-r-sm); -o-border-radius:var(--pdx-r-sm); }
-.pdx .gallery-main-img{width:100%;height:100%;object-fit:cover;transition:transform .5s var(--pdx-ease)}
+/* contain, não cover: a foto aparece inteira em qualquer proporção. Com cover,
+   uma imagem não-quadrada era cortada em silêncio dentro do quadro — e numa
+   loja de peças o que fica de fora costuma ser justo a borda que importa (o
+   suporte, o encaixe, a rosca).
+   O respiro de 4% não é estético: o hover amplia 1,06, e sem essa folga a
+   ampliação voltaria a cortar contra o overflow:hidden do wrapper. 92% × 1,06
+   = 97,5% do quadro, ou seja, continua inteira também com o mouse em cima. */
+.pdx .gallery-main-img{width:100%;height:100%;object-fit:contain;padding:4%;transition:transform .5s var(--pdx-ease)}
 .pdx .gallery-zoom-wrapper:hover .gallery-main-img{transform:scale(1.06)}
 .pdx .product-badges--lg{position:absolute;top:14px;left:14px;display:flex;flex-direction:column;gap:7px;z-index:2}
 .pdx .product-badges--lg .badge{font-size:12px;font-weight:700;padding:5px 10px;border-radius:100px;line-height:1}
