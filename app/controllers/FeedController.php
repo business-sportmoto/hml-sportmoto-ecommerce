@@ -1,80 +1,83 @@
 <?php
+declare(strict_types=1);
+
+// ════════════════════════════════════════════════════════
 // app/controllers/FeedController.php
+//
+// /feed/produtos.xml     — feed de produtos (RSS 2.0 + namespace g:)
+// /feed/google-merchant  — mesma saída (rota antiga, mantida)
+//
+// UM feed serve as DUAS plataformas: o Catálogo da Meta (anúncios
+// dinâmicos / Advantage+) e o Google Merchant Center consomem o mesmo
+// formato. Duplicar geraria duas verdades sobre o mesmo produto.
+//
+// HISTÓRICO: googleMerchant() montava o XML aqui dentro chamando
+// ProductGroup::getGoogleMerchantData(). Esse model nunca foi escrito
+// (o arquivo existe com 0 bytes), então a rota respondia HTTP 500 com
+// "Class ProductGroup not found" desde sempre. A montagem agora vive
+// no ProductFeedService, e o controller só emite XML.
+// ════════════════════════════════════════════════════════
 
-class FeedController extends Controller {
+class FeedController extends Controller
+{
+    /** Campos que podem repetir dentro do mesmo <item>. */
+    private const MULTIVALOR = ['additional_image_link'];
 
-    public function googleMerchant(): void {
-        // Apenas acesso autenticado ou IP whitelist em produção
-        header('Content-Type: application/xml; charset=UTF-8');
+    // ── GET /feed/produtos.xml ───────────────────────────
+    public function produtos(): void
+    {
+        $dados = (new ProductFeedService())->itens();
 
-        $db    = Database::getInstance()->getConnection();
-        $group = new ProductGroup();
+        // Mesmo cuidado do sitemap: um espaço solto antes da declaração
+        // XML invalida o documento inteiro, e a plataforma descarta o
+        // feed sem dizer por quê.
+        while (ob_get_level() > 0) { ob_end_clean(); }
 
-        $stmt = $db->query(
-            "SELECT p.id
-             FROM produtos p
-             WHERE p.ativo = 1 AND p.deleted_at IS NULL
-             ORDER BY p.id ASC
-             LIMIT 50000"
-        );
-        $ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        header('Content-Type: application/xml; charset=utf-8');
+        header('X-Robots-Tag: noindex');
+
+        $esc = static fn(string $v): string =>
+            htmlspecialchars($v, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+
+        $nomeLoja = (string) (ConfigHelper::get('site_nome') ?: 'SportMoto');
 
         echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
         echo '<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">' . "\n";
-        echo '<channel>' . "\n";
-        echo '<title>' . View::e(ConfigHelper::get('site_nome')) . '</title>' . "\n";
-        echo '<link>' . BASE_URL . '</link>' . "\n";
+        echo "<channel>\n";
+        echo '  <title>' . $esc($nomeLoja) . "</title>\n";
+        echo '  <link>' . $esc(BASE_URL) . "</link>\n";
+        echo '  <description>' . $esc('Peças e acessórios para motos.') . "</description>\n";
 
-        foreach ($ids as $id) {
-            $data = $group->getGoogleMerchantData((int)$id);
-            if (empty($data)) continue;
-
-            // Busca imagens
-            $imgStmt = $db->prepare(
-                "SELECT arquivo FROM produto_imagens
-                 WHERE produto_id = ? ORDER BY principal DESC, ordem ASC LIMIT 10"
-            );
-            $imgStmt->execute([$id]);
-            $imgs = $imgStmt->fetchAll(PDO::FETCH_COLUMN);
-
-            echo "<item>\n";
-            echo "  <g:id>" . htmlspecialchars($data['id'], ENT_XML1) . "</g:id>\n";
-
-            if ($data['item_group_id']) {
-                echo "  <g:item_group_id>" . htmlspecialchars($data['item_group_id'], ENT_XML1) . "</g:item_group_id>\n";
-            }
-
-            echo "  <g:title>"        . htmlspecialchars($data['title'],       ENT_XML1) . "</g:title>\n";
-            echo "  <g:description>"  . htmlspecialchars($data['description'], ENT_XML1) . "</g:description>\n";
-            echo "  <g:link>"         . htmlspecialchars($data['link'],        ENT_XML1) . "</g:link>\n";
-            echo "  <g:price>"        . htmlspecialchars($data['price'],       ENT_XML1) . "</g:price>\n";
-            echo "  <g:brand>"        . htmlspecialchars($data['brand'],       ENT_XML1) . "</g:brand>\n";
-            echo "  <g:condition>"    . htmlspecialchars($data['condition'],   ENT_XML1) . "</g:condition>\n";
-            echo "  <g:availability>" . htmlspecialchars($data['availability'],ENT_XML1) . "</g:availability>\n";
-
-            if ($data['color'])    echo "  <g:color>"    . htmlspecialchars($data['color'],    ENT_XML1) . "</g:color>\n";
-            if ($data['size'])     echo "  <g:size>"     . htmlspecialchars($data['size'],     ENT_XML1) . "</g:size>\n";
-            if ($data['material']) echo "  <g:material>" . htmlspecialchars($data['material'], ENT_XML1) . "</g:material>\n";
-            if ($data['gender'])   echo "  <g:gender>"   . htmlspecialchars($data['gender'],   ENT_XML1) . "</g:gender>\n";
-            if ($data['age_group'])echo "  <g:age_group>". htmlspecialchars($data['age_group'],ENT_XML1) . "</g:age_group>\n";
-            if ($data['pattern'])  echo "  <g:pattern>"  . htmlspecialchars($data['pattern'],  ENT_XML1) . "</g:pattern>\n";
-
-            if (!empty($imgs)) {
-                $imgUrl = UPLOAD_URL . '/products/' . $imgs[0];
-                echo "  <g:image_link>" . htmlspecialchars($imgUrl, ENT_XML1) . "</g:image_link>\n";
-                foreach (array_slice($imgs, 1, 9) as $extra) {
-                    echo "  <g:additional_image_link>" . htmlspecialchars(UPLOAD_URL . '/products/' . $extra, ENT_XML1) . "</g:additional_image_link>\n";
+        foreach ($dados['itens'] as $item) {
+            echo "  <item>\n";
+            foreach ($item as $campo => $valor) {
+                if (in_array($campo, self::MULTIVALOR, true) && is_array($valor)) {
+                    foreach ($valor as $v) {
+                        echo "    <g:{$campo}>" . $esc((string) $v) . "</g:{$campo}>\n";
+                    }
+                    continue;
                 }
+                echo "    <g:{$campo}>" . $esc((string) $valor) . "</g:{$campo}>\n";
             }
-
-            if ($data['shipping_weight']) {
-                echo "  <g:shipping_weight>" . htmlspecialchars($data['shipping_weight'], ENT_XML1) . "</g:shipping_weight>\n";
-            }
-
-            echo "</item>\n";
+            echo "  </item>\n";
         }
 
-        echo "</channel>\n</rss>";
-        exit;
+        // Produto descartado não pode sumir sem explicação: quem abrir o
+        // arquivo vê o motivo, e a plataforma ignora comentários.
+        $ig = $dados['ignorados'];
+        echo '  <!-- itens: ' . count($dados['itens'])
+           . ' | ignorados: sem_imagem=' . (int) $ig['sem_imagem']
+           . ' sem_preco=' . (int) $ig['sem_preco']
+           . ' sem_titulo=' . (int) $ig['sem_titulo'] . " -->\n";
+
+        echo "</channel>\n";
+        echo "</rss>";
+    }
+
+    // ── GET /feed/google-merchant ────────────────────────
+    /** Alias da rota antiga — mesma saída, para não quebrar links. */
+    public function googleMerchant(): void
+    {
+        $this->produtos();
     }
 }

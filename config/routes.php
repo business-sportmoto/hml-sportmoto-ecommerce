@@ -438,7 +438,9 @@ Router::get( '/meu-veiculo/modelos', 'VeiculoController@ajaxModelos');
 Router::get( '/meu-veiculo/anos',    'VeiculoController@ajaxAnos');
 
 // config/routes.php
-Router::get('/feed/google-merchant', 'FeedController@googleMerchant');
+// O MESMO feed alimenta o Catálogo da Meta e o Google Merchant Center.
+Router::get('/feed/produtos.xml',    'FeedController@produtos');
+Router::get('/feed/google-merchant', 'FeedController@googleMerchant'); // alias antigo
 
 //Clips
 Router::get( '/clips/feed',        'ClipController@feed');
