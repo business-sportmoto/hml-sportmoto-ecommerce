@@ -24,6 +24,11 @@ declare(strict_types=1);
  *   segurança para quando a linha ainda não foi preenchida. Assim a migração
  *   é gradual: nada quebra enquanto o banco estiver vazio.
  *
+ * O AMBIENTE (sandbox/produção) É EXCEÇÃO: vem SÓ da coluna `sandbox` quando
+ * existe linha cadastrada. Não é resolvido em cascata como as credenciais —
+ * ter duas fontes para dizer onde a loja está só cria discordância, e a
+ * fonte que o admin enxerga em /admin/pagamentos/adquirentes é a do banco.
+ *
  * MAPA pgto_gateways → Mercado Pago:
  *   sandbox            1 = conta de teste, 0 = produção
  *   api_key            access token   (cifrado)
@@ -55,29 +60,29 @@ class PagamentoCredencialService
         $linha = self::linha($codigo);
         $env   = self::prefixoEnv($codigo);
 
-        // ── Ambiente: o banco manda, mas divergencia nao passa calada ──
+        // ── Ambiente: quem manda e o cadastro, e so ele ────────────────
         //
-        // Existem DUAS fontes (.env e a coluna `sandbox`) e elas podem
-        // discordar. Ja aconteceu: o .env dizia sandbox, o banco dizia
-        // producao, e o adapter operou se declarando producao com credencial
-        // de teste. No sentido inverso o estrago e pior — cobrar cartao real
-        // achando que esta testando.
+        // UMA fonte, a que o admin enxerga na tela de adquirentes. O .env so
+        // e consultado quando NAO HA linha cadastrada — sem isso uma
+        // instalacao nova, com a tabela ainda vazia, nao teria como saber
+        // onde esta. E o mesmo criterio que SafraPayClient ja aplicava.
         //
-        // O banco continua vencendo (e o lugar administravel), mas a
-        // discordancia vira log de alerta em vez de sumir.
-        $envAmbiente = strtolower(self::env($env . 'AMBIENTE'));
-        $envSandbox  = in_array($envAmbiente, ['sandbox', 'teste', 'test', 'homologacao'], true);
-
-        $sandbox = $linha !== null ? (bool) $linha['sandbox'] : $envSandbox;
-
-        if ($linha !== null && $envAmbiente !== '' && $envSandbox !== $sandbox) {
-            LogService::warning('Ambiente da adquirente diverge entre .env e banco', [
-                'adquirente' => $codigo,
-                'env'        => $envSandbox ? 'sandbox' : 'producao',
-                'banco'      => $sandbox ? 'sandbox' : 'producao',
-                'valendo'    => $sandbox ? 'sandbox' : 'producao',
-            ], 'pagamento');
-        }
+        // AQUI SAIA UM AVISO comparando .env e banco. Ele foi removido por
+        // dois motivos:
+        //
+        //   1. Nao protegia nada. O banco vencia em qualquer caso, entao o
+        //      aviso descrevia uma divergencia que nao mudava o resultado.
+        //   2. Disparava falso. `SAFRAPAY_AMBIENTE=hml` — a palavra que o
+        //      SafraPayClient e os CLIs usam — nao estava na lista de
+        //      sinonimos de sandbox, entao um .env CORRETO era lido como
+        //      "producao" e acusava divergencia a cada request do checkout.
+        //
+        // O risco que o aviso tentava cobrir (rodar em sandbox com credencial
+        // de producao, ou o contrario) continua rastreavel pelo campo
+        // `origem` deste retorno, que diz de onde cada valor veio.
+        $sandbox = $linha !== null
+            ? (bool) $linha['sandbox']
+            : self::envEhSandbox(self::env($env . 'AMBIENTE'));
 
         // Em sandbox as chaves de teste vêm primeiro; o par de produção
         // continua no .env sem atrapalhar.
@@ -278,6 +283,23 @@ class PagamentoCredencialService
             'cielo'       => 'CIELO_',
             default       => strtoupper($codigo) . '_',
         };
+    }
+
+    /**
+     * O texto de ambiente do .env significa homologação?
+     *
+     * Só é consultado quando a adquirente NÃO tem linha em `pgto_gateways`;
+     * havendo linha, a coluna `sandbox` decide sozinha.
+     *
+     * `hml` e `dev` entram na lista porque são as palavras que a integração
+     * da Safra usa (SafraPayClient, cli/teste-pagamento-safra.php). Faltavam,
+     * e um `.env` correto era classificado como produção.
+     */
+    private static function envEhSandbox(string $valor): bool
+    {
+        return in_array(strtolower(trim($valor)), [
+            'sandbox', 'teste', 'test', 'homologacao', 'homologação', 'hml', 'dev',
+        ], true);
     }
 
     private static function env(string $chave): string
