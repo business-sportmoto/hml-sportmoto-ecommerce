@@ -2818,6 +2818,22 @@ class CheckoutController extends Controller {
         $adq      = $this->adquirenteDoCartao();
 
         if ($conjunto === [] && $adq === null) {
+            // AQUI e o unico ponto em que a ausencia de adquirente e mesmo um
+            // erro: nao ha cofre novo NEM adquirente legada, entao ninguem
+            // consegue tokenizar e a tela de cartao nao tem o que fazer.
+            //
+            // O log morava dentro de adquirenteDoCartao(), que so conhece
+            // mercadopago e malga. Com a Safra ativa sozinha ele acusava erro
+            // a cada carregamento da pagina — com o checkout funcionando.
+            LogService::error('Checkout de cartao sem nenhuma forma de tokenizar', [
+                'ativas' => array_column(
+                    Database::getInstance()->getConnection()
+                        ->query("SELECT codigo FROM pgto_gateways WHERE ativo = 1")
+                        ->fetchAll(\PDO::FETCH_ASSOC),
+                    'codigo'
+                ),
+            ], 'pagamento');
+
             // Volta ao passo de pagamento com o aviso, em vez de uma pagina de
             // erro: o cliente ainda pode pagar com Pix ou boleto, e uma tela
             // sem saida no meio do checkout so faz ele abandonar.
@@ -3261,6 +3277,20 @@ class CheckoutController extends Controller {
         return $out;
     }
 
+    /**
+     * Adquirente do caminho LEGADO: uma so, identificada por chave publica.
+     *
+     * Atende Mercado Pago e Malga, que carregam um SDK proprio na pagina. A
+     * Safra Pay NAO entra aqui — ela nao usa chave publica (autentica com
+     * CNPJ + MerchantId) e ja e servida por adquirentesParaSalvar(), que e o
+     * caminho multi-cofre.
+     *
+     * DEVOLVER NULL E NORMAL, nao e falha: significa apenas que nenhuma
+     * adquirente legada esta ativa. Por isso este metodo nao registra log —
+     * ele nao tem como saber se a ausencia importa. Quem sabe e o chamador:
+     * paymentCardAdd() registra o erro quando NEM o conjunto novo NEM a
+     * legada existem, que e o unico caso em que o cliente fica sem cartao.
+     */
     private function adquirenteDoCartao(): ?array
     {
         $pdo = Database::getInstance()->getConnection();
@@ -3280,10 +3310,6 @@ class CheckoutController extends Controller {
                 'sandbox'    => $c['sandbox'],
             ];
         }
-
-        LogService::error('Checkout de cartao sem adquirente com chave publica', [
-            'ativas' => $ativas,
-        ], 'pagamento');
 
         return null;
     }
