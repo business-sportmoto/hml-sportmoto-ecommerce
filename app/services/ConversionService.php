@@ -117,18 +117,16 @@ final class ConversionService
     }
 
 
-    /**
-     * Visita à HOME. ViewContent com content_type='home' — a Meta
-     * trata como evento padrão (cria público, otimiza), e o
-     * parâmetro distingue de visualização de produto.
-     */
-    public function viewHome(?int $clienteId = null): void
-    {
-        $this->registrar(self::VIEW_CONTENT, [
-            'content_type' => 'home',
-            'content_name' => 'Home',
-        ], $clienteId);
-    }
+    // viewHome() REMOVIDO. A visita à home é reportada pelo PageView do
+    // Pixel (`page_type: 'home'`), que já cobre todas as páginas, chega
+    // com correspondência avançada e não consome a fila de conversões.
+    //
+    // O que existia aqui era um ViewContent com content_type='home' e
+    // sem content_ids — 'home' nem é valor válido para o campo (a Meta
+    // espera 'product' ou 'product_group'). Metade dos ViewContent eram
+    // esses, diluindo o sinal de produto usado por catálogo e
+    // remarketing. Não recriar: se precisar de outro recorte de página,
+    // o caminho é o page_type no PageView, não um ViewContent sintético.
 
     /**
      * Visita a CATEGORIA. ViewContent com content_type=

@@ -2156,8 +2156,18 @@ class CheckoutController extends Controller {
             $gatewayChargeId  = $c->chargeId ?? null;
             $gatewayResposta  = json_encode($rot->resumo(), JSON_UNESCAPED_UNICODE);
 
-            $pixQrCode        = $instrumento['qrcode_base64']   ?? null;
             $pixCopiaCola     = $instrumento['qrcode']          ?? null;
+
+            // A imagem da adquirente NAO vai direto para o banco. A Safra
+            // devolve BMP nao comprimido de 113 KB, e `pedidos.pix_qr_code` e
+            // TEXT (65.535) — o UPDATE inteiro falhava com "1406 Data too
+            // long" e a finalizacao da compra morria. O renderer gera um PNG
+            // de ~3 KB a partir do copia-e-cola, que e o padrao do Bacen e
+            // igual em qualquer adquirente.
+            $pixQrCode        = PixQrCodeRenderer::paraPersistir(
+                $pixCopiaCola,
+                $instrumento['qrcode_base64'] ?? null
+            );
             $pixExpiraEm      = $instrumento['expira_em']       ?? null;
             $boletoUrl        = $instrumento['url']             ?? null;
             $boletoLinhaDig   = $instrumento['linha_digitavel'] ?? null;

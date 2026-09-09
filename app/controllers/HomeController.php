@@ -42,15 +42,16 @@ class HomeController extends Controller {
             getenv('CF_STREAM_CUSTOMER_CODE') ?? ''
         );
 
-        // ── CONVERSÃO: ViewHome (Fase 1) ──────────────────
-        try {
-            $cid = (int)(Session::get('cliente_id') ?? 0) ?: null;
-            (new ConversionService())->viewHome($cid);
-        } catch (\Throwable $e) {
-            LogService::error('[Home] ViewHome tracking: ', [$e]);
-        }
+        // A visita à home NÃO gera evento server-side. Quem reporta é o
+        // PageView do Pixel, com `page_type: 'home'` — mesma informação,
+        // sem uma linha por visita na fila de conversões, e com a
+        // correspondência avançada que o navegador passou a enviar.
+        // Antes daqui saía um ViewContent com content_type='home' e sem
+        // content_ids: metade do volume de ViewContent eram visitas à
+        // home sem identidade de produto, diluindo o sinal que a Meta
+        // usa para catálogo e remarketing.
 
-        $this->render('home/index', [            
+        $this->render('home/index', [
             'categorias'         => $categoryModelHome,
             
             'produtos_destaque'  => $sections['sectionDestaque'] ?? [],

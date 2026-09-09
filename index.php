@@ -56,6 +56,21 @@ spl_autoload_register(function (string $class): void {
     // throw new RuntimeException("Classe '{$class}' não encontrada em: " . implode(', ', $paths));
 });
 
+// ── Captura global de erros ───────────────────────────────────
+// O core/ErrorHandler existia e NUNCA era registrado: erro fatal saía como
+// 500 com HTML, sem UMA linha no LogService. No checkout isso virava
+// "Erro de conexão. Tente novamente." e nada para investigar — o front
+// recebia markup onde esperava JSON.
+//
+// Registrado aqui, logo após o autoloader (LogService precisa ser
+// carregável) e ANTES de qualquer coisa que possa falhar. Cobre exceção não
+// capturada, warning/notice e — o que importa — erro FATAL, que não passa
+// por try/catch nem por set_error_handler.
+//
+// Em requisição Ajax o handler responde JSON com request_id, então o
+// checkout passa a exibir o erro real em vez de "erro de conexão".
+ErrorHandler::register();
+
 // ── Short-circuit da API do app mobile ────────────────────────
 // Requests em /api/app/* não precisam de nada do bootstrap web (sessão com
 // cookie, remember-me, validação de sessão remota, query de marcasMenu,

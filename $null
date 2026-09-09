@@ -1,5 +1,5 @@
 ﻿mysql.exe : WARNING: --ssl is deprecated and will be removed in a future version. Use --ssl-mode instead.
-No linha:2 caractere:1
+No linha:3 caractere:1
 + & $mysql -u root --host=127.0.0.1 --skip-ssl ecommerce_db -e "
 + ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (WARNING: --ssl ...l-mode instead.:String) [], RemoteException

@@ -86,17 +86,99 @@
     
   }
 
+  // ── ID do PageView ────────────────────────────────────────────
+  // Gerado UMA vez por carregamento e reaproveitado. A estabilidade é
+  // o ponto: o pageView() pode ser chamado de novo quando o visitante
+  // aceita o banner, e com IDs diferentes a Meta contaria duas visitas.
+  // Com o mesmo ID ela colapsa as duas em uma.
+  //
+  // Diferente dos outros eventos, este ID nasce no NAVEGADOR: o
+  // ConversionService não emite PageView, então não há um lado
+  // servidor com quem casar. Serve para deduplicar repetições do
+  // próprio navegador — não substitui o ID vindo do /beacon.
+  var pageViewEventId = null;
+  function idPageView() {
+    if (pageViewEventId) return pageViewEventId;
+
+    try {
+      if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+        pageViewEventId = window.crypto.randomUUID();
+        return pageViewEventId;
+      }
+      // randomUUID exige contexto seguro; getRandomValues é mais antigo
+      if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+        var b = new Uint8Array(16);
+        window.crypto.getRandomValues(b);
+        b[6] = (b[6] & 0x0f) | 0x40; // versão 4
+        b[8] = (b[8] & 0x3f) | 0x80; // variante RFC 4122
+        var h = [];
+        for (var i = 0; i < 16; i++) {
+          h.push((b[i] + 0x100).toString(16).slice(1));
+        }
+        pageViewEventId = h[0]+h[1]+h[2]+h[3] + '-' + h[4]+h[5] + '-' +
+                          h[6]+h[7] + '-' + h[8]+h[9] + '-' +
+                          h[10]+h[11]+h[12]+h[13]+h[14]+h[15];
+        return pageViewEventId;
+      }
+    } catch (e) { /* cai no fallback abaixo */ }
+
+    // Último recurso (navegador sem crypto): não é criptográfico, mas
+    // para deduplicar disparos da MESMA página basta ser único.
+    pageViewEventId = 'pv-' + Date.now().toString(16) +
+                      '-' + Math.random().toString(16).slice(2, 10);
+    return pageViewEventId;
+  }
+
+  // ── Tipo da página ────────────────────────────────────────────
+  // O event_id é opaco de propósito (é chave de dedup, não descrição).
+  // Quem responde "de onde veio" é a URL, que a Meta já recebe sozinha
+  // em todo evento. Este parâmetro existe para agrupar por TIPO sem
+  // depender de casar string de URL — útil em Conversões
+  // Personalizadas e em públicos ("quem viu qualquer página de moto").
+  //
+  // Os prefixos espelham config/routes.php. Mexeu na rota, revise aqui.
+  function tipoDePagina() {
+    var p = location.pathname;
+
+    // A loja pode não estar na raiz do domínio (BASE_URL com subpasta);
+    // sem descontar o prefixo, TODA página cairia em 'outra'.
+    try {
+      var base = new URL(window.BASE_URL || location.origin).pathname;
+      if (base && base !== '/' && p.indexOf(base) === 0) {
+        p = p.slice(base.length);
+      }
+    } catch (e) { /* BASE_URL ausente ou inválida: usa o path cru */ }
+
+    if (p.charAt(0) !== '/') { p = '/' + p; }
+    p = p.toLowerCase();
+
+    if (p === '/')                        return 'home';
+    if (p.indexOf('/produto/')   === 0)   return 'produto';
+    if (p.indexOf('/categoria/') === 0)   return 'categoria';
+    if (p.indexOf('/marca')      === 0)   return 'marca';   // /marca/{slug} e /marcas
+    if (p.indexOf('/montadora/') === 0 ||
+        p.indexOf('/motos')      === 0)   return 'moto';
+    if (p.indexOf('/busca')      === 0)   return 'busca';
+    if (p.indexOf('/carrinho')   === 0)   return 'carrinho';
+    if (p.indexOf('/checkout')   === 0)   return 'checkout';
+    if (p.indexOf('/minha-conta')=== 0)   return 'conta';
+    if (p.indexOf('/clip')       === 0)   return 'clip';
+    if (p.indexOf('/ajuda')      === 0)   return 'ajuda';
+    return 'outra';
+  }
+
   // ── PageView base (dispara ao carregar, se houver consentimento) ──
   function pageView() {
-    if (!temConsentimentoMarketing()) return;
-    if (!carregarPixel()) return;
-    fbq('track', 'PageView');
+    // Passa pelo track() de propósito: mesmo gate de consentimento,
+    // mesmo caminho de carregamento, eventID no 4º parâmetro.
+    track('PageView', { page_type: tipoDePagina() }, idPageView());
   }
 
   // Expõe a API pública (as outras peças usam isto)
   window.smPixel = {
     track: track,
     pageView: pageView,
+    tipoDePagina: tipoDePagina,   // exposto p/ conferir no console
     temConsentimento: temConsentimentoMarketing,
     carregar: carregarPixel
   };

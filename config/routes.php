@@ -491,3 +491,4 @@ Router::get('/sitemap.xml',  'SitemapController@xml');
 // Deve ser a ÚLTIMA rota do arquivo (curinga)
 Router::get('/{slug}', 'PageController@show');
 
+
