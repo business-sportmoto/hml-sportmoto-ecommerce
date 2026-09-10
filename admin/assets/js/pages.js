@@ -2187,7 +2187,34 @@ function fecharModal(id) {
       $('#btn-inspecionar')&&$('#btn-inspecionar').on('click',function(){
         var res = $('input[name="insp_resultado"]:checked').val();
         if (!res) { Toast.error('Selecione o resultado da inspeção.'); return; }
-        acao('/inspecionar',{resultado:res,observacao:$('#obs-inspecao').val(),valor_aprovado:$('#val-aprovado').val()});
+
+        // Quantidades linha a linha. Só vão quando o admin abriu o
+        // detalhamento — fechado, o veredito do botão vale para tudo, que é o
+        // caso da devolução de um item só.
+        var dados = {
+          resultado:      res,
+          observacao:     $('#obs-inspecao').val(),
+          valor_aprovado: $('#val-aprovado').val()
+        };
+        if ($('.insp-itens').prop('open')) {
+          $('.insp-item-row').each(function () {
+            var $r = $(this), id = $r.data('item');
+            dados['itens[' + id + '][recebida]'] = $r.find('.insp-recebida').val();
+            dados['itens[' + id + '][aprovada]'] = $r.find('.insp-aprovada').val();
+            dados['itens[' + id + '][obs]']      = $r.find('.insp-item-obs').val();
+          });
+        }
+        acao('/inspecionar', dados);
+      });
+
+      // "Passou" nunca pode ser maior que "chegou": a segunda pergunta é um
+      // subconjunto da primeira. O service também limita, mas corrigir no
+      // campo evita o admin registrar um número e ver outro.
+      $(document).on('input', '.insp-recebida', function () {
+        var $r = $(this).closest('.insp-item-row'), $a = $r.find('.insp-aprovada');
+        var rec = parseInt($(this).val() || '0', 10);
+        $a.attr('max', rec);
+        if (parseInt($a.val() || '0', 10) > rec) $a.val(rec);
       });
       $('#btn-reembolsar')&&$('#btn-reembolsar').on('click',function(){acao('/reembolsar',{tipo_reembolso:$('#tipo-reembolso-sel').val()});});
 

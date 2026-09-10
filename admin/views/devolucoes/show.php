@@ -59,9 +59,21 @@ $podeEncerrar    = $status === 'inspecionado_reprovado';
           </div>
         </div>
         <?php endforeach; ?>
+        <?php if (!empty($sol['valor_frete_devolvido'])): ?>
+        <div style="padding:8px 20px;border-top:1px solid var(--c-border);display:flex;justify-content:space-between;font-size:13px;color:var(--c-text-muted);">
+          <span>
+            Frete original
+            <span title="Devolução do pedido inteiro: o frete volta junto (CDC Art. 49). Se a inspeção reprovar alguma unidade, ele deixa de acompanhar."
+                  style="cursor:help;">ⓘ</span>
+          </span>
+          <span><?= PriceHelper::format((float)$sol['valor_frete_devolvido']) ?></span>
+        </div>
+        <?php endif; ?>
         <div style="padding:12px 20px;border-top:1px solid var(--c-border);display:flex;justify-content:space-between;">
           <strong>Total solicitado</strong>
-          <strong><?= PriceHelper::format((float)$sol['valor_solicitado']) ?></strong>
+          <strong><?= PriceHelper::format(
+              (float)$sol['valor_solicitado'] + (float)($sol['valor_frete_devolvido'] ?? 0)
+          ) ?></strong>
         </div>
       </div>
  
@@ -283,11 +295,51 @@ $podeEncerrar    = $status === 'inspecionado_reprovado';
               </label>
             </div>
           </div>
+          <?php
+          // Detalhamento por item. Aparece recolhido: a maioria das
+          // devoluções tem um item só e o veredito do botão basta. Quem
+          // precisa separar "chegou 3, passou 1" abre e preenche.
+          $temVarios = count($itens) > 1 || (int)($itens[0]['quantidade'] ?? 1) > 1;
+          ?>
+          <details class="insp-itens" <?= $temVarios ? 'open' : '' ?>>
+            <summary style="cursor:pointer;font-size:12px;font-weight:800;text-transform:uppercase;color:var(--c-text-muted);margin-bottom:8px;">
+              Detalhar por item
+              <?php if (!$temVarios): ?>
+                <span style="font-weight:500;text-transform:none;">(opcional)</span>
+              <?php endif; ?>
+            </summary>
+            <?php foreach ($itens as $item): $q = (int)$item['quantidade']; ?>
+            <div class="insp-item-row" data-item="<?= (int)$item['id'] ?>">
+              <div class="insp-item-nome"><?= View::e($item['nome_produto']) ?>
+                <span style="color:var(--c-text-muted);font-weight:500;">· pediu <?= $q ?></span>
+              </div>
+              <div class="insp-item-qtds">
+                <label>Chegou
+                  <input type="number" class="form-control insp-recebida"
+                         min="0" max="<?= $q ?>" value="<?= $q ?>">
+                </label>
+                <label>Passou
+                  <input type="number" class="form-control insp-aprovada"
+                         min="0" max="<?= $q ?>" value="<?= $q ?>">
+                </label>
+              </div>
+              <input type="text" class="form-control insp-item-obs"
+                     placeholder="Nota da loja sobre este item (opcional)">
+            </div>
+            <?php endforeach; ?>
+          </details>
+
           <div>
             <label class="form-label-xs">Valor a reembolsar (R$)</label>
             <input type="text" id="val-aprovado" class="form-control"
-                   value="<?= number_format((float)$sol['valor_solicitado'],2,',','.') ?>"
+                   value="<?= number_format(
+                       (float)$sol['valor_solicitado'] + (float)($sol['valor_frete_devolvido'] ?? 0),
+                   2,',','.') ?>"
                    placeholder="Pode ser menor que o solicitado">
+            <small style="font-size:11px;color:var(--c-text-muted);">
+              Deixe como está para reembolsar o que as quantidades acima somam.
+              Editar só abaixa — nunca sobe do solicitado.
+            </small>
           </div>
           <div>
             <label class="form-label-xs">Observação (aparece no e-mail do cliente)</label>

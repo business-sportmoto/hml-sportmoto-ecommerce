@@ -35,8 +35,15 @@ final class OrderPresenter
 
     private const DESFECHOS = ['cancelado', 'devolvido', 'estornado', 'troca_devolucao'];
 
-    /** Resumo para a lista de pedidos. */
-    public static function resumo(array $p, PresenterContext $ctx): array
+    /**
+     * Resumo para a lista de pedidos.
+     *
+     * @param array|null $devolucao Solicitação em andamento deste pedido, se
+     *                              houver. Vem de `DevolucaoService::
+     *                              ativasPorPedidos()`, UMA consulta para a
+     *                              página toda — nunca uma por pedido.
+     */
+    public static function resumo(array $p, PresenterContext $ctx, ?array $devolucao = null): array
     {
         return [
             'id'        => (int)$p['id'],
@@ -52,6 +59,20 @@ final class OrderPresenter
                 array_slice($p['previa_itens'] ?? [], 0, 3)
             ))),
             'rastreio'  => $p['codigo_rastreio'] ?? null,
+
+            // Só a solicitação EM ANDAMENTO. Elegibilidade ("dá para devolver?")
+            // não entra na lista de propósito: ela depende da data de entrega de
+            // cada pedido e sairia cara numa lista paginada. Na lista importa o
+            // que tem ação pendente; o resto é na tela do pedido.
+            'devolucao' => $devolucao ? [
+                'id'          => (int)$devolucao['id'],
+                'tipo_rotulo' => ($devolucao['tipo'] ?? '') === 'troca' ? 'Troca' : 'Devolução',
+                'status'      => [
+                    'codigo' => $devolucao['status'],
+                    'rotulo' => DevolucaoStatus::label((string)$devolucao['status']),
+                    'tom'    => DevolucaoStatus::cor((string)$devolucao['status']),
+                ],
+            ] : null,
         ];
     }
 
@@ -106,6 +127,10 @@ final class OrderPresenter
                 'prazo_dias'  => (int)($devolucao['prazo_dias'] ?? 0),
                 'dias_desde'  => $devolucao['dias_desde'] ?? null,
                 'entregue_em' => $devolucao['entregue_em'] ?? null,
+                // Quando já existe uma em andamento, a tela troca o botão de
+                // "Solicitar" por um caminho até ela. Negar sem dizer onde está
+                // é o pior dos dois mundos.
+                'solicitacao' => $devolucao['solicitacao'] ?? null,
             ] : null,
 
             'observacao' => $p['observacao_cliente'] ?? null,
@@ -114,6 +139,30 @@ final class OrderPresenter
 
     /* ================================================================= */
 
+    /**
+     * O catálogo de `pedido_status`, quando quem chamou o presenter carregou.
+     *
+     * É uma consulta por REQUISIÇÃO, feita pelo controller e injetada aqui —
+     * não uma por pedido. Sem ela o presenter cai no mapa fixo, que cobre só
+     * os cinco passos da trilha.
+     *
+     * Existe porque `status_pedido` é varchar e o admin cadastra status: com o
+     * mapa fixo, `troca_devolucao` aparecia para o cliente como
+     * **"Troca devolucao"** — sem cedilha e sem til, porque `humanizar()` só
+     * troca `_` por espaço. A tabela já tinha "Troca/Devolução" cadastrado.
+     *
+     * @var array<string,array>|null slug => linha de pedido_status
+     */
+    private static ?array $catalogo = null;
+
+    /**
+     * @param array<string,array>|null $mapa Saída de PedidoStatus::getMapBySlug()
+     */
+    public static function usarCatalogo(?array $mapa): void
+    {
+        self::$catalogo = $mapa;
+    }
+
     private static function status(array $p): array
     {
         $codigo = (string)($p['status_pedido'] ?? 'aguardando_pagamento');
@@ -121,11 +170,20 @@ final class OrderPresenter
         // "Aguardando pagamento", não "Aguardando".
         $normal = self::APELIDOS[$codigo] ?? $codigo;
 
+        // O catálogo do banco vem PRIMEIRO, e pelo código cru: é ele que sabe
+        // que `troca_devolucao` se chama "Troca/Devolução". O apelido só entra
+        // como segunda tentativa, e o mapa fixo como última.
+        $doBanco = self::$catalogo[$codigo] ?? self::$catalogo[$normal] ?? null;
+
         return [
             'codigo'   => $codigo,
-            'rotulo'   => self::ETAPAS[$normal] ?? self::humanizar($codigo),
+            'rotulo'   => $doBanco['label']
+                       ?? self::ETAPAS[$normal]
+                       ?? self::humanizar($codigo),
             'encerrado'=> in_array($normal, self::DESFECHOS, true),
-            'tom'      => self::tom($normal),
+            'tom'      => $doBanco
+                ? FiltroStatusPresenter::tom($doBanco['cor'] ?? null)
+                : self::tom($normal),
         ];
     }
 

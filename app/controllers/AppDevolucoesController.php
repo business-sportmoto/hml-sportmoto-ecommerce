@@ -23,19 +23,44 @@ class AppDevolucoesController extends AppApiController
         $servico = new DevolucaoService();
         $pagina  = $this->pagina(10, 30);
 
+        // Filtro por status. Só aceita slug conhecido: `status` vem da URL, e
+        // um valor livre iria direto para o WHERE do service.
+        $status = trim((string)($_GET['status'] ?? ''));
+        if ($status !== '' && !array_key_exists($status, DevolucaoStatus::todos())) {
+            $status = '';
+        }
+
+        $filtros = ['cliente_id' => $this->clienteId];
+        if ($status !== '') {
+            $filtros['status'] = $status;
+        }
+
         try {
-            $lista = $servico->listar(['cliente_id' => $this->clienteId], $pagina['page'], $pagina['limit']);
-            $total = $servico->contar(['cliente_id' => $this->clienteId]);
+            $lista     = $servico->listar($filtros, $pagina['page'], $pagina['limit']);
+            $contagens = $servico->contagensPorStatus((int)$this->clienteId);
         } catch (\Throwable $e) {
             AppLog::exception($e, ['acao' => 'listar_devolucoes']);
             $this->falha(500, 'falha_devolucoes', 'Não foi possível carregar suas solicitações.');
         }
 
+        // O total sai das contagens, não de um segundo COUNT: o mapa já tem a
+        // resposta para "todos" e para cada status.
+        $total = $status === ''
+            ? array_sum($contagens)
+            : (int)($contagens[$status] ?? 0);
+
         $this->okPaginado(
             'devolucoes',
             array_map(static fn(array $d) => DevolucaoPresenter::resumo($d), $lista),
             $total,
-            $pagina
+            $pagina,
+            [
+                'filtros' => FiltroStatusPresenter::montar(
+                    $contagens,
+                    DevolucaoStatus::todos(),
+                    $status
+                ),
+            ]
         );
     }
 
@@ -110,30 +135,48 @@ class AppDevolucoesController extends AppApiController
             $this->falha(404, 'nao_encontrado', 'Pedido não encontrado.');
         }
 
-        $entregue = ($pedido['status_pedido'] ?? '') === 'entregue';
-        $prazo    = DevolucaoService::PRAZO_CDC_DIAS;
+        $servico = new DevolucaoService();
+        $prazo   = DevolucaoService::PRAZO_CDC_DIAS;
+
+        // O VEREDITO é do service, não daqui. Esta tela reimplementava duas das
+        // quatro guardas à mão e esquecia a de solicitação já ativa — o
+        // formulário abria e o `criar()` recusava no fim. Ver o mesmo conserto
+        // em AppContaController::elegibilidadeDeDevolucao().
+        $veredito = $servico->podeSolicitar((int)$this->clienteId, (int)$pedido['id']);
+
+        // À parte, e não de dentro do veredito: abrir devolução muda o pedido
+        // para `troca_devolucao`, e aí a guarda de "só entregues" dispara antes
+        // da de solicitação ativa — a mensagem sairia enganosa. Ver o mesmo
+        // comentário em AppContaController::elegibilidadeDeDevolucao().
+        $ativa = $servico->ativaDoPedido((int)$pedido['id']);
 
         // O prazo do CDC (Art. 49) conta da ENTREGA, e a data real é o primeiro
         // evento 'entregue' em pedido_historico — a tabela `pedidos` não tem
-        // coluna de entrega. É a mesma referência que
-        // CustomerDevolucaoController::novaForm() usa (:62-70); calcular a
-        // partir de `enviado_em` encurtaria o prazo legal do cliente.
-        $referencia = (new DevolucaoService())->dataDeEntrega((int)$pedido['id'])
-            ?? ($pedido['atualizado_em'] ?? null);
+        // coluna de entrega. Aqui a data é só para EXIBIR; quem decide é o
+        // service, com esta mesma referência.
+        $referencia = $servico->dataDeEntrega((int)$pedido['id']);
         $diasDesde  = $referencia ? (int)floor((time() - strtotime((string)$referencia)) / 86400) : null;
-        $dentroDoPrazo = $diasDesde === null || $diasDesde <= $prazo;
-
-        $motivo = !$entregue
-            ? 'Só é possível solicitar depois que o pedido for entregue.'
-            : (!$dentroDoPrazo ? "O prazo de {$prazo} dias para solicitar já passou." : null);
 
         $this->ok([
             'pedido_id'     => (int)$pedido['id'],
-            'pode'          => $entregue && $dentroDoPrazo,
-            'motivo'        => $motivo,
+            'pode'          => !empty($veredito['ok']),
+            'motivo'        => match (true) {
+                $ativa !== null       => 'Você já tem uma solicitação em andamento para este pedido.',
+                empty($veredito['ok']) => $veredito['msg'] ?? null,
+                default                => null,
+            },
             'prazo_dias'    => $prazo,
             'dias_desde'    => $diasDesde,
             'entregue_em'   => $referencia ? date(DATE_ATOM, strtotime((string)$referencia)) : null,
+            'solicitacao'   => $ativa ? [
+                'id'          => $ativa['id'],
+                'tipo'        => $ativa['tipo'],
+                'tipo_rotulo' => $ativa['tipo'] === 'troca' ? 'Troca' : 'Devolução',
+                'status'      => [
+                    'codigo' => $ativa['status'],
+                    'rotulo' => DevolucaoStatus::label($ativa['status']),
+                ],
+            ] : null,
             'itens'         => array_values(array_map(static fn(array $i) => [
                 'pedido_item_id' => (int)$i['id'],
                 'nome'           => $i['produto_nome'] ?? $i['nome_produto'] ?? '',

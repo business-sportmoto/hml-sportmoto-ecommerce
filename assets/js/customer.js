@@ -2498,11 +2498,29 @@ $(function(){
   })();
 
   // ── Erro global ───────────────────────────────────
+  //
+  // O servidor recusa a solicitação com uma razão em texto — prazo do CDC
+  // vencido, pedido não entregue, já existe solicitação ativa, motivo que
+  // exige foto sem foto. Essa razão precisa chegar ao cliente: sem ela, ele
+  // clica em "Enviar solicitação", o botão volta ao normal e nada acontece.
+  //
+  // Antes ela morria duas vezes: esta função abria com `return false;`, e o
+  // elemento #dnv-global-error estava comentado na view. jQuery com seletor
+  // que não casa nada não reclama — só não faz nada.
+  //
+  // `window.Toast` já vem no layout do cliente (views/layouts/customer.php).
+  // `bottom-center` é a posição que o resto da área do cliente usa.
   function mostrarErroGlobal(msg) {
-    return false;
-    $('#dnv-global-error-msg').text(msg);
-    $('#dnv-global-error').show();
-    setTimeout(function () { $('#dnv-global-error').hide(); }, 4000);
+    msg = msg || 'Não foi possível enviar a solicitação.';
+
+    if (window.Toast && typeof window.Toast.error === 'function') {
+      window.Toast.error(msg, { position: 'bottom-center', duration: 6000 });
+      return;
+    }
+
+    // Sem o plugin, a mensagem ainda tem de aparecer. Silêncio aqui é o bug
+    // que esta função existe para não repetir.
+    alert(msg);
   }
 
   // ── Submit via AJAX + FormData ────────────────────
@@ -2524,10 +2542,16 @@ $(function(){
 
     // Loading
     var $btn = $('#dnv-submit');
+
+    function destravarBotao() {
+      $btn.prop('disabled', false)
+          .find('.dnv-submit-label').show();
+      $btn.find('.dnv-submit-loader').hide();
+    }
+
     $btn.prop('disabled', true)
         .find('.dnv-submit-label').hide();
     $btn.find('.dnv-submit-loader').show();
-    $('#dnv-global-error').hide();
 
     // Monta FormData a partir do formulário
     var fd = new FormData(this);
@@ -2547,22 +2571,24 @@ $(function(){
       processData : false,
       contentType : false,
       success: function (r) {
-        if (r.ok) {
+        if (r && r.ok) {
           window.location.href = r.redirect;
-        } else {
-          $btn.prop('disabled', false)
-              .find('.dnv-submit-label').show();
-          $btn.find('.dnv-submit-loader').hide();
-          $('#dnv-global-error-msg').text(r.msg || 'Erro ao enviar.');
-          $('#dnv-global-error').show();
+          return;
         }
+        destravarBotao();
+        mostrarErroGlobal(r && r.msg);
       },
-      error: function () {
-        $btn.prop('disabled', false)
-            .find('.dnv-submit-label').show();
-        $btn.find('.dnv-submit-loader').hide();
-        $('#dnv-global-error-msg').text('Erro de conexão. Tente novamente.');
-        $('#dnv-global-error').show();
+      error: function (xhr) {
+        destravarBotao();
+
+        // 403 do CSRF responde {error: '...'}, não {msg: '...'} — sem este
+        // ramo o cliente veria "erro de conexão" para uma sessão expirada.
+        var corpo = xhr && xhr.responseJSON;
+        if (corpo && (corpo.msg || corpo.error)) {
+          mostrarErroGlobal(corpo.msg || corpo.error);
+          return;
+        }
+        mostrarErroGlobal('Erro de conexão. Tente novamente.');
       },
     });
   });

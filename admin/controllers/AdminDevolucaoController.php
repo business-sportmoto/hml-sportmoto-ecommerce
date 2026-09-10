@@ -91,8 +91,21 @@ class AdminDevolucaoController extends Controller {
         $valorAprovado = !empty($_POST['valor_aprovado'])
             ? (float)str_replace(',', '.', $_POST['valor_aprovado'])
             : null;
+
+        // Quantidades linha a linha, quando o admin abriu o detalhamento.
+        // Vazio = veredito único, como sempre foi. O service normaliza os
+        // limites; aqui só se converte o que veio do formulário.
+        $itens = [];
+        foreach ((array)($_POST['itens'] ?? []) as $itemId => $dados) {
+            $itens[(int)$itemId] = [
+                'recebida' => (int)($dados['recebida'] ?? 0),
+                'aprovada' => (int)($dados['aprovada'] ?? 0),
+                'obs'      => SecurityHelper::sanitizeString($dados['obs'] ?? ''),
+            ];
+        }
+
         $adminId = (int)Session::get('admin_id');
-        $this->json($this->service->inspecionar($id, $adminId, $resultado, $obs, $valorAprovado));
+        $this->json($this->service->inspecionar($id, $adminId, $resultado, $obs, $valorAprovado, $itens));
     }
  
     // ── POST /admin/devolucoes/{id}/encerrar ──────────────

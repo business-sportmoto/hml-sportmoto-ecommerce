@@ -1057,6 +1057,26 @@ class BiService
     // ════════════════════════════════════════════════════
 
     /** Devoluções por motivo. */
+    /**
+     * Devoluções por motivo.
+     *
+     * ── O QUE ESTE NÚMERO MEDE ──────────────────────────────────
+     *
+     * Devolução EFETIVADA: só `concluido`. Até 10/09/2026 a consulta não
+     * filtrava status nenhum, então solicitação cancelada, negada e expirada
+     * entravam na conta igual a uma concluída — quem abriu e desistiu contava
+     * como quem devolveu. No banco de então: 8 solicitações e R$ 4.099
+     * reportados contra 2 e R$ 1.049 de fato reembolsados. Quatro vezes.
+     *
+     * A intenção de devolver continua sendo um sinal útil (produto com muita
+     * devolução aberta e depois cancelada diz alguma coisa), mas é OUTRA
+     * pergunta — está em `devolucoesPorDesfecho()`, ao lado, em vez de
+     * misturada aqui.
+     *
+     * `quantidade` e `valor_devolvido` vêm da view já rateados pela
+     * quantidade APROVADA na inspeção: o painel soma o que a loja aceitou de
+     * volta, não o que o cliente pediu.
+     */
     public function devolucoes(array $p): array
     {
         return $this->todos(
@@ -1068,8 +1088,33 @@ class BiService
                     COUNT(DISTINCT solicitacao_id) AS solicitacoes
                FROM bi_fato_devolucao
               WHERE data_solicitacao BETWEEN ? AND ?
+                AND status = 'concluido'
               GROUP BY motivo, tipo
               ORDER BY valor DESC",
+            [$p['ini'], $p['fim']]
+        );
+    }
+
+    /**
+     * O outro lado: quanta gente ABRE devolução, e em que dá.
+     *
+     * Aqui o status é dimensão, não filtro. Serve para ver taxa de abertura,
+     * quanto é negado, quanto o cliente cancela sozinho e quanto expira sem
+     * postagem — cada um desses aponta para um problema diferente, e nenhum
+     * deles é dinheiro que saiu.
+     */
+    public function devolucoesPorDesfecho(array $p): array
+    {
+        return $this->todos(
+            "SELECT status,
+                    COALESCE(motivo,'não informado') AS motivo,
+                    COUNT(DISTINCT solicitacao_id)   AS solicitacoes,
+                    SUM(quantidade_solicitada)       AS unidades_pedidas,
+                    SUM(quantidade)                  AS unidades_aceitas
+               FROM bi_fato_devolucao
+              WHERE data_solicitacao BETWEEN ? AND ?
+              GROUP BY status, motivo
+              ORDER BY solicitacoes DESC",
             [$p['ini'], $p['fim']]
         );
     }
@@ -1085,6 +1130,7 @@ class BiService
                FROM bi_fato_devolucao d
                LEFT JOIN bi_dim_produto pd ON pd.produto_id = d.produto_id
               WHERE d.data_solicitacao BETWEEN ? AND ? AND d.produto_id IS NOT NULL
+                AND d.status = 'concluido'
               GROUP BY d.produto_id, pd.nome, d.marca_nome
               ORDER BY valor DESC
               LIMIT " . (int)$limite,

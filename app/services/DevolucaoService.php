@@ -57,17 +57,93 @@ class DevolucaoService {
                 . ' dias corridos expirado. Solicitação não permitida.'];
         }
 
-        $stmt = $this->db->prepare(
-            "SELECT id FROM solicitacoes_devolucao
-             WHERE pedido_id = ? AND status NOT IN ('cancelado','expirado','concluido','concluido_reprovado','negado')
-             LIMIT 1"
-        );
-        $stmt->execute([$pedidoId]);
-        if ($stmt->fetch()) {
-            return ['ok' => false, 'msg' => 'Já existe uma solicitação ativa para este pedido.'];
+        $ativa = $this->ativaDoPedido($pedidoId);
+        if ($ativa) {
+            return [
+                'ok'    => false,
+                'msg'   => 'Já existe uma solicitação ativa para este pedido.',
+                'ativa' => $ativa,
+            ];
         }
 
         return ['ok' => true, 'pedido' => $pedido, 'dias' => $dias];
+    }
+
+    /**
+     * A solicitação em andamento deste pedido, se houver.
+     *
+     * Extraído de dentro de `podeSolicitar()` porque quem PERGUNTA se pode
+     * abrir também precisa saber qual é a que já existe — senão a tela só
+     * consegue dizer "não pode", quando o útil é dizer "você já tem uma, e
+     * está assim". Devolve id, tipo e status crus; quem apresenta é o
+     * presenter.
+     *
+     * A lista de desfechos vem de `DevolucaoStatus::DESFECHOS`, e não de um
+     * literal repetido aqui: era a quinta cópia da mesma lista.
+     *
+     * @return array{id:int,tipo:string,status:string,criado_em:?string}|null
+     */
+    public function ativaDoPedido(int $pedidoId): ?array {
+        $marcadores = implode(',', array_fill(0, count(DevolucaoStatus::DESFECHOS), '?'));
+
+        $stmt = $this->db->prepare(
+            "SELECT id, tipo, status, criado_em
+               FROM solicitacoes_devolucao
+              WHERE pedido_id = ? AND status NOT IN ({$marcadores})
+           ORDER BY id DESC LIMIT 1"
+        );
+        $stmt->execute([$pedidoId, ...DevolucaoStatus::DESFECHOS]);
+        $linha = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        return $linha ? [
+            'id'        => (int)$linha['id'],
+            'tipo'      => (string)$linha['tipo'],
+            'status'    => (string)$linha['status'],
+            'criado_em' => $linha['criado_em'] ?? null,
+        ] : null;
+    }
+
+    /**
+     * O mesmo, para uma página inteira de pedidos: UMA consulta.
+     *
+     * Existe para a lista de "meus pedidos" poder marcar quais têm devolução
+     * em andamento. Chamar `ativaDoPedido()` num laço de vinte pedidos seriam
+     * vinte consultas — exatamente o N+1 que os presenters do app existem
+     * para evitar.
+     *
+     * @param  array<int,int> $pedidoIds
+     * @return array<int,array{id:int,tipo:string,status:string,criado_em:?string}> pedido_id => solicitação
+     */
+    public function ativasPorPedidos(array $pedidoIds): array {
+        $ids = array_values(array_unique(array_map('intval', $pedidoIds)));
+        if ($ids === []) {
+            return [];
+        }
+
+        $mIds   = implode(',', array_fill(0, count($ids), '?'));
+        $mDesf  = implode(',', array_fill(0, count(DevolucaoStatus::DESFECHOS), '?'));
+
+        $stmt = $this->db->prepare(
+            "SELECT id, pedido_id, tipo, status, criado_em
+               FROM solicitacoes_devolucao
+              WHERE pedido_id IN ({$mIds}) AND status NOT IN ({$mDesf})
+           ORDER BY id ASC"
+        );
+        $stmt->execute([...$ids, ...DevolucaoStatus::DESFECHOS]);
+
+        $mapa = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $l) {
+            // `id ASC` com sobrescrita deixa a MAIS RECENTE no mapa, igual ao
+            // `id DESC LIMIT 1` de ativaDoPedido().
+            $mapa[(int)$l['pedido_id']] = [
+                'id'        => (int)$l['id'],
+                'tipo'      => (string)$l['tipo'],
+                'status'    => (string)$l['status'],
+                'criado_em' => $l['criado_em'] ?? null,
+            ];
+        }
+
+        return $mapa;
     }
 
     /**
@@ -128,6 +204,38 @@ class DevolucaoService {
             return ['ok' => false, 'msg' => 'Nenhum item válido selecionado.'];
         }
 
+        // ── Foto obrigatória ─────────────────────────────
+        //
+        // `motivos_devolucao.exige_foto` estava cadastrado (4 dos 7 motivos
+        // exigem) e era validado só pelo `data-exige-foto` do JS. Validação
+        // que só existe no cliente não é validação: bastava um POST direto,
+        // ou o app — cujo comentário até afirmava que "o service recusa".
+        //
+        // Aqui, e não no controller, porque é o ponto por onde os TRÊS canais
+        // passam: site, app e qualquer coisa que venha depois.
+        $motivo = $this->getMotivo($motivoId);
+        if ($motivo && !empty($motivo['exige_foto']) && empty($fotosCaminhos)) {
+            return [
+                'ok'  => false,
+                'msg' => 'Para o motivo "' . $motivo['label'] . '" é necessário enviar ao menos '
+                       . 'uma foto do produto.',
+            ];
+        }
+
+        // ── Frete do pedido ──────────────────────────────
+        //
+        // CDC Art. 49: no arrependimento voltam "os valores pagos, a qualquer
+        // título" — o frete inclusive. Mas só quando o pedido volta INTEIRO:
+        // em devolução parcial o envio aconteceu de qualquer forma e o resto
+        // da compra ficou com o cliente.
+        //
+        // Aqui é a expectativa; a inspeção confirma ou zera (o cliente pode
+        // pedir tudo e só metade passar). Guardar já na criação é o que
+        // permite a tela dizer quanto ele recebe de volta.
+        $freteDevolvivel = $this->cobreOPedidoInteiro($pedidoId, $itensDados)
+            ? round((float)($pedido['frete'] ?? 0), 2)
+            : 0.0;
+
         // ── Score: pre-aprovação automática ─────────────
         $autoAprovar = $this->score->podeAutoAprovar($clienteId);
         $status      = $autoAprovar ? 'pre_aprovado' : 'aguardando_aprovacao';
@@ -138,13 +246,14 @@ class DevolucaoService {
             $this->db->prepare(
                 "INSERT INTO solicitacoes_devolucao
                  (pedido_id, cliente_id, tipo, status, motivo_id,
-                  descricao, fotos_json, valor_solicitado, criado_em)
-                 VALUES (?,?,?,?,?,?,?,?,NOW())"
+                  descricao, fotos_json, valor_solicitado, valor_frete_devolvido, criado_em)
+                 VALUES (?,?,?,?,?,?,?,?,?,NOW())"
             )->execute([
                 $pedidoId, $clienteId, $tipo, $status, $motivoId,
                 $descricao ?: null,
                 !empty($fotosCaminhos) ? json_encode($fotosCaminhos) : null,
                 $valorTotal,
+                $freteDevolvivel ?: null,
             ]);
             $solId = (int)$this->db->lastInsertId();
 
@@ -436,12 +545,22 @@ class DevolucaoService {
         return ['ok' => true, 'prazo_inspecao' => $prazoInspecao];
     }
 
+    /**
+     * @param array $itensInspecao  Opcional, por linha de
+     *        solicitacoes_devolucao_itens:
+     *        [ sol_item_id => ['recebida' => int, 'aprovada' => int, 'obs' => string] ]
+     *
+     *        Vazio = comportamento anterior: o veredito vale para a
+     *        solicitação toda. Continua servindo para devolução de um item só,
+     *        que é a maioria.
+     */
     public function inspecionar(
         int    $solId,
         int    $adminId,
         string $resultado,   // 'aprovado' | 'reprovado'
         ?string $obs = null,
-        ?float  $valorAprovado = null
+        ?float  $valorAprovado = null,
+        array  $itensInspecao = []
     ): array {
         $sol = $this->findById($solId);
         if (!$sol) return ['ok' => false, 'msg' => 'Solicitação não encontrada.'];
@@ -452,6 +571,22 @@ class DevolucaoService {
         if (!in_array($resultado, ['aprovado', 'reprovado'])) {
             return ['ok' => false, 'msg' => 'Resultado inválido.'];
         }
+
+        // ── Quantidades linha a linha ────────────────────
+        //
+        // Devolução em que 2 de 3 unidades voltaram boas não cabia em lugar
+        // nenhum: a inspeção era um veredito único e o resto ia no texto
+        // livre da observação. Agora cada linha registra quanto CHEGOU e
+        // quanto PASSOU — a diferença entre as duas separa "o cliente não
+        // mandou" de "mandou e não passou", que são problemas diferentes.
+        [$valorItens, $totalAprovado] = $this->aplicarInspecaoPorItem(
+            $solId, $resultado, $itensInspecao
+        );
+
+        // Nada aprovado é reprovação, mesmo que o admin tenha marcado
+        // "aprovado" e depois zerado todas as linhas. O botão não pode
+        // contradizer os números.
+        if ($totalAprovado <= 0) $resultado = 'reprovado';
 
         // Reprovado JÁ é o fim do caso.
         //
@@ -472,27 +607,39 @@ class DevolucaoService {
             ? 'inspecionado_aprovado'
             : 'concluido_reprovado';
 
-        // O valor vem de um campo de texto do admin e ia direto para o
-        // reembolso. Aprovar MAIS do que foi solicitado nao e uma decisao que
-        // alguem toma de proposito nesta tela — e digito a mais.
+        // ── Frete ────────────────────────────────────────
+        //
+        // Só volta se o pedido voltou inteiro DE VERDADE. `criar()` guardou a
+        // expectativa (o cliente pediu tudo); se a inspeção reprovou alguma
+        // unidade, o pedido não voltou inteiro e o frete não acompanha.
+        $freteGravado = (float)($sol['valor_frete_devolvido'] ?? 0);
+        $frete = ($resultado === 'aprovado' && $this->inspecaoAprovouTudo($solId))
+            ? $freteGravado
+            : 0.0;
+
+        // O valor vem dos ITENS. O campo de texto do admin continua existindo
+        // e continua podendo abaixar — o que ele nunca pôde é subir: aprovar
+        // mais do que foi solicitado não é decisão que alguém toma nesta
+        // tela, é dígito a mais.
         $valorFinal = null;
         if ($resultado === 'aprovado') {
-            $teto       = (float)$sol['valor_solicitado'];
+            $teto       = round($valorItens + $frete, 2);
             $valorFinal = $valorAprovado ?? $teto;
             $valorFinal = max(0.0, min($valorFinal, $teto));
         }
 
         $this->db->prepare(
             "UPDATE solicitacoes_devolucao
-             SET status             = ?,
-                 inspecao_resultado = ?,
-                 inspecao_observacao= ?,
-                 valor_aprovado     = ?,
-                 inspecionado_em    = NOW(),
-                 inspecao_admin_id  = ?,
-                 atualizado_em      = NOW()
+             SET status                = ?,
+                 inspecao_resultado    = ?,
+                 inspecao_observacao   = ?,
+                 valor_aprovado        = ?,
+                 valor_frete_devolvido = ?,
+                 inspecionado_em       = NOW(),
+                 inspecao_admin_id     = ?,
+                 atualizado_em         = NOW()
              WHERE id = ?"
-        )->execute([$novoStatus, $resultado, $obs, $valorFinal, $adminId, $solId]);
+        )->execute([$novoStatus, $resultado, $obs, $valorFinal, $frete ?: null, $adminId, $solId]);
         $this->logStatus($solId, $novoStatus, $obs ?? "Inspeção: {$resultado}.", $adminId);
 
         // Penaliza score se reprovado
@@ -559,6 +706,73 @@ class DevolucaoService {
         );
 
         return ['ok' => true, 'status' => 'concluido_reprovado'];
+    }
+
+    /**
+     * Grava as quantidades da inspeção e devolve [valor dos itens, total aprovado].
+     *
+     * Sem `$itensInspecao` (o caso comum — devolução de um item só), o
+     * veredito do botão vale para todas as linhas: aprovado leva tudo,
+     * reprovado leva zero. Isso preenche as colunas mesmo quando o admin não
+     * abriu o detalhamento, para o histórico não ficar meio NULL.
+     *
+     * O valor de cada linha rateia `valor_final`, que foi calculado sobre a
+     * quantidade PEDIDA. Aprovar 1 de 3 devolve um terço daquela linha — com
+     * o desconto de cupom já embutido, porque ele entrou no `valor_final`.
+     *
+     * @return array{0: float, 1: int}
+     */
+    private function aplicarInspecaoPorItem(int $solId, string $resultado, array $itensInspecao): array {
+        $itens = $this->getItens($solId);
+
+        $upd = $this->db->prepare(
+            "UPDATE solicitacoes_devolucao_itens
+                SET quantidade_recebida = ?, quantidade_aprovada = ?, inspecao_observacao = ?
+              WHERE id = ? AND solicitacao_id = ?"
+        );
+
+        $valor = 0.0;
+        $total = 0;
+
+        foreach ($itens as $item) {
+            $id       = (int)$item['id'];
+            $pedida   = max(0, (int)$item['quantidade']);
+            $entrada  = $itensInspecao[$id] ?? null;
+
+            if ($entrada === null) {
+                // Sem detalhamento: o botão manda.
+                $recebida = $pedida;
+                $aprovada = $resultado === 'aprovado' ? $pedida : 0;
+                $obsItem  = null;
+            } else {
+                // Recebida não passa do que foi pedido; aprovada não passa do
+                // que chegou. Aprovar mais do que voltou é aritmética errada,
+                // não uma decisão de negócio.
+                $recebida = max(0, min((int)($entrada['recebida'] ?? 0), $pedida));
+                $aprovada = max(0, min((int)($entrada['aprovada'] ?? 0), $recebida));
+                $obsItem  = trim((string)($entrada['obs'] ?? '')) ?: null;
+            }
+
+            $upd->execute([$recebida, $aprovada, $obsItem, $id, $solId]);
+
+            if ($pedida > 0 && $aprovada > 0) {
+                $valor += round((float)$item['valor_final'] * $aprovada / $pedida, 2);
+            }
+            $total += $aprovada;
+        }
+
+        return [round($valor, 2), $total];
+    }
+
+    /** Toda unidade pedida foi aprovada? Condição para o frete acompanhar. */
+    private function inspecaoAprovouTudo(int $solId): bool {
+        $stmt = $this->db->prepare(
+            "SELECT COUNT(*) FROM solicitacoes_devolucao_itens
+              WHERE solicitacao_id = ?
+                AND COALESCE(quantidade_aprovada, 0) < quantidade"
+        );
+        $stmt->execute([$solId]);
+        return (int)$stmt->fetchColumn() === 0;
     }
 
     // ════════════════════════════════════════════════════
@@ -793,6 +1007,31 @@ class DevolucaoService {
         );
         $stmt->execute([$solId]);
         return $stmt->fetchAll();
+    }
+
+    /**
+     * Quantas solicitações o cliente tem em cada status. UMA consulta.
+     *
+     * Alimenta os chips de filtro. Devolve só o que EXISTE — quem monta os
+     * chips decide o que mostrar (ver FiltroStatusPresenter), e a lista de
+     * status possíveis vem de DevolucaoStatus, não daqui.
+     *
+     * @return array<string,int> status => quantos
+     */
+    public function contagensPorStatus(int $clienteId): array {
+        $stmt = $this->db->prepare(
+            "SELECT status, COUNT(*) AS total
+               FROM solicitacoes_devolucao
+              WHERE cliente_id = ?
+           GROUP BY status"
+        );
+        $stmt->execute([$clienteId]);
+
+        $mapa = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $l) {
+            $mapa[(string)$l['status']] = (int)$l['total'];
+        }
+        return $mapa;
     }
 
     public function listar(array $filtros = [], int $page = 1, int $perPage = 20): array {
@@ -1203,6 +1442,45 @@ class DevolucaoService {
             $mapa[(int)$r['pedido_item_id']] = (int)$r['qtd'];
         }
         return $mapa;
+    }
+
+    /**
+     * Esta solicitação devolve o pedido INTEIRO?
+     *
+     * Verdadeiro quando cada linha de `pedido_itens` do pedido aparece na
+     * solicitação com a quantidade comprada completa. É a condição para o
+     * frete original voltar (CDC Art. 49).
+     *
+     * A conta olha SÓ esta solicitação, de propósito. Devolução partida em
+     * duas solicitações que juntas cobrem o pedido não devolve frete
+     * automaticamente — seria uma regra difícil de explicar ao cliente ("o
+     * frete volta na segunda, não na primeira") e o admin pode ajustar o
+     * valor na inspeção quando for o caso.
+     *
+     * Brinde não conta: `is_brinde = 1` não foi pago e não segura o frete.
+     *
+     * @param array $itensDados  saída de calcularValorItens()
+     */
+    private function cobreOPedidoInteiro(int $pedidoId, array $itensDados): bool {
+        $pedidos = $this->db->prepare(
+            "SELECT id, quantidade FROM pedido_itens
+              WHERE pedido_id = ? AND COALESCE(is_brinde, 0) = 0"
+        );
+        $pedidos->execute([$pedidoId]);
+        $comprados = $pedidos->fetchAll();
+        if (!$comprados) return false;
+
+        $pedidosNaSolicitacao = [];
+        foreach ($itensDados as $i) {
+            $id = (int)$i['pedido_item_id'];
+            $pedidosNaSolicitacao[$id] = ($pedidosNaSolicitacao[$id] ?? 0) + (int)$i['quantidade'];
+        }
+
+        foreach ($comprados as $c) {
+            $id = (int)$c['id'];
+            if (($pedidosNaSolicitacao[$id] ?? 0) < (int)$c['quantidade']) return false;
+        }
+        return true;
     }
 
     private function logStatus(int $solId, string $status, ?string $obs = null, ?int $adminId = null): void {

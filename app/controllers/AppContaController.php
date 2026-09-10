@@ -184,24 +184,52 @@ class AppContaController extends AppApiController
         $pagina = $this->pagina(10, 30);
         $ctx    = $this->contexto();
 
+        $catalogo = $this->catalogoDeStatus();
+
+        // Filtro por status. Só aceita slug que exista no catálogo — o valor
+        // vem da URL e iria direto para o WHERE.
+        $status = trim((string)($_GET['status'] ?? ''));
+        if ($status !== '' && !array_key_exists($status, $catalogo)) {
+            $status = '';
+        }
+
         try {
+            $filtroSql = $status !== '' ? ' AND p.status_pedido = :st' : '';
+
             $st = $this->db()->prepare(
                 "SELECT p.*, (SELECT COALESCE(SUM(pi.quantidade), 0)
                               FROM pedido_itens pi WHERE pi.pedido_id = p.id) AS itens_total
                  FROM pedidos p
-                 WHERE p.cliente_id = :c
+                 WHERE p.cliente_id = :c{$filtroSql}
                  ORDER BY p.criado_em DESC
                  LIMIT :lim OFFSET :off"
             );
             $st->bindValue(':c', $this->clienteId, PDO::PARAM_INT);
+            if ($status !== '') {
+                $st->bindValue(':st', $status, PDO::PARAM_STR);
+            }
             $st->bindValue(':lim', $pagina['limit'], PDO::PARAM_INT);
             $st->bindValue(':off', $pagina['offset'], PDO::PARAM_INT);
             $st->execute();
             $pedidos = $st->fetchAll(PDO::FETCH_ASSOC);
 
-            $totalSt = $this->db()->prepare("SELECT COUNT(*) FROM pedidos WHERE cliente_id = :c");
-            $totalSt->execute([':c' => $this->clienteId]);
-            $total = (int)$totalSt->fetchColumn();
+            // Contagem por status, UMA consulta — e ela já responde o total,
+            // tanto o geral quanto o do filtro. O COUNT(*) separado que havia
+            // aqui virou redundante.
+            $contSt = $this->db()->prepare(
+                "SELECT status_pedido, COUNT(*) AS total
+                   FROM pedidos WHERE cliente_id = :c GROUP BY status_pedido"
+            );
+            $contSt->execute([':c' => $this->clienteId]);
+
+            $contagens = [];
+            foreach ($contSt->fetchAll(PDO::FETCH_ASSOC) as $l) {
+                $contagens[(string)$l['status_pedido']] = (int)$l['total'];
+            }
+
+            $total = $status === ''
+                ? array_sum($contagens)
+                : (int)($contagens[$status] ?? 0);
         } catch (\Throwable $e) {
             AppLog::exception($e, ['acao' => 'listar_pedidos']);
             $this->falha(500, 'falha_pedidos', 'Não foi possível carregar seus pedidos.');
@@ -209,11 +237,32 @@ class AppContaController extends AppApiController
 
         $pedidos = $this->anexarPrevia($pedidos);
 
+        // UMA consulta para a página inteira. Ver ativasPorPedidos().
+        $devolucoes = [];
+        try {
+            $devolucoes = (new DevolucaoService())->ativasPorPedidos(
+                array_map(static fn(array $p) => (int)$p['id'], $pedidos)
+            );
+        } catch (\Throwable $e) {
+            // Sem o mapa a lista perde os selos de devolução, e só isso. Não
+            // é motivo para derrubar "meus pedidos".
+            AppLog::exception($e, ['acao' => 'pedidos_devolucoes']);
+        }
+
         $this->okPaginado(
             'pedidos',
-            array_map(static fn(array $p) => OrderPresenter::resumo($p, $ctx), $pedidos),
+            array_map(
+                static fn(array $p) => OrderPresenter::resumo($p, $ctx, $devolucoes[(int)$p['id']] ?? null),
+                $pedidos
+            ),
             $total,
-            $pagina
+            $pagina,
+            [
+                // "Todos" sempre; os demais só quando o cliente tem pedido
+                // naquele status. A regra mora no presenter, junto com a das
+                // devoluções, para as duas listas se comportarem igual.
+                'filtros' => FiltroStatusPresenter::montar($contagens, $catalogo, $status),
+            ]
         );
     }
 
@@ -222,10 +271,35 @@ class AppContaController extends AppApiController
      * Busca por CÓDIGO, não por id: é o que o cliente vê e compartilha, e
      * findByCode() já valida a posse pelo cliente_id.
      */
+    /**
+     * O catálogo de `pedido_status`, UMA consulta, injetado no presenter.
+     *
+     * Os dois endpoints de pedido chamam: sem isto o DETALHE mostraria o
+     * rótulo do mapa fixo enquanto a LISTA mostraria o do banco, e o mesmo
+     * pedido teria dois nomes de status em duas telas.
+     *
+     * @return array<string,array> slug => linha
+     */
+    private function catalogoDeStatus(): array
+    {
+        $catalogo = [];
+        try {
+            $catalogo = (new PedidoStatus())->getMapBySlug();
+        } catch (\Throwable $e) {
+            // Sem catálogo o presenter cai no mapa fixo. Degrada, não quebra.
+            AppLog::exception($e, ['acao' => 'catalogo_status_pedido']);
+        }
+
+        OrderPresenter::usarCatalogo($catalogo ?: null);
+        return $catalogo;
+    }
+
     public function pedido(string $codigo = ''): void
     {
         $this->bootCliente();
         $this->liberarSessao();
+
+        $this->catalogoDeStatus();
 
         $modelo = new Order();
         $pedido = $modelo->findByCode(trim($codigo), (int)$this->clienteId);
@@ -282,37 +356,86 @@ class AppContaController extends AppApiController
     private function devolucaoDoPedido(array $pedido, array $itens): ?array
     {
         try {
-            $entregue = ($pedido['status_pedido'] ?? '') === 'entregue';
-            $prazo    = DevolucaoService::PRAZO_CDC_DIAS;
-
-            $st = $this->db()->prepare(
-                "SELECT criado_em FROM pedido_historico
-                 WHERE pedido_id = :p AND status_novo = 'entregue'
-                 ORDER BY criado_em ASC LIMIT 1"
+            return $this->elegibilidadeDeDevolucao(
+                (int)$pedido['id'],
+                !empty($itens)
             );
-            $st->execute([':p' => (int)$pedido['id']]);
-            $referencia = $st->fetchColumn() ?: ($pedido['atualizado_em'] ?? null);
-
-            $diasDesde = $referencia
-                ? (int)floor((time() - strtotime((string)$referencia)) / 86400)
-                : null;
-            $dentroDoPrazo = $diasDesde === null || $diasDesde <= $prazo;
-
-            return [
-                'pode'   => $entregue && $dentroDoPrazo && !empty($itens),
-                'motivo' => !$entregue
-                    ? 'Disponível depois que o pedido for entregue.'
-                    : (!$dentroDoPrazo ? "O prazo de {$prazo} dias já passou." : null),
-                'prazo_dias'  => $prazo,
-                'dias_desde'  => $diasDesde,
-                'entregue_em' => $referencia
-                    ? date(DATE_ATOM, strtotime((string)$referencia))
-                    : null,
-            ];
         } catch (\Throwable $e) {
             AppLog::exception($e, ['acao' => 'pedido_devolucao']);
             return null;
         }
+    }
+
+    /**
+     * Pode abrir devolução neste pedido? E, se não, por quê?
+     *
+     * O VEREDITO vem de `DevolucaoService::podeSolicitar()`, e não de uma
+     * cópia local. Até 10/09/2026 havia três implementações da mesma regra — a
+     * do service, a desta tela e a de `AppDevolucoesController::elegibilidade()`
+     * — e as duas do app reimplementavam à mão apenas duas das quatro guardas.
+     * Faltava justamente a de **solicitação já ativa**: quem tinha uma
+     * devolução em andamento continuava vendo o botão "Solicitar", preenchia o
+     * formulário inteiro e só então levava a recusa do `criar()`.
+     *
+     * O docblock do próprio `podeSolicitar()` já pedia isto: "pergunte à mesma
+     * regra, em vez de cada um reimplementar a sua".
+     *
+     * As datas continuam sendo calculadas aqui porque são de EXIBIÇÃO ("já se
+     * passaram 3 dias"), não de decisão — e vêm de `dataDeEntrega()`, que é a
+     * mesma referência que o service usa para decidir.
+     *
+     * @param bool $temItens Pedido sem item não tem o que devolver.
+     */
+    private function elegibilidadeDeDevolucao(int $pedidoId, bool $temItens): array
+    {
+        $servico = new DevolucaoService();
+        $prazo   = DevolucaoService::PRAZO_CDC_DIAS;
+
+        $veredito = $servico->podeSolicitar((int)$this->clienteId, $pedidoId);
+
+        $referencia = $servico->dataDeEntrega($pedidoId);
+        $diasDesde  = $referencia
+            ? (int)floor((time() - strtotime((string)$referencia)) / 86400)
+            : null;
+
+        /**
+         * A solicitação ativa é buscada à PARTE, e não colhida de dentro do
+         * veredito.
+         *
+         * Motivo: abrir uma devolução muda o status do pedido para
+         * `troca_devolucao`, então a guarda de "só pedidos entregues" do
+         * `podeSolicitar()` dispara ANTES da guarda de solicitação ativa. O
+         * cliente que tem uma devolução em andamento receberia "só é possível
+         * solicitar depois que o pedido for entregue" — tecnicamente o que a
+         * primeira guarda disse, e completamente enganoso para quem está
+         * esperando justamente essa devolução.
+         */
+        $ativa = $servico->ativaDoPedido($pedidoId);
+
+        return [
+            'pode'        => !empty($veredito['ok']) && $temItens,
+            'motivo'      => match (true) {
+                $ativa !== null => 'Você já tem uma solicitação em andamento para este pedido.',
+                !empty($veredito['ok']) && !$temItens => 'Este pedido não tem itens para devolver.',
+                !empty($veredito['ok']) => null,
+                default => $veredito['msg'] ?? null,
+            },
+            'prazo_dias'  => $prazo,
+            'dias_desde'  => $diasDesde,
+            'entregue_em' => $referencia ? date(DATE_ATOM, strtotime((string)$referencia)) : null,
+
+            // Quando o motivo da recusa é "já existe uma", a tela precisa
+            // LEVAR o cliente até ela em vez de só negar o botão.
+            'solicitacao' => $ativa ? [
+                'id'          => $ativa['id'],
+                'tipo'        => $ativa['tipo'],
+                'tipo_rotulo' => $ativa['tipo'] === 'troca' ? 'Troca' : 'Devolução',
+                'status'      => [
+                    'codigo' => $ativa['status'],
+                    'rotulo' => DevolucaoStatus::label($ativa['status']),
+                ],
+            ] : null,
+        ];
     }
 
     /**

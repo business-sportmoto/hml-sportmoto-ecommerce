@@ -4913,3 +4913,43 @@ html[data-theme="dark"] .fp-selo{background:var(--pgto-surface-2) !important;col
 .ap-reimprimir { cursor: pointer; }
 .ap-reimprimir.is-carregando { opacity: .5; pointer-events: none; }
 .ap-reimprimir:disabled { opacity: .5; cursor: default; }
+
+/* ── Inspeção item a item ────────────────────────────────────────
+ *
+ * Recolhido por padrão (<details> sem `open`) quando a devolução tem um item
+ * só de uma unidade — que é a maioria, e onde o veredito do botão já basta.
+ * Abre sozinho quando há mais de um item ou quantidade maior que 1: aí a
+ * pergunta "quanto chegou e quanto passou" é a razão de a tela existir.
+ */
+.insp-itens { margin: 4px 0 12px; }
+.insp-itens > summary { list-style: none; }
+.insp-itens > summary::-webkit-details-marker { display: none; }
+.insp-itens > summary::before { content: '▸ '; }
+.insp-itens[open] > summary::before { content: '▾ '; }
+
+.insp-item-row {
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: var(--c-bg);
+}
+.insp-item-nome { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+
+.insp-item-qtds { display: flex; gap: 10px; margin-bottom: 8px; }
+.insp-item-qtds label {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--c-text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.insp-item-qtds input { font-variant-numeric: tabular-nums; }
+.insp-item-obs { font-size: 13px; }
+
+@media (max-width: 520px) {
+  .insp-item-qtds { flex-direction: column; }
+}

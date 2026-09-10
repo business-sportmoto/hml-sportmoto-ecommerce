@@ -293,16 +293,11 @@ $urgente       = $diasRestantes <= 2;
             <div class="dnv-resumo-items" id="dnv-resumo-items" hidden></div>
           </div>
 
-          <!-- Erros globais -->
-          <!-- <div class="dnv-global-error" id="dnv-global-error" hidden>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="12" y1="8" x2="12" y2="12"/>
-              <line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
-            <span id="dnv-global-error-msg"></span>
-          </div> -->
+          <!-- Erros do servidor saem em Toast (window.Toast), não num bloco
+               aqui. Havia um #dnv-global-error comentado neste ponto e um
+               `$('#dnv-global-error').show()` no customer.js apontando para
+               ele: o erro era calculado, transmitido e descartado em silêncio.
+               Ver assets/js/customer.js :: mostrarErroGlobal(). -->
 
           <!-- CTA -->
           <button type="submit" class="dnv-submit" id="dnv-submit">
@@ -915,21 +910,6 @@ $urgente       = $diasRestantes <= 2;
   border: 1px solid var(--dnv-border);
   flex-shrink: 0;
 }
-
-/* Erro global */
-.dnv-global-error {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  background: #fef2f2;
-  border: 1px solid #fca5a5;
-  border-radius: var(--dnv-radius-sm);
-  padding: 10px 12px;
-  font-size: 13px;
-  color: #dc2626;
-  margin-bottom: 12px;
-}
-.dnv-global-error svg { stroke: #dc2626; flex-shrink: 0; margin-top: 1px; }
 
 /* Submit */
 .dnv-submit {
