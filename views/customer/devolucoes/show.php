@@ -1,21 +1,32 @@
 <?php
 // views/customer/devolucoes/show.php
-$statusLabels = [
-    'solicitado'           => ['cor'=>'warning','label'=>'Solicitado','desc'=>'Aguardando análise da nossa equipe.'],
-    'pre_aprovado'         => ['cor'=>'success','label'=>'Pré-aprovado','desc'=>'Sua solicitação foi pré-aprovada! Aguarde o código de postagem por e-mail.'],
-    'aguardando_aprovacao' => ['cor'=>'warning','label'=>'Em análise','desc'=>'Nossa equipe está analisando sua solicitação.'],
-    'aprovado'             => ['cor'=>'info',  'label'=>'Aprovado','desc'=>'Solicitação aprovada! Estamos processando o código de postagem, por favor, aguarde.'],
-    'negado'               => ['cor'=>'danger','label'=>'Negado','desc'=>$sol['negado_motivo']??''],
-    'aguardando_postagem'  => ['cor'=>'warning','label'=>'Aguardando postagem','desc'=>'Poste o produto com o código abaixo e informe o rastreio.'],
-    'em_transito_reverso'  => ['cor'=>'primary','label'=>'Em trânsito','desc'=>'Produto a caminho. Aguardaremos o recebimento.'],
-    'item_recebido'        => ['cor'=>'info',  'label'=>'Item recebido','desc'=>'Produto recebido! Realizaremos a inspeção em até 2 dias úteis.'],
-    'inspecionado_aprovado'=> ['cor'=>'success','label'=>'Inspeção aprovada','desc'=>'Produto inspecionado e aprovado. Seu reembolso será processado em breve.'],
-    'inspecionado_reprovado'=>['cor'=>'danger','label'=>'Inspeção reprovada','desc'=>'Infelizmente o produto não passou na inspeção. Entraremos em contato.'],
-    'concluido'            => ['cor'=>'success','label'=>'Concluído','desc'=>'Devolução concluída! Verifique seu e-mail ou saldo na conta.'],
-    'concluido_reprovado'  => ['cor'=>'danger','label'=>'Encerrado','desc'=>'Solicitação encerrada após reprovação na inspeção.'],
-    'cancelado'            => ['cor'=>'danger','label'=>'Cancelado','desc'=>'Solicitação cancelada.'],
+// Cor e rótulo vêm de DevolucaoStatus; o `desc` — que explica o próximo
+// passo — é copy desta tela e fica aqui.
+//
+// Este array não tinha `expirado`. Enquanto ninguém gravava esse status, o
+// buraco era invisível; assim que `cli/devolucoes-expirar.php` entrou, a tela
+// passaria a mostrar o slug cru "expirado" numa pílula azul de "info". É o
+// modo de falha de mapa duplicado: some um valor numa cópia e só aparece
+// quando alguém finalmente grava aquele valor.
+$descricoes = [
+    'solicitado'             => 'Aguardando análise da nossa equipe.',
+    'pre_aprovado'           => 'Sua solicitação foi pré-aprovada! Aguarde o código de postagem por e-mail.',
+    'aguardando_aprovacao'   => 'Nossa equipe está analisando sua solicitação.',
+    'aprovado'               => 'Solicitação aprovada! Estamos processando o código de postagem, por favor, aguarde.',
+    'negado'                 => $sol['negado_motivo'] ?? '',
+    'aguardando_postagem'    => 'Poste o produto com o código abaixo e informe o rastreio.',
+    'em_transito_reverso'    => 'Produto a caminho. Aguardaremos o recebimento.',
+    'item_recebido'          => 'Produto recebido! Realizaremos a inspeção em até 2 dias úteis.',
+    'inspecionado_aprovado'  => 'Produto inspecionado e aprovado. Seu reembolso será processado em breve.',
+    'inspecionado_reprovado' => 'Infelizmente o produto não passou na inspeção. Entraremos em contato.',
+    'concluido'              => 'Devolução concluída! Verifique seu e-mail ou saldo na conta.',
+    'concluido_reprovado'    => 'Solicitação encerrada após a inspeção. O produto permanece na loja e não houve reembolso.',
+    'cancelado'              => 'Solicitação cancelada.',
+    'expirado'               => 'O prazo para postar o produto terminou e o código de postagem perdeu a validade. '
+                              . 'Se ainda estiver dentro dos 7 dias da entrega, você pode abrir uma nova solicitação.',
 ];
-$st = $statusLabels[$sol['status']] ?? ['cor'=>'info','label'=>$sol['status'],'desc'=>''];
+$st = DevolucaoStatus::info($sol['status'])
+    + ['desc' => $descricoes[$sol['status']] ?? ''];
 $podeInformarRastreio = $sol['status'] === 'aguardando_postagem';
 $podeCancelar = in_array($sol['status'],['solicitado','aguardando_aprovacao','pre_aprovado','aprovado','aguardando_postagem']);
 ?>
@@ -112,7 +123,7 @@ $podeCancelar = in_array($sol['status'],['solicitado','aguardando_aprovacao','pr
         </div>
         <div class="od-hist-list">
           <?php foreach ($historico as $idx => $h):
-            $hSt = $statusLabels[$h['status_novo']] ?? ['cor'=>'info','label'=>$h['status_novo']];
+            $hSt = DevolucaoStatus::info($h['status_novo']);
           ?>
           <div class="odh-event-wrap">
             <div class="odh-icon-col">

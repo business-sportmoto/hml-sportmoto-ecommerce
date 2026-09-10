@@ -386,45 +386,20 @@ class AdminPedidoController extends Controller {
     // ── POST /admin/pedidos/{id}/enviar-cobranca ─────────
     // STUB: plug do gateway aqui.
     // Implemente o envio real de acordo com a forma de pagamento.
-    public function enviarCobranca(int $id): void {
-        $this->verifyCsrf();
-
-        $pedido = $this->model->findById($id);
-        if (!$pedido) $this->json(['ok' => false, 'msg' => 'Pedido não encontrado.']);
-
-        $metodo = SecurityHelper::sanitizeString($_POST['metodo'] ?? $pedido['forma_pagamento'] ?? '');
-        $email  = $pedido['cliente_email'] ?? '';
-
-        if (empty($email)) {
-            $this->json(['ok' => false, 'msg' => 'Cliente sem e-mail cadastrado.']);
-        }
-
-        // ────────────────────────────────────────────────
-        // TODO: implemente o envio real de acordo com o gateway
-        //
-        // Exemplo Pix:
-        //   $gateway = new PixGateway();
-        //   $link    = $gateway->gerarLink($pedido);
-        //   (new EmailService())->cobrarPix($pedido, $link);
-        //
-        // Exemplo Boleto:
-        //   $boleto = $pedido['boleto_url'];
-        //   (new EmailService())->cobrarBoleto($pedido, $boleto);
-        //
-        // Exemplo Cartão (link de pagamento):
-        //   $gateway = new CartaoGateway();
-        //   $link    = $gateway->gerarLinkPagamento($pedido);
-        //   (new EmailService())->cobrarCartao($pedido, $link);
-        // ────────────────────────────────────────────────
-
-        // Por enquanto retorna erro explicativo
-        // Remova este bloco quando implementar o gateway
-        $this->json([
-            'ok'  => false,
-            'msg' => "Gateway não configurado para '{$metodo}'. "
-                   . "Implemente AdminPedidoController::enviarCobranca() com seu provedor de pagamento.",
-        ]);
-    }
+    // ── Cobrança avulsa: NÃO existe, e é de propósito ─────
+    //
+    // Aqui vivia `enviarCobranca()`, um stub que nunca teve rota nem botão.
+    // A ideia era o admin gerar um link de pagamento e mandar ao cliente.
+    //
+    // Removido em 10/09/2026 porque o caminho já existe e é melhor: o pedido
+    // não pago mostra, na conta do cliente, o bloco "Falta concluir o
+    // pagamento" — QR do Pix no prazo, botão do boleto, ou troca de forma de
+    // pagamento (views/customer/order-detail.php). Basta orientar o cliente a
+    // entrar no pedido.
+    //
+    // Gerar cobrança nova daqui traria dois PIX pagáveis para a mesma compra
+    // e um instrumento para conciliar. Se um dia isso for mesmo necessário,
+    // que a decisão seja tomada de novo — e não herdada de um TODO.
 
     // ── GET /admin/pedidos/buscar-cliente ─────────────────
     public function buscarCliente(): void {

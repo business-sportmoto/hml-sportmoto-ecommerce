@@ -57,17 +57,12 @@ class CustomerDevolucaoController extends Controller {
         $itens   = $stmtI->fetchAll();
         $motivos = $this->service->getMotivos(true);
  
-        // Data de entrega real — primeiro evento "entregue" no histórico
-        // É a referência correta para o prazo CDC de 7 dias (Art. 49)
-        $stmtEnt = $db->prepare(
-            "SELECT criado_em
-             FROM pedido_historico
-             WHERE pedido_id = ? AND status_novo = 'entregue'
-             ORDER BY criado_em ASC
-             LIMIT 1"
-        );
-        $stmtEnt->execute([$pedidoId]);
-        $dataEntrega = $stmtEnt->fetchColumn() ?: $pedido['atualizado_em'];
+        // Data de entrega real — primeiro evento "entregue" no histórico.
+        // É a referência correta para o prazo CDC de 7 dias (Art. 49), e desde
+        // 10/09/2026 mora no service: era esta consulta, copiada aqui e no
+        // app, enquanto o `criar()` usava `atualizado_em` e discordava das
+        // duas telas.
+        $dataEntrega = $this->service->dataDeEntrega($pedidoId) ?: $pedido['atualizado_em'];
  
         $perfil = $this->customerModel->getFullProfile($clienteId);
         $this->render(
@@ -79,6 +74,9 @@ class CustomerDevolucaoController extends Controller {
  
     /** POST /minha-conta/devolucao/nova */
     public function criar(): void {
+        // A view sempre mandou o token (nova.php:41); faltava conferir.
+        $this->verifyCsrf();
+
         $clienteId = $this->clienteId();
         $pedidoId  = (int)($_POST['pedido_id']  ?? 0);
         $tipo      = SecurityHelper::sanitizeString($_POST['tipo']      ?? 'devolucao');
@@ -94,6 +92,21 @@ class CustomerDevolucaoController extends Controller {
             }
         }
  
+        // ── A regra ANTES do disco ───────────────────────────────
+        //
+        // Os arquivos eram movidos para uploads/devolucoes/ e só então o
+        // service decidia se a solicitação podia existir. Quando ele recusava
+        // — prazo vencido, pedido não entregue, já havia solicitação ativa —
+        // as mídias ficavam órfãs no disco para sempre, sem linha no banco
+        // que as referenciasse.
+        //
+        // Mesma forma do bug dos pedidos órfãos no checkout: efeito colateral
+        // gravado antes da regra que decide se ele deveria existir.
+        $pode = $this->service->podeSolicitar($clienteId, $pedidoId);
+        if (!$pode['ok']) {
+            $this->json(['ok' => false, 'msg' => $pode['msg']]);
+        }
+
         // Upload de mídias — imagens (jpg, png, webp) e vídeo (mp4, mov)
         $fotos = [];
         $extPermitidas = ['jpg','jpeg','png','webp','mp4','mov','m4v'];
@@ -124,6 +137,16 @@ class CustomerDevolucaoController extends Controller {
         }
  
         $result = $this->service->criar($clienteId, $pedidoId, $tipo, $motivoId, $itens, $descricao, $fotos);
+
+        // A checagem acima cobre o caso comum, mas entre ela e o `criar()`
+        // ainda cabe uma corrida (duas abas, dois cliques). Se o service
+        // recusou, nada aponta para estes arquivos — apaga.
+        if (!$result['ok'] && $fotos) {
+            foreach ($fotos as $nome) {
+                $caminho = ROOT_PATH . '/uploads/devolucoes/' . $nome;
+                if (is_file($caminho)) @unlink($caminho);
+            }
+        }
  
         if ($result['ok']) {
             $this->json([
@@ -154,6 +177,8 @@ class CustomerDevolucaoController extends Controller {
  
     /** POST /minha-conta/devolucao/{id}/cancelar */
     public function cancelar(int $id): void {
+        if (!$this->csrfDeFormulario($id)) return;
+
         $result = $this->service->cancelarPorCliente($id, $this->clienteId());
         if ($result['ok']) Session::flash('success', 'Solicitação cancelada.');
         else               Session::flash('error',   $result['msg']);
@@ -162,6 +187,8 @@ class CustomerDevolucaoController extends Controller {
  
     /** POST /minha-conta/devolucao/{id}/rastreio */
     public function informarRastreio(int $id): void {
+        if (!$this->csrfDeFormulario($id)) return;
+
         $codigo = strtoupper(trim(SecurityHelper::sanitizeString($_POST['codigo_rastreio'] ?? '')));
         $result = $this->service->informarRastreio($id, $this->clienteId(), $codigo);
         if ($result['ok']) Session::flash('success', 'Código de rastreio informado!');
@@ -169,6 +196,24 @@ class CustomerDevolucaoController extends Controller {
         $this->redirect(BASE_URL . '/minha-conta/devolucao/' . $id);
     }
  
+    /**
+     * CSRF para os POSTs que sao FORMULARIO, nao Ajax.
+     *
+     * `verifyCsrf()` da classe base responde JSON 403 — certo para o `criar()`,
+     * que e Ajax, e errado aqui: o cliente veria um punhado de JSON cru no
+     * lugar da pagina. Estes dois voltam para o pedido com uma mensagem.
+     *
+     * Retorna false quando ja redirecionou; quem chama so precisa dar return.
+     */
+    private function csrfDeFormulario(int $solId): bool {
+        $token = $_POST[CSRF_TOKEN_NAME] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+        if (SecurityHelper::validateCsrf($token)) return true;
+
+        Session::flash('error', 'Sua sessão expirou. Tente novamente.');
+        $this->redirect(BASE_URL . '/minha-conta/devolucao/' . $solId);
+        return false;
+    }
+
     private function clienteId(): int {
         return (int)Session::get('cliente_id');
     }

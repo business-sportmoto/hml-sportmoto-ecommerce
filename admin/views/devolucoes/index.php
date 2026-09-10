@@ -1,28 +1,14 @@
 <?php
 // views/admin/devolucoes/index.php
 
-$statusLabels = [
-    'solicitado'              => ['cor'=>'warning', 'label'=>'Solicitado'],
-    'pre_aprovado'            => ['cor'=>'success', 'label'=>'Pré-aprovado'],
-    'aguardando_aprovacao'    => ['cor'=>'warning', 'label'=>'Aguardando'],
-    'aprovado'                => ['cor'=>'info',    'label'=>'Aprovado'],
-    'negado'                  => ['cor'=>'danger',  'label'=>'Negado'],
-    'aguardando_postagem'     => ['cor'=>'warning', 'label'=>'Ag. postagem'],
-    'em_transito_reverso'     => ['cor'=>'primary', 'label'=>'Em trânsito'],
-    'item_recebido'           => ['cor'=>'info',    'label'=>'Recebido'],
-    'inspecionado_aprovado'   => ['cor'=>'success', 'label'=>'Insp. aprovada'],
-    'inspecionado_reprovado'  => ['cor'=>'danger',  'label'=>'Insp. reprovada'],
-    'concluido'               => ['cor'=>'success', 'label'=>'Concluído'],
-    'concluido_reprovado'     => ['cor'=>'danger',  'label'=>'Encerrado'],
-    'cancelado'               => ['cor'=>'danger',  'label'=>'Cancelado'],
-    'expirado'                => ['cor'=>'gray',    'label'=>'Expirado'],
-];
+// Rótulo e cor: fonte única em app/helpers/DevolucaoStatus.php. Este array
+// era uma de QUATRO cópias, e elas já tinham divergido entre si.
+$statusLabels = DevolucaoStatus::todos();
 
-// Contagens por status (para os chips)
-$contagensPorStatus = [];
-foreach ($lista as $sol) {
-    $contagensPorStatus[$sol['status']] = ($contagensPorStatus[$sol['status']] ?? 0) + 1;
-}
+// Contagens por status: vêm do banco, com os mesmos filtros da listagem.
+// Antes eram montadas iterando $lista — que traz só a página atual, então os
+// chips mostravam números diferentes conforme a paginação.
+$contagensPorStatus = $contagens ?? [];
 ?>
 
 <div class="admin-page">
@@ -87,7 +73,12 @@ foreach ($lista as $sol) {
     <a href="<?= ADMIN_URL ?>/devolucoes"
        class="filter-chip <?= empty($filtros['status'])?'is-active':'' ?>">
       Todos
-      <span class="fc-badge"><?= $total ?></span>
+      <?php
+      // A soma dos chips, não $total: $total respeita o filtro de status, e
+      // este link JUSTAMENTE limpa esse filtro. Com um status selecionado, o
+      // badge prometia 2 e a tela entregava 7.
+      ?>
+      <span class="fc-badge"><?= array_sum($contagensPorStatus) ?: $total ?></span>
     </a>
     <?php
     // Destaca os que precisam de ação

@@ -1,21 +1,30 @@
 <?php
 // views/customer/devolucoes/index.php
-$statusMap = [
-    'solicitado'             => ['cor'=>'warning', 'label'=>'Aguardando análise',   'icon'=>'clock'],
-    'pre_aprovado'           => ['cor'=>'success', 'label'=>'Pré-aprovado',         'icon'=>'check-circle'],
-    'aguardando_aprovacao'   => ['cor'=>'warning', 'label'=>'Em análise',           'icon'=>'clock'],
-    'aprovado'               => ['cor'=>'info',    'label'=>'Aprovado',             'icon'=>'check-circle'],
-    'negado'                 => ['cor'=>'danger',  'label'=>'Negado',               'icon'=>'x-circle'],
-    'aguardando_postagem'    => ['cor'=>'warning', 'label'=>'Postar produto',       'icon'=>'package'],
-    'em_transito_reverso'    => ['cor'=>'primary', 'label'=>'Em trânsito',          'icon'=>'truck'],
-    'item_recebido'          => ['cor'=>'info',    'label'=>'Item recebido',        'icon'=>'inbox'],
-    'inspecionado_aprovado'  => ['cor'=>'success', 'label'=>'Inspeção aprovada',   'icon'=>'check-circle'],
-    'inspecionado_reprovado' => ['cor'=>'danger',  'label'=>'Inspeção reprovada',  'icon'=>'x-circle'],
-    'concluido'              => ['cor'=>'success', 'label'=>'Concluído',            'icon'=>'check-circle'],
-    'concluido_reprovado'    => ['cor'=>'danger',  'label'=>'Encerrado',            'icon'=>'x-circle'],
-    'cancelado'              => ['cor'=>'danger',  'label'=>'Cancelado',            'icon'=>'x-circle'],
-    'expirado'               => ['cor'=>'gray',    'label'=>'Expirado',             'icon'=>'clock'],
+// Cor e rótulo vêm de DevolucaoStatus. O que fica aqui é o que é DESTA tela:
+// o ícone da listagem, e os dois rótulos que ganham em ser chamada para ação
+// em vez de descrição de estado — o cliente lendo a lista quer saber o que
+// PRECISA fazer, não em que gaveta a solicitação está.
+$statusMap = [];
+foreach (DevolucaoStatus::todos() as $slug => $info) {
+    $statusMap[$slug] = $info + ['icon' => 'clock'];
+}
+$icones = [
+    'pre_aprovado'           => 'check-circle',
+    'aprovado'               => 'check-circle',
+    'negado'                 => 'x-circle',
+    'aguardando_postagem'    => 'package',
+    'em_transito_reverso'    => 'truck',
+    'item_recebido'          => 'inbox',
+    'inspecionado_aprovado'  => 'check-circle',
+    'inspecionado_reprovado' => 'x-circle',
+    'concluido'              => 'check-circle',
+    'concluido_reprovado'    => 'x-circle',
+    'cancelado'              => 'x-circle',
 ];
+foreach ($icones as $slug => $icon) $statusMap[$slug]['icon'] = $icon;
+
+$statusMap['solicitado']['label']          = 'Aguardando análise';
+$statusMap['aguardando_postagem']['label'] = 'Postar produto';
 ?>
 
 <div class="customer-page">

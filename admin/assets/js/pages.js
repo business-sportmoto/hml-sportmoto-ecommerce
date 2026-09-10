@@ -2121,8 +2121,6 @@ function fecharModal(id) {
   });
 
   if(typeof SOL_DEV_ID !== 'undefined'){
-    console.log(SOL_DEV_ID);
-    
     var BASE_D = BASE + '/devolucoes/' + SOL_DEV_ID;
     (function () {
       function acao(endpoint, dados, recarregar) {
@@ -2142,8 +2140,15 @@ function fecharModal(id) {
         );
         $res.hide();
     
+        // `_csrf_token`, nao `_token`: e o nome que
+        // Controller::verifyCsrf() le (CSRF_TOKEN_NAME, config.php:66).
+        // Com a chave errada e sem ajaxSetup global mandando o header
+        // X-CSRF-Token, esta chamada respondia 403 "Token invalido." sempre —
+        // e como `gerarPostagem` e o UNICO caminho de `aprovado` para
+        // `aguardando_postagem`, a solicitacao ficava parada em `aprovado`
+        // sem ninguem entender por que.
         $.post(BASE + '/devolucoes/' + id + '/gerar-postagem', {
-          _token: CSRF_TOKEN
+          _csrf_token: CSRF_TOKEN
         })
         .done(function (r) {
           $btn.prop('disabled', false).html(
@@ -2185,6 +2190,13 @@ function fecharModal(id) {
         acao('/inspecionar',{resultado:res,observacao:$('#obs-inspecao').val(),valor_aprovado:$('#val-aprovado').val()});
       });
       $('#btn-reembolsar')&&$('#btn-reembolsar').on('click',function(){acao('/reembolsar',{tipo_reembolso:$('#tipo-reembolso-sel').val()});});
+
+      // Encerra solicitacao presa em `inspecionado_reprovado` — so existem as
+      // anteriores a 10/09/2026, porque hoje inspecionar() ja fecha na hora.
+      $('#btn-encerrar') && $('#btn-encerrar').on('click', function () {
+        if (!confirm('Encerrar sem reembolso? O pedido volta para "Entregue" e o produto permanece na loja.')) return;
+        acao('/encerrar', { observacao: $('#obs-encerrar').val() });
+      });
     })();
   }
 

@@ -29,6 +29,75 @@ class DevolucaoService {
     }
 
     // ════════════════════════════════════════════════════
+    // ELEGIBILIDADE
+    // ════════════════════════════════════════════════════
+
+    /**
+     * O pedido pode receber uma solicitação agora?
+     *
+     * Extraído do topo de `criar()` para que quem precisa saber ANTES —
+     * o formulário do site, a tela do app, e o upload de mídias que não deve
+     * gravar arquivo para uma solicitação que vai ser recusada — pergunte à
+     * mesma regra, em vez de cada um reimplementar a sua.
+     *
+     * @return array{ok:bool, msg?:string, pedido?:array, dias?:int}
+     */
+    public function podeSolicitar(int $clienteId, int $pedidoId): array {
+        $pedido = $this->getPedido($pedidoId, $clienteId);
+        if (!$pedido) {
+            return ['ok' => false, 'msg' => 'Pedido não encontrado.'];
+        }
+        if ($pedido['status_pedido'] !== 'entregue') {
+            return ['ok' => false, 'msg' => 'Só é possível solicitar devolução de pedidos entregues.'];
+        }
+
+        $dias = $this->diasDesde($this->dataDeEntrega($pedidoId) ?? $pedido['atualizado_em']);
+        if ($dias > self::PRAZO_CDC_DIAS) {
+            return ['ok' => false, 'msg' => 'Prazo de ' . self::PRAZO_CDC_DIAS
+                . ' dias corridos expirado. Solicitação não permitida.'];
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT id FROM solicitacoes_devolucao
+             WHERE pedido_id = ? AND status NOT IN ('cancelado','expirado','concluido','concluido_reprovado','negado')
+             LIMIT 1"
+        );
+        $stmt->execute([$pedidoId]);
+        if ($stmt->fetch()) {
+            return ['ok' => false, 'msg' => 'Já existe uma solicitação ativa para este pedido.'];
+        }
+
+        return ['ok' => true, 'pedido' => $pedido, 'dias' => $dias];
+    }
+
+    /**
+     * Quando o pedido foi ENTREGUE de verdade: o primeiro evento `entregue`
+     * em `pedido_historico`.
+     *
+     * A tabela `pedidos` não tem coluna de entrega, e até 10/09/2026 esta
+     * regra usava `pedidos.atualizado_em` — que muda a cada alteração do
+     * pedido. Um pedido editado no admin no 6º dia reiniciava o prazo legal
+     * do cliente; qualquer rotina que tocasse a linha esticava ou encurtava a
+     * janela sem ninguém perceber.
+     *
+     * O formulário do site e a tela do app já liam daqui. O núcleo é que
+     * estava para trás — as duas telas diziam que dava tempo e o `criar()`
+     * recusava, ou o contrário.
+     *
+     * PRIMEIRO evento, não o último: um pedido reentregue depois de uma
+     * tentativa falha não pode encurtar o prazo do Art. 49.
+     */
+    public function dataDeEntrega(int $pedidoId): ?string {
+        $stmt = $this->db->prepare(
+            "SELECT criado_em FROM pedido_historico
+              WHERE pedido_id = ? AND status_novo = 'entregue'
+           ORDER BY criado_em ASC LIMIT 1"
+        );
+        $stmt->execute([$pedidoId]);
+        return $stmt->fetchColumn() ?: null;
+    }
+
+    // ════════════════════════════════════════════════════
     // CRIAÇÃO
     // ════════════════════════════════════════════════════
 
@@ -45,30 +114,9 @@ class DevolucaoService {
         array  $fotosCaminhos= []
     ): array {
         // ── Validações ───────────────────────────────────
-        $pedido = $this->getPedido($pedidoId, $clienteId);
-        if (!$pedido) {
-            return ['ok' => false, 'msg' => 'Pedido não encontrado.'];
-        }
-        if ($pedido['status_pedido'] !== 'entregue') {
-            return ['ok' => false, 'msg' => 'Só é possível solicitar devolução de pedidos entregues.'];
-        }
-
-        // Valida prazo CDC (7 dias corridos após entrega)
-        $diasDesdeEntrega = $this->diasDesde($pedido['atualizado_em']);
-        if ($diasDesdeEntrega > self::PRAZO_CDC_DIAS) {
-            return ['ok' => false, 'msg' => "Prazo de " . self::PRAZO_CDC_DIAS . " dias corridos expirado. Solicitação não permitida."];
-        }
-
-        // Valida se já existe solicitação ativa para este pedido
-        $stmt = $this->db->prepare(
-            "SELECT id FROM solicitacoes_devolucao
-             WHERE pedido_id = ? AND status NOT IN ('cancelado','expirado','concluido','concluido_reprovado','negado')
-             LIMIT 1"
-        );
-        $stmt->execute([$pedidoId]);
-        if ($stmt->fetch()) {
-            return ['ok' => false, 'msg' => 'Já existe uma solicitação ativa para este pedido.'];
-        }
+        $pode = $this->podeSolicitar($clienteId, $pedidoId);
+        if (!$pode['ok']) return ['ok' => false, 'msg' => $pode['msg']];
+        $pedido = $pode['pedido'];
 
         if (empty($itens)) {
             return ['ok' => false, 'msg' => 'Selecione ao menos um item para devolver.'];
@@ -405,13 +453,34 @@ class DevolucaoService {
             return ['ok' => false, 'msg' => 'Resultado inválido.'];
         }
 
+        // Reprovado JÁ é o fim do caso.
+        //
+        // Antes parava em `inspecionado_reprovado` — status do qual não saía
+        // transição nenhuma: `reembolsar()` exige `inspecionado_aprovado`, e
+        // não havia outro caminho. A solicitação ficava aberta para sempre e o
+        // PEDIDO ficava presa em `troca_devolucao` junto.
+        //
+        // Não há segunda etapa a cumprir: o produto fica na loja e não há
+        // reembolso, então gravar o veredito e o desfecho em dois eventos
+        // separados só encheria a linha do tempo do cliente com duas linhas
+        // com um segundo de diferença. O motivo da reprovação vai na
+        // observação, que é o que ele precisa ler.
+        //
+        // `inspecao_resultado` continua registrando 'reprovado' — o veredito
+        // não se perde, só deixa de ser um status parado.
         $novoStatus = $resultado === 'aprovado'
             ? 'inspecionado_aprovado'
-            : 'inspecionado_reprovado';
+            : 'concluido_reprovado';
 
-        $valorFinal = $resultado === 'aprovado'
-            ? ($valorAprovado ?? (float)$sol['valor_solicitado'])
-            : null;
+        // O valor vem de um campo de texto do admin e ia direto para o
+        // reembolso. Aprovar MAIS do que foi solicitado nao e uma decisao que
+        // alguem toma de proposito nesta tela — e digito a mais.
+        $valorFinal = null;
+        if ($resultado === 'aprovado') {
+            $teto       = (float)$sol['valor_solicitado'];
+            $valorFinal = $valorAprovado ?? $teto;
+            $valorFinal = max(0.0, min($valorFinal, $teto));
+        }
 
         $this->db->prepare(
             "UPDATE solicitacoes_devolucao
@@ -435,13 +504,61 @@ class DevolucaoService {
         $pedido = $this->getPedidoById((int)$sol['pedido_id']);
         $this->email->inspecaoResultado($sol, $pedido, $resultado);
 
-        $this->service->mudarStatus($sol['pedido_id'], 'troca_devolucao', (
-                $resultado === 'aprovado'
-                ? "Devolução aprovada na inspeção. Valor aprovado: R$ " . PriceHelper::format($valorFinal)
-                : "Devolução reprovada na inspeção."
-        ), $adminId, false);
+        // Aprovado segue em `troca_devolucao` — ainda falta reembolsar.
+        // Reprovado volta para `entregue`, e não para `devolvido`: nada foi
+        // devolvido ao cliente, nem produto nem dinheiro. `devolvido` tem
+        // classe_bi = devolucao e faria o painel descontar de uma receita que
+        // continua na loja. É o mesmo destino que `negar()` já usa.
+        if ($resultado === 'aprovado') {
+            $this->service->mudarStatus(
+                $sol['pedido_id'], 'troca_devolucao',
+                'Devolução aprovada na inspeção. Valor aprovado: R$ ' . PriceHelper::format($valorFinal),
+                $adminId, false
+            );
+        } else {
+            $this->service->mudarStatus(
+                $sol['pedido_id'], 'entregue',
+                'Devolução encerrada sem reembolso após inspeção. O produto permanece na loja.'
+                . ($obs ? " Motivo: {$obs}" : ''),
+                $adminId, false
+            );
+        }
 
         return ['ok' => true, 'status' => $novoStatus, 'valor_aprovado' => $valorFinal];
+    }
+
+    /**
+     * Encerra uma solicitação parada em `inspecionado_reprovado`.
+     *
+     * A partir de 10/09/2026 `inspecionar()` já fecha o caso na hora, então
+     * ninguém novo cai neste estado. Este método existe para as solicitações
+     * que ficaram travadas antes disso: sem ele, elas seguem abertas para
+     * sempre, com o pedido preso em `troca_devolucao`.
+     */
+    public function encerrarReprovado(int $solId, int $adminId, ?string $obs = null): array {
+        $sol = $this->findById($solId);
+        if (!$sol) return ['ok' => false, 'msg' => 'Solicitação não encontrada.'];
+
+        if ($sol['status'] !== 'inspecionado_reprovado') {
+            return ['ok' => false, 'msg' => "Status '{$sol['status']}' não precisa deste encerramento."];
+        }
+
+        $this->db->prepare(
+            "UPDATE solicitacoes_devolucao
+                SET status = 'concluido_reprovado', atualizado_em = NOW()
+              WHERE id = ?"
+        )->execute([$solId]);
+        $this->logStatus($solId, 'concluido_reprovado',
+            $obs ?: 'Encerrada sem reembolso: inspeção reprovada.', $adminId);
+
+        $this->service->mudarStatus(
+            (int)$sol['pedido_id'], 'entregue',
+            'Devolução encerrada sem reembolso após inspeção. O produto permanece na loja.'
+            . ($obs ? " Motivo: {$obs}" : ''),
+            $adminId, false
+        );
+
+        return ['ok' => true, 'status' => 'concluido_reprovado'];
     }
 
     // ════════════════════════════════════════════════════
@@ -488,18 +605,27 @@ class DevolucaoService {
                 );
                 break;
 
+            // ── Pix automatico e estorno no cartao: NAO EXISTEM ──────────
+            //
+            // Ate 10/09/2026 estes dois eram `break` com um TODO comentado
+            // dentro. O fluxo seguia reto para o UPDATE la embaixo: marcava
+            // `concluido`, gravava `reembolsado_em`, disparava o e-mail de
+            // "reembolso concluido" e movia o pedido para `devolvido` — com o
+            // dinheiro ainda na loja e ninguem sabendo.
+            //
+            // Recusar e melhor que fingir. Enquanto nao houver chamada real,
+            // o caminho honesto e `boleto_manual`: o admin transfere pelo
+            // banco e marca aqui. O SafraPayAdapter ainda nao tem metodo de
+            // estorno; quando tiver, o `gateway` volta com a chamada de
+            // verdade no lugar deste return.
             case 'pix':
-                // TODO: chamar gateway PIX automático
-                // $gateway = new PixGateway();
-                // $gateway->transferir($dados['chave_pix'], $valorAprovado, "Devolução #{$pedido['codigo']}");
-                // Por enquanto: registra os dados e marca como concluído
-                break;
-
             case 'gateway':
-                // TODO: chamar gateway de cartão para estorno
-                // $gateway = new CartaoGateway();
-                // $gateway->estornar($pedido['gateway_id'], $valorAprovado);
-                break;
+                return [
+                    'ok'  => false,
+                    'msg' => 'Reembolso automático ainda não está disponível. '
+                           . 'Faça a transferência pelo banco e registre em "Transferência manual", '
+                           . 'ou use "Crédito na conta".',
+                ];
 
             case 'boleto_manual':
                 // Admin marca como concluído manualmente após transferência bancária
@@ -554,6 +680,23 @@ class DevolucaoService {
             "UPDATE solicitacoes_devolucao SET status = 'cancelado', atualizado_em = NOW() WHERE id = ?"
         )->execute([$solId]);
         $this->logStatus($solId, 'cancelado', 'Cancelado pelo cliente.');
+
+        // O cancelamento é permitido em `aguardando_postagem` — ou seja,
+        // DEPOIS de a loja ter emitido (e pago) a etiqueta reversa. Cancelar
+        // aqui não devolve esse dinheiro, mas deixar a reversa aberta na
+        // logística deixa a fila de quem acompanha reversas mentindo: uma
+        // linha esperando um pacote que nunca vem.
+        if (!empty($sol['reversa_id'])) {
+            try {
+                $this->reversa->cancelar((int)$sol['reversa_id'], null);
+            } catch (\Throwable $e) {
+                LogService::warning('devolucao: falha ao cancelar reversa do cancelamento do cliente', [
+                    'solicitacao_id' => $solId,
+                    'reversa_id'     => (int)$sol['reversa_id'],
+                    'erro'           => $e->getMessage(),
+                ]);
+            }
+        }
         $this->service->mudarStatus($sol['pedido_id'], 'entregue', "Solicitação de devolução #{$sol['id']} foi cancelada pelo cliente.", 0, false); 
 
         return ['ok' => true];
@@ -587,13 +730,23 @@ class DevolucaoService {
 
     public function findById(int $id): ?array {
         $stmt = $this->db->prepare(
+            // `p.codigo` estava faltando: a tela de detalhe do admin imprime
+            // $sol['pedido_codigo'] e o `?? ''` engolia, deixando um link "#"
+            // vazio ao lado do cliente. `listar()` já trazia o campo.
+            //
+            // LEFT JOIN, não JOIN: existe solicitação apontando para pedido
+            // que não existe mais (sol#2 → pedido_id 1, apagado). Com INNER a
+            // tela de detalhe passaria a dar 404 nessas, escondendo o problema
+            // em vez de mostrá-lo.
             "SELECT s.*, m.label AS motivo_label, m.exige_foto,
                     m.responsavel_frete, m.prazo_credito_dias,
-                    u.nome AS cliente_nome, u.email AS cliente_email
+                    u.nome AS cliente_nome, u.email AS cliente_email,
+                    p.codigo AS pedido_codigo
              FROM solicitacoes_devolucao s
              JOIN motivos_devolucao m  ON m.id = s.motivo_id
              JOIN clientes c           ON c.id = s.cliente_id
              JOIN usuarios u           ON u.id = c.usuario_id
+             LEFT JOIN pedidos p       ON p.id = s.pedido_id
              WHERE s.id = ? LIMIT 1"
         );
         $stmt->execute([$id]);
@@ -622,9 +775,20 @@ class DevolucaoService {
 
     public function getHistorico(int $solId): array {
         $stmt = $this->db->prepare(
+            // h.admin_id guarda `admins.id` (quem grava e
+            // Session::get('admin_id')), entao o caminho ate o nome passa por
+            // `admins`. O JOIN antigo comparava admins.id contra usuarios.id —
+            // espacos de numeracao independentes, a "regra de ouro dos IDs" do
+            // CLAUDE.md 4.1. No banco atual admins.id=1 e o Robert
+            // (usuarios.id=3), e o JOIN resolvia usuarios.id=1 =
+            // "Administrador": nome errado, sem erro nenhum, e exibido tambem
+            // para o cliente.
+            //
+            // Mesmo caminho de OrderAdminController.php:103-107.
             "SELECT h.*, u.nome AS admin_nome
              FROM solicitacoes_devolucao_historico h
-             LEFT JOIN usuarios u ON u.id = h.admin_id
+             LEFT JOIN admins   a ON a.id = h.admin_id
+             LEFT JOIN usuarios u ON u.id = a.usuario_id
              WHERE h.solicitacao_id = ? ORDER BY h.criado_em DESC"
         );
         $stmt->execute([$solId]);
@@ -666,6 +830,41 @@ class DevolucaoService {
         );
         $stmt->execute($params);
         return (int)$stmt->fetchColumn();
+    }
+
+    /**
+     * Quantas solicitações em cada status, respeitando os MESMOS filtros da
+     * listagem.
+     *
+     * A tela montava isso iterando `$lista` — que traz 20 linhas. Os números
+     * dos chips mudavam conforme a paginação: na página 2, contagens
+     * diferentes para os mesmos dados. Mesma família do bug de KPI já
+     * corrigido na listagem de pedidos.
+     *
+     * O filtro de `status` sai da conta de propósito: o chip precisa mostrar
+     * quanto existe em CADA status, e filtrar por um deles zeraria todos os
+     * outros — que é justamente onde o operador quer clicar em seguida.
+     *
+     * @return array<string,int>
+     */
+    public function contarPorStatus(array $filtros = []): array {
+        unset($filtros['status']);
+        [$where, $params] = $this->buildWhere($filtros);
+
+        $stmt = $this->db->prepare(
+            "SELECT s.status, COUNT(*) AS n
+               FROM solicitacoes_devolucao s
+               JOIN clientes c ON c.id = s.cliente_id
+               JOIN usuarios u ON u.id = c.usuario_id
+               JOIN pedidos  p ON p.id = s.pedido_id
+              WHERE {$where}
+           GROUP BY s.status"
+        );
+        $stmt->execute($params);
+
+        $mapa = [];
+        foreach ($stmt->fetchAll() as $r) $mapa[(string)$r['status']] = (int)$r['n'];
+        return $mapa;
     }
 
     public function getMotivos(bool $apenasAtivos = false): array {
@@ -932,11 +1131,31 @@ class DevolucaoService {
         $itensDados     = [];
         $valorTotal     = 0.0;
 
+        // Quanto de cada item JA voltou em solicitacoes anteriores. Sem isto,
+        // a mesma unidade pode ser devolvida duas vezes: a checagem de
+        // "solicitacao ativa" em criar() olha o PEDIDO, e uma solicitacao
+        // concluida deixa de ser ativa — liberando um segundo pedido de
+        // devolucao sobre o mesmo item.
+        $jaDevolvido = $this->quantidadesJaDevolvidas($pedidoId);
+
         foreach ($itens as $solItem) {
             $piId = (int)$solItem['pedido_item_id'];
-            $qtd  = min((int)$solItem['quantidade'], 1); // valida qtd > 0
             $pi   = $itensMap[$piId] ?? null;
-            if (!$pi || $qtd <= 0) continue;
+            if (!$pi) continue;
+
+            // Aqui havia `min($qtd, 1)`, com o comentario "valida qtd > 0".
+            // `min` com 1 nao e piso, e TETO: quem comprou 3 e pedia as 3
+            // recebia o valor de UMA, sem erro em lugar nenhum — nem no
+            // formulario, nem no e-mail de confirmacao, nem no painel de BI
+            // (que le esta mesma coluna).
+            //
+            // O que faltava era piso E teto, e o teto e a quantidade comprada
+            // menos o que ja voltou antes.
+            $disponivel = (int)$pi['quantidade'] - (int)($jaDevolvido[$piId] ?? 0);
+            if ($disponivel <= 0) continue;
+
+            $qtd = max(1, (int)$solItem['quantidade']);
+            $qtd = min($qtd, $disponivel);
 
             $valorUnit = (float)$pi['preco_unitario'];
             // Desconto proporcional de cupom (se houver)
@@ -956,6 +1175,34 @@ class DevolucaoService {
         }
 
         return [round($valorTotal, 2), $itensDados];
+    }
+
+    /**
+     * Quanto de cada pedido_item ja saiu em devolucoes que ainda valem.
+     *
+     * Solicitacao cancelada, negada ou expirada nao consome saldo — o item
+     * nunca voltou. As demais consomem, inclusive as em andamento: reservar
+     * a quantidade na hora do pedido evita que o cliente abra duas
+     * solicitacoes somando mais do que comprou.
+     *
+     * @return array<int,int>  pedido_item_id => quantidade
+     */
+    private function quantidadesJaDevolvidas(int $pedidoId): array {
+        $stmt = $this->db->prepare(
+            "SELECT sdi.pedido_item_id, SUM(sdi.quantidade) AS qtd
+               FROM solicitacoes_devolucao_itens sdi
+               JOIN solicitacoes_devolucao sd ON sd.id = sdi.solicitacao_id
+              WHERE sd.pedido_id = ?
+                AND sd.status NOT IN ('cancelado','negado','expirado')
+           GROUP BY sdi.pedido_item_id"
+        );
+        $stmt->execute([$pedidoId]);
+
+        $mapa = [];
+        foreach ($stmt->fetchAll() as $r) {
+            $mapa[(int)$r['pedido_item_id']] = (int)$r['qtd'];
+        }
+        return $mapa;
     }
 
     private function logStatus(int $solId, string $status, ?string $obs = null, ?int $adminId = null): void {

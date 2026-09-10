@@ -451,3 +451,26 @@ aparecem como 'ausentes'. O CLI avisa quando o dia da 100% ausente.
 
 Relacionado: cli/conversion-dispatch.php (quem de fato envia) e o widget
 `admin/views/dashboard/tracking-widget.php` (mesma medicao, na tela).
+
+# Expiração de devoluções
+
+    0 4 * * * cd /home/homo-v2.sportmoto.com.br/public_html && /usr/local/lsws/lsphp82/bin/php cli/devolucoes-expirar.php --sem-confirmacao >> storage/logs/devolucoes-expirar.log 2>&1
+
+Fecha solicitação que o cliente abandonou **depois** de receber o código de
+postagem. Só `aguardando_postagem` expira: é o único estado em que o relógio é
+do cliente. `aguardando_aprovacao`, `aprovado` e `item_recebido` esperam a
+LOJA — expirar ali seria punir o cliente pela demora de casa.
+
+O prazo conta do evento `aguardando_postagem` no histórico da solicitação (não
+de `atualizado_em`, que qualquer alteração empurra), e a janela é
+`codigo_validade_dias` da transportadora, com piso de 20 dias. Regerar a
+etiqueta **não** reinicia o relógio — o cron usa `MIN(criado_em)`.
+
+Ao expirar: solicitação → `expirado`, reversa cancelada na logística, pedido
+de volta para `entregue` (nada voltou, então segue sendo venda), cliente
+avisado de que pode abrir outra se ainda estiver nos 7 dias do CDC.
+
+Flags: `--dry-run` · `--sem-confirmacao` · `--silencioso` (não manda e-mail —
+use ao limpar backlog antigo) · `--limite=N` (padrão 200).
+
+→ [[../03-funcionalidades/devolucoes-e-trocas]] §5.5

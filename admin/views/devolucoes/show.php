@@ -1,22 +1,7 @@
 <?php
 // views/admin/devolucoes/show.php
-$statusLabels = [
-    'solicitado'             => ['cor'=>'warning', 'label'=>'Solicitado'],
-    'pre_aprovado'           => ['cor'=>'info',    'label'=>'Pré-aprovado'],
-    'aguardando_aprovacao'   => ['cor'=>'warning', 'label'=>'Aguardando aprovação'],
-    'aprovado'               => ['cor'=>'info',    'label'=>'Aprovado'],
-    'negado'                 => ['cor'=>'danger',  'label'=>'Negado'],
-    'aguardando_postagem'    => ['cor'=>'warning', 'label'=>'Aguardando postagem'],
-    'em_transito_reverso'    => ['cor'=>'primary', 'label'=>'Em trânsito reverso'],
-    'item_recebido'          => ['cor'=>'info',    'label'=>'Item recebido'],
-    'inspecionado_aprovado'  => ['cor'=>'success', 'label'=>'Inspeção aprovada'],
-    'inspecionado_reprovado' => ['cor'=>'danger',  'label'=>'Inspeção reprovada'],
-    'concluido'              => ['cor'=>'success', 'label'=>'Concluído'],
-    'concluido_reprovado'    => ['cor'=>'danger',  'label'=>'Concluído (reprovado)'],
-    'cancelado'              => ['cor'=>'danger',  'label'=>'Cancelado'],
-    'expirado'               => ['cor'=>'gray',    'label'=>'Expirado'],
-];
-$st      = $statusLabels[$sol['status']] ?? ['cor'=>'info','label'=>$sol['status']];
+// Fonte única: app/helpers/DevolucaoStatus.php.
+$st      = DevolucaoStatus::info($sol['status']);
 $status  = $sol['status'];
 $podeAprovar        = in_array($status, ['aguardando_aprovacao','solicitado','pre_aprovado']);
 $podeGerarPostagem  = in_array($status, ['aprovado','aguardando_postagem'])
@@ -25,6 +10,9 @@ $podeNegar     = $podeAprovar;
 $podeReceber   = $status === 'em_transito_reverso';
 $podeInspecionar = $status === 'item_recebido';
 $podeReembolsar  = $status === 'inspecionado_aprovado';
+// Solicitação travada antes de 10/09/2026, quando a inspeção reprovada não
+// tinha saída. Hoje `inspecionar()` já encerra na hora.
+$podeEncerrar    = $status === 'inspecionado_reprovado';
 ?>
 <div class="admin-page">
   <div class="admin-page-header">
@@ -113,7 +101,7 @@ $podeReembolsar  = $status === 'inspecionado_aprovado';
         </div>
         <div style="padding:8px 20px 12px;">
           <?php foreach ($historico as $h):
-            $hSt = $statusLabels[$h['status_novo']] ?? ['cor'=>'info','label'=>$h['status_novo']];
+            $hSt = DevolucaoStatus::info($h['status_novo']);
           ?>
           <div class="ap-hist-item">
             <div class="ap-hist-dot ap-hist-dot--<?= $hSt['cor'] ?>"></div>
@@ -311,6 +299,23 @@ $podeReembolsar  = $status === 'inspecionado_aprovado';
           </button>
           <?php endif; ?>
  
+          <?php if ($podeEncerrar): ?>
+          <div style="background:var(--danger-lt);border:1.5px solid var(--danger-bd);border-radius:12px;padding:16px;">
+            <div style="font-size:12px;font-weight:800;text-transform:uppercase;color:var(--danger);margin-bottom:8px;">
+              Encerrar sem reembolso
+            </div>
+            <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">
+              A inspeção reprovou esta devolução. Encerrar devolve o pedido para
+              <strong>Entregue</strong>; o produto permanece na loja e não há reembolso.
+            </p>
+            <textarea id="obs-encerrar" class="form-control" rows="2" style="resize:vertical;margin-bottom:10px;"
+                      placeholder="Motivo (aparece para o cliente)"></textarea>
+            <button type="button" class="btn btn-danger btn-full" id="btn-encerrar">
+              Encerrar solicitação
+            </button>
+          </div>
+          <?php endif; ?>
+
           <?php if ($podeReembolsar): ?>
           <div style="background:var(--success-lt);border:1.5px solid var(--success-bd);border-radius:12px;padding:16px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
@@ -327,16 +332,18 @@ $podeReembolsar  = $status === 'inspecionado_aprovado';
                 💳 Crédito na conta
                 <small>Saldo disponível para próximas compras</small>
               </button>
-              <button type="button" class="dev-reembolso-opt" data-tipo="pix"
-                      onclick="selecionarReembolso(this)">
-                ⚡ Pix automático
-                <small>Transferência imediata via Pix</small>
-              </button>
-              <button type="button" class="dev-reembolso-opt" data-tipo="gateway"
-                      onclick="selecionarReembolso(this)">
-                💳 Estorno no cartão
-                <small>Via gateway de pagamento</small>
-              </button>
+              <!--
+                "Pix automatico" e "Estorno no cartao" sairam daqui em
+                10/09/2026. Nenhum dos dois transferia nada: o service caia
+                num `break` com TODO comentado e seguia marcando a devolucao
+                como reembolsada. Quem clicava fechava o caso com o dinheiro
+                ainda na loja.
+
+                Voltam quando houver chamada real — o estorno depende de um
+                metodo de refund no SafraPayAdapter, que ainda nao existe.
+                Ate la, a transferencia sai pelo banco e entra como
+                "Transferencia manual".
+              -->
               <button type="button" class="dev-reembolso-opt" data-tipo="boleto_manual"
                       onclick="selecionarReembolso(this)">
                 🏦 Transferência manual

@@ -250,15 +250,15 @@ AdminRouter::post('/clientes/{id:\d+}/credito/debitar',            'AdminCredito
 AdminRouter::post('/clientes/{id:\d+}/sync-bling', 'AdminClienteController@syncBling');
 
 // Admin — devolução
-AdminRouter::get ('/devolucoes',                                'AdminDevolucaoController@index');
-AdminRouter::get ('/devolucoes/{id:\d+}',                      'AdminDevolucaoController@show');
-AdminRouter::post('/devolucoes/{id:\d+}/aprovar',              'AdminDevolucaoController@aprovar');
-AdminRouter::post('/devolucoes/{id:\d+}/negar',                'AdminDevolucaoController@negar');
-AdminRouter::post('/devolucoes/{id:\d+}/receber',              'AdminDevolucaoController@confirmarRecebimento');
-AdminRouter::post('/devolucoes/{id:\d+}/inspecionar',          'AdminDevolucaoController@inspecionar');
-AdminRouter::post('/devolucoes/{id:\d+}/reembolsar',           'AdminDevolucaoController@reembolsar');
-AdminRouter::get ('/devolucoes/motivos',                        'AdminDevolucaoController@motivos');
-AdminRouter::post('/devolucoes/motivos/salvar',                 'AdminDevolucaoController@salvarMotivo');
+// As rotas de devolução moram mais abaixo, num bloco só.
+//
+// Havia DUAS declarações do mesmo conjunto — esta e a de baixo. O dispatcher
+// devolve no primeiro match (AdminRouter::dispatch, o `return` dentro do
+// foreach), então este bloco é que respondia, e a segunda declaração ficava
+// morta para tudo que se repetia. Só que era a de baixo que tinha
+// `receber-manual`, `buscar-para-recebimento` e `gerar-postagem`.
+//
+// Duplicata assim não dá erro: ela espera alguém editar um dos lados.
 
 // ── Cupons ────────────────────────────────────────────────
 // AdminRouter::get('/cupons',                        'CouponAdminController@index');
@@ -554,6 +554,7 @@ AdminRouter::post('/devolucoes/{id:\d+}/receber',              'AdminDevolucaoCo
 AdminRouter::post('/devolucoes/{id:\d+}/inspecionar',          'AdminDevolucaoController@inspecionar');
 AdminRouter::post('/devolucoes/{id:\d+}/reembolsar',           'AdminDevolucaoController@reembolsar');
 AdminRouter::post('/devolucoes/{id:\d+}/gerar-postagem',           'AdminDevolucaoController@gerarPostagem');
+AdminRouter::post('/devolucoes/{id:\d+}/encerrar',                 'AdminDevolucaoController@encerrarReprovado');
 
 
 // Visualização (todos admins)

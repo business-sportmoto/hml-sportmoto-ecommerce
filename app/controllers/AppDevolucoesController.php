@@ -118,7 +118,8 @@ class AppDevolucoesController extends AppApiController
         // coluna de entrega. É a mesma referência que
         // CustomerDevolucaoController::novaForm() usa (:62-70); calcular a
         // partir de `enviado_em` encurtaria o prazo legal do cliente.
-        $referencia = $this->dataDeEntrega((int)$pedido['id']) ?? ($pedido['atualizado_em'] ?? null);
+        $referencia = (new DevolucaoService())->dataDeEntrega((int)$pedido['id'])
+            ?? ($pedido['atualizado_em'] ?? null);
         $diasDesde  = $referencia ? (int)floor((time() - strtotime((string)$referencia)) / 86400) : null;
         $dentroDoPrazo = $diasDesde === null || $diasDesde <= $prazo;
 
@@ -280,25 +281,10 @@ class AppDevolucoesController extends AppApiController
         ));
     }
 
-    /**
-     * Data real da entrega — primeiro evento 'entregue' no histórico do pedido.
-     * É a referência do prazo do CDC.
-     */
-    private function dataDeEntrega(int $pedidoId): ?string
-    {
-        try {
-            $st = $this->db()->prepare(
-                "SELECT criado_em FROM pedido_historico
-                 WHERE pedido_id = :p AND status_novo = 'entregue'
-                 ORDER BY criado_em ASC LIMIT 1"
-            );
-            $st->execute([':p' => $pedidoId]);
-            $valor = $st->fetchColumn();
-            return $valor ? (string)$valor : null;
-        } catch (\Throwable $e) {
-            return null;
-        }
-    }
+    // A data real da entrega mora em DevolucaoService::dataDeEntrega() desde
+    // 10/09/2026. Era esta consulta, copiada aqui e no formulário do site,
+    // enquanto o `criar()` do service media o prazo por `atualizado_em` e
+    // discordava das duas telas. Uma pergunta, uma resposta.
 
     /**
      * POST /api/app/v1/conta/devolucoes/{id}/cancelar
