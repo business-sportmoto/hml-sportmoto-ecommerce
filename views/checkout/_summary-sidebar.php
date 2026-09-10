@@ -57,7 +57,18 @@ $ctaText = 'Continuar';
         ? BASE_URL . '/uploads/produtos/' . $imagem
         : BASE_URL . '/assets/img/placeholder.png';
       $variacao = $item['variacao_label'] ?? null;
-      $valor   = (float)($item['valor_unitario'] ?? $item['preco'] ?? 0);
+      // DUAS FORMAS CHEGAM AQUI e o partial só conhecia uma.
+      //
+      //   getItensComVariacoes()  → valor_unitario
+      //   getItems() / getTotals  → preco_unitario   ← é o que o checkout manda
+      //
+      // Sem `preco_unitario` na lista, nenhuma chave batia, o valor caía em 0
+      // e todo item aparecia como R$ 0,00 — enquanto o subtotal, que vem dos
+      // totais e não do item, mostrava o valor certo.
+      $valor   = (float)($item['valor_unitario']
+                      ?? $item['preco_unitario']
+                      ?? $item['preco']
+                      ?? 0);
       $qtd     = (int)($item['quantidade']      ?? 1);
     ?>
     <div class="checkout-item">
@@ -290,6 +301,9 @@ $ctaText = 'Continuar';
   <input type="hidden" id="summary-subtotal-raw" value="<?= $subtotal ?>">
   <input type="hidden" id="summary-desconto-raw" value="<?= $desconto ?>">
   <input type="hidden" id="ck-total-base" value="<?= $total ?>">
+  <!-- Total SEM frete: é sobre ele que a escolha de entrega é simulada, sem
+       precisar reinterpretar os valores já formatados na tela. -->
+  <input type="hidden" id="ck-total-sem-frete" value="<?= max(0, $subtotal - $desconto) ?>">
 
   <!-- CTA -->
   <?php if ($ctaUrl): ?>

@@ -21,7 +21,7 @@ declare(strict_types=1);
  * https://developers.google.com/data-manager (referência atual)
  *
  * O que NÃO muda (e está certo aqui): a autenticação (JWT via
- * GoogleAuthService), o hash SHA-256 da PII, o gclid como
+ * GoogleAdsAuthService), o hash SHA-256 da PII, o gclid como
  * identificador, a classificação de erro. O que MUDA: os nomes
  * exatos dentro do payload JSON.
  */
@@ -33,13 +33,13 @@ final class GoogleAdsAdapter implements ConversionAdapter
     // Confirme o path/versão atual na doc (muda entre v1.x).
     private const ENDPOINT = 'https://datamanager.googleapis.com/v1/events:ingest';
 
-    private GoogleAuthService $auth;
+    private GoogleAdsAuthService $auth;
     private string $conversionActionId;
     private ?string $customerId;
 
     public function __construct()
     {
-        $this->auth = new GoogleAuthService();
+        $this->auth = new GoogleAdsAuthService();
         // IDs do .env — configurados no Google Ads
         $this->conversionActionId = (string)(getenv('GOOGLE_CONVERSION_ACTION_ID') ?? '');
         $this->customerId = getenv('GOOGLE_ADS_CUSTOMER_ID') ?: null;
@@ -157,36 +157,32 @@ final class GoogleAdsAdapter implements ConversionAdapter
         ];
     }
 
-    /** PII hasheada — reusa o HashingService (formato Google = mesmo SHA-256). */
+    /**
+     * PII hasheada para Enhanced Conversions.
+     *
+     * Os HASHES vêm de ConversionService::piiHasheada() — a mesma fonte
+     * do Meta e do Advanced Matching do Pixel. Antes existia aqui uma
+     * query e uma separação de nome próprias: duas normalizações do
+     * mesmo dado, que divergiriam no primeiro ajuste feito só de um
+     * lado, sem erro visível.
+     *
+     * O que continua específico do Google são os NOMES dos campos —
+     * e só eles.
+     *
+     * 🔶 VALIDAR os nomes (hashedEmail? emailAddress?): variam por
+     * versão da Data Manager API. Os VALORES estão corretos.
+     */
     private function montarUserDataHasheada(int $clienteId): array
     {
-        if ($clienteId <= 0) return [];
-        try {
-            $db = Database::getInstance()->getConnection();
-            $st = $db->prepare(
-                "SELECT u.nome, u.email, c.telefone
-                 FROM clientes c JOIN usuarios u ON u.id = c.usuario_id
-                 WHERE c.id = ? LIMIT 1"
-            );
-            $st->execute([$clienteId]);
-            $r = $st->fetch();
-            if (!$r) return [];
+        $pii = ConversionService::piiHasheada($clienteId);
+        if ($pii === []) return [];
 
-            $nome = trim((string)($r['nome'] ?? ''));
-            $partes = preg_split('/\s+/', $nome);
-
-            // 🔶 VALIDAR os nomes de campo (emailAddress? hashedEmail?)
-            // A estrutura de Enhanced Conversions: identificadores
-            // hasheados. Nomes exatos variam por versão.
-            return array_filter([
-                'hashedEmail'       => HashingService::email($r['email'] ?? null),
-                'hashedPhoneNumber' => HashingService::phone($r['telefone'] ?? null),
-                'hashedFirstName'   => HashingService::name($partes[0] ?? ''),
-                'hashedLastName'    => HashingService::name(count($partes) > 1 ? end($partes) : ''),
-            ]);
-        } catch (\Throwable $e) {
-            return [];
-        }
+        return array_filter([
+            'hashedEmail'       => $pii['em'] ?? null,
+            'hashedPhoneNumber' => $pii['ph'] ?? null,
+            'hashedFirstName'   => $pii['fn'] ?? null,
+            'hashedLastName'    => $pii['ln'] ?? null,
+        ]);
     }
 
     /** Busca o gclid do visitante (tracking_clicks — já capturado). */

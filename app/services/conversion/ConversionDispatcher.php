@@ -32,10 +32,15 @@ final class ConversionDispatcher
     {
         $this->db = Database::getInstance()->getConnection();
 
-        // ── Registro dos destinos (só Meta por ora) ──
-        // Adicionar Google/TikTok = mais uma linha aqui.
+        // ── Registro dos destinos ──
+        // O array_filter por estaConfigurado() é o que torna seguro
+        // registrar um destino ainda sem credencial: sem as variáveis
+        // de ambiente ele simplesmente não entra na lista, e o
+        // dispatcher segue como se não existisse. Nenhum evento falha
+        // nem vai pro dead_letter por causa disso.
         $this->adapters = array_filter([
             new MetaCapiAdapter(),
+            new GoogleAdsAdapter(),
         ], fn(ConversionAdapter $a) => $a->estaConfigurado());
     }
 

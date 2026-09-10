@@ -120,10 +120,47 @@
     _carregarFrete(END_ID, cep);
   });
 
+  // ── Simulação ao escolher a entrega ─────────────────
+  //
+  // O frete e o total do resumo só mudavam depois de confirmar e recarregar.
+  // Quem está comparando SEDEX com Express precisa ver o efeito no total
+  // ANTES de decidir — é justamente para isso que a comparação existe.
+  //
+  // É só simulação: o valor que vale é o que o servidor grava em
+  // /checkout/payment/shipping/save, ao confirmar.
+  function _simularFrete(valor) {
+    valor = Number(valor) || 0;
+
+    var $frete = $('#summary-frete-valor');
+    if ($frete.length) {
+      $frete.html(valor === 0
+        ? '<strong style="color:var(--c-success);font-weight:800;">GRÁTIS</strong>'
+        : 'R$ ' + _fmtBRL(valor));
+    }
+
+    // A base já vem sem frete do servidor; somar aqui evita reinterpretar
+    // números que estão na tela só como texto formatado.
+    var base = parseFloat($('#ck-total-sem-frete').val());
+    if (isNaN(base)) return;
+
+    var total = Math.max(0, base + valor);
+    $('#ck-total').text('R$ ' + _fmtBRL(total));
+    $('#mobile-bar-total').text('R$ ' + _fmtBRL(total));
+  }
+
+  function _fmtBRL(v) {
+    return Number(v).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  }
+
   // Habilita botão de confirmação ao selecionar frete
   $(document).on('click', '.frete-card', function () {
     setTimeout(function () {
       if ($('.frete-card.is-selected').length) $('#btn-confirm-frete').prop('disabled', false);
+
+      // O FreteUI marca a seleção no seu próprio tempo; por isso o valor é
+      // lido aqui dentro do mesmo timeout, e não no clique.
+      var sel = window.FreteUI ? window.FreteUI.getSelected() : null;
+      if (sel) _simularFrete(sel.valor);
     }, 60);
   });
 

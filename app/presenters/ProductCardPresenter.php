@@ -146,6 +146,22 @@ final class ProductCardPresenter
             'favoritado' => !empty($p['favoritado']),
             'tem_clip'   => !empty($lotes['clips'][$id]),
 
+            // Os três abaixo já vinham na linha (`SELECT p.*`) e eram jogados
+            // fora. Custam zero consultas.
+            //
+            // `vendidos` é o contador da tabela; o app arredonda para baixo
+            // ("+100 vendidos") e só mostra a partir de 10 — "2 vendidos" não
+            // convence ninguém.
+            //
+            // `tem_variacoes` decide o que o botão de comprar do card faz: com
+            // variação ele abre a página do produto para escolher; sem, adiciona
+            // direto. Não é detalhe: AppCartService::adicionar() aceita produto
+            // com variação SEM sku_id, e o item entra no carrinho sem tamanho,
+            // sem cor e sem estoque. O app é quem tem de barrar.
+            'vendidos'      => (int)($p['vendidos'] ?? 0),
+            'destaque'      => !empty($p['destaque']),
+            'tem_variacoes' => !empty($p['tem_variacao']),
+
             'compatibilidade' => self::compatibilidade($id, $ctx, $lotes),
 
             'badges' => self::badges($preco, $disponivel, $estoqueTotal),

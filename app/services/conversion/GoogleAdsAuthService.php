@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /**
- * app/services/conversion/GoogleAuthService.php
+ * app/services/conversion/GoogleAdsAuthService.php
  *
  * Autenticação server-to-server pra Data Manager API do Google.
  * Fluxo: JWT assinado pela chave da service account → troca por
@@ -20,7 +20,7 @@ declare(strict_types=1);
  * do cron (um cron processa um lote e morre, então não precisa de
  * cache persistente — mas se quiser, dá pra cachear no Valkey).
  */
-final class GoogleAuthService
+final class GoogleAdsAuthService
 {
     private const TOKEN_URL = 'https://oauth2.googleapis.com/token';
     private const SCOPE     = 'https://www.googleapis.com/auth/datamanager';

@@ -201,8 +201,18 @@ $faqs = [
 
   // Pix vencido não é pagável: o banco recusa o QR e a adquirente já baixou a
   // cobrança. Mostrar o código nesse caso só produz uma tentativa frustrada.
-  $pixNoPrazo = $pixCopiaCola
-             && (empty($pixExpiraEm) || strtotime((string) $pixExpiraEm) > time());
+  // SEM PRAZO GRAVADO NÃO É "PARA SEMPRE".
+  //
+  // Tratar a coluna vazia como "ainda no prazo" fazia um Pix de meses atrás
+  // continuar oferecido como pagável — e 17 dos 36 pedidos pix deste banco não
+  // têm `pix_expira_em`. O piso aqui é o mesmo do cli/pedidos-expirar.php: 30
+  // minutos da criação. Um Pix recém-criado sem a coluna segue pagável pela
+  // janela mínima; um antigo, não.
+  $pixLimite = !empty($pixExpiraEm)
+      ? strtotime((string) $pixExpiraEm)
+      : strtotime((string) $pedido['criado_em']) + (30 * 60);
+
+  $pixNoPrazo = $pixCopiaCola && $pixLimite > time();
 
   $boletoUrl   = $pedido['boleto_url']             ?? null;
   $boletoLinha = $pedido['boleto_linha_digitavel'] ?? null;
