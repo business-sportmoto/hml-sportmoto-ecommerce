@@ -323,7 +323,11 @@ $(function () {
   });
 
   (function ($) {
-    var BASE = BASE_URL || '';
+    // ADMIN_URL, nao BASE_URL: o sino do painel le a caixa do ADMIN, em
+    // /admin/notificacoes/*. As rotas do site (/notificacoes/*) sao a caixa
+    // do CLIENTE — apontar para la fazia o painel mostrar (ou tentar
+    // mostrar) as notificacoes da loja.
+    var BASE = (typeof ADMIN_URL !== 'undefined' ? ADMIN_URL : (BASE_URL || '') + '/admin');
     var CSRF = CSRF_TOKEN || '';
 
     // ── Estado ────────────────────────────────────────────────────────────────
@@ -516,8 +520,13 @@ $(function () {
       var url  = $it.data('url');
 
       if ($it.hasClass('ntf-item-naolida')) {
+        // `_csrf_token`, nao `csrf_token`: e o nome que
+        // Controller::verifyCsrf() le (CSRF_TOKEN_NAME, config.php:66).
+        // Com a chave errada isto respondia 403 sempre — e como a linha ja
+        // perdia a classe de "nao lida" na hora, parecia ter funcionado ate
+        // o proximo poll trazer o badge de volta.
         $.post(BASE + '/notificacoes/marcar-lida', {
-          nu_id: nuId, csrf_token: CSRF
+          nu_id: nuId, _csrf_token: CSRF
         }, function () { atualizarBadge(); }, 'json');
         $it.removeClass('ntf-item-naolida').find('.ntf-dot').remove();
       }
@@ -525,7 +534,7 @@ $(function () {
     });
 
     $('#ntf-marcar-todas').on('click', function () {
-      $.post(BASE + '/notificacoes/marcar-todas', { csrf_token: CSRF }, function (r) {
+      $.post(BASE + '/notificacoes/marcar-todas', { _csrf_token: CSRF }, function (r) {
         if (r && r.ok) {
           $('.ntf-item').removeClass('ntf-item-naolida');
           $('.ntf-dot').remove();

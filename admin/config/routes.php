@@ -54,6 +54,16 @@ AdminRouter::post('/seo-ia/gerar', 'SeoIaController@gerar');
 AdminRouter::get ('/seo-ia/modelos',  'SeoIaController@modelos');
 AdminRouter::post('/seo-ia/aplicado', 'SeoIaController@aplicado');
 
+// ── Sino do painel: a caixa do ADMIN ──────────────────────
+//
+// Mesmas respostas das rotas do site, outra caixa. Quem decide de quem é a
+// caixa e a ROTA, nao a sessao — a mesma pessoa pode ser admin e cliente, e
+// nesse caso tem duas. Ver app/controllers/NotificacaoController.php.
+AdminRouter::get ('/notificacoes/contador',     'NotificacaoController@contadorAdmin');
+AdminRouter::get ('/notificacoes/listar',       'NotificacaoController@listarAdmin');
+AdminRouter::post('/notificacoes/marcar-lida',  'NotificacaoController@marcarLidaAdmin');
+AdminRouter::post('/notificacoes/marcar-todas', 'NotificacaoController@marcarTodasAdmin');
+
 AdminRouter::get ('/notificacoes',                       'NotificacaoAdminController@index');
 AdminRouter::post('/notificacoes/enviar',                'NotificacaoAdminController@enviar');
 AdminRouter::post('/notificacoes/upload-img',            'NotificacaoAdminController@uploadImg');

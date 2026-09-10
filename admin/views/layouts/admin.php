@@ -220,6 +220,10 @@ include __DIR__ . '/../partials/_sprite.php';
 
 <script>
   const BASE_URL   = '<?= BASE_URL ?>';
+  // Era definido pagina a pagina (clientes/show, configuracoes/bling, pwa…),
+  // e o admin.js ja o usava fora dessas — ReferenceError silencioso em toda
+  // pagina que nao declarasse. Aqui vale para o painel inteiro.
+  const ADMIN_URL  = '<?= ADMIN_URL ?>';
   
   const CSRF_TOKEN = '<?= \SecurityHelper::generateCsrf() ?>';
 
