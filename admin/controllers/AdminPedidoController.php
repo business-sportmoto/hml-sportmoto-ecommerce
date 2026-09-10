@@ -133,8 +133,39 @@ class AdminPedidoController extends Controller {
             true
         );
 
+        // ── Transação que pagou o pedido ──────────────────
+        //
+        // O card de pagamento só tinha o formulário de edição: nada dizia
+        // QUAL cobrança respondeu por este pedido. Sem o identificador não há
+        // como conferir nada com a adquirente.
+        //
+        // A mais recente basta: tentativas anteriores (recusa, retentativa)
+        // aparecem inteiras em /admin/pagamentos/analise, que é para onde o
+        // número aponta.
+        $stmtTx = $db->prepare(
+            "SELECT t.charge_id, t.status, t.metodo, t.parcelas, t.valor_centavos,
+                    t.provedor_real, t.criado_em, t.pago_em,
+                    g.codigo AS gateway_codigo, g.nome AS gateway_nome
+               FROM pgto_transacoes t
+          LEFT JOIN pgto_gateways g ON g.id = t.gateway_id
+              WHERE t.order_id_loja = ?
+           ORDER BY t.id DESC
+              LIMIT 1"
+        );
+        $stmtTx->execute([$pedido['codigo']]);
+        $transacao = $stmtTx->fetch(\PDO::FETCH_ASSOC) ?: null;
+
+        // Rastreio: o drawer de /admin/logistica/rastreios abre por id, e
+        // `pedidos.codigo_rastreio` guarda só o texto.
+        $stmtRas = $db->prepare(
+            "SELECT id, codigo_rastreio, status_interno, previsao_entrega, atraso
+               FROM log_rastreios WHERE pedido_id = ? ORDER BY id DESC LIMIT 1"
+        );
+        $stmtRas->execute([$id]);
+        $rastreio = $stmtRas->fetch(\PDO::FETCH_ASSOC) ?: null;
+
         $this->render('pedidos/show', compact(
-            'pedido','itens','historico','nf',
+            'pedido','itens','historico','nf','transacao','rastreio',
             'todosStatus','statusMap','statusDef','podeEditarItens','motivosCancel',
             'blingMap','blingLogs','cupomUso','promocoesAplicadas',
             'etiquetaCtx','mostraEtiqueta'

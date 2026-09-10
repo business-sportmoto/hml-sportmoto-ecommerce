@@ -1725,6 +1725,18 @@
         }).fail(function () { Toast.update(tid, { type: 'error', message: 'Erro de comunicação.', duration: 3500 }); });
     }
 
+    /*  EXPOSTO GLOBALMENTE.
+     *
+     *  O drawer vivia preso a esta tela, mas a informação que ele mostra —
+     *  situação, previsão e timeline — é a mesma que o operador procura na
+     *  listagem de pedidos e dentro do pedido. Reescrever lá seria manter
+     *  duas timelines que divergem na primeira mudança.
+     *
+     *  `logistica.js` já é carregado em TODAS as telas do admin (ver
+     *  layouts/admin.php), então basta expor: nada novo é baixado.
+     */
+    window.LogRastreio = { abrir: function (id, token) { abrirDetalhe(id, token); } };
+
     function abrirDetalhe(id, token) {
         var tid = Toast.loading('Abrindo...');
         api('GET', '/obter', { id: id }).done(function (r) {

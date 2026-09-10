@@ -4800,3 +4800,116 @@ html[data-theme="dark"] .fp-selo{background:var(--pgto-surface-2) !important;col
   color: var(--ia-azul-txt, #1d4ed8);
   font-weight: 700;
 }
+
+/* ══ Pedidos — transação, KPIs e paginação ═══════════════════════ */
+
+/* Transação que pagou o pedido. Fica acima do formulário porque quem abre o
+   card de pagamento normalmente quer conferir, não editar. */
+.ap-tx {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  background: var(--bg-2, #f9fafb);
+}
+.ap-tx-linha { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ap-tx-rot {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .5px; color: var(--text-3, #9ca3af);
+}
+.ap-tx-id {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: 'SF Mono', Monaco, Consolas, monospace;
+  font-size: 12.5px; font-weight: 600;
+  color: var(--primary, #2563eb); text-decoration: none;
+  word-break: break-all;
+}
+.ap-tx-id:hover { text-decoration: underline; }
+.ap-tx-copiar {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; flex-shrink: 0;
+  border: 1px solid var(--border, #e5e7eb); border-radius: 6px;
+  background: #fff; color: var(--text-3, #9ca3af); cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.ap-tx-copiar:hover { color: var(--primary, #2563eb); border-color: currentColor; }
+.ap-tx-copiar.is-copiado { color: #16a34a; border-color: #16a34a; }
+
+.ap-tx-meta {
+  display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px;
+  font-size: 11.5px; color: var(--text-3, #9ca3af);
+}
+.ap-tx-status {
+  font-weight: 700; text-transform: uppercase; letter-spacing: .3px;
+  padding: 0 6px; border-radius: 4px;
+  background: #f1f5f9; color: #475569;
+}
+.ap-tx-status--aprovado { background: #dcfce7; color: #15803d; }
+.ap-tx-status--recusado,
+.ap-tx-status--falhou,
+.ap-tx-status--erro     { background: #fee2e2; color: #b91c1c; }
+.ap-tx-status--pendente { background: #fef3c7; color: #b45309; }
+
+/* Variação do mês no card de receita. */
+.stat-delta { font-size: 11px; font-weight: 800; margin-left: 4px; }
+.stat-delta.is-up   { color: #16a34a; }
+.stat-delta.is-down { color: #dc2626; }
+.stat-card-hint {
+  display: block; margin-top: 2px;
+  font-size: 10.5px; color: var(--text-3, #9ca3af);
+}
+
+/* Paginação: antes era a lista inteira de páginas em linha. */
+.pagination {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; padding: 14px 0;
+}
+.pagination-info { font-size: 12px; color: var(--text-3, #9ca3af); }
+.pagination-nav  { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.pagination-gap  { padding: 0 2px; color: var(--text-3, #9ca3af); }
+.pagination-item--nav { font-size: 15px; line-height: 1; }
+
+/* ── Saúde dos envios (badge na listagem de pedidos) ─────────────
+   Só aparece quando há atraso: aviso permanente vira paisagem. */
+.ap-saude-badge {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 14px; padding: 10px 14px;
+  border: 1px solid #fecaca; border-left: 3px solid #dc2626;
+  border-radius: 10px; background: #fef2f2;
+  text-decoration: none; color: #991b1b;
+  transition: background .15s;
+}
+.ap-saude-badge:hover { background: #fee2e2; }
+.ap-saude-ico { display: flex; color: #dc2626; flex-shrink: 0; }
+.ap-saude-txt { font-size: 13px; flex: 1; }
+.ap-saude-txt strong { font-size: 15px; font-weight: 800; }
+.ap-saude-cta { font-size: 12px; font-weight: 700; white-space: nowrap; }
+
+/* ── Código de rastreio clicável ─────────────────────────────────
+   Vira botão porque abre o drawer da torre — parecer texto e reagir ao
+   clique é pior do que não reagir. */
+.ap-rastreio-btn {
+  font-family: 'SF Mono', Monaco, Consolas, monospace;
+  font-size: 10.5px; letter-spacing: .3px;
+  padding: 2px 6px; border-radius: 5px; cursor: pointer;
+  color: var(--primary, #2563eb);
+  background: transparent; border: 1px dashed transparent;
+  transition: background .15s, border-color .15s;
+}
+.ap-rastreio-btn:hover {
+  background: #eff6ff; border-color: #bfdbfe;
+}
+.ap-rastreio-btn--lg { font-size: 13px; padding: 6px 10px; }
+
+.ap-ras {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 12px 18px 0;
+}
+.ap-ras-prev, .ap-ras-atraso {
+  font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 99px;
+}
+.ap-ras-prev   { background: #f1f5f9; color: #475569; }
+.ap-ras-atraso { background: #fee2e2; color: #b91c1c; }
+
+/* Botão de reimprimir etiqueta na listagem de pedidos. */
+.ap-reimprimir { cursor: pointer; }
+.ap-reimprimir.is-carregando { opacity: .5; pointer-events: none; }
+.ap-reimprimir:disabled { opacity: .5; cursor: default; }

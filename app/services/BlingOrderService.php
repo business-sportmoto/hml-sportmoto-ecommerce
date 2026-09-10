@@ -433,13 +433,31 @@ class BlingOrderService
              WHERE id = ?"
         )->execute([$linkPdf ?: null, $linkXml ?: null, $chave ?: null, $pedidoId]);
 
-        // Avança status para em_separacao se ainda estava em pagamento_aprovado
-        $status = $this->db->prepare("SELECT status_pedido FROM pedidos WHERE id = ?")->execute([$pedidoId]);
-        if ($this->db->query("SELECT status_pedido FROM pedidos WHERE id = {$pedidoId}")->fetchColumn() === 'pagamento_aprovado') {
-            $this->db->prepare("UPDATE pedidos SET status_pedido = 'em_separacao' WHERE id = ?")->execute([$pedidoId]);
-            $this->db->prepare(
-                "INSERT INTO pedido_historico (pedido_id, status_novo, observacao) VALUES (?, 'em_separacao', 'NF-e emitida pelo Bling')"
-            )->execute([$pedidoId]);
+        // ── A NF-e é o que move o pedido para "Em separação" ──────────
+        //
+        // Passa por AdminPedidoService::mudarStatus(), e não por UPDATE cru
+        // como antes. O UPDATE gravava o status e o histórico à mão, pulando
+        // tudo o que o serviço faz: notificação ao cliente, flags do status e
+        // a trilha coerente. O cliente nunca era avisado de que a nota saiu.
+        //
+        // É a mesma correção já aplicada ao webhook da Safra — UPDATE cru ao
+        // lado de uma transição de status sempre acaba divergindo dela.
+        $st = $this->db->prepare("SELECT status_pedido FROM pedidos WHERE id = ? LIMIT 1");
+        $st->execute([$pedidoId]);
+        $atual = (string) ($st->fetchColumn() ?: '');
+
+        if ($atual === 'pagamento_aprovado') {
+            try {
+                (new AdminPedidoService())->mudarStatus(
+                    $pedidoId, 'em_separacao', 'NF-e emitida pelo Bling.', 0, null
+                );
+            } catch (\Throwable $e) {
+                // A nota já foi gravada acima. Falhar aqui não pode desfazer
+                // isso — fica no log para conciliação.
+                LogService::exception($e, 'warning', 'int', [
+                    'acao' => 'nfe_avanca_status', 'pedido_id' => $pedidoId,
+                ]);
+            }
         }
     }
 

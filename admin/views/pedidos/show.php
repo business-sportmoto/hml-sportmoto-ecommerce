@@ -478,6 +478,26 @@ $ordemAtual = (int)($statusDef['ordenacao'] ?? 0);
       <!-- RASTREIO -->
       <div class="admin-card ap-action-card" style="margin-top:14px;">
         <h3 class="ap-card-title">Código de rastreio</h3>
+
+        <?php if (!empty($rastreio['id'])): ?>
+        <!-- Atalho para o drawer da torre. O campo abaixo continua sendo o
+             lugar de CORRIGIR o código; aqui é o de consultar a situação. -->
+        <div class="ap-ras">
+          <button type="button" class="ap-rastreio-btn ap-rastreio-btn--lg"
+                  data-rastreio="<?= (int) $rastreio['id'] ?>"
+                  title="Ver situação e timeline">
+            <?= View::e($rastreio['codigo_rastreio'] ?: ($pedido['codigo_rastreio'] ?? '—')) ?>
+          </button>
+          <?php if (!empty($rastreio['atraso'])): ?>
+            <span class="ap-ras-atraso">em atraso</span>
+          <?php elseif (!empty($rastreio['previsao_entrega'])): ?>
+            <span class="ap-ras-prev">
+              previsão <?= date('d/m', strtotime((string) $rastreio['previsao_entrega'])) ?>
+            </span>
+          <?php endif; ?>
+        </div>
+        <?php endif; ?>
+
         <div style="padding:14px 18px 16px;display:flex;flex-direction:column;gap:10px;">
           <input type="text" id="input-rastreio" class="form-control"
                  value="<?= View::e($pedido['codigo_rastreio'] ?? '') ?>"
@@ -541,9 +561,85 @@ $ordemAtual = (int)($statusDef['ordenacao'] ?? 0);
       </div>
       <?php endif; ?>
 
+      <?php
+      // O admin não tem handler genérico para [data-copiar] — o do checkout
+      // vive na área do cliente. Este é local ao card, para não criar uma
+      // dependência nova só por um botão.
+      ?>
+      <script>
+      // Abre o drawer de rastreio (logistica.js, exposto em window.LogRastreio).
+      document.addEventListener('click', function (e) {
+        var r = e.target.closest('[data-rastreio]');
+        if (r && window.LogRastreio) {
+          window.LogRastreio.abrir(r.getAttribute('data-rastreio'));
+        }
+      });
+
+      document.addEventListener('click', function (e) {
+        var b = e.target.closest('.ap-tx-copiar');
+        if (!b || !navigator.clipboard) return;
+        var txt = b.getAttribute('data-copiar') || '';
+        if (!txt) return;
+        navigator.clipboard.writeText(txt).then(function () {
+          b.classList.add('is-copiado');
+          setTimeout(function () { b.classList.remove('is-copiado'); }, 1600);
+        });
+      });
+      </script>
+
       <!-- PAGAMENTO -->
       <div class="admin-card ap-action-card" style="margin-top:14px;">
         <h3 class="ap-card-title">Dados de pagamento</h3>
+
+        <?php if (!empty($transacao)): ?>
+        <!-- A transação vem ANTES do formulário: é informação de consulta, e
+             quem abre este card normalmente quer conferir, não editar. -->
+        <div class="ap-tx">
+          <div class="ap-tx-linha">
+            <span class="ap-tx-rot">Transação</span>
+            <a href="<?= BASE_URL ?>/admin/pagamentos/analise/<?= (int) $pedido['id'] ?>"
+               class="ap-tx-id"
+               title="Ver tentativas e antifraude deste pedido">
+              <?= View::e($transacao['charge_id'] ?? '—') ?>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2.2" stroke-linecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            </a>
+            <button type="button" class="ap-tx-copiar"
+                    data-copiar="<?= View::e($transacao['charge_id'] ?? '') ?>"
+                    title="Copiar identificador">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2.2" stroke-linecap="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>
+            </button>
+          </div>
+
+          <div class="ap-tx-meta">
+            <?php if (!empty($transacao['gateway_nome'])): ?>
+              <span><?= View::e($transacao['gateway_nome']) ?></span>
+            <?php endif; ?>
+            <?php
+              // `provedor_real` só aparece quando houve orquestrador no meio —
+              // o gateway cadastrado é o intermediário, e quem processou de
+              // fato está aqui. Repetir o mesmo nome duas vezes só confunde.
+              $real = trim((string) ($transacao['provedor_real'] ?? ''));
+              $gw   = trim((string) ($transacao['gateway_codigo'] ?? ''));
+              if ($real !== '' && strcasecmp($real, $gw) !== 0):
+            ?>
+              <span>via <?= View::e($real) ?></span>
+            <?php endif; ?>
+            <?php if (!empty($transacao['status'])): ?>
+              <span class="ap-tx-status ap-tx-status--<?= View::e($transacao['status']) ?>">
+                <?= View::e($transacao['status']) ?>
+              </span>
+            <?php endif; ?>
+            <?php if (!empty($transacao['pago_em'])): ?>
+              <span>pago em <?= date('d/m/Y H:i', strtotime((string) $transacao['pago_em'])) ?></span>
+            <?php elseif (!empty($transacao['criado_em'])): ?>
+              <span>criada em <?= date('d/m/Y H:i', strtotime((string) $transacao['criado_em'])) ?></span>
+            <?php endif; ?>
+          </div>
+        </div>
+        <?php endif; ?>
+
         <div style="padding:14px 18px 16px;display:flex;flex-direction:column;gap:10px;">
           <select id="sel-status-pag" class="form-control">
             <?php foreach ($pagMap as $k => $v): ?>

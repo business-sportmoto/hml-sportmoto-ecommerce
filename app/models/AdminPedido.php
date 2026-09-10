@@ -36,6 +36,19 @@ class AdminPedido {
                 p.subtotal, p.desconto, p.frete, p.total,
                 p.cartao_bandeira, p.cartao_ultimos_4,
                 p.pago_em, p.codigo_rastreio,
+                -- Id do rastreio: `pedidos.codigo_rastreio` é só o texto, e o
+                -- drawer de /admin/logistica/rastreios abre por id. Sem ele o
+                -- código na tela não teria como virar clique.
+                (SELECT r.id FROM log_rastreios r
+                  WHERE r.pedido_id = p.id ORDER BY r.id DESC LIMIT 1) AS rastreio_id,
+                -- Etiqueta para reimpressão. `cancelada` fica de fora: rótulo
+                -- cancelado não se reimprime, e oferecer o botão levaria o
+                -- operador a colar na caixa uma etiqueta que a transportadora
+                -- não aceita mais.
+                (SELECT e.id FROM log_etiquetas e
+                  WHERE e.pedido_id = p.id
+                    AND e.status IN ('emitida', 'postada', 'aguardando_postagem')
+               ORDER BY e.id DESC LIMIT 1) AS etiqueta_id,
                 p.criado_em, p.atualizado_em,
                 -- Cliente
                 u.nome           AS cliente_nome,
@@ -89,11 +102,31 @@ class AdminPedido {
     /**
      * KPIs da listagem (contagem e soma por status).
      */
+    /**
+     * KPIs do topo da listagem.
+     *
+     * VARRIA A TABELA INTEIRA. Cada `SUM(CASE ...)` sem WHERE lê todos os
+     * pedidos que já existiram, e a receita somava desde sempre — um número
+     * que só cresce e não diz nada sobre o mês.
+     *
+     * Agora o recorte é temporal: as contagens operacionais olham os últimos
+     * 90 dias (pedido de um ano atrás não está "aguardando pagamento" de
+     * verdade), e a receita compara ESTE mês com o anterior.
+     */
     public function getKpis(): array {
         $stmt = $this->db->query(
             "SELECT
                 COUNT(*)                                                    AS total,
-                SUM(CASE WHEN status_pagamento = 'aprovado' THEN total END) AS receita_total,
+
+                -- Receita do mês corrente e do mês anterior, para a variação.
+                SUM(CASE WHEN status_pagamento = 'aprovado'
+                     AND criado_em >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
+                    THEN total END)                                         AS receita_mes,
+                SUM(CASE WHEN status_pagamento = 'aprovado'
+                     AND criado_em >= DATE_FORMAT(CURDATE() - INTERVAL 1 MONTH, '%Y-%m-01')
+                     AND criado_em <  DATE_FORMAT(CURDATE(), '%Y-%m-01')
+                    THEN total END)                                         AS receita_mes_anterior,
+
                 SUM(CASE WHEN status_pedido = 'aguardando_pagamento'
                     AND DATE(criado_em) = CURDATE() THEN 1 END)             AS novos_hoje,
                 SUM(CASE WHEN status_pedido = 'em_separacao'   THEN 1 END) AS em_separacao,
@@ -101,9 +134,45 @@ class AdminPedido {
                 SUM(CASE WHEN status_pedido = 'cancelado'       THEN 1 END) AS cancelados,
                 SUM(CASE WHEN status_pagamento = 'pendente'
                     AND status_pedido != 'cancelado' THEN 1 END)            AS aguardando_pagamento
-             FROM pedidos"
+             FROM pedidos
+             -- 90 dias cobre o ciclo de vida real de um pedido (compra,
+             -- separação, envio, entrega, prazo de devolução). Fora disso o
+             -- registro é histórico, não operação.
+             WHERE criado_em >= CURDATE() - INTERVAL 90 DAY
+                OR criado_em >= DATE_FORMAT(CURDATE() - INTERVAL 1 MONTH, '%Y-%m-01')"
         );
-        return $stmt->fetch();
+
+        $k = $stmt->fetch() ?: [];
+
+        // ── Entregas atrasadas ────────────────────────────────────
+        //
+        // MESMA FONTE DA TORRE DE CONTROLE: `log_rastreios.atraso`, que é o
+        // que LogisticaService::kpis() já usa. Recalcular por conta aqui — com
+        // outra noção de "atrasado" — faria as duas telas discordarem sobre o
+        // mesmo pedido, e ninguém saberia qual acreditar.
+        //
+        // Entregue não conta: o atraso já aconteceu e não há o que fazer. O
+        // badge é para agir.
+        $k['entregas_atrasadas'] = (int) $this->db->query(
+            "SELECT COUNT(*)
+               FROM log_rastreios r
+               JOIN pedidos p ON p.id = r.pedido_id
+              WHERE r.atraso = 1
+                AND r.status_interno <> 'entregue'
+                AND p.status_pedido NOT IN ('cancelado', 'devolvido')"
+        )->fetchColumn();
+
+        $mes      = (float) ($k['receita_mes']           ?? 0);
+        $anterior = (float) ($k['receita_mes_anterior']  ?? 0);
+
+        // Sem base de comparação não existe percentual. Devolver 100% quando o
+        // mês anterior foi zero seria inventar um crescimento que ninguém pode
+        // conferir — a view mostra "sem base" nesse caso.
+        $k['receita_variacao'] = $anterior > 0
+            ? round((($mes - $anterior) / $anterior) * 100, 1)
+            : null;
+
+        return $k;
     }
 
     /**
@@ -722,9 +791,23 @@ class AdminPedido {
         $params = [];
 
         if (!empty($filtros['q'])) {
-            $like     = '%' . $filtros['q'] . '%';
-            $where[]  = "(p.codigo LIKE ? OR u.nome LIKE ? OR u.email LIKE ?)";
-            $params   = array_merge($params, [$like, $like, $like]);
+            $like   = '%' . $filtros['q'] . '%';
+            $campos = "p.codigo LIKE ? OR u.nome LIKE ? OR u.email LIKE ?";
+            $params = array_merge($params, [$like, $like, $like]);
+
+            // CPF: o atendimento tem o documento na mão, não o código do
+            // pedido. `clientes` já entra no JOIN, então é só usar.
+            //
+            // O termo é normalizado para dígitos porque a coluna guarda 11
+            // dígitos crus (verificado: nenhum registro com pontuação) e o
+            // operador digita "123.456.789-00" com a formatação da tela.
+            $soDigitos = preg_replace('/\D/', '', (string) $filtros['q']) ?? '';
+            if (strlen($soDigitos) >= 3) {
+                $campos  .= " OR REPLACE(REPLACE(REPLACE(c.cpf, '.', ''), '-', ''), ' ', '') LIKE ?";
+                $params[] = '%' . $soDigitos . '%';
+            }
+
+            $where[] = '(' . $campos . ')';
         }
         if (!empty($filtros['status_pedido'])) {
             $where[] = "p.status_pedido = ?";

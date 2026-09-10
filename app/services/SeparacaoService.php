@@ -7,7 +7,11 @@ declare(strict_types=1);
 // Painel de separacao (checkout de expedicao).
 //
 // Cobre o caminho do pedido pago ate a etiqueta:
-//   pagamento_aprovado -> imprime a lista de separacao -> em_separacao
+//   pagamento_aprovado -> imprime a lista (carimba separacao_impressa_em)
+//   NF-e emitida no Bling -> em_separacao
+//
+//   O carimbo e o status sao coisas diferentes de proposito: o primeiro e
+//   controle interno da estacao, o segundo e o que o cliente le na conta dele.
 //   -> confere os itens bipando o EAN -> emite a etiqueta (so com NF-e).
 //
 // ── Como o item chega na variacao ──────────────────────────────────────────
@@ -46,7 +50,10 @@ class SeparacaoService
      */
     public function fila(array $filtros = []): array
     {
-        $where  = ['p.status_pedido = :st'];
+        // O que ainda não foi impresso. Antes o pedido saía da fila porque
+        // MUDAVA de status; agora sai porque foi carimbado — sem mentir para o
+        // cliente sobre o estágio da compra.
+        $where  = ['p.status_pedido = :st', 'p.separacao_impressa_em IS NULL'];
         $params = [':st' => self::STATUS_ORIGEM];
 
         if (!empty($filtros['busca'])) {
@@ -128,17 +135,34 @@ class SeparacaoService
         $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
         if (!$ids) return ['ok' => false, 'msg' => 'Nenhum pedido informado.'];
 
-        $movidos = [];
+        $movidos   = [];
         $ignorados = [];
+
         foreach ($ids as $id) {
             $atual = $this->statusDoPedido($id);
-            if ($atual === null)                     { $ignorados[$id] = 'não encontrado'; continue; }
-            if ($atual === self::STATUS_SEPARACAO)   { $movidos[] = $id; continue; }   // ja estava
-            if ($atual !== self::STATUS_ORIGEM)      { $ignorados[$id] = "status '{$atual}'"; continue; }
+            if ($atual === null)                { $ignorados[$id] = 'não encontrado'; continue; }
+            if ($atual !== self::STATUS_ORIGEM
+                && $atual !== self::STATUS_SEPARACAO) { $ignorados[$id] = "status '{$atual}'"; continue; }
 
-            $r = $this->pedidos->mudarStatus($id, self::STATUS_SEPARACAO, 'Lista de separação impressa.', $adminId, false);
-            if (!empty($r['ok'])) $movidos[] = $id;
-            else                  $ignorados[$id] = $r['msg'] ?? 'falha ao mudar status';
+            // CARIMBA, NÃO MOVE.
+            //
+            // O status é o que o CLIENTE lê. Movê-lo aqui fazia ele ver "Em
+            // separação" assim que alguém imprimia a lista — antes de existir
+            // nota fiscal. Agora `em_separacao` vem só da NF do Bling, e a
+            // estação usa o carimbo para saber o que já saiu da fila.
+            $this->db->prepare(
+                "UPDATE pedidos SET separacao_impressa_em = NOW()
+                  WHERE id = ? AND separacao_impressa_em IS NULL"
+            )->execute([$id]);
+
+            // Fica no histórico: quem confere a trilha precisa saber quando a
+            // lista foi impressa, mesmo sem mudança de status.
+            $this->db->prepare(
+                "INSERT INTO pedido_historico (pedido_id, status_novo, observacao, admin_id, criado_em)
+                 VALUES (?, ?, 'Lista de separação impressa.', ?, NOW())"
+            )->execute([$id, $atual, $adminId ?: null]);
+
+            $movidos[] = $id;
         }
 
         return ['ok' => true, 'movidos' => $movidos, 'ignorados' => $ignorados];
@@ -248,7 +272,10 @@ class SeparacaoService
         $st = $this->db->prepare(
             "SELECT DISTINCT frete_servico
                FROM pedidos
-              WHERE status_pedido IN (:a, :b)
+              -- Parenteses obrigatorios: AND liga mais forte que OR, e sem
+              -- eles o primeiro ramo perderia o filtro de frete_servico.
+              WHERE (   (status_pedido = :a AND separacao_impressa_em IS NULL)
+                     OR  status_pedido = :b )
                 AND frete_servico IS NOT NULL AND frete_servico <> ''
            ORDER BY frete_servico"
         );

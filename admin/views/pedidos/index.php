@@ -82,11 +82,49 @@ $pagMap = [
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
       </div>
       <div class="stat-card-body">
-        <span class="stat-card-value"><?= PriceHelper::format((float)($kpis['receita_total'] ?? 0)) ?></span>
-        <span class="stat-card-label">Receita total</span>
+        <?php
+        $recMes = (float) ($kpis['receita_mes'] ?? 0);
+        $recAnt = (float) ($kpis['receita_mes_anterior'] ?? 0);
+        $recVar = $kpis['receita_variacao'] ?? null;   // null = sem base
+        ?>
+        <span class="stat-card-value"><?= PriceHelper::format($recMes) ?></span>
+        <span class="stat-card-label">
+          Receita do mês
+          <?php if ($recVar !== null): ?>
+            <span class="stat-delta <?= $recVar >= 0 ? 'is-up' : 'is-down' ?>">
+              <?= $recVar >= 0 ? '▲' : '▼' ?> <?= number_format(abs($recVar), 1, ',', '.') ?>%
+            </span>
+          <?php endif; ?>
+        </span>
+        <span class="stat-card-hint">
+          <?php if ($recVar !== null): ?>
+            mês anterior: <?= PriceHelper::format($recAnt) ?>
+          <?php else: ?>
+            sem receita no mês anterior para comparar
+          <?php endif; ?>
+        </span>
       </div>
     </div>
   </div>
+
+  <?php $atrasadas = (int) ($kpis['entregas_atrasadas'] ?? 0); ?>
+  <?php if ($atrasadas > 0): ?>
+  <!-- Saúde dos envios.
+       Só aparece quando há atraso: um aviso permanente vira paisagem e para
+       de ser lido. O número vem da MESMA fonte da torre (log_rastreios.atraso)
+       para as duas telas não discordarem. -->
+  <a href="<?= BASE_URL ?>/admin/logistica" class="ap-saude-badge">
+    <span class="ap-saude-ico">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2.2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    </span>
+    <span class="ap-saude-txt">
+      <strong><?= $atrasadas ?></strong>
+      entrega<?= $atrasadas === 1 ? '' : 's' ?> em atraso
+    </span>
+    <span class="ap-saude-cta">Ver na torre de controle →</span>
+  </a>
+  <?php endif; ?>
 
   <!-- Filtros -->
   <form method="GET" class="admin-filters">
@@ -163,7 +201,15 @@ $pagMap = [
               </a>
               <?php if ($p['codigo_rastreio']): ?>
                 <div style="margin-top:3px;">
-                  <code style="font-size:10.5px;color:var(--text-2);"><?= View::e($p['codigo_rastreio']) ?></code>
+                  <?php if (!empty($p['rastreio_id'])): ?>
+                    <button type="button" class="ap-rastreio-btn"
+                            data-rastreio="<?= (int) $p['rastreio_id'] ?>"
+                            title="Ver situação e timeline">
+                      <?= View::e($p['codigo_rastreio']) ?>
+                    </button>
+                  <?php else: ?>
+                    <code style="font-size:10.5px;color:var(--text-2);"><?= View::e($p['codigo_rastreio']) ?></code>
+                  <?php endif; ?>
                 </div>
               <?php endif; ?>
             </td>
@@ -204,6 +250,14 @@ $pagMap = [
               <div><small class="txt-muted"><?= date('H:i', strtotime($p['criado_em'])) ?></small></div>
             </td>
             <td class="text-right">
+              <?php if (!empty($p['etiqueta_id'])): ?>
+              <button type="button" class="btn-icon ap-reimprimir"
+                      data-etiqueta="<?= (int) $p['etiqueta_id'] ?>"
+                      title="Reimprimir etiqueta de envio">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2.2" stroke-linecap="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+              </button>
+              <?php endif; ?>
               <a href="<?= ADMIN_URL ?>/pedidos/<?= $p['id'] ?>" class="btn-icon" title="Abrir">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
               </a>
@@ -215,14 +269,113 @@ $pagMap = [
     </div>
 
     <!-- Paginação -->
-    <?php if ($totalPages > 1): ?>
+    <?php if ($totalPages > 1):
+      // JANELA DE PÁGINAS, não a lista inteira.
+      //
+      // O laço anterior imprimia TODAS as páginas: com alguns milhares de
+      // pedidos isso vira centenas de links, quebra a linha e some com o
+      // conteúdo. Aqui saem no máximo 7 números em volta da página atual,
+      // com primeira e última sempre acessíveis.
+      $janela = 2;
+      $ini    = max(1, $page - $janela);
+      $fim    = min($totalPages, $page + $janela);
+
+      $url = static fn(int $p): string =>
+          '?' . http_build_query(array_merge($filtros, ['page' => $p]));
+    ?>
     <div class="pagination">
-      <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-        <a href="?<?= http_build_query(array_merge($filtros, ['page'=>$i])) ?>"
-           class="pagination-item <?= $page===$i?'is-active':'' ?>"><?= $i ?></a>
-      <?php endfor; ?>
+      <span class="pagination-info">
+        <?= number_format($total, 0, ',', '.') ?>
+        pedido<?= $total === 1 ? '' : 's' ?> ·
+        página <?= $page ?> de <?= $totalPages ?>
+      </span>
+
+      <div class="pagination-nav">
+        <?php if ($page > 1): ?>
+          <a href="<?= $url($page - 1) ?>" class="pagination-item pagination-item--nav"
+             rel="prev" aria-label="Página anterior">‹</a>
+        <?php endif; ?>
+
+        <?php if ($ini > 1): ?>
+          <a href="<?= $url(1) ?>" class="pagination-item">1</a>
+          <?php if ($ini > 2): ?><span class="pagination-gap">…</span><?php endif; ?>
+        <?php endif; ?>
+
+        <?php for ($i = $ini; $i <= $fim; $i++): ?>
+          <a href="<?= $url($i) ?>"
+             class="pagination-item <?= $page === $i ? 'is-active' : '' ?>"
+             <?= $page === $i ? 'aria-current="page"' : '' ?>><?= $i ?></a>
+        <?php endfor; ?>
+
+        <?php if ($fim < $totalPages): ?>
+          <?php if ($fim < $totalPages - 1): ?><span class="pagination-gap">…</span><?php endif; ?>
+          <a href="<?= $url($totalPages) ?>" class="pagination-item"><?= $totalPages ?></a>
+        <?php endif; ?>
+
+        <?php if ($page < $totalPages): ?>
+          <a href="<?= $url($page + 1) ?>" class="pagination-item pagination-item--nav"
+             rel="next" aria-label="Próxima página">›</a>
+        <?php endif; ?>
+      </div>
     </div>
     <?php endif; ?>
     <?php endif; ?>
   </div>
 </div>
+
+<script>
+/* Abre o drawer de rastreio de /admin/logistica/rastreios.
+   Delegado: as linhas da tabela podem ser repaginadas. */
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('[data-rastreio]');
+  if (!b) return;
+  if (!window.LogRastreio) { return; }   // logistica.js ainda carregando
+  window.LogRastreio.abrir(b.getAttribute('data-rastreio'));
+});
+
+/* ── Reimprimir etiqueta ─────────────────────────────────────────
+ *
+ * Chama o MESMO endpoint da tela de etiquetas. Ele já sabe de onde tirar o
+ * PDF (rótulo salvo, URL externa ou busca na transportadora) e registra o
+ * evento `reimpressa` — escrever outra rota aqui duplicaria essa cascata e as
+ * duas divergiriam na primeira mudança.
+ */
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('.ap-reimprimir');
+  if (!b || b.disabled) return;
+
+  var id = b.getAttribute('data-etiqueta');
+  b.disabled = true;
+  b.classList.add('is-carregando');
+
+  // A aba é aberta ANTES do POST, e não no callback: navegador bloqueia
+  // window.open disparado de dentro de uma resposta assíncrona, porque ali já
+  // não há gesto do usuário. Abrimos vazia e preenchemos quando o PDF chega.
+  var aba = window.open('', '_blank');
+
+  fetch(BASE_URL + '/admin/logistica/etiquetas/imprimir', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'id=' + encodeURIComponent(id) + '&_csrf_token=' + encodeURIComponent(window.CSRF_TOKEN || ''),
+  })
+    .then(function (r) { return r.json(); })
+    .then(function (res) {
+      b.disabled = false;
+      b.classList.remove('is-carregando');
+
+      if (res && res.ok && res.url_pdf) {
+        if (aba) aba.location = res.url_pdf;
+        else     window.location = res.url_pdf;
+        return;
+      }
+      if (aba) aba.close();
+      adminToast((res && res.erro) || 'Não foi possível reimprimir a etiqueta.', 'error');
+    })
+    .catch(function () {
+      b.disabled = false;
+      b.classList.remove('is-carregando');
+      if (aba) aba.close();
+      adminToast('Erro de comunicação ao reimprimir.', 'error');
+    });
+});
+</script>

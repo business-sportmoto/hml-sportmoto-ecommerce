@@ -140,25 +140,60 @@ if (!$end) $end = [
 ];
 
 // ── FAQs ──────────────────────────────────────────────
+//
+// Cada tópico aponta para a CATEGORIA REAL da Central de Ajuda — os slugs
+// existem em `help_faq_categorias` e são os mesmos de /ajuda. Antes o cliente
+// lia a resposta curta e ficava sem para onde ir se ela não bastasse; agora a
+// resposta termina no assunto completo.
+$ajudaCats = [
+    'pedidos-entregas' => 'Pedidos e Entregas',
+    'pagamento'        => 'Pagamento',
+    'troca-devolucao'  => 'Troca e Devolução',
+];
+
+$linkAjuda = static function (string $slug) use ($ajudaCats): string {
+    if (!isset($ajudaCats[$slug])) return '';
+    return '<a class="faq-mais" href="' . BASE_URL . '/ajuda/categoria/' . $slug . '">'
+         . 'Ver tudo sobre ' . $ajudaCats[$slug]
+         . ' <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+         . ' stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg></a>';
+};
+
 $faqs = [
     ['id'=>'rastreio','title'=>'Como rastrear meu pedido?',
      'body'=> $rastreio
         ? '<p>Código de rastreio: <strong class="faq-tracking-code">' . View::e($rastreio) . '</strong></p><a href="https://rastreamento.correios.com.br/app/index.php?ot=' . urlencode($rastreio) . '" target="_blank" class="btn btn-primary btn-sm" style="margin-top:10px">Rastrear nos Correios</a>'
-        : '<p>O código de rastreio estará disponível após o envio do pedido.</p>'],
+        : '<p>O código de rastreio estará disponível após o envio do pedido.</p>',
+     'cat'=>'pedidos-entregas',
+     'icone'=>'<rect x="1" y="7" width="14" height="10" rx="1.5"/><path d="M15 10h4l3 3v4h-7z"/><circle cx="6" cy="18.5" r="1.6"/><circle cx="18" cy="18.5" r="1.6"/>'],
     ['id'=>'cancelar','title'=>'Posso cancelar meu pedido?',
      'body'=> match(true) {
         $isCancelado => '<p>Este pedido já foi cancelado. Se houve cobrança, o estorno ocorre em até <strong>5 dias úteis</strong>.</p>',
         $isEntregue  => '<p>Como o pedido foi entregue, não é possível cancelar. Solicite uma troca/devolução em até 7 dias corridos.</p>',
         in_array($statusPedido,['enviado','em_separacao']) => '<p>O pedido já está em processo de envio. <a href="' . BASE_URL . '/contato">Entre em contato</a> o mais rápido possível informando o código <strong>#' . View::e($pedido['codigo']) . '</strong>.</p>',
         default => '<p>Entre em contato pelo <a href="' . BASE_URL . '/contato">formulário</a> informando o código <strong>#' . View::e($pedido['codigo']) . '</strong>.</p>',
-     }],
+     },
+     'cat'=>'pedidos-entregas',
+     'icone'=>'<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>'],
     ['id'=>'nf','title'=>'Como obter a nota fiscal?',
-     'body'=> '<p>A nota fiscal é enviada ao seu e-mail após a confirmação do pagamento. Caso não tenha recebido, entre em contato informando o código <strong>#' . View::e($pedido['codigo']) . '</strong>.</p>'],
+     'body'=> '<p>A nota fiscal é enviada ao seu e-mail após a confirmação do pagamento. Caso não tenha recebido, entre em contato informando o código <strong>#' . View::e($pedido['codigo']) . '</strong>.</p>',
+     'cat'=>'pagamento',
+     'icone'=>'<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>'],
     ['id'=>'troca','title'=>'Solicitar troca ou devolução',
      'body'=> $isEntregue || $isTroca
-        ? '<p>Prazo de <strong>7 dias corridos</strong> após o recebimento (CDC, Art. 49).</p><button type="button" class="btn btn-primary btn-sm" style="margin-top:10px" onclick="abrirTrocaDevolucao(' . (int)$pedido['id'] . ')">Iniciar solicitação</button>'
-        : '<p>Disponível após a <strong>confirmação de entrega</strong>. Status atual: <strong>' . View::e($st['label']) . '</strong>.</p>'],
+        ? '<p>Prazo de <strong>7 dias corridos</strong> após o recebimento (CDC, Art. 49).</p><a href="' . BASE_URL . '/minha-conta/devolucao/nova/' . (int)$pedido['id'] . '" class="btn btn-primary btn-sm" style="margin-top:10px">Iniciar solicitação</a>'
+        : '<p>Disponível após a <strong>confirmação de entrega</strong>. Status atual: <strong>' . View::e($st['label']) . '</strong>.</p>',
+     'cat'=>'troca-devolucao',
+     'icone'=>'<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/>'],
 ];
+
+// O link da categoria entra no fim de cada resposta. Fica no corpo, e não
+// numa área separada do modal, para o cliente encontrá-lo no momento em que
+// termina de ler e conclui que precisa de mais.
+foreach ($faqs as &$__f) {
+    $__f['body'] .= $linkAjuda($__f['cat'] ?? '');
+}
+unset($__f);
 ?>
 
 <div class="customer-page order-detail-page">
@@ -1034,6 +1069,46 @@ $faqs = [
       </div>
       <?php endif; ?>      
 
+      <!-- ══ PRECISA DE AJUDA? ═════════════════════════════
+           Logo abaixo da linha do tempo, e não na coluna lateral: é aqui que
+           chega quem acabou de conferir o status e não entendeu o que ele
+           significa. Em largura total os quatro tópicos cabem lado a lado, em vez
+           da lista espremida que sobrava na lateral. -->
+      <div class="od-card od-faqs-card">
+        <div class="od-faqs-head">
+          <h3 class="od-card-title od-faqs-title">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            Precisa de ajuda?
+          </h3>
+          <div class="od-faqs-acoes">
+            <a href="<?= BASE_URL ?>/ajuda/categoria/pedidos-entregas" class="od-faqs-link">
+              Central de Ajuda
+            </a>
+            <a href="<?= BASE_URL ?>/contato?pedido=<?= urlencode((string) $pedido['codigo']) ?>"
+               class="od-faqs-link od-faqs-link--contato">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2.2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+              Falar com a gente
+            </a>
+          </div>
+        </div>
+
+        <div class="od-faqs-list">
+          <?php foreach ($faqs as $faq): ?>
+          <button type="button" class="od-faq-btn"
+                  data-title="<?= htmlspecialchars($faq['title'], ENT_QUOTES) ?>"
+                  data-body="<?= htmlspecialchars($faq['body'], ENT_QUOTES) ?>">
+            <span class="od-faq-ico">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2" stroke-linecap="round"><?= $faq['icone'] ?? '' ?></svg>
+            </span>
+            <span class="od-faq-txt"><?= View::e($faq['title']) ?></span>
+            <svg class="od-faq-seta" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <?php endforeach; ?>
+        </div>
+      </div>
+
       <!-- Avaliação dos produtos -->
       <?php if ($isEntregue): ?>
       <div class="od-card od-rating-card">
@@ -1422,32 +1497,99 @@ $faqs = [
       </div>
       <?php endif; ?>
 
-      <!-- FAQs -->
-      <div class="od-card od-card--sm od-faqs-card">
-        <h3 class="od-card-title">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          Dúvidas sobre o pedido
-        </h3>
-        <div class="od-faqs-list">
-          <?php foreach ($faqs as $faq): ?>
-          <button type="button" class="od-faq-btn"
-                  data-title="<?= htmlspecialchars($faq['title'], ENT_QUOTES) ?>"
-                  data-body="<?= htmlspecialchars($faq['body'], ENT_QUOTES) ?>">
-            <span><?= View::e($faq['title']) ?></span>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-          </button>
-          <?php endforeach; ?>
-        </div>
-      </div>
-
-      
-
     </div><!-- /.od-aside -->
   </div><!-- /.od-grid -->
 
 </div>
 
 <style>
+/* ── Dúvidas sobre o pedido ──────────────────────────
+   Card de largura total, abaixo da linha do tempo. Os quatro tópicos ficam
+   lado a lado; na lateral eles viravam uma lista espremida com o texto
+   quebrando em duas linhas.
+
+   ATENÇÃO À ESPECIFICIDADE: customer.css tem `.od-faq-btn span { flex:1 }`,
+   escrito quando o botão tinha UM span só. Com o ícone virando um segundo
+   span, aquela regra esticava a caixa do ícone e espremia o título. Por isso
+   as regras abaixo qualificam com `.od-faqs-card` — precisam vencer. */
+.od-faqs-card { border: 1px solid #e2e8f0; margin-bottom: 16px; }
+
+.od-faqs-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  padding: 0 20px 0 0;
+}
+.od-faqs-card .od-faqs-title {
+  font-size: 14px; border: none; margin-bottom: 0; padding-bottom: 14px;
+}
+.od-faqs-acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Dois tópicos por linha.
+   O card vive em `.od-main`, que é `1fr` de `1fr 330px` — sobra menos largura
+   do que parece. Com quatro colunas o título voltaria a quebrar em duas
+   linhas, que foi exatamente o defeito que motivou este ajuste. */
+.od-faqs-card .od-faqs-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  padding: 14px 16px 16px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.od-faqs-card .od-faq-btn {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 12px; border: 1px solid #e2e8f0; border-radius: 10px;
+  background: #fff; cursor: pointer; text-align: left;
+  transition: border-color .15s, background .15s;
+}
+.od-faqs-card .od-faq-btn:hover { background: #f8fafc; border-color: #cbd5e1; }
+
+/* `flex: 0 0 32px` e não só `width`: a regra herdada é `flex:1`, e sem zerar
+   o grow a caixa continuaria esticando. */
+.od-faqs-card .od-faq-ico {
+  flex: 0 0 32px;
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px;
+  border-radius: 8px; background: #f1f5f9; color: #475569;
+}
+.od-faqs-card .od-faq-ico svg {
+  width: 16px; height: 16px; stroke: currentColor; flex-shrink: 0;
+}
+.od-faqs-card .od-faq-txt {
+  flex: 1 1 auto; min-width: 0;
+  font-size: 12.5px; font-weight: 600; line-height: 1.35; color: #334155;
+}
+.od-faqs-card .od-faq-seta { flex: 0 0 auto; stroke: #cbd5e1; }
+.od-faqs-card .od-faq-btn:hover .od-faq-seta { stroke: #64748b; }
+
+.od-faqs-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12.5px; font-weight: 700; text-decoration: none;
+  padding: 6px 12px; border-radius: 8px;
+  color: #2563eb; background: #eff6ff; border: 1px solid #bfdbfe;
+  transition: background .15s;
+}
+.od-faqs-link:hover { background: #dbeafe; }
+.od-faqs-link--contato {
+  color: #475569; background: #f8fafc; border-color: #e2e8f0;
+}
+.od-faqs-link--contato:hover { background: #f1f5f9; }
+
+@media (max-width: 520px) {
+  .od-faqs-card .od-faqs-list { grid-template-columns: 1fr; }
+  .od-faqs-head { padding-right: 16px; }
+  .od-faqs-acoes { width: 100%; }
+  .od-faqs-link { flex: 1; justify-content: center; }
+}
+
+/* Link para a categoria, no fim de cada resposta do modal. */
+.faq-mais {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-top: 14px; font-size: 12.5px; font-weight: 700;
+  color: #2563eb; text-decoration: none;
+}
+.faq-mais:hover { text-decoration: underline; }
+
 /* ── Card de Devolução ───────────────────────────── */
 .od-returns-card { border-left: 3px solid #f59e0b; }
 .od-dev-header {
@@ -1601,5 +1743,56 @@ $faqs = [
 
 <!-- Modal de troca/devolução removido — usa /minha-conta/devolucao/nova/{id} -->
 <script>
+/* ── Modal das dúvidas do pedido ────────────────────────────────
+ *
+ * O #faq-modal já existia no HTML, mas nada nunca o abriu: este bloco
+ * de script estava vazio. Os botões pareciam clicáveis e não faziam nada.
+ *
+ * DELEGADO no document, e não ligado a cada botão: o card já mudou de lugar
+ * duas vezes (lateral → abaixo da timeline → abaixo do histórico), e um
+ * `querySelectorAll` no carregamento quebraria de novo no próximo movimento.
+ */
+(function () {
+  var modal = document.getElementById('faq-modal');
+  if (!modal) return;
 
+  var titulo = document.getElementById('faq-modal-title');
+  var corpo  = document.getElementById('faq-modal-body');
+
+  function abrir(t, html) {
+    if (titulo) titulo.textContent = t;
+    // innerHTML: o corpo é montado no servidor, com View::e nos valores que
+    // vêm do pedido. O que chega aqui é HTML nosso, não entrada do cliente.
+    if (corpo) corpo.innerHTML = html;
+
+    modal.hidden = false;
+    // Um quadro antes da classe: sem isso o browser aplica opacity:1 junto
+    // com o display e a transição não roda.
+    requestAnimationFrame(function () { modal.classList.add('is-open'); });
+    document.body.style.overflow = 'hidden';
+  }
+
+  function fechar() {
+    modal.classList.remove('is-open');
+    document.body.style.overflow = '';
+    // 220ms = a duração da transição no customer.css. Esconder antes cortaria
+    // o fade pela metade.
+    setTimeout(function () { modal.hidden = true; }, 220);
+  }
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.od-faq-btn');
+    if (btn) {
+      abrir(btn.getAttribute('data-title') || '', btn.getAttribute('data-body') || '');
+      return;
+    }
+    if (e.target.closest('#faq-modal-close')) { fechar(); return; }
+    // Clique no fundo escuro (e não dentro da caixa) fecha.
+    if (e.target === modal) fechar();
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !modal.hidden) fechar();
+  });
+})();
 </script>
