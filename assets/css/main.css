@@ -11687,3 +11687,98 @@ body.nlm-aberta { overflow: hidden; }
   .nlm_body { padding: 26px 18px 20px; }
   .nlm_codigo { font-size: 19px; letter-spacing: 6px; }
 }
+
+/* ── Sino de notificações (header do site) ────────────────
+ *
+ * O botão herda .header-action, então acompanha o resto da barra sozinho.
+ * O que vive aqui é só o que é do sino: o badge, o painel e as linhas.
+ */
+.sino-wrap { position: relative; }
+.sino-btn { background: none; border: none; font-family: inherit; }
+.sino-icon-wrap { position: relative; display: inline-flex; }
+
+/* Mesma linguagem do .cart-count, que já está ao lado na barra. */
+.sino-badge {
+  position: absolute; top: -8px; right: -8px;
+  background: var(--c-primary); color: #fff;
+  font-size: 10px; font-weight: 700; min-width: 18px; height: 18px;
+  border-radius: 9px; padding: 0 4px;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.sino-painel {
+  position: absolute; top: calc(100% + 10px); right: 0;
+  width: min(370px, calc(100vw - 24px));
+  background: var(--c-bg); color: var(--c-text);
+  border: 1px solid var(--c-border); border-radius: var(--radius-md);
+  box-shadow: 0 12px 32px rgba(0,0,0,.16);
+  z-index: 1200;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+
+/* `display` de classe VENCE o `[hidden] { display: none }` da folha do
+ * navegador — seletor de classe (0,1,0) contra seletor de atributo da UA.
+ * Sem estas duas linhas o painel nunca fechava e o badge aparecia mostrando
+ * zero, mesmo com o `hidden` no elemento e o JS funcionando certo.
+ *
+ * É o padrão que o projeto já usa: .od-modal-overlay[hidden],
+ * .lb-overlay[hidden], .rsum-wrap[hidden].
+ */
+.sino-badge[hidden],
+.sino-painel[hidden] { display: none; }
+.sino-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 12px 14px; border-bottom: 1px solid var(--c-border);
+}
+.sino-head strong { font-size: 14px; }
+.sino-link {
+  background: none; border: none; padding: 0; cursor: pointer;
+  color: var(--c-primary); font-size: 12px; font-weight: 600; font-family: inherit;
+}
+.sino-link:hover { text-decoration: underline; }
+
+/* Altura pelo conteúdo, com teto: 2 avisos não devem abrir um painel vazio
+   de 420px, e 40 não devem empurrar a página. */
+.sino-lista { max-height: min(420px, 60vh); overflow-y: auto; }
+
+.sino-item {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 11px 14px; border-bottom: 1px solid var(--c-border);
+  text-decoration: none; color: inherit;
+}
+.sino-item:last-child { border-bottom: none; }
+.sino-item:hover { background: var(--c-bg-alt, rgba(0,0,0,.03)); }
+.sino-item--nova { background: rgba(37,99,235,.06); }
+.sino-item--nova:hover { background: rgba(37,99,235,.10); }
+
+.sino-ponto {
+  width: 8px; height: 8px; border-radius: 50%;
+  margin-top: 6px; flex-shrink: 0;
+}
+.sino-item-corpo { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sino-item-titulo { font-size: 13.5px; font-weight: 600; line-height: 1.35; }
+.sino-item--nova .sino-item-titulo { font-weight: 700; }
+.sino-item-msg {
+  font-size: 12.5px; color: var(--c-text-muted, #6b7280); line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.sino-item-meta { font-size: 11px; color: var(--c-text-muted, #9ca3af); }
+
+.sino-vazio {
+  padding: 26px 14px; text-align: center;
+  font-size: 13px; color: var(--c-text-muted, #6b7280); margin: 0;
+}
+.sino-foot { padding: 8px 14px; border-top: 1px solid var(--c-border); text-align: center; }
+.sino-foot:empty, .sino-foot:has(> [hidden]:only-child) { display: none; }
+
+/* No celular o painel ancora na borda da tela, não no botão — 370px
+   pendurado num botão a 8px da direita sai da viewport. */
+@media (max-width: 560px) {
+  .sino-painel { position: fixed; top: auto; right: 8px; left: 8px; width: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sino-item { transition: none; }
+}

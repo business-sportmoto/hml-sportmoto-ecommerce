@@ -59,7 +59,13 @@ $categoryModel    = new Category();
   <script>
     const BASE_URL   = '<?= BASE_URL ?>';
     const UPLOAD_URL = '<?= UPLOAD_URL ?>';
-    const CSRF_TOKEN = '<?= $csrf_token ?? '' ?>';
+    // Gerado aqui, como em views/layouts/customer.php.
+    //
+    // Antes vinha de `$csrf_token ?? ''` — variavel que NENHUM controller
+    // passa para a view. Ou seja: string vazia em toda pagina da loja, e todo
+    // POST que dependesse desta global tomava 403 "Token invalido.". Sem erro
+    // no console, sem pista: a requisicao saia, o servidor recusava.
+    const CSRF_TOKEN = '<?= SecurityHelper::generateCsrf() ?>';
     
     
   </script>
@@ -68,6 +74,7 @@ $categoryModel    = new Category();
   <script src="<?= PerformanceHelper::assetVersion('js/jquery.min.js') ?>"></script>
   
   <script src="<?= PerformanceHelper::assetVersion('js/toast.js') ?>" defer></script>
+    <script src="<?= PerformanceHelper::assetVersion('js/sino.js') ?>" defer></script>
   <script src="<?= PerformanceHelper::assetVersion('js/main.js') ?>" defer></script>
   <script src="<?= PerformanceHelper::assetVersion('js/checkout.js') ?>" defer></script>
   <script src="<?= PerformanceHelper::assetVersion('js/master.js') ?>" defer></script>

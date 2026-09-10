@@ -213,6 +213,66 @@ class AdminPedidoService {
             }
         }
 
+        // ── O sino do ADMIN ────────────────────────────────────────────────
+        //
+        // Uma notificação VIVA por pedido, chaveada em `pedido:{id}`. Cada
+        // transição reescreve o texto da mesma linha em vez de empilhar uma
+        // nova — senão o sino acumularia "Aguardando pagamento", "Pagamento
+        // aprovado", "Em separação" sobre a mesma compra, e as duas
+        // primeiras já estariam mentindo quando a terceira chegasse.
+        //
+        // Nem toda transição merece badge. Só as três em que alguém precisa
+        // OLHAR é que devolvem a linha ao topo, não lida:
+        //
+        //   entrou      → tem venda nova para conferir
+        //   aprovado    → pode separar
+        //   cancelado   → precisa desfazer o que já tiver sido feito
+        //
+        // O resto (em separação, enviado, entregue) atualiza o texto em
+        // silêncio: foi o próprio admin que moveu, avisá-lo do que ele acabou
+        // de fazer é ruído.
+        //
+        // Este é o único ponto por onde todo pedido passa — o checkout chama
+        // `mudarStatus($id, 'aguardando_pagamento', 'Pedido criado…')` logo
+        // após o INSERT. Pedido criado à mão no painel não passa aqui.
+        if (class_exists('NotificacaoService')) {
+            try {
+                $destaque = [
+                    'aguardando_pagamento' => 'Pedido novo',
+                    'em_analise'           => 'Pagamento em análise',
+                    'pagamento_aprovado'   => 'Pagamento aprovado',
+                    'cancelado'            => 'Pedido cancelado',
+                    'estornado'            => 'Pedido estornado',
+                ];
+                $chamaAtencao = isset($destaque[$novoStatus]);
+                $rotuloAdmin  = $destaque[$novoStatus] ?? ($statusDef['label'] ?? $novoStatus);
+                $valor        = isset($pedido['total'])
+                              ? ' — R$ ' . number_format((float)$pedido['total'], 2, ',', '.')
+                              : '';
+
+                NotificacaoService::sincronizar(
+                    'pedido:' . (int)$pedido['id'],
+                    [
+                        'categoria' => 'pedido',
+                        'tipo'      => 'admin_pedido_' . $novoStatus,
+                        'titulo'    => "{$rotuloAdmin} · #{$pedido['codigo']}{$valor}",
+                        'mensagem'  => trim((string)$observacao) !== ''
+                                     ? mb_strimwidth((string)$observacao, 0, 160, '…')
+                                     : 'Abrir o pedido no painel.',
+                        'url'       => '/admin/pedidos/' . (int)$pedido['id'],
+                        'contexto'  => ['pedido_id' => (int)$pedido['id'], 'status' => $novoStatus],
+                    ],
+                    // `vendedor` entra: ele opera pedido (CLAUDE.md §4.2).
+                    // `editor` e `estoque` não — catálogo e estoque não
+                    // precisam saber que entrou venda.
+                    NotificacaoService::destinatariosAdmin(['super', 'gerente', 'vendedor']),
+                    $chamaAtencao
+                );
+            } catch (\Throwable $e) {
+                error_log('[AdminPedidoService] sino do admin: ' . $e->getMessage());
+            }
+        }
+
         // Monta avisos (retroação de status)
         $avisos = [];
         if ($retrocedeu) {

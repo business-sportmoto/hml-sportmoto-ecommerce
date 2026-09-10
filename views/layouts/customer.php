@@ -233,6 +233,7 @@ $icons = [
   
   <script src="<?= PerformanceHelper::assetVersion('js/jquery.min.js') ?>"></script>
   <script src="<?= PerformanceHelper::assetVersion('js/toast.js') ?>" defer></script>
+    <script src="<?= PerformanceHelper::assetVersion('js/sino.js') ?>" defer></script>
   <?php // Controle de tema da pagina de conta; a aplicacao na carga e do <head>. ?>
   <script src="<?= PerformanceHelper::assetVersion('js/tema.js') ?>" defer></script>
   

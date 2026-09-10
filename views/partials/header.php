@@ -245,6 +245,8 @@ function renderDropdownSubs(array $items, int $depth = 0): void {
             <span class="action-label">Favoritos</span>
           </a>
 
+          <?php View::partial('partials/sino-notificacoes'); ?>
+
           <a href="<?= BASE_URL ?>/minha-conta" class="header-action" aria-label="Minha conta">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" stroke-width="2" stroke-linecap="round">

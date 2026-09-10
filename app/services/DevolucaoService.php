@@ -296,6 +296,45 @@ class DevolucaoService {
             $sol = $this->findById($solId);
             $this->email->devolucaoCriada($sol, $pedido);
 
+            // ── O sino do ADMIN ──────────────────────────────────────────
+            //
+            // Devolução aberta é trabalho que chegou: alguém precisa analisar
+            // (ou, se veio pré-aprovada pelo score, emitir a etiqueta). Sem
+            // isto, a solicitação só apareceria para quem lembrasse de abrir
+            // /admin/devolucoes.
+            //
+            // Chave própria por solicitação, e prefixo `devolucao:` — o
+            // pedido 57 e a devolução 57 são coisas diferentes.
+            //
+            // Só `super` e `gerente`: são os que decidem aprovar, negar e
+            // reembolsar. Avisar quem não pode agir é ruído.
+            if (class_exists('NotificacaoService')) {
+                try {
+                    $rotulo = $tipo === 'troca' ? 'Troca' : 'Devolução';
+                    NotificacaoService::sincronizar(
+                        'devolucao:' . $solId,
+                        [
+                            'categoria' => 'pedido',
+                            'tipo'      => 'admin_devolucao_' . $status,
+                            'titulo'    => "{$rotulo} solicitada · #{$pedido['codigo']}"
+                                         . ' — R$ ' . number_format($valorTotal, 2, ',', '.'),
+                            'mensagem'  => $autoAprovar
+                                         ? 'Pré-aprovada pelo score do cliente. Falta emitir a etiqueta reversa.'
+                                         : 'Aguardando análise.',
+                            'url'       => '/admin/devolucoes/' . $solId,
+                            'contexto'  => [
+                                'solicitacao_id' => $solId,
+                                'pedido_id'      => $pedidoId,
+                                'status'         => $status,
+                            ],
+                        ],
+                        NotificacaoService::destinatariosAdmin(['super', 'gerente'])
+                    );
+                } catch (\Throwable $e) {
+                    error_log('[DevolucaoService] sino do admin: ' . $e->getMessage());
+                }
+            }
+
             $this->service->mudarStatus($pedido['id'], 'troca_devolucao', 
                 $autoAprovar ? 'Devolução aprovada, aguarde as instruções para postagem.' : 'Devolução solicitada, aguarde a análise da loja.', 
             0, false);
@@ -342,6 +381,44 @@ class DevolucaoService {
         // Notifica cliente
         $sol = $this->findById($solId);
         $this->email->devolucaoAprovada($sol, $pedido);
+
+        // ── O sino do CLIENTE ────────────────────────────────────────────
+        //
+        // O e-mail acima pode cair em promoções, demorar, ou simplesmente
+        // não ser lido. A aprovação é o momento em que a bola passa para o
+        // cliente — ele precisa postar o produto — e é o aviso que mais
+        // adianta o processo.
+        //
+        // Chave separada da do admin (`devolucao:57:cliente`): é o mesmo
+        // fato, mas com texto escrito para outra pessoa. Assim a aprovação
+        // não sobrescreve a linha que o admin está vendo, nem o contrário.
+        if (class_exists('NotificacaoService')) {
+            try {
+                NotificacaoService::sincronizar(
+                    'devolucao:' . $solId . ':cliente',
+                    [
+                        'categoria' => 'pedido',
+                        'tipo'      => 'devolucao_aprovada',
+                        'titulo'    => 'Sua devolução foi aprovada',
+                        'mensagem'  => 'Assim que o código de postagem sair, ele aparece aqui '
+                                     . 'e chega no seu e-mail.',
+                        'url'       => '/minha-conta/devolucao/' . $solId,
+                        'contexto'  => ['solicitacao_id' => $solId],
+                    ],
+                    [['tipo' => 'cliente', 'id' => (int)$sol['cliente_id']]]
+                );
+
+                // A linha do admin acompanha, mas sem badge novo: foi ele
+                // mesmo que acabou de aprovar.
+                NotificacaoService::atualizarPorChave('devolucao:' . $solId, [
+                    'tipo'     => 'admin_devolucao_aprovado',
+                    'titulo'   => "Devolução aprovada · #{$pedido['codigo']}",
+                    'mensagem' => 'Falta emitir a etiqueta reversa.',
+                ], false);
+            } catch (\Throwable $e) {
+                error_log('[DevolucaoService] sino da aprovacao: ' . $e->getMessage());
+            }
+        }
 
         $obs_status = !empty($obs) ? "Observação do admin: {$obs}" : "";
         $this->service->mudarStatus($pedido['id'], 'troca_devolucao', 'Devolução aprovada pela loja, em breve você vai receber as instruções para devolver. ' . $obs_status, $adminId, false);

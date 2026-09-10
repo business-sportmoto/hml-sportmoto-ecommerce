@@ -122,6 +122,172 @@ class NotificacaoService
     }
 
     // =========================================================================
+    // ASSUNTO CONTINUADO
+    // =========================================================================
+
+    /**
+     * Uma notificação VIVA por assunto.
+     *
+     * Existe uma com esta chave para estes destinatários? Atualiza o texto e
+     * a devolve ao topo, não lida. Não existe? Cria.
+     *
+     * ── POR QUE NÃO CRIAR UMA NOVA A CADA VEZ ────────────────────────────
+     *
+     * Um pedido muda de status cinco ou seis vezes. Sem chave, o sino do
+     * admin acumula cinco linhas sobre a mesma compra — e as quatro
+     * primeiras passam a mentir assim que a quinta chega. Com chave é uma
+     * linha só, sempre com o estado atual.
+     *
+     * ── "VOLTAR AO TOPO" ─────────────────────────────────────────────────
+     *
+     * A listagem ordena por `notificacao_usuarios.criado_em` — a linha do
+     * DESTINATÁRIO, não a da mensagem. Então subir ao topo é carimbar as
+     * filhas, e isso acontece por pessoa: quem já leu volta a ter não lida,
+     * quem nunca abriu continua como estava.
+     *
+     * `$reabrir = false` atualiza o texto sem incomodar: serve para o
+     * estágio intermediário que mantém a linha honesta mas não merece um
+     * badge novo (o admin acabou de mover o pedido ele mesmo).
+     *
+     * @param  string $chave          'pedido:123', 'devolucao:57'
+     * @param  array  $dados          mesmos campos de criar()
+     * @param  array  $destinatarios  [['tipo'=>'admin','id'=>3], ...]
+     * @return int|null               id da notificação mãe
+     */
+    public static function sincronizar(
+        string $chave,
+        array  $dados,
+        array  $destinatarios,
+        bool   $reabrir = true
+    ): ?int {
+        if ($chave === '' || empty($destinatarios)) return null;
+
+        $existente = self::atualizarPorChave($chave, $dados, $reabrir);
+        if ($existente !== null) return $existente;
+
+        $dados['chave'] = $chave;
+        return self::criar($dados, $destinatarios);
+    }
+
+    /**
+     * Atualiza a notificação daquela chave, se houver.
+     *
+     * @return int|null id da mãe, ou null quando não existe nenhuma — que é
+     *                  como quem chama sabe que precisa criar.
+     */
+    public static function atualizarPorChave(string $chave, array $dados, bool $reabrir = true): ?int
+    {
+        if ($chave === '') return null;
+
+        try {
+            $db = Database::getInstance()->getConnection();
+
+            // A mais recente daquela chave. Podem existir várias — a dos
+            // admins e a do cliente contam o mesmo fato com textos
+            // diferentes; quem chama separa pelo prefixo da chave.
+            $st = $db->prepare(
+                "SELECT id FROM notificacoes WHERE chave = :c ORDER BY id DESC LIMIT 1"
+            );
+            $st->execute([':c' => mb_substr($chave, 0, 120)]);
+            $id = (int)($st->fetchColumn() ?: 0);
+            if ($id <= 0) return null;
+
+            $campos = [];
+            $params = [':id' => $id];
+
+            foreach ([
+                'tipo'       => ['tipo',        60],
+                'titulo'     => ['titulo',     160],
+                'mensagem'   => ['mensagem',  null],
+                'url'        => ['url',        500],
+                'imagem_url' => ['imagem_url', 500],
+            ] as $chaveDado => [$coluna, $limite]) {
+                if (!array_key_exists($chaveDado, $dados)) continue;
+                $valor = $dados[$chaveDado];
+                if ($limite !== null && is_string($valor)) {
+                    $valor = mb_substr(trim($valor), 0, $limite);
+                }
+                $campos[] = "{$coluna} = :{$coluna}";
+                $params[":{$coluna}"] = $valor;
+            }
+
+            if (isset($dados['categoria']) && in_array($dados['categoria'], self::CATEGORIAS, true)) {
+                $campos[] = 'categoria = :categoria';
+                $params[':categoria'] = $dados['categoria'];
+            }
+            if (isset($dados['contexto'])) {
+                $campos[] = 'contexto_json = :ctx';
+                $params[':ctx'] = json_encode($dados['contexto'], JSON_UNESCAPED_UNICODE);
+            }
+
+            if ($campos) {
+                $db->prepare("UPDATE notificacoes SET " . implode(', ', $campos) . " WHERE id = :id")
+                   ->execute($params);
+            }
+
+            if ($reabrir) {
+                // Volta ao topo e volta a contar no badge. `criado_em` é o que
+                // a listagem ordena; `lida = 0` é o que o contador soma.
+                $db->prepare(
+                    "UPDATE notificacao_usuarios
+                        SET lida = 0, lida_em = NULL, criado_em = NOW()
+                      WHERE notificacao_id = :id"
+                )->execute([':id' => $id]);
+            }
+
+            return $id;
+
+        } catch (Throwable $e) {
+            self::logErro('atualizarPorChave', $e);
+            return null;
+        }
+    }
+
+    /**
+     * Quem recebe notificação operacional, no formato de destinatários.
+     *
+     * Entrega SÍNCRONA, não broadcast: os admins são poucos, e o broadcast
+     * depende do worker — "entrou um pedido" chegando um minuto depois não
+     * serve para quem está olhando a tela.
+     *
+     * `super` entra sempre. Ele passa em toda verificação de nível
+     * (CLAUDE.md §4.4) e não faria sentido ficar de fora do aviso.
+     *
+     * @param  array $niveis  níveis de `admins.nivel` que devem receber
+     * @return array          [['tipo'=>'admin','id'=>usuarios.id], ...]
+     */
+    public static function destinatariosAdmin(array $niveis = ['super', 'gerente']): array
+    {
+        try {
+            if (!in_array('super', $niveis, true)) $niveis[] = 'super';
+
+            $db = Database::getInstance()->getConnection();
+            $marcas = implode(',', array_fill(0, count($niveis), '?'));
+
+            // `usuarios.id`, não `admins.id`: o destinatário de uma
+            // notificação é a PESSOA. É a regra de ouro dos IDs do
+            // CLAUDE.md §4.1 — as duas tabelas numeram independente.
+            $st = $db->prepare(
+                "SELECT u.id
+                   FROM usuarios u
+                   JOIN admins a ON a.usuario_id = u.id
+                  WHERE a.nivel IN ({$marcas}) AND u.ativo = 1"
+            );
+            $st->execute(array_values($niveis));
+
+            $out = [];
+            foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $uid) {
+                $out[] = ['tipo' => 'admin', 'id' => (int)$uid];
+            }
+            return $out;
+
+        } catch (Throwable $e) {
+            self::logErro('destinatariosAdmin', $e);
+            return [];
+        }
+    }
+
+    // =========================================================================
     // FAN-OUT (chamado pelo worker)
     // =========================================================================
 
@@ -376,15 +542,17 @@ class NotificacaoService
 
         $st = $db->prepare(
             "INSERT INTO notificacoes
-             (categoria, tipo, titulo, mensagem, url, imagem_url, contexto_json,
+             (categoria, tipo, chave, titulo, mensagem, url, imagem_url, contexto_json,
               alvo_tipo, fanout_status, criado_por_tipo, criado_por_id, expira_em)
              VALUES
-             (:cat, :tipo, :tit, :msg, :url, :img, :ctx,
+             (:cat, :tipo, :chave, :tit, :msg, :url, :img, :ctx,
               :alvo, :fst, :cpt, :cpi, :exp)"
         );
         $st->execute([
-            ':cat'  => $categoria,
-            ':tipo' => mb_substr(trim($dados['tipo'] ?? 'geral'), 0, 60),
+            ':cat'   => $categoria,
+            ':tipo'  => mb_substr(trim($dados['tipo'] ?? 'geral'), 0, 60),
+            ':chave' => isset($dados['chave']) && $dados['chave'] !== ''
+                        ? mb_substr((string)$dados['chave'], 0, 120) : null,
             ':tit'  => mb_substr(trim($dados['titulo'] ?? ''), 0, 160),
             ':msg'  => $dados['mensagem'] ?? null,
             ':url'  => $dados['url'] ?? null,
