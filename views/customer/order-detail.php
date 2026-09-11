@@ -170,8 +170,8 @@ $faqs = [
      'body'=> match(true) {
         $isCancelado => '<p>Este pedido já foi cancelado. Se houve cobrança, o estorno ocorre em até <strong>5 dias úteis</strong>.</p>',
         $isEntregue  => '<p>Como o pedido foi entregue, não é possível cancelar. Solicite uma troca/devolução em até 7 dias corridos.</p>',
-        in_array($statusPedido,['enviado','em_separacao']) => '<p>O pedido já está em processo de envio. <a href="' . BASE_URL . '/contato">Entre em contato</a> o mais rápido possível informando o código <strong>#' . View::e($pedido['codigo']) . '</strong>.</p>',
-        default => '<p>Entre em contato pelo <a href="' . BASE_URL . '/contato">formulário</a> informando o código <strong>#' . View::e($pedido['codigo']) . '</strong>.</p>',
+        in_array($statusPedido,['enviado','em_separacao']) => '<p>O pedido já está em processo de envio. Fale com a gente pela <a href="' . BASE_URL . '/ajuda">Central de Ajuda</a> o mais rápido possível, informando o código <strong>#' . View::e($pedido['codigo']) . '</strong>.</p>',
+        default => '<p>Fale com a gente pela <a href="' . BASE_URL . '/ajuda">Central de Ajuda</a>, informando o código <strong>#' . View::e($pedido['codigo']) . '</strong>.</p>',
      },
      'cat'=>'pedidos-entregas',
      'icone'=>'<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>'],
@@ -1084,7 +1084,7 @@ unset($__f);
             <a href="<?= BASE_URL ?>/ajuda/categoria/pedidos-entregas" class="od-faqs-link">
               Central de Ajuda
             </a>
-            <a href="<?= BASE_URL ?>/contato?pedido=<?= urlencode((string) $pedido['codigo']) ?>"
+            <a href="<?= BASE_URL ?>/ajuda"
                class="od-faqs-link od-faqs-link--contato">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                    stroke-width="2.2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>

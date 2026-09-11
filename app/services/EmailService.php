@@ -78,7 +78,7 @@ class EmailService {
                         'cor_padrao'  => ConfigHelper::get('cor_padrao', '#000'),
                         'empresa_endereco' => ConfigHelper::get('empresa_endereco'),
                         'empresa_cnpj'     => ConfigHelper::get('empresa_cnpj'),
-                        'atendimento_url'  => BASE_URL . '/contato',
+                        'atendimento_url'  => BASE_URL . '/ajuda',
                         'politica_privacidade_url' => BASE_URL . '/politica-de-privacidade',
                         'descadastro_url' => BASE_URL . '/email/descadastrar/' . urlencode($para),
                         'url_descadastro' => BASE_URL . '/email/descadastrar/' . urlencode($para),
@@ -472,7 +472,7 @@ HTML;
                 <p style='margin:0;font-size:13.5px;color:#991b1b;'>{$motivo}</p>
             </div>
             <p style='font-size:13.5px;color:#6b7280;'>
-                Dúvidas? Entre em contato pelo nosso <a href='" . BASE_URL . "/contato'>formulário de contato</a>.
+                Dúvidas? Fale com a gente pela nossa <a href='" . BASE_URL . "/ajuda'>Central de Ajuda</a>.
             </p>
         ");
         return $this->enviar($sol['cliente_email'], $assunto, $corpo);

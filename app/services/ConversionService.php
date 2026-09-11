@@ -101,6 +101,14 @@ final class ConversionService
         // até aqui. Com `?:` o vazio cai no id.
         $orderId = (string)(($pedido['codigo'] ?? '') ?: ($pedido['id'] ?? ''));
 
+        // Um Purchase por pedido. O uk_event_id já barraria o segundo INSERT,
+        // mas como exceção logada como erro — e aqui é caminho esperado: a
+        // liberação da análise e um webhook atrasado podem chegar ao mesmo
+        // pedido.
+        if ($orderId !== '' && $this->jaRegistrado(self::PURCHASE, $orderId)) {
+            return;
+        }
+
         $this->registrar(self::PURCHASE, [
             'value'        => (float)($pedido['total'] ?? 0),
             'currency'     => 'BRL',
@@ -109,6 +117,19 @@ final class ConversionService
             'num_items'    => (int)($pedido['num_items'] ?? 0),
             'order_id'     => $orderId,
         ], $clienteId, $pedido['event_time'] ?? null, $orderId); // ← event_id = orderId
+    }
+
+    private function jaRegistrado(string $eventName, string $eventId): bool
+    {
+        try {
+            $st = $this->db->prepare(
+                "SELECT 1 FROM tracking_events WHERE event_id = ? AND event_name = ? LIMIT 1"
+            );
+            $st->execute([$eventId, $eventName]);
+            return (bool) $st->fetchColumn();
+        } catch (\Throwable $e) {
+            return false;   // na dúvida, tenta gravar — o uk_event_id segura
+        }
     }
 
     public function search(string $termo, ?int $clienteId = null): void

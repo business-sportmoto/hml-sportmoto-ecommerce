@@ -67,6 +67,16 @@ final class ConversionDispatcher
 
             $ev['payload'] = json_decode($ev['payload'] ?? '[]', true) ?: [];
 
+            // Compra que deixou de valer não vira conversão. Entre registrar
+            // e enviar há até um minuto de fila (e mais, com retry): pedido
+            // cancelado ou sem pagamento aprovado nesse meio-tempo é pulado.
+            if (($ev['event_name'] ?? '') === 'Purchase' && !$this->compraAindaValida($ev)) {
+                $this->marcarStatus((int)$ev['id'], 'skipped',
+                    'Pedido cancelado ou sem pagamento aprovado antes do envio.');
+                $r['skip']++;
+                continue;
+            }
+
             $consentMarketing = (int)($ev['consent_marketing'] ?? 0) === 1;
             $consentAnalytics = (int)($ev['consent_analytics'] ?? 0) === 1;
 
@@ -130,6 +140,36 @@ final class ConversionDispatcher
     // ══════════════════════════════════════════════════
     // ACESSO AO LEDGER
     // ══════════════════════════════════════════════════
+
+    /**
+     * O pedido da compra ainda está pago e não cancelado?
+     *
+     * Cancelado pela classe_bi, e não pelo slug — o admin pode criar status
+     * de cancelamento próprios. Pedido que não se acha não é decisão deste
+     * guard: segue para o envio.
+     */
+    private function compraAindaValida(array $ev): bool
+    {
+        $ref = (string) (($ev['payload']['order_id'] ?? '') ?: ($ev['event_id'] ?? ''));
+        if ($ref === '') return true;
+
+        $sql = "SELECT p.status_pagamento, ps.classe_bi
+                  FROM pedidos p
+             LEFT JOIN pedido_status ps ON ps.slug = p.status_pedido
+                 WHERE p.%s = ? LIMIT 1";
+        $st = $this->db->prepare(sprintf($sql, 'codigo'));
+        $st->execute([$ref]);
+        $p = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$p && ctype_digit($ref)) {
+            $st = $this->db->prepare(sprintf($sql, 'id'));
+            $st->execute([(int) $ref]);
+            $p = $st->fetch(PDO::FETCH_ASSOC);
+        }
+        if (!$p) return true;
+
+        return ($p['status_pagamento'] ?? '') === 'aprovado'
+            && ($p['classe_bi'] ?? '') !== 'cancelamento';
+    }
 
     /** Eventos pending cuja hora de retry chegou (ou nunca tentados). */
     private function buscarPendentes(): array

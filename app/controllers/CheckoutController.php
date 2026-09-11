@@ -2175,7 +2175,20 @@ class CheckoutController extends Controller {
             // que esta suspenso e a MERCADORIA. Por isso o pagamento fica
             // 'aprovado' e quem segura e o status do pedido, na fila.
             if ($rot->retido) {
-                $statusPagamento = 'aprovado';
+                // Retido só depois de cobrança aprovada — regra do dono
+                // (11/09/2026): aprova o pagamento para saber se há saldo, e
+                // então analisa. O editor não publica fluxo que analise antes
+                // de cobrar (PagamentoNoCatalogo::validarGrafo); isto é a rede
+                // embaixo, para nunca gravar como pago o que ninguém cobrou.
+                if ($rot->aprovado()) {
+                    $statusPagamento = 'aprovado';
+                } else {
+                    $statusPagamento = 'pendente';
+                    LogService::critical('Pedido retido sem cobrança aprovada — o fluxo analisa antes de cobrar', [
+                        'pedido_id' => $pedidoId, 'codigo' => $codigo,
+                        'fluxo_id'  => $rot->fluxoId, 'fluxo_versao' => $rot->fluxoVersao,
+                    ], 'pagamento');
+                }
             } elseif ($rot->aprovado()) {
                 $statusPagamento = 'aprovado';
             } elseif ($rot->pendente()) {
@@ -2240,6 +2253,8 @@ class CheckoutController extends Controller {
                 $pedidoId, 'em_analise',
                 // Explicitamente false: 'em_analise' expõe o antifraude ao
                 // cliente. A config do status também está com notifica=0.
+                // A tela de pedido realizado MOSTRA a análise (decisão de
+                // 11/09/2026); o que continua desligado é o aviso ativo.
                 'Retido pelo antifraude para análise.', 0, false
             );
         }
@@ -2491,7 +2506,11 @@ class CheckoutController extends Controller {
         // event_id = codigo (MESMO do CAPI). Só monta se o pedido
         // está PAGO — não dispara Purchase de pedido não aprovado.
         $purchasePixel = null;
-        if (($pedido['status_pagamento'] ?? '') === 'aprovado') {
+        // Pago e não cancelado. Em análise conta (decisão de 11/09/2026: a
+        // compra chega à Meta já na retenção). Cancelado não: quem volta à
+        // página de um pedido recusado na análise não gera outra conversão.
+        if (($pedido['status_pagamento'] ?? '') === 'aprovado'
+            && ($pedido['status_pedido'] ?? '') !== 'cancelado') {
             $contentIds = [];
             $numItems   = 0;
             foreach ($itens as $it) {
@@ -4302,7 +4321,7 @@ class CheckoutController extends Controller {
         // Busca o pedido — não exige login pra não quebrar links em e-mail,
         // mas limita os campos retornados (sem expor dados sensíveis)
         $stmt = $db->prepare(
-            "SELECT status_pagamento, pago_em, forma_pagamento
+            "SELECT status_pagamento, status_pedido, pago_em, forma_pagamento
             FROM pedidos
             WHERE codigo = :cod
             LIMIT 1"
@@ -4317,6 +4336,9 @@ class CheckoutController extends Controller {
         $this->json([
             'status'  => $pedido['status_pagamento'],
             'pago_em' => $pedido['pago_em'],
+            // A tela precisa saber se o pagamento aprovado ficou retido
+            // para análise — "aprovado" sozinho virava "Pedido confirmado!".
+            'pedido'  => $pedido['status_pedido'],
         ]);
     }
 }

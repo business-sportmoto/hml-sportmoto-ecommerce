@@ -73,9 +73,7 @@ class MarcasController extends Controller {
         }
 
         $db   = Database::getInstance()->getConnection();
-        $slug = $id > 0
-                ? SlugHelper::unique($nome, 'marcas', (string)$id)
-                : SlugHelper::unique($nome, 'marcas');
+        $slug = $this->resolverSlug($db, $id, $nome);
 
         // Upload do logo
         $logo = null;
@@ -134,6 +132,44 @@ class MarcasController extends Controller {
         } catch (Exception $e) {
             $this->json(['ok' => false, 'msg' => 'Erro ao salvar: ' . $e->getMessage()]);
         }
+    }
+
+    /**
+     * Slug da marca ao salvar — a URL é ativo de SEO, não campo derivado.
+     *
+     *  1. Registro existente mantém o slug que tem: renomear NÃO muda a URL.
+     *  2. Muda só quando o admin edita o campo "Slug" de propósito.
+     *  3. Registro novo: o campo, ou o nome se ele vier vazio.
+     *
+     * Unicidade ignorando o próprio registro (há UNIQUE uk_slug).
+     *
+     * ANTES: SlugHelper::unique($nome, 'marcas', (string)$id) — o $id ia na
+     * posição de $column (`WHERE 5 = ?`, que nunca casa). Sem checagem de
+     * unicidade (dois nomes com o mesmo slug estouravam o uk_slug) e a URL
+     * regerada pelo nome a cada save. O mesmo bug que o produto teve — ver
+     * catalogo-url-canonica no Vault. Achado na fase 0 do rastreador de 404.
+     */
+    private function resolverSlug(PDO $db, int $id, string $nome): string
+    {
+        $slugPost = SlugHelper::make((string)($_POST['slug'] ?? ''));
+
+        if ($id > 0) {
+            $stmt = $db->prepare("SELECT slug FROM marcas WHERE id = ? LIMIT 1");
+            $stmt->execute([$id]);
+            $atual = trim((string)($stmt->fetchColumn() ?: ''));
+
+            // Campo vazio ou igual ao atual: a URL fica como está.
+            if ($atual !== '' && ($slugPost === '' || $slugPost === $atual)) {
+                return $atual;
+            }
+        }
+
+        $base = $slugPost !== '' ? $slugPost : SlugHelper::make($nome);
+        if ($base === '') {
+            $base = 'marca';
+        }
+
+        return SlugHelper::unique($base, 'marcas', 'slug', $id);
     }
 
     public function excluir(): void {

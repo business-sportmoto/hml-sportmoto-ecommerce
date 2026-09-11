@@ -126,11 +126,11 @@ class AtributosController extends Controller {
 
         $db   = Database::getInstance()->getConnection();
 
-        // Auto slug
+        // Auto slug. ANTES os argumentos iam fora de ordem ((string)$id em
+        // $column, 'slug' em $ignoreId int, null em $column): TypeError
+        // sempre que o campo chegava vazio.
         if (empty($slug)) {
-            $slug = $id > 0
-                    ? SlugHelper::unique($nome, 'atributo_tipos', (string)$id, 'slug')
-                    : SlugHelper::unique($nome, 'atributo_tipos', null, 'slug');
+            $slug = SlugHelper::unique($nome, 'atributo_tipos', 'slug', $id);
         }
 
         if ($id > 0) {

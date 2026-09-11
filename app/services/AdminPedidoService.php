@@ -147,16 +147,18 @@ class AdminPedidoService {
                     $pedidoId, 'aprovado', null, null, null,
                     date('Y-m-d H:i:s')
                 );
-
-                // ── CONVERSÃO: Purchase (Fase 1) ──────────────────
-                // Dispara AQUI porque é o momento exato do pagamento
-                // confirmado — uma vez só (o guard status_pagamento
-                // !== 'aprovado' garante que não duplica). Valor vem
-                // do pedido no servidor, nunca do client.
-                $this->registrarConversaoPurchase($pedidoId, $pedido);
             } catch (\Throwable $e) {
                 error_log('[AdminPedidoService] updateStatusPagamento: ' . $e->getMessage());
             }
+        }
+
+        // ── CONVERSÃO: Purchase ───────────────────────────
+        // No momento em que o pagamento fica confirmado — ver
+        // deveRegistrarPurchase(). Valor vem do pedido no servidor, nunca do
+        // client. Duplicar não é possível: o ConversionService recusa um
+        // segundo Purchase com o mesmo event_id.
+        if (self::deveRegistrarPurchase($novoStatus, (string) $statusAtual, (string) $pedido['status_pagamento'])) {
+            $this->registrarConversaoPurchase($pedidoId, $pedido);
         }
 
         // ── Notificação por e-mail (fora da transação) ─────────────────
@@ -271,6 +273,14 @@ class AdminPedidoService {
             } catch (\Throwable $e) {
                 error_log('[AdminPedidoService] sino do admin: ' . $e->getMessage());
             }
+        }
+
+        // Saiu da análise — liberado, recusado ou movido à mão: o alerta de
+        // prazo, se houver, passa a dizer que está resolvido.
+        if ($statusAtual === 'em_analise' && $novoStatus !== 'em_analise') {
+            (new AnalisePrazoService())->encerrarAlerta(
+                (int) $pedidoId, (string) ($pedido['codigo'] ?? ''), $novoStatus
+            );
         }
 
         // Monta avisos (retroação de status)
@@ -664,6 +674,27 @@ class AdminPedidoService {
         } catch (\Throwable $e) {
             error_log("[AdminPedidoService] revalidarCupom: " . $e->getMessage());
         }
+    }
+
+    /**
+     * O pedido acabou de ficar com o pagamento confirmado?
+     *
+     * Dois momentos contam:
+     *
+     *   1. o pagamento vira 'aprovado' agora — cartão no checkout, Pix e
+     *      boleto pelo webhook, aprovação manual no painel;
+     *   2. o pedido SAI DA ANÁLISE liberado. Ali o pagamento já era
+     *      'aprovado' desde o checkout (a retenção o mantém), e o guard
+     *      antigo, só pelo status_pagamento, nunca disparava: pedido
+     *      liberado na análise não virava conversão no servidor.
+     *
+     * Não conta: voltar um pedido pago para 'pagamento_aprovado' à mão (a
+     * compra já foi contada quando aconteceu), recusar na análise, reter.
+     */
+    private static function deveRegistrarPurchase(string $novoStatus, string $statusAtual, string $statusPagamento): bool
+    {
+        if ($novoStatus !== 'pagamento_aprovado') return false;
+        return $statusPagamento !== 'aprovado' || $statusAtual === 'em_analise';
     }
 
     /**

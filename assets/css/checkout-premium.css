@@ -3103,6 +3103,29 @@ to{opacity:1;transform:translateY(0)}
   color: #dc2626; font-weight: 700; text-decoration: underline; text-underline-offset: 2px;
 }
 
+/* ── Aviso de análise (pedido retido pelo antifraude) ─ */
+.success-analise-banner {
+  display: flex; align-items: flex-start; gap: 14px;
+  background: #fffbeb; border: 1.5px solid #fcd34d;
+  border-radius: 14px; padding: 18px 22px; margin-bottom: 22px;
+  box-shadow: 0 4px 16px rgba(217,119,6,.08);
+}
+.success-analise-banner > svg { color: #b45309; flex-shrink: 0; margin-top: 1px; }
+.success-analise-banner .sab-titulo {
+  display: block; font-size: 14px; font-weight: 800; color: #78350f; margin-bottom: 8px;
+}
+.success-analise-banner ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; list-style: disc; }
+.success-analise-banner li::marker { color: #d97706; }
+.success-analise-banner li { font-size: 13px; color: #92400e; line-height: 1.55; }
+.success-analise-banner li strong { color: #78350f; }
+.success-analise-banner .sab-alerta { color: #78350f; font-weight: 600; }
+.success-analise-banner a {
+  color: #b45309; font-weight: 700; text-decoration: underline; text-underline-offset: 2px;
+}
+@media (max-width: 480px) {
+  .success-analise-banner { padding: 14px 16px; gap: 10px; }
+}
+
 /* ════════════════════════════════════════════════════════
    TIMELINE — estados por status_pedido
    ════════════════════════════════════════════════════════ */

@@ -69,8 +69,10 @@ class AdminAnaliseController extends Controller
         // Contexto do antifraude por pedido. Uma query só, em vez de N.
         $codigos = array_column($pedidos, 'codigo');
         $af = $this->antifraudePorPedido($codigos);
+        $desde = (new AnalisePrazoService($this->db))->retidosDesde(array_column($pedidos, 'id'));
         foreach ($pedidos as &$p) {
             $p['antifraude'] = $af[$p['codigo']] ?? null;
+            $p['retido_em']  = $desde[(int) $p['id']] ?? $p['criado_em'];
         }
         unset($p);
 
@@ -545,12 +547,18 @@ class AdminAnaliseController extends Controller
         $pagoEm = $slug === 'pagamento_aprovado' ? date('Y-m-d H:i:s') : null;
         $statusPgto = $slug === 'pagamento_aprovado' ? 'aprovado' : 'estornado';
 
+        // SÓ O PAGAMENTO É ESCRITO AQUI. O status do pedido é do
+        // AdminPedidoService::mudarStatus(): todo guard lá dentro compara
+        // "novo ≠ atual", e o UPDATE de status_pedido que existia aqui antes
+        // da chamada igualava os dois. Liberar não registrava a conversão
+        // Purchase; recusar não cancelava o cupom nem gravava o motivo de
+        // cancelamento. O mesmo erro que o SafraPayWebhookProcessor documenta.
         $this->db->prepare(
             "UPDATE pedidos
-                SET status_pedido = :sp, status_pagamento = :spg,
+                SET status_pagamento = :spg,
                     pago_em = COALESCE(:pago, pago_em)
               WHERE id = :id"
-        )->execute([':sp' => $slug, ':spg' => $statusPgto, ':pago' => $pagoEm, ':id' => $pedidoId]);
+        )->execute([':spg' => $statusPgto, ':pago' => $pagoEm, ':id' => $pedidoId]);
 
         try {
             // Recusa na análise de risco já sabe o próprio motivo — não
@@ -561,9 +569,14 @@ class AdminAnaliseController extends Controller
                 ? (new AdminPedido())->motivoCancelamentoIdPorSlug('pagamento_recusado')
                 : null;
 
-            (new AdminPedidoService())->mudarStatus(
+            $res = (new AdminPedidoService())->mudarStatus(
                 $pedidoId, $slug, $observacao, 0, true, $motivoId, $observacao
             );
+            if (empty($res['ok'])) {
+                LogService::error('Análise: o status do pedido não mudou', [
+                    'pedido_id' => $pedidoId, 'destino' => $slug, 'msg' => $res['msg'] ?? null,
+                ], 'pagamento');
+            }
         } catch (\Throwable $e) {
             LogService::exception($e, 'warning', 'pagamento', [
                 'pedido_id' => $pedidoId, 'acao' => 'mudarStatus_analise',

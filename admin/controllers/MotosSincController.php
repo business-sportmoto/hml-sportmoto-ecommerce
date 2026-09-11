@@ -130,7 +130,10 @@ class MotosSincController extends Controller {
         if (empty($nome)) $this->json(['ok' => false, 'msg' => 'Nome obrigatório.']);
 
         $db   = Database::getInstance()->getConnection();
-        $slug = $this->slugUnico('moto_montadoras', $this->slugify($nome), $id);
+        // Montadora existente mantém a URL (/montadora/{slug}): renomear não
+        // a troca. Só a nova deriva do nome.
+        $slug = ($id > 0 ? $this->slugAtual('moto_montadoras', $id) : '')
+             ?: $this->slugUnico('moto_montadoras', $this->slugify($nome), $id);
 
         if ($id > 0) {
             $db->prepare(
@@ -159,7 +162,11 @@ class MotosSincController extends Controller {
         }
 
         $db   = Database::getInstance()->getConnection();
-        $slug = $this->slugUnico('moto_modelos', $this->slugify($nome), null, $montadoraId);
+        // Modelo existente mantém a URL (/montadora/{m}/{moto}). ANTES o id ia
+        // como null também na edição: o próprio registro contava como
+        // conflito e o slug alternava entre "x" e "x-2" a cada save.
+        $slug = ($id > 0 ? $this->slugAtual('moto_modelos', $id, $montadoraId) : '')
+             ?: $this->slugUnico('moto_modelos', $this->slugify($nome), $id ?: null, $montadoraId);
 
         if ($id > 0) {
             $db->prepare(
@@ -228,6 +235,15 @@ class MotosSincController extends Controller {
         $slug = preg_replace('/[^a-z0-9\s-]/', '', $slug);
         $slug = preg_replace('/[\s-]+/', '-', $slug);
         return trim($slug, '-');
+    }
+
+    /** Slug gravado hoje ('' se o registro não existe ou está sem slug). */
+    private function slugAtual(string $tabela, int $id, ?int $montadoraId = null): string {
+        $sql    = "SELECT slug FROM {$tabela} WHERE id = ?"
+                . ($montadoraId !== null ? ' AND montadora_id = ?' : '') . ' LIMIT 1';
+        $stmt   = Database::getInstance()->getConnection()->prepare($sql);
+        $stmt->execute($montadoraId !== null ? [$id, $montadoraId] : [$id]);
+        return trim((string)($stmt->fetchColumn() ?: ''));
     }
 
     private function slugUnico(

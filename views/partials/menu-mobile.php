@@ -73,7 +73,7 @@
   <div class="mobile-menu-footer">
     <a href="<?= BASE_URL ?>/minha-conta/pedidos">Meus pedidos</a>
     <a href="<?= BASE_URL ?>/minha-conta/favoritos">Favoritos</a>
-    <a href="<?= BASE_URL ?>/contato">Atendimento</a>
+    <a href="<?= BASE_URL ?>/ajuda">Ajuda</a>
     <?php if (Session::isClienteLogado()): ?>
       <a href="<?= BASE_URL ?>/sair" class="link-logout">Sair</a>
     <?php endif; ?>

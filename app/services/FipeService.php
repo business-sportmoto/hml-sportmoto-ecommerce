@@ -160,16 +160,24 @@ class FipeService {
         $slug = $this->slugify($nome); // ← corrigido
 
         $stmt = $this->db->prepare(
-            "SELECT id FROM moto_montadoras WHERE fipe_codigo = ? LIMIT 1"
+            "SELECT id, slug FROM moto_montadoras WHERE fipe_codigo = ? LIMIT 1"
         );
         $stmt->execute([$code]);
-        $id = $stmt->fetchColumn();
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if ($id) {
+        if ($row) {
+            // A URL é da loja, não da FIPE: a sincronização atualiza o nome e
+            // só preenche o slug se ele estiver vazio. ANTES regravava o slug
+            // a cada sync — a FIPE mudava um nome e a URL indexada quebrava.
+            $slugAtual = trim((string)($row['slug'] ?? ''));
             $this->db->prepare(
                 "UPDATE moto_montadoras SET nome=?, slug=? WHERE id=?"
-            )->execute([$nome, $slug, $id]);
-            return (int)$id;
+            )->execute([
+                $nome,
+                $slugAtual !== '' ? $slugAtual : $this->slugUnico('moto_montadoras', $slug),
+                $row['id'],
+            ]);
+            return (int)$row['id'];
         }
 
         $slugFinal = $this->slugUnico('moto_montadoras', $slug);
@@ -197,17 +205,25 @@ class FipeService {
         $slug = $this->slugify($nome); // ← corrigido
 
         $stmt = $this->db->prepare(
-            "SELECT id FROM moto_modelos
+            "SELECT id, slug FROM moto_modelos
             WHERE montadora_id=? AND fipe_codigo=? LIMIT 1"
         );
         $stmt->execute([$montadoraId, $code]);
-        $id = $stmt->fetchColumn();
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if ($id) {
+        if ($row) {
+            // A URL é da loja, não da FIPE: a sincronização atualiza o nome e
+            // só preenche o slug se ele estiver vazio. ANTES regravava o slug
+            // a cada sync — a FIPE mudava um nome e a URL indexada quebrava.
+            $slugAtual = trim((string)($row['slug'] ?? ''));
             $this->db->prepare(
                 "UPDATE moto_modelos SET nome=?, slug=? WHERE id=?"
-            )->execute([$nome, $slug, $id]);
-            return (int)$id;
+            )->execute([
+                $nome,
+                $slugAtual !== '' ? $slugAtual : $this->slugUnico('moto_modelos', $slug, $montadoraId),
+                $row['id'],
+            ]);
+            return (int)$row['id'];
         }
 
         $slugFinal = $this->slugUnico('moto_modelos', $slug, $montadoraId);

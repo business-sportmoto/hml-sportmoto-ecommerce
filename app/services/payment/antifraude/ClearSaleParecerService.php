@@ -246,20 +246,27 @@ class ClearSaleParecerService
         ]);
     }
 
+    /**
+     * Pelo caminho oficial, AdminPedidoService::mudarStatus(), e não UPDATE
+     * solto. O UPDATE cru deixava de fora tudo o que a transição faz: o
+     * cliente não era avisado (e a tela de pedido realizado promete "avisamos
+     * assim que a análise terminar"), a conversão Purchase não era
+     * registrada e o alerta de prazo da análise não era encerrado.
+     *
+     * `null` em notificar: obedece a configuração do status.
+     */
     private function moverPedido(int $pedidoId, string $status, string $obs): void
     {
-        $this->db->prepare("UPDATE pedidos SET status_pedido = ?, atualizado_em = NOW() WHERE id = ?")
-                 ->execute([$status, $pedidoId]);
-
         try {
-            $this->db->prepare(
-                "INSERT INTO pedido_historico (pedido_id, status_novo, observacao, admin_id, criado_em)
-                 VALUES (?,?,?,NULL,NOW())"
-            )->execute([$pedidoId, $status, mb_substr($obs, 0, 255)]);
+            $res = (new AdminPedidoService())->mudarStatus($pedidoId, $status, mb_substr($obs, 0, 255), 0, null);
+            if (empty($res['ok'])) {
+                LogService::error('Parecer da ClearSale: o status do pedido não mudou', [
+                    'pedido_id' => $pedidoId, 'destino' => $status, 'msg' => $res['msg'] ?? null,
+                ], 'pagamento');
+            }
         } catch (\Throwable $e) {
-            // Histórico é registro, não o fato. Não desfaz a liberação.
-            LogService::exception($e, 'warning', 'pagamento',
-                ['acao' => 'historico_clearsale', 'pedido_id' => $pedidoId]);
+            LogService::exception($e, 'error', 'pagamento',
+                ['acao' => 'mover_pedido_clearsale', 'pedido_id' => $pedidoId, 'destino' => $status]);
         }
     }
 

@@ -134,6 +134,14 @@ Ver [[../12-decisoes-tecnicas/bi-indice|índice do BI]] e
 # ⏳ ainda NÃO instalado
 */5 * * * * cd /home/DOMINIO/public_html && php cli/clearsale-worker.php >> storage/logs/clearsale-worker.log 2>&1
 
+# Análise de risco — alerta de pedido retido há mais de 48 h
+# A tela de pedido realizado promete ao cliente "até 48 horas". Este cron
+# avisa super e gerente (sino) quando um pedido passa disso, e de novo a cada
+# 24 h sem decisão. Regra em AnalisePrazoService; --simular só mostra.
+# SEM ELE, O PRAZO PROMETIDO AO CLIENTE NÃO É COBRADO DE NINGUÉM.
+# ⏳ ainda NÃO instalado
+*/30 * * * * cd /home/DOMINIO/public_html && php cli/analise-prazo.php >> storage/logs/analise-prazo.log 2>&1
+
 # Cartões temporários — apaga o que o cliente pediu para NÃO salvar
 # Quando ele desmarca "salvar cartão para as próximas compras", o cartão ainda
 # vai para os cofres das adquirentes (é de lá que sai a referência de

@@ -24,7 +24,8 @@ $tierCor = [
       </h1>
       <p class="admin-page-sub">
         Pedidos retidos pelo antifraude, do mais antigo para o mais recente —
-        cliente esperando é o que decide a ordem da fila.
+        cliente esperando é o que decide a ordem da fila. O prazo prometido ao
+        cliente é de <?= AnalisePrazoService::PRAZO_HORAS ?> horas; passou disso, o sino avisa.
       </p>
     </div>
   </div>
@@ -49,7 +50,10 @@ $tierCor = [
           $af    = $p['antifraude'] ?? null;
           $tier  = (string) ($p['tier'] ?? 'bronze');
           [$tc, $tb] = $tierCor[$tier] ?? $tierCor['bronze'];
-          $horas = max(0, (int) round((time() - strtotime((string) $p['criado_em'])) / 3600));
+          // Desde a última entrada na análise, não desde a criação do pedido.
+          $retidoEm = (string) ($p['retido_em'] ?? $p['criado_em']);
+          $horas = max(0, (int) floor((time() - strtotime($retidoEm)) / 3600));
+          $sit   = AnalisePrazoService::situacao($horas);
       ?>
         <tr>
           <td>
@@ -107,9 +111,17 @@ $tierCor = [
 
           <td class="num">R$ <?= number_format((float) $p['total'], 2, ',', '.') ?></td>
 
-          <td>
-            <span style="font-size:12px;<?= $horas >= 24 ? 'color:#b91c1c;font-weight:700;' : 'color:var(--c-text-muted);' ?>">
-              <?= $horas < 24 ? $horas . 'h' : floor($horas / 24) . 'd' ?>
+          <td style="white-space:nowrap;">
+            <?php
+              $estilo = [
+                  'estourado' => 'color:#b91c1c;font-weight:700;',
+                  'perto'     => 'color:var(--warning);font-weight:700;',
+                  'ok'        => 'color:var(--c-text-muted);',
+              ][$sit['tom']];
+            ?>
+            <span style="font-size:12px;<?= $estilo ?>"
+                  title="Retido desde <?= date('d/m H:i', strtotime($retidoEm)) ?> · prazo prometido ao cliente: <?= AnalisePrazoService::PRAZO_HORAS ?> h">
+              <?= View::e($sit['rotulo']) ?>
             </span>
           </td>
 

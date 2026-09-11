@@ -17,12 +17,18 @@ $isTroca         = $statusPedido === 'troca_devolucao';
 // caía no texto do boleto ("Após compensação do boleto…").
 $recusado        = in_array($statusPagamento, ['recusado', 'erro', 'falhou'], true);
 
+// Retido pelo antifraude: o PAGAMENTO foi aprovado, o PEDIDO ainda não.
+// `$aprovado` fica true (o dinheiro passou), então tudo que dizia "Pedido
+// confirmado!" olhando só para ele precisa perguntar isto antes.
+$emAnalise       = $statusPedido === 'em_analise';
+
 // ── Mapa de progressão numérica ────────────────────────
 // Determina em qual "degrau" o pedido está agora.
 // Regra: em_separacao e enviado só existem se status_pagamento = aprovado.
 $progressao = [
     'aguardando_pagamento' => 0,
     'pagamento_aprovado'   => 1,
+    'em_analise'           => 1,   // pago; a mercadoria espera a análise
     'em_separacao'         => 2,
     'enviado'              => 3,
     'entregue'             => 4,
@@ -34,6 +40,11 @@ $progressao = [
 $nivelAtual = $progressao[$statusPedido] ?? 0;
 if (!$aprovado && $nivelAtual > 1) {
     $nivelAtual = 0; // pagamento não confirmado, volta ao início
+}
+// Retido sem cobrança aprovada não deveria existir (o checkout grava
+// 'pendente' e alerta). Se existir, a timeline não mostra "Pago".
+if ($emAnalise && !$aprovado) {
+    $nivelAtual = 0;
 }
 
 // ── Dados que o controller injeta ─────────────────────
@@ -94,7 +105,7 @@ $stepDefs = [
         'label_fut'   => 'Separação',
         'sub_done'    => $dataDe('em_separacao') ?? 'Pronto para envio',
         'sub_act'     => ($dataDe('em_separacao') ?? '') ?: 'Preparando o pedido',
-        'sub_fut'     => $aprovado ? 'Em breve' : 'Aguardando pgto.',
+        'sub_fut'     => $emAnalise ? 'Após a análise' : ($aprovado ? 'Em breve' : 'Aguardando pgto.'),
     ],
     [
         'nivel'       => 3,
@@ -131,6 +142,21 @@ if ($isTroca) {
     ];
 }
 
+// Em análise: um passo próprio entre o pagamento (feito) e a separação.
+// Sem ele o pedido caía no degrau 0 e a timeline dizia "Aguardando ·
+// Cartão pendente" para um pagamento já aprovado.
+if ($emAnalise) {
+    array_splice($stepDefs, 1, 0, [[
+        'nivel'       => 1,
+        'label_done'  => 'Analisado',
+        'label_act'   => 'Em análise',
+        'label_fut'   => 'Análise',
+        'sub_done'    => 'Liberado',
+        'sub_act'     => 'Até 48h',
+        'sub_fut'     => '—',
+    ]]);
+}
+
 // ── Gera array final de steps para a view ─────────────
 $steps = array_map(function ($def) use ($nivelAtual, $isCancelado) {
     $nivel  = $def['nivel'];
@@ -157,6 +183,7 @@ $steps = array_map(function ($def) use ($nivelAtual, $isCancelado) {
     $heroClass = 'sh--pending';
     if ($isCancelado)                        $heroClass = 'sh--cancelled';
     elseif ($statusPedido === 'entregue')    $heroClass = 'sh--approved sh-entregue';
+    elseif ($emAnalise)                      $heroClass = 'sh--pending';   // pago, ainda não confirmado
     elseif ($aprovado)                       $heroClass = 'sh--approved';
   ?>
   <div class="success-hero <?= $heroClass ?>">
@@ -172,6 +199,14 @@ $steps = array_map(function ($def) use ($nivelAtual, $isCancelado) {
             <circle cx="26" cy="26" r="23" stroke="currentColor" stroke-width="2.2"/>
             <line x1="17" y1="17" x2="35" y2="35" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/>
             <line x1="35" y1="17" x2="17" y2="35" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/>
+          </svg>
+          <?php elseif ($emAnalise): ?>
+          <!-- Escudo com relógio: verificação de segurança em andamento. -->
+          <svg viewBox="0 0 52 52" fill="none">
+            <path d="M26 5 L43 11.5 V24.5 C43 35 35.5 43 26 47 C16.5 43 9 35 9 24.5 V11.5 Z"
+                  stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+            <line x1="26" y1="17" x2="26" y2="27" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/>
+            <line x1="26" y1="27" x2="32" y2="31" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/>
           </svg>
           <?php elseif ($aprovado): ?>
           <svg viewBox="0 0 52 52" fill="none">
@@ -205,6 +240,7 @@ $steps = array_map(function ($def) use ($nivelAtual, $isCancelado) {
         <?php elseif ($statusPedido === 'enviado'): ?>Pedido enviado!
         <?php elseif ($statusPedido === 'em_separacao'): ?>Em separação
         <?php elseif ($statusPedido === 'troca_devolucao'): ?>Em troca/devolução
+        <?php elseif ($emAnalise): ?>Pedido em análise
         <?php elseif ($aprovado): ?>Pedido confirmado!
         <?php elseif ($recusado): ?>Pagamento não autorizado
         <?php elseif ($isPix): ?>Aguardando Pix
@@ -219,6 +255,8 @@ $steps = array_map(function ($def) use ($nivelAtual, $isCancelado) {
           <strong><?= View::e($pedido['cliente_email'] ?? '') ?></strong>
         <?php elseif ($statusPedido === 'enviado'): ?>
           Seu pedido está a caminho.<?= $rastreio ? ' Rastreio: <strong>' . View::e($rastreio) . '</strong>' : '' ?>
+        <?php elseif ($emAnalise): ?>
+          <?= $aprovado ? 'Pagamento aprovado · ' : '' ?>Seu pedido passa por uma análise de segurança de até 48 horas antes de ser separado
         <?php elseif ($aprovado): ?>
           Pagamento aprovado · E-mail enviado para
           <strong><?= View::e($pedido['cliente_email'] ?? '') ?></strong>
@@ -324,8 +362,35 @@ $steps = array_map(function ($def) use ($nivelAtual, $isCancelado) {
       <strong>Pedido cancelado</strong>
       <span>
         Se você foi cobrado, o estorno será processado em até 5 dias úteis.
-        Dúvidas? <a href="<?= BASE_URL ?>/contato">Entre em contato</a>.
+        Dúvidas? Fale com a gente pela <a href="<?= BASE_URL ?>/ajuda">Central de Ajuda</a>.
       </span>
+    </div>
+  </div>
+  <?php endif; ?>
+
+  <!-- ═══════════ AVISO DE ANÁLISE ═══════════════════ -->
+  <?php if ($emAnalise): ?>
+  <?php
+  // Decisão de 11/09/2026: o cliente VÊ que o pedido está em análise.
+  // Sem o nome do fornecedor e sem o motivo da retenção — o que ajuda o
+  // cliente é o prazo, o porquê, e saber reconhecer uma ligação legítima.
+  // "Avisamos quando terminar" é verdade: liberar ou recusar na tela de
+  // análise passa pelo mudarStatus com notificação ao cliente.
+  ?>
+  <div class="success-analise-banner">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 2l8 3v6c0 5-3.4 9.3-8 11-4.6-1.7-8-6-8-11V5z"/>
+      <polyline points="9 12 11 14 15 10"/>
+    </svg>
+    <div>
+      <strong class="sab-titulo">Seu pedido está em análise de segurança</strong>
+      <ul>
+        <li><?= $aprovado ? 'O pagamento foi aprovado. ' : '' ?>Antes de separar o pedido, fazemos uma verificação de segurança — ela protege você e a loja contra o uso indevido de cartões.</li>
+        <li>A análise leva <strong>até 48 horas</strong>. Você não precisa fazer nada: avisamos assim que ela terminar.</li>
+        <li>Se for necessário, uma empresa parceira, especializada em segurança de pagamentos, pode ligar para confirmar alguns dados da compra.</li>
+        <li class="sab-alerta">Nessa ligação ninguém pede senha, código de segurança do cartão (CVV) nem códigos recebidos por SMS. Se pedirem, desligue e fale com a gente pela <a href="<?= BASE_URL ?>/ajuda">Central de Ajuda</a>.</li>
+      </ul>
     </div>
   </div>
   <?php endif; ?>
@@ -929,7 +994,7 @@ $(function () {
   });
 
   // ── Confete (cartão aprovado) ─────────────────────────────────
-  <?php if ($aprovado && $isCartao): ?>
+  <?php if ($aprovado && $isCartao && !$emAnalise): ?>
   (function () {
     var c = document.createElement('canvas');
     c.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:9998';
@@ -991,6 +1056,9 @@ $(function () {
         success: function (resp) {
           if (resp.status === 'aprovado') {
             clearInterval(timer);
+            // Pago, mas retido para análise: a página do servidor já sabe
+            // mostrar esse estado. Animar "Pedido confirmado!" seria mentir.
+            if (resp.pedido === 'em_analise') { window.location.reload(); return; }
             onAprovado(resp.pago_em);
           }
           // status 'falhou' ou 'cancelado': para sem fazer nada

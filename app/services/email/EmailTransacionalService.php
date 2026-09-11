@@ -90,7 +90,7 @@ class EmailTransacionalService
             'empresa_endereco' => ConfigHelper::get('empresa_endereco'),
             'empresa_cnpj'     => ConfigHelper::get('empresa_cnpj'),
             'email'           => ConfigHelper::get('site_email'),
-            'atendimento_url'  => BASE_URL . '/contato',
+            'atendimento_url'  => BASE_URL . '/ajuda',
             'politica_privacidade_url' => BASE_URL . '/politica-de-privacidade',
             'descadastro_url'  => BASE_URL . '/email/descadastrar/' . urlencode($para),  
             'url_descadastro'=> BASE_URL . '/email/descadastrar/' . urlencode($para),      

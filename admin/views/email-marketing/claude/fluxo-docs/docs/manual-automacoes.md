@@ -366,7 +366,7 @@ aceita email sai em paz.
 {
   "nos": [
     {"chave":"t1","tipo":"trigger_evento","config":{"evento":"busca","min_ocorrencias":1,"janela_dias":1,"apenas_logados":true}},
-    {"chave":"n1","tipo":"acao_notificacao","config":{"categoria":"sistema","titulo":"Não achou o que procurava?","mensagem":"Conta pra gente qual peça você buscou — a gente corre atrás.","url":"/contato"}},
+    {"chave":"n1","tipo":"acao_notificacao","config":{"categoria":"sistema","titulo":"Não achou o que procurava?","mensagem":"Conta pra gente qual peça você buscou — a gente corre atrás.","url":"/ajuda"}},
     {"chave":"wh","tipo":"acao_webhook","config":{"url":"https://SEU-ENDPOINT/busca"}}
   ],
   "conexoes": [

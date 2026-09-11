@@ -285,6 +285,20 @@ class PagamentoNoCatalogo
             }
         }
 
+        // ── Análise só depois de cobrança aprovada ──────────────────
+        // Regra do dono (11/09/2026): aprova o pagamento para saber se há
+        // saldo, e só então analisa o pedido. Antifraude ou retenção
+        // alcançável SEM passar pela saída 'aprovado' de uma tentativa faria
+        // o checkout gravar como pago um pedido que ninguém cobrou — pedido
+        // retido é gravado com pagamento 'aprovado'.
+        if (count($entradas) === 1) {
+            $inicio = array_values($entradas)[0]['no_ref'];
+            foreach (self::analisesSemCobranca($inicio, $nos, $conexoes) as $ref) {
+                $erros[] = "O nó '{$ref}' ({$porRef[$ref]['tipo']}) pode ser alcançado sem cobrança aprovada. "
+                         . "A análise vem depois da cobrança: ligue-o só na saída 'aprovado' de uma tentativa.";
+            }
+        }
+
         // ── Nó órfão (fora da entrada) ──────────────────────────────
         if (count($entradas) === 1) {
             $entrada    = array_values($entradas)[0]['no_ref'];
@@ -297,6 +311,44 @@ class PagamentoNoCatalogo
         }
 
         return ['erros' => $erros, 'avisos' => $avisos];
+    }
+
+    /**
+     * Nós de antifraude ou retenção alcançáveis por algum caminho que NÃO
+     * passou pela saída 'aprovado' de uma tentativa de cobrança.
+     *
+     * Busca em largura com estado (nó, já cobrou?) — o mesmo nó pode ser
+     * alcançado por um caminho que cobrou e por outro que não, e basta um.
+     * 'pendente' não conta como cobrado: Pix gerado ainda não foi pago.
+     *
+     * @return string[] no_ref dos nós que violam a regra
+     */
+    private static function analisesSemCobranca(string $inicio, array $nos, array $conexoes): array
+    {
+        $tipo = [];
+        foreach ($nos as $n) $tipo[$n['no_ref']] = (string) ($n['tipo'] ?? '');
+
+        $adj = [];
+        foreach ($conexoes as $c) $adj[$c['no_origem']][] = [(string) $c['porta_origem'], $c['no_destino']];
+
+        $vistos  = [$inicio . '|0' => true];
+        $fila    = [[$inicio, false]];
+        $achados = [];
+        while ($fila) {
+            [$atual, $cobrou] = array_shift($fila);
+            if (!$cobrou && in_array($tipo[$atual] ?? '', ['antifraude', 'reter_analise'], true)) {
+                $achados[$atual] = true;
+            }
+            foreach ($adj[$atual] ?? [] as [$porta, $prox]) {
+                $proxCobrou = $cobrou
+                    || (($tipo[$atual] ?? '') === 'tentar_adquirente' && $porta === 'aprovado');
+                $k = $prox . '|' . ($proxCobrou ? 1 : 0);
+                if (isset($vistos[$k])) continue;
+                $vistos[$k] = true;
+                $fila[] = [$prox, $proxCobrou];
+            }
+        }
+        return array_keys($achados);
     }
 
     /** Busca em largura a partir da entrada. */
