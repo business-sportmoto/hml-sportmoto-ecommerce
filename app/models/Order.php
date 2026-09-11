@@ -158,13 +158,14 @@ class Order extends Model {
     }
     
 
+    /**
+     * `createFromCart()`, o único que chama isto, não tem chamador — o
+     * checkout cria pedido em CheckoutController::process(). Mas se um dia
+     * voltar a ser usado, não pode trazer de volta um terceiro formato
+     * (era PED-AAAAMMDD-XXXXX): delega para a numeração de todos.
+     */
     private function generateCodigo(): string {
-        do {
-            $codigo = 'PED-' . date('Ymd') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 5));
-            $stmt   = $this->db->prepare("SELECT id FROM pedidos WHERE codigo = ? LIMIT 1");
-            $stmt->execute([$codigo]);
-        } while ($stmt->fetchColumn());
-        return $codigo;
+        return PedidoCodigoService::reservar($this->db);
     }
 
     public function getItemsWithVariacoes(int $pedidoId): array {

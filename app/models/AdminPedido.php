@@ -660,7 +660,16 @@ class AdminPedido {
      * Cria um pedido manual — retorna o ID do pedido criado.
      */
     public function criarManual(array $dados): int {
-        $codigo = strtoupper(substr(md5(uniqid('manual', true)), 0, 8));
+        // Mesma numeração do checkout, de 2 em 2.
+        //
+        // Aqui era md5 hex de 8 caracteres. Além de fugir do padrão, ~2%
+        // desses saem só com dígitos — e o gerador antigo do checkout
+        // aceitava QUALQUER código numérico como base. Um pedido manual azarado
+        // podia sequestrar a sequência inteira do site.
+        //
+        // AdminPedidoService::criarManual() já abre a transação antes de
+        // chamar isto, então o número volta se a criação falhar.
+        $codigo = PedidoCodigoService::reservar($this->db);
 
         $this->db->prepare(
             "INSERT INTO pedidos

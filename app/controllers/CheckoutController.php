@@ -1686,8 +1686,11 @@ class CheckoutController extends Controller {
         $subtotalPedido  = $conta['subtotal_pedido'];
         $total           = $conta['total'];
 
-        // $codigo          = strtoupper(substr(md5(uniqid((string)$clienteId, true)), 0, 8));
-        $codigo = $this->gerarProximoCodigoCliente();
+        // O código do pedido é reservado DENTRO da transação, logo antes do
+        // INSERT (etapa 5). Aqui ele era calculado fora dela — dois checkouts
+        // simultâneos pegavam o mesmo número e o segundo morria no
+        // `uk_codigo`. Ver PedidoCodigoService.
+        $codigo = '';
     
         $cartaoBandeira = null;
         $cartaoUltimos4 = null;
@@ -1787,6 +1790,14 @@ class CheckoutController extends Controller {
         // 5. Transação: cria pedido + itens + reserva estoque
         $db->beginTransaction();
         try {
+            // Reserva o número aqui: a trava da sequência vale até o COMMIT
+            // (fila em vez de colisão), e um ROLLBACK devolve o número — o
+            // próximo pedido pega exatamente ele, sem buraco no +2.
+            //
+            // Tem de vir ANTES do INSERT: o lastInsertId() lido depois dele
+            // precisa ser o id do pedido, não o da sequência.
+            $codigo = PedidoCodigoService::reservar($db);
+
             $db->prepare(
                 "INSERT INTO pedidos
                 (cliente_id, codigo, status_pedido, status_pagamento,
@@ -2379,24 +2390,18 @@ class CheckoutController extends Controller {
         ]);
     }
 
+    /**
+     * @deprecated A numeração mora em PedidoCodigoService::reservar(), e o
+     *             process() já reserva direto, dentro da transação.
+     *
+     * Este método calculava MAX(codigo) + 2 fora de transação — com corrida
+     * entre checkouts simultâneos e aceitando qualquer código só com dígitos
+     * como base. Fica como delegação para nenhum chamador esquecido voltar ao
+     * cálculo antigo.
+     */
     private function gerarProximoCodigoCliente(): int
     {
-        $db         = Database::getInstance()->getConnection();
-        $st =$db->query("
-            SELECT MAX(CAST(codigo AS UNSIGNED)) AS ultimo_codigo
-            FROM pedidos
-            WHERE codigo REGEXP '^[0-9]+$'
-        ");
-
-        $row = $st->fetch(PDO::FETCH_ASSOC);
-
-        $ultimoCodigo = (int)($row['ultimo_codigo'] ?? 0);
-
-        if ($ultimoCodigo < 15121) {
-            return 15121;
-        }
-
-        return $ultimoCodigo + 2;
+        return (int) PedidoCodigoService::reservar(Database::getInstance()->getConnection());
     }
     
     
