@@ -75,6 +75,60 @@ if (!function_exists('ia_usd')) {
         <?= IconLibrary::render('plus', 'ia_ico', ['aria-hidden' => 'true']) ?> Novo modelo
       </button>
     </div>
+    <?php
+      // As opções saem do próprio catálogo: só capacidade e prioridade que
+      // existem, e os provedores cadastrados.
+      $capsPresentes = array_values(array_unique(array_column($modelos, 'capacidade')));
+      sort($capsPresentes);
+      $prios = array_values(array_unique(array_map('intval', array_column($modelos, 'prioridade'))));
+      sort($prios);
+    ?>
+    <div class="ia_form_linha ia_card_pad" id="ia_filtro_mod" role="search" aria-label="Filtrar modelos">
+      <div class="ia_form_grupo">
+        <label for="ia_fm_cap">Capacidade</label>
+        <select id="ia_fm_cap" class="ia_input" data-filtro="cap">
+          <option value="">Todas</option>
+          <?php foreach ($capsPresentes as $c): ?>
+            <option value="<?= ia_e($c) ?>"><?= ia_e($capacidades[$c] ?? ucfirst($c)) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <div class="ia_form_grupo">
+        <label for="ia_fm_prov">Provedor</label>
+        <select id="ia_fm_prov" class="ia_input" data-filtro="prov">
+          <option value="">Todos</option>
+          <?php foreach ($provedores as $pv): ?>
+            <option value="<?= ia_e($pv['codigo']) ?>"><?= ia_e($pv['nome']) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <div class="ia_form_grupo">
+        <label for="ia_fm_prio">Prioridade</label>
+        <select id="ia_fm_prio" class="ia_input" data-filtro="prio">
+          <option value="">Qualquer</option>
+          <option value="principal">Principal da capacidade</option>
+          <option value="reserva">Reservas</option>
+          <optgroup label="Valor exato">
+            <?php foreach ($prios as $pr): ?>
+              <option value="<?= (int) $pr ?>"><?= (int) $pr ?></option>
+            <?php endforeach; ?>
+          </optgroup>
+        </select>
+      </div>
+      <div class="ia_form_grupo">
+        <label for="ia_fm_status">Status</label>
+        <select id="ia_fm_status" class="ia_input" data-filtro="status">
+          <option value="">Qualquer</option>
+          <option value="ativo">Ativo (roda)</option>
+          <option value="bloqueado">Ativo, mas não roda</option>
+          <option value="inativo">Inativo</option>
+        </select>
+      </div>
+      <div class="ia_form_rodape">
+        <span class="ia_hint" id="ia_fm_total" aria-live="polite"></span>
+        <button type="button" class="ia_btn" id="ia_fm_limpar" hidden>Limpar filtros</button>
+      </div>
+    </div>
     <div class="ia_tabela_scroll">
       <table class="ia_tabela">
         <thead>
@@ -227,9 +281,44 @@ if (!function_exists('ia_usd')) {
   }
   function recarregar(qual) {
     iaGet(LINHAS[qual]).done(function (r) {
-      if (r && r.ok) { $(TBODY[qual]).html(r.html); aplicarKpis(r.kpis); }
+      if (r && r.ok) {
+        $(TBODY[qual]).html(r.html);
+        aplicarKpis(r.kpis);
+        // As linhas voltam do servidor sem filtro: reaplica o que está escolhido.
+        if (qual === 'mod') { filtrarModelos(); }
+      }
     });
   }
+
+  /* ---------- Filtro de modelos (no navegador: o catálogo é pequeno) ---------- */
+  function filtrarModelos() {
+    var f = {};
+    $('#ia_filtro_mod [data-filtro]').each(function () { f[$(this).data('filtro')] = String($(this).val() || ''); });
+    var $linhas = $('#ia_tb_mod tr[data-cap]');
+    var vistas = 0;
+    $linhas.each(function () {
+      var d = this.dataset;
+      var prioOk = !f.prio || ((f.prio === 'principal' || f.prio === 'reserva') ? d.pos === f.prio : d.prio === f.prio);
+      var ok = (!f.cap || d.cap === f.cap) && (!f.prov || d.prov === f.prov)
+            && (!f.status || d.status === f.status) && prioOk;
+      this.hidden = !ok;
+      if (ok) { vistas++; }
+    });
+    var filtrando = !!(f.cap || f.prov || f.status || f.prio);
+    $('#ia_tb_mod .ia_c_mod_semfiltro').remove();
+    if (filtrando && vistas === 0 && $linhas.length) {
+      $('<tr class="ia_vazio ia_c_mod_semfiltro"><td colspan="7"></td></tr>')
+        .find('td').text('Nenhum modelo com esses filtros.').end().appendTo('#ia_tb_mod');
+    }
+    $('#ia_fm_total').text(filtrando ? vistas + ' de ' + $linhas.length + ' modelos' : $linhas.length + ' modelos');
+    $('#ia_fm_limpar').prop('hidden', !filtrando);
+  }
+  $(document).on('change', '#ia_filtro_mod [data-filtro]', filtrarModelos);
+  $(document).on('click', '#ia_fm_limpar', function () {
+    $('#ia_filtro_mod [data-filtro]').val('');
+    filtrarModelos();
+  });
+  filtrarModelos();
 
   function abrirForm(url, params, tituloPadrao) {
     iaGet(url, params).done(function (r) {

@@ -185,10 +185,15 @@ try {
             try {
                 $log("Processando geração #{$g['id']} ({$g['tipo_nome']})…");
 
+                // A IA escolhida na tela (contexto.modelo_escolhido) vai na
+                // frente da fila; sem escolha, vale o pino do tipo.
+                $ctxG    = json_decode((string) ($g['contexto'] ?? ''), true);
+                $escolha = is_array($ctxG) ? (int) ($ctxG['modelo_escolhido'] ?? 0) : 0;
+
                 $tipo = [
                     'instrucoes_sistema' => $g['instrucoes_sistema'] ?? null,
                     'max_tokens'         => $g['max_tokens'] ?? null,
-                    'modelo_id'          => $g['tipo_modelo_id'] ?? null,
+                    'modelo_id'          => $escolha > 0 ? $escolha : ($g['tipo_modelo_id'] ?? null),
                     'nome'               => $g['tipo_nome'] ?? '',
                     'saida'              => $g['tipo_saida'] ?? 'texto',
                 ];

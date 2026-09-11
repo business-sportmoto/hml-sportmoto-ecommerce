@@ -270,7 +270,7 @@ class AdminAnaliseController extends Controller
 
         $cs = new ClearSaleService();
         if (!$cs->configurado()) {
-            $this->json(['ok' => false, 'msg' => 'ClearSale sem credencial configurada.']);
+            $this->responderCardClearSale($pedido, false, 'ClearSale sem credencial configurada.');
             return;
         }
 
@@ -289,11 +289,9 @@ class AdminAnaliseController extends Controller
                 $payload   = (new ClearSalePedidoMontador($this->db))->montar((int) $pedido['id']);
                 $problemas = ClearSalePedidoMontador::problemas($payload);
                 if ($problemas) {
-                    $this->json([
-                        'ok'        => false,
-                        'msg'       => 'Dados incompletos para a ClearSale: ' . implode('; ', $problemas) . '.',
-                        'problemas' => $problemas,
-                    ]);
+                    $this->responderCardClearSale($pedido, false,
+                        'Dados incompletos para a ClearSale: ' . implode('; ', $problemas) . '.',
+                        ['problemas' => $problemas]);
                     return;
                 }
 
@@ -316,24 +314,55 @@ class AdminAnaliseController extends Controller
             }
         } catch (\Throwable $e) {
             LogService::exception($e, 'error', 'pagamento', ['acao' => 'clearsale_manual', 'pedido' => $codigo]);
-            $this->json(['ok' => false, 'msg' => 'Falha ao falar com a ClearSale.']);
+            $this->responderCardClearSale($pedido, false, 'Falha ao falar com a ClearSale.');
             return;
         }
 
         $this->gravarConsultaClearSale($pedido, $af, $r, $acao);
 
         $aguardando = ClearSaleService::aguardandoParecer($r['codigo_status'] ?? null);
-        $this->json([
-            'ok'            => ($r['status'] ?? '') !== 'erro',
-            'acao'          => $acao,
-            'ambiente'      => $cs->ambiente(),
-            'status'        => $r['status'] ?? null,
-            'codigo_status' => $r['codigo_status'] ?? null,
-            'score'         => $r['score'] ?? null,
-            'risco'         => $r['risco'] ?? null,
-            'aguardando'    => $aguardando,
-            'msg'           => self::significadoClearSale($r, $acao, $aguardando),
+        $this->responderCardClearSale($pedido, ($r['status'] ?? '') !== 'erro',
+            self::significadoClearSale($r, $acao, $aguardando), [
+                'acao'          => $acao,
+                'ambiente'      => $cs->ambiente(),
+                'status'        => $r['status'] ?? null,
+                'codigo_status' => $r['codigo_status'] ?? null,
+                'score'         => $r['score'] ?? null,
+                'risco'         => $r['risco'] ?? null,
+                'aguardando'    => $aguardando,
+            ]);
+    }
+
+    /**
+     * Responde o botão com o CARD já renderizado, lido de novo do banco.
+     *
+     * O JS troca o card inteiro por este HTML. É o mesmo template que a
+     * página usa (_clearsale-card.php): uma fonte só, em vez de o PHP e o JS
+     * montarem o mesmo card cada um do seu jeito e divergirem.
+     */
+    private function responderCardClearSale(array $pedido, bool $ok, string $msg, array $extra = []): void
+    {
+        $codigo = (string) $pedido['codigo'];
+        $cs     = new ClearSaleService();
+
+        $html = $this->renderCardClearSale([
+            'antifraude'   => $this->antifraudePorPedido([$codigo])[$codigo] ?? null,
+            'clearsale'    => ['configurado' => $cs->configurado(), 'ambiente' => $cs->ambiente()],
+            'csMensagem'   => $msg,
+            'csMensagemOk' => $ok,
         ]);
+
+        $this->json(['ok' => $ok, 'msg' => $msg, 'html' => $html] + $extra);
+    }
+
+    private function renderCardClearSale(array $vars): string
+    {
+        ob_start();
+        (static function (array $__v): void {
+            extract($__v, EXTR_SKIP);
+            include ROOT_PATH . '/admin/views/pagamentos/_clearsale-card.php';
+        })($vars);
+        return (string) ob_get_clean();
     }
 
     /** O parecer em uma frase que quem decide entende. */

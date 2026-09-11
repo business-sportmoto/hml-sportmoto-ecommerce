@@ -7,6 +7,11 @@ $pedidosRecentes = $stats['pedidosRecentes'] ?? [];
 $topProdutos     = $stats['topProdutos']     ?? [];
 $chartData       = $stats['chartData']       ?? [];
 
+// O dashboard é de todos os cargos; o catálogo, não. Para vendedor e estoque os
+// cards informam sem levar a um 403. (O nome em "Mais vendidos" apontava para
+// /admin/produtos/{slug}, rota que não existe — agora vai à edição pelo id.)
+$catalogoVer = AuthHelper::hasLevel('super', 'gerente', 'editor');
+
 $statusLabels = [
     'aguardando_pagamento' => ['label' => 'Aguardando',  'color' => 'warning'],
     'aprovado'             => ['label' => 'Aprovado',    'color' => 'success'],
@@ -55,7 +60,7 @@ $statusLabels = [
       </a>
       <?php endif; ?>
       <?php if (($totais['estoque_baixo'] ?? 0) > 0): ?>
-      <a href="<?= BASE_URL ?>/admin/produtos?estoque=baixo"
+      <a<?= $catalogoVer ? ' href="' . BASE_URL . '/admin/produtos?estoque=baixo"' : '' ?>
          class="admin-alert-badge admin-alert-badge--warning">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
              stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
@@ -173,9 +178,11 @@ $statusLabels = [
     <div class="admin-card">
       <div class="admin-card-header">
         <h3>Mais vendidos este mês</h3>
+        <?php if ($catalogoVer): ?>
         <a href="<?= BASE_URL ?>/admin/produtos" class="btn btn-sm btn-ghost">
           Ver todos
         </a>
+        <?php endif; ?>
       </div>
       <?php if (empty($topProdutos)): ?>
       <p class="admin-empty">Sem dados ainda.</p>
@@ -185,7 +192,7 @@ $statusLabels = [
         <div class="admin-top-item">
           <span class="admin-top-rank"><?= $i + 1 ?></span>
           <div class="admin-top-info">
-            <a href="<?= BASE_URL ?>/admin/produtos/<?= View::e($p['slug']) ?>"
+            <a<?= $catalogoVer ? ' href="' . BASE_URL . '/admin/produtos/' . (int)$p['id'] . '/editar"' : '' ?>
                class="admin-top-nome">
               <?= View::e($p['nome']) ?>
             </a>

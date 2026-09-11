@@ -2733,6 +2733,39 @@ td.ia_num { text-align: right; font-variant-numeric: tabular-nums; white-space: 
 /* Vídeo gerado: fundo preto é o letterbox do próprio vídeo, igual nos dois
    temas — não é cor de interface. */
 .ia_resultado_img video { width: 100%; max-height: 520px; border-radius: 8px; display: block; background: #000; }
+
+/* ==== Quem vai gerar: um bloco por IA (tela Gerar) ======================= */
+/* A arte vem desenhada do servidor (cor do fabricante, desenho da
+   capacidade) — nenhum logo de terceiro, nenhuma imagem externa. */
+.ia_modelos { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--ia-e-2); }
+.ia_modelo {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ia-borda);
+  border-radius: var(--ia-r-md);
+  background: var(--ia-card);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+.ia_modelo:hover { border-color: var(--ia-borda-forte); transform: translateY(-1px); }
+/* O rádio continua acessível (teclado, leitor de tela); só não aparece — o
+   bloco inteiro é o alvo do clique. */
+.ia_modelo input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.ia_modelo:has(input:checked) { border-color: var(--ia-azul); box-shadow: 0 0 0 2px var(--ia-azul-anel); }
+.ia_modelo:has(input:focus-visible) { outline: 2px solid var(--ia-azul); outline-offset: 2px; }
+.ia_modelo_arte { display: block; aspect-ratio: 16 / 7; background: var(--ia-fundo); }
+.ia_modelo_arte svg,
+.ia_modelo_arte img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.ia_modelo_corpo { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px 12px; }
+.ia_modelo_nome { font-size: var(--ia-t-label); font-weight: 600; color: var(--ia-txt); }
+.ia_modelo_meta { font-size: var(--ia-t-apoio); line-height: 1.4; color: var(--ia-txt2); overflow-wrap: anywhere; }
+.ia_modelo_selos { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+@media (prefers-reduced-motion: reduce) {
+  .ia_modelo { transition: none; }
+  .ia_modelo:hover { transform: none; }
+}
 .ia_resultado_acoes { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 
 /* ==== campanhas (Fase 3B) ================================================== */
@@ -4956,3 +4989,79 @@ html[data-theme="dark"] .fp-selo{background:var(--pgto-surface-2) !important;col
 @media (max-width: 520px) {
   .insp-item-qtds { flex-direction: column; }
 }
+
+/* ── Card da ClearSale (análise de pedido) ─────────────────────────
+ *
+ * Medidor em meio arco, com o fundo em três trechos e uma marca no ponto do
+ * score. A cor é SEMPRE acompanhada de texto ("Risco baixo", o status por
+ * extenso) — cor sozinha não pode ser a única pista.
+ */
+.cs-card { margin-bottom: 16px; padding: 20px; }
+.cs-card[aria-busy="true"] { opacity: .6; }
+.cs-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; }
+.cs-titulo { margin: 0; font-size: 14px; }
+
+.cs-corpo { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 24px; align-items: center; }
+@media (max-width: 720px) { .cs-corpo { grid-template-columns: 1fr; gap: 14px; } }
+
+/* medidor */
+.cs-medidor { margin: 0; position: relative; width: 200px; max-width: 100%; }
+@media (max-width: 720px) { .cs-medidor { margin: 0 auto; } }
+.cs-medidor-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.cs-trecho { fill: none; stroke-width: 10; stroke-linecap: butt; opacity: .6; }
+.cs-trecho.cs-tom--ok     { stroke: var(--success); }
+.cs-trecho.cs-tom--alerta { stroke: var(--warning); }
+.cs-trecho.cs-tom--ruim   { stroke: var(--danger); }
+.cs-marca { fill: var(--surface, #fff); stroke: var(--c-border); stroke-width: 1.5; }
+.cs-marca-miolo.cs-tom--ok     { fill: var(--success); }
+.cs-marca-miolo.cs-tom--alerta { fill: var(--warning); }
+.cs-marca-miolo.cs-tom--ruim   { fill: var(--danger); }
+
+.cs-medidor-texto {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; flex-direction: column; align-items: center; line-height: 1.1;
+}
+.cs-numero { font-size: 34px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.cs-de     { font-size: 11px; color: var(--c-text-muted); text-transform: uppercase; letter-spacing: .08em; margin-top: 2px; }
+.cs-faixa  { font-size: 12px; font-weight: 700; margin-top: 4px; }
+.cs-sem-score { font-size: 12px; color: var(--c-text-muted); padding-bottom: 6px; }
+
+/* tons (texto) */
+.cs-faixa.cs-tom--ok,     .cs-status.cs-tom--ok     .cs-status-cod { color: var(--success); }
+.cs-faixa.cs-tom--alerta, .cs-status.cs-tom--alerta .cs-status-cod { color: var(--warning); }
+.cs-faixa.cs-tom--ruim,   .cs-status.cs-tom--ruim   .cs-status-cod { color: var(--danger); }
+.cs-status.cs-tom--espera .cs-status-cod { color: var(--info); }
+.cs-status.cs-tom--neutro .cs-status-cod { color: var(--c-text-muted); }
+
+/* leitura */
+.cs-leitura { min-width: 0; }
+.cs-status { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 15px; }
+.cs-status-cod {
+  font-size: 11px; font-weight: 800; letter-spacing: .06em;
+  border: 1.5px solid currentColor; border-radius: 4px; padding: 1px 5px;
+}
+.cs-explica { margin: 6px 0 12px; font-size: 13px; color: var(--text-2); line-height: 1.5; }
+
+.cs-acao { border-left: 3px solid var(--c-border); padding: 2px 0 2px 12px; }
+.cs-rotulo { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--c-text-muted); margin-bottom: 3px; }
+.cs-acao p { margin: 0; font-size: 13.5px; line-height: 1.5; }
+
+/* meta */
+.cs-meta { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 16px 0 0; padding-top: 12px; border-top: 1px solid var(--c-border); }
+.cs-meta div { display: flex; gap: 6px; font-size: 12px; }
+.cs-meta dt { color: var(--c-text-muted); }
+.cs-meta dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* estados vazio e erro */
+.cs-vazio { font-size: 13px; line-height: 1.5; }
+.cs-vazio p { margin: 4px 0 0; color: var(--text-2); }
+.cs-vazio--erro strong { color: var(--danger); }
+
+/* ações e rodapé */
+.cs-acoes { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+.cs-rodape { font-size: 12px; color: var(--c-text-muted); }
+.cs-escala { margin: 10px 0 0; font-size: 11.5px; color: var(--c-text-muted); line-height: 1.5; }
+
+.cs-aviso { margin: 0 0 12px; font-size: 13px; padding: 8px 12px; border-radius: 6px; }
+.cs-aviso--ok   { background: var(--success-lt); color: var(--success); }
+.cs-aviso--erro { background: var(--danger-lt);  color: var(--danger); }

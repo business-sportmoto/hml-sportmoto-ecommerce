@@ -28,7 +28,10 @@ final class MediaStreamController extends Controller
 
     public function __construct()
     {
-        AuthHelper::requireAdmin();
+        // Upload de vídeo serve o catálogo e o conteúdo (banners, clips):
+        // super, gerente e editor. Até 11/09 era requireAdmin() — qualquer
+        // cargo gerava URL de upload direto no Cloudflare Stream.
+        AuthHelper::requireAdminLevel('super', 'gerente', 'editor');
     }
 
     /**

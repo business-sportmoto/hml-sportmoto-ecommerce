@@ -167,6 +167,8 @@ jQuery(function ($) {
     var d = dadosJson('#ia_video_dados');
     var $alvo = $('#ia_g_video_custo');
     if (!d || !$alvo.length) { return; }
+    // Quem vai rodar primeiro dita o preço — não o primário da capacidade.
+    if (modeloVideoAtual) { d = $.extend({}, d, modeloVideoAtual); }
     var dur = parseInt($('#ia_g_duracao').val(), 10) || 0;
     var res = $('#ia_g_resolucao').val();
     var comAudio = $('#ia_form_gerar [name=audio]').is(':checked');
@@ -211,10 +213,84 @@ jQuery(function ($) {
     $var.find('option').not('[value="1"]').prop('disabled', cap === 'video');
     if (cap === 'video') { $var.val('1'); }
     preencherSalvos(parseInt($(this).val(), 10) || 0, cap);
+    mostrarModelos(parseInt($(this).find('option:selected').data('modelo'), 10) || 0, cap);
     atualizarCustoVideo();
   });
 
   $(document).on('change', '#ia_g_duracao, #ia_g_resolucao, #ia_form_gerar [name=audio]', atualizarCustoVideo);
+
+  /* ------------------------------------------------------------ */
+  /* Quem vai gerar                                                 */
+  /* ------------------------------------------------------------ */
+
+  var modeloVideoAtual = null;
+  var ROT_PROP  = { '1:1': 'Quadrado (1:1) — feed', '3:2': 'Paisagem (3:2) — banner/site', '2:3': 'Retrato (2:3) — story base',
+                    '9:16': 'Story (9:16)', '16:9': 'Widescreen (16:9)', '3:4': 'Retrato (3:4)', '4:3': 'Paisagem (4:3)' };
+  var ROT_VPROP = { '9:16': 'Vertical 9:16 — Reels e Stories', '16:9': 'Horizontal 16:9 — site', '1:1': 'Quadrado 1:1 — feed' };
+  var ROT_RES   = { '480p': '480p — rascunho, mais barato', '720p': '720p — versão final', '1080p': '1080p' };
+
+  // Refaz as opções da lista com o que a IA aceita, mantendo a escolha se ainda valer.
+  function refazerSelect($sel, valores, rotulos, sufixo) {
+    if (!$sel.length || !valores || !valores.length) { return; }
+    var atual = String($sel.val());
+    $sel.empty();
+    valores.forEach(function (v) {
+      $('<option></option>').val(v).text(rotulos[v] || (v + (sufixo || ''))).appendTo($sel);
+    });
+    $sel.val(valores.map(String).indexOf(atual) !== -1 ? atual : String(valores[0]));
+  }
+
+  // A IA que vai rodar PRIMEIRO: a escolhida; senão o padrão do tipo; senão a 1ª da fila.
+  function modeloEfetivo($grupo, pino) {
+    var escolhido = $grupo.find('input[name=modelo_id]:checked').val();
+    if (escolhido) { return escolhido; }
+    if (pino && $grupo.find('input[name=modelo_id][value="' + pino + '"]').length) { return String(pino); }
+    return $grupo.find('input[name=modelo_id]').filter(function () { return this.value !== ''; }).first().val() || '';
+  }
+
+  // As opções de proporção (imagem) e de duração/qualidade/formato (vídeo)
+  // seguem a IA efetiva — o Veo não faz 5 s nem 480p.
+  function aplicarModelo() {
+    var $grupo = $('#ia_g_modelo_wrap .ia_modelos:not([hidden])');
+    var pino = parseInt($('#ia_g_tipo').find('option:selected').data('modelo'), 10) || 0;
+    var m = (dadosJson('#ia_modelos_dados') || {})[modeloEfetivo($grupo, pino)];
+    modeloVideoAtual = null;
+    if (!m) { return; }
+    if (m.cap === 'imagem' && m.proporcoes) {
+      refazerSelect($('#ia_g_proporcao'), m.proporcoes, ROT_PROP);
+    }
+    if (m.cap === 'video' && m.video) {
+      refazerSelect($('#ia_g_duracao'), m.video.duracoes, {}, ' segundos');
+      refazerSelect($('#ia_g_resolucao'), m.video.resolucoes, ROT_RES);
+      refazerSelect($('#ia_g_vproporcao'), m.video.proporcoes, ROT_VPROP);
+      modeloVideoAtual = { nome: m.nome, usd_segundo: m.usd_segundo, usd_segundo_sem_audio: m.usd_segundo_sem_audio };
+    }
+  }
+
+  // Mostra os blocos da capacidade do tipo, volta ao automático e marca o padrão.
+  function mostrarModelos(pino, cap) {
+    var $wrap = $('#ia_g_modelo_wrap');
+    if (!$wrap.length) { return; }
+    var $grupos = $wrap.find('.ia_modelos').prop('hidden', true);
+    // Rádios de mesmo nome são um grupo só no formulário: sem isto, a IA
+    // marcada em outro tipo seguia marcada (e enviada) num grupo escondido.
+    $wrap.find('input[name=modelo_id]').prop('checked', false);
+    var $grupo = $grupos.filter('[data-cap="' + cap + '"]');
+    $wrap.toggle($grupo.length > 0);
+    if (!$grupo.length) { return; }
+    $grupo.prop('hidden', false);
+    $grupo.find('input[name=modelo_id][value=""]').prop('checked', true);
+    $grupo.find('.ia_c_modelo_padrao').prop('hidden', true);
+    if (pino) {
+      $grupo.find('input[name=modelo_id][value="' + pino + '"]').closest('.ia_modelo').find('.ia_c_modelo_padrao').prop('hidden', false);
+    }
+    aplicarModelo();
+  }
+
+  $(document).on('change', '#ia_form_gerar input[name=modelo_id]', function () {
+    aplicarModelo();
+    atualizarCustoVideo();
+  });
 
   $(document).on('change', '#ia_g_salvo', function () {
     var id = parseInt($(this).val(), 10) || 0;

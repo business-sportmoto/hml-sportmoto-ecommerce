@@ -4,7 +4,9 @@ declare(strict_types=1);
 class CaracteristicasController extends Controller {
 
     public function __construct() {
-        AuthHelper::requireAdmin();
+        // Catálogo: super, gerente e editor (CLAUDE.md §4.2). Até 11/09 era
+        // requireAdmin(). porCategoria() só é chamado do form de produto.
+        AuthHelper::requireAdminLevel('super', 'gerente', 'editor');
     }
 
     // ── Listagem ──────────────────────────────────────────

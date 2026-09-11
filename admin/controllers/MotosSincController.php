@@ -5,7 +5,10 @@
 class MotosSincController extends Controller {
 
     public function __construct() {
-        AuthHelper::requireAdmin();
+        // Compatibilidade de motos é catálogo: super, gerente e editor
+        // (Cargos.php, editor). Até 11/09 era requireAdmin() — qualquer cargo
+        // disparava a sincronização da base de motos.
+        AuthHelper::requireAdminLevel('super', 'gerente', 'editor');
     }
 
     public function index(): void {

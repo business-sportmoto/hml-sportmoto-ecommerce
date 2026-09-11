@@ -39,7 +39,8 @@ class IAModelo
             $sql = "SELECT m.id, m.provedor_id, m.capacidade, m.codigo_modelo, m.nome,
                            m.prioridade, m.ativo, m.custo_config, m.params_padrao, m.timeout_s,
                            m.tempo_medio_ms, m.total_execucoes, m.total_falhas,
-                           p.nome AS provedor_nome, p.codigo AS provedor_codigo, p.ativo AS provedor_ativo
+                           p.nome AS provedor_nome, p.codigo AS provedor_codigo, p.ativo AS provedor_ativo,
+                           (p.api_key_enc IS NOT NULL) AS provedor_tem_chave
                       FROM ia_modelos m
                 INNER JOIN ia_provedores p ON p.id = m.provedor_id
                   ORDER BY m.capacidade ASC, m.prioridade ASC, m.nome ASC";
@@ -233,6 +234,74 @@ class IAModelo
             LogService::error('ia_modelo_primario_erro', ['capacidade' => $capacidade, 'erro' => $e->getMessage()]);
             return null;
         }
+    }
+
+    /**
+     * Modelos que a tela de gerar oferece para escolha: ativos, de provedor
+     * ativo e com chave — o MESMO critério do orquestrador, para a tela nunca
+     * oferecer uma IA que a fila pularia. Na ordem da fila.
+     */
+    public function paraEscolha(array $capacidades): array
+    {
+        $capacidades = array_values(array_intersect($capacidades, array_keys(self::capacidades())));
+        if ($capacidades === []) {
+            return [];
+        }
+        try {
+            $marc = implode(',', array_fill(0, count($capacidades), '?'));
+            $stmt = $this->db->prepare(
+                "SELECT m.id, m.capacidade, m.codigo_modelo, m.nome, m.prioridade, m.custo_config,
+                        m.params_padrao, m.tempo_medio_ms, m.total_execucoes, m.total_falhas,
+                        p.codigo AS provedor_codigo, p.nome AS provedor_nome
+                   FROM ia_modelos m
+             INNER JOIN ia_provedores p
+                     ON p.id = m.provedor_id AND p.ativo = 1 AND p.api_key_enc IS NOT NULL
+                  WHERE m.ativo = 1 AND m.capacidade IN ({$marc})
+               ORDER BY m.capacidade ASC, m.prioridade ASC, m.id ASC"
+            );
+            $stmt->execute($capacidades);
+            return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (Throwable $e) {
+            LogService::error('ia_modelo_escolha_erro', ['erro' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /**
+     * O modelo pode rodar esta capacidade agora? Devolve a linha ou null. O id
+     * vem do navegador: ativo, provedor ativo com chave, mesma capacidade.
+     */
+    public function usavel(int $id, string $capacidade): ?array
+    {
+        if ($id <= 0) {
+            return null;
+        }
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT m.* FROM ia_modelos m
+             INNER JOIN ia_provedores p
+                     ON p.id = m.provedor_id AND p.ativo = 1 AND p.api_key_enc IS NOT NULL
+                  WHERE m.id = :id AND m.capacidade = :cap AND m.ativo = 1
+                  LIMIT 1"
+            );
+            $stmt->execute([':id' => $id, ':cap' => $capacidade]);
+            return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        } catch (Throwable $e) {
+            LogService::error('ia_modelo_usavel_erro', ['id' => $id, 'erro' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /**
+     * Imagem conceitual cadastrada para o modelo (params_padrao.ia.imagem).
+     * Só https: o endereço vai para um <img> no painel. Sem ela, a tela
+     * desenha a arte a partir do fabricante e da capacidade.
+     */
+    public static function imagemConceito(?string $json): ?string
+    {
+        $ia  = self::decodificar($json)['ia'] ?? null;
+        $url = is_array($ia) ? ($ia['imagem'] ?? null) : null;
+        return (is_string($url) && preg_match('#^https://[^\s"\'<>]+$#i', $url)) ? $url : null;
     }
 
     /** Proporções a oferecer para uma capacidade (cai no padrão sem modelo ativo). */

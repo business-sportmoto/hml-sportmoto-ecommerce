@@ -28,7 +28,7 @@ class IATipoConteudo
     public function listarAtivos(): array
     {
         try {
-            $sql = "SELECT id, codigo, nome, grupo, capacidade, campos_briefing, max_tokens
+            $sql = "SELECT id, codigo, nome, grupo, capacidade, campos_briefing, max_tokens, modelo_id
                       FROM ia_tipos_conteudo
                      WHERE ativo = 1 AND grupo <> 'sistema'
                   ORDER BY grupo ASC, ordem ASC, nome ASC";

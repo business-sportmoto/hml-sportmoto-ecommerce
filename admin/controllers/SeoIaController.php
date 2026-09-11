@@ -5,7 +5,10 @@
 class SeoIaController extends Controller {
 
     public function __construct() {
-        AuthHelper::requireAdmin();
+        // SEO com IA só é chamado dos formulários de produto, categoria e
+        // marca — catálogo: super, gerente e editor. Até 11/09 era
+        // requireAdmin(), e cada geração consome o provedor de IA.
+        AuthHelper::requireAdminLevel('super', 'gerente', 'editor');
     }
 
     /**

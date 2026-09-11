@@ -13,6 +13,11 @@
       </a>
     </div>
 
+    <?php
+    // Mesmo guard dos controllers do catálogo: super, gerente e editor.
+    $catalogoVer = AuthHelper::hasLevel('super', 'gerente', 'editor');
+    if ($catalogoVer):
+    ?>
     <div class="admin-nav-section">
       <span class="admin-nav-section-title">Catálogo</span>
       <a href="<?= BASE_URL ?>/admin/produtos" class="admin-nav-item<?= adminIsActive('/admin/produto') ?>">
@@ -59,6 +64,7 @@
         Motos
       </a>
     </div>
+    <?php endif; ?>
 
     <div class="admin-nav-section">
       <span class="admin-nav-section-title">Vendas</span>

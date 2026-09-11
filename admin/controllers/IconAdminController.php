@@ -7,12 +7,13 @@ class IconAdminController extends Controller
      * nenhum, então alcançável sem login: o token CSRF que o verifyCsrf()
      * exige estava exposto nas páginas anônimas de cupons e promoções.
      *
-     * requireAdmin() fecha o furo de AUTENTICAÇÃO sem decidir cargo. O cargo
-     * proposto está em [[cargos-por-pagina]].
+     * O seletor de ícones abre em toda página do painel e só lê. Gravar a
+     * biblioteca é do catálogo: super, gerente e editor (11/09, matriz em
+     * [[cargos-por-pagina]]).
      */
     public function __construct()
     {
-        AuthHelper::requireAdmin();
+        AuthHelper::requireAdminLevel('super', 'gerente', 'editor');
     }
 
     public function store(): void

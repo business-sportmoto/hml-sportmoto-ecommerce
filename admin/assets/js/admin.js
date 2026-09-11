@@ -1891,77 +1891,6 @@ $(document).on('change', '#pe-categoria', function () {
   }
 
   // ────────────────────────────────────────────────────
-  // EDIÇÃO DE ESTOQUE (produto simples)
-  // ────────────────────────────────────────────────────
-
-  $(document).on('keydown', '.prod-estoque-input', function (e) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      $(this).closest('.prod-massa-input-group').find('.prod-estoque-save').trigger('click');
-    }
-    if (e.key === 'Escape') {
-      $(this).val($(this).data('original'));
-    }
-  });
-
-  $(document).on('click', '.prod-estoque-save', async function () {
-    const id         = $(this).data('id');
-    const $input     = $(`.prod-estoque-input[data-id="${id}"]`);
-    const novoEst    = parseInt($input.val()) || 0;
-    const original   = parseInt($input.data('original')) || 0;
-
-    if (novoEst === original) return;
-
-    const diferenca  = novoEst - original;
-    const direcao    = diferenca > 0 ? 'entrada' : 'saída';
-
-    const ok = await adminConfirm({
-      titulo   : 'Confirmar ajuste de estoque?',
-      mensagem : `Estoque: ${original} → ${novoEst} (${diferenca > 0 ? '+' : ''}${diferenca} unidades — ${direcao})`,
-      tipo     : diferenca < 0 ? 'warning' : 'info',
-      confirmar: 'Confirmar',
-    });
-
-    if (!ok) {
-      $input.val(original);
-      return;
-    }
-
-    const $btn = $(this);
-    $btn.prop('disabled', true);
-
-    try {
-      const res = await $.post(BASE_URL + '/admin/estoque/ajustar', {
-        produto_id  : id,
-        operacao    : diferenca > 0 ? 'entrada' : 'saida',
-        quantidade  : Math.abs(diferenca),
-        observacao  : 'Ajuste em massa na listagem',
-        _csrf_token : CSRF_TOKEN,
-      });
-
-      if (!res.ok) { showToast(res.msg, 'error'); return; }
-
-      $input.data('original', novoEst).addClass('input-success');
-      setTimeout(() => $input.removeClass('input-success'), 2000);
-
-      // Atualiza badge de estoque
-      const $badge = $(`#estoque-badge-${id}`);
-      $badge.text(novoEst.toLocaleString('pt-BR'));
-      $badge.removeClass('admin-badge--danger admin-badge--warning admin-badge--success');
-      $badge.addClass(novoEst === 0 ? 'admin-badge--danger' : 'admin-badge--success');
-
-      showToast(
-        `Estoque ajustado: ${original} → ${novoEst}`,
-        'success'
-      );
-    } catch {
-      showToast('Erro ao ajustar estoque.', 'error');
-    } finally {
-      $btn.prop('disabled', false);
-    }
-  });
-
-  // ────────────────────────────────────────────────────
   // EXPANDIR VARIAÇÕES (produto com variações)
   // ────────────────────────────────────────────────────
 
@@ -2042,28 +1971,10 @@ $(document).on('change', '#pe-categoria', function () {
             </div>
           </div>
 
-          <!-- Estoque do SKU -->
+          <!-- Estoque do SKU: só leitura — o saldo é espelho do Bling -->
           <div class="prod-sku-edit-wrap">
             <div class="prod-sku-preco-label">Estoque</div>
-            <div class="prod-sku-estoque-input-group">
-              <input type="number"
-                     class="prod-sku-field-input prod-sku-estoque-input"
-                     data-sku-id="${sku.id}"
-                     data-produto-id="${produtoId}"
-                     data-original="${sku.estoque}"
-                     value="${sku.estoque}"
-                     min="0">
-              <button type="button"
-                      class="prod-sku-field-btn prod-sku-estoque-save"
-                      data-sku-id="${sku.id}"
-                      data-produto-id="${produtoId}"
-                      title="Salvar estoque (Enter)">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
-                     stroke="currentColor" stroke-width="3" stroke-linecap="round">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-              </button>
-            </div>
+            <div class="prod-sku-estoque-valor" title="Espelho do Bling">${parseInt(sku.estoque, 10) || 0} un</div>
           </div>
 
         </div>`;
@@ -2130,70 +2041,6 @@ $(document).on('change', '#pe-categoria', function () {
       }
     } catch {
       showToast('Erro ao salvar preço.', 'error');
-    } finally {
-      $btn.prop('disabled', false);
-    }
-  });
-
-  // ── Estoque do SKU ────────────────────────────────────
-  $(document).on('keydown', '.prod-sku-estoque-input', function (e) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      $(this).closest('.prod-sku-estoque-input-group')
-             .find('.prod-sku-estoque-save').trigger('click');
-    }
-    if (e.key === 'Escape') $(this).val($(this).data('original'));
-  });
-
-  $(document).on('click', '.prod-sku-estoque-save', async function () {
-    const skuId    = $(this).data('sku-id');
-    const prodId   = $(this).data('produto-id');
-    const $input   = $(`.prod-sku-estoque-input[data-sku-id="${skuId}"]`);
-    const novoEst  = parseInt($input.val()) || 0;
-    const original = parseInt($input.data('original')) || 0;
-    const dif      = novoEst - original;
-
-    if (dif === 0) return;
-
-    const ok = await adminConfirm({
-      titulo   : 'Confirmar ajuste de estoque?',
-      mensagem : `Estoque do SKU: ${original} → ${novoEst} (${dif > 0 ? '+' : ''}${dif} un)`,
-      tipo     : dif < 0 ? 'warning' : 'info',
-      confirmar: 'Confirmar',
-    });
-
-    if (!ok) { $input.val(original); return; }
-
-    const $btn = $(this).prop('disabled', true);
-
-    try {
-      const res = await $.post(BASE_URL + '/admin/estoque/ajustar-sku', {
-        sku_id      : skuId,
-        produto_id  : prodId,
-        novo_valor  : novoEst,
-        valor_antes : original,
-        _csrf_token : CSRF_TOKEN,
-      });
-
-      if (!res.ok) { showToast(res.msg, 'error'); $input.val(original); return; }
-
-      $input.data('original', novoEst).addClass('input-success');
-      setTimeout(() => $input.removeClass('input-success'), 2000);
-
-      // Atualiza badge de estoque total do produto
-      const $badge = $(`#estoque-badge-${prodId}`);
-      if ($badge.length) {
-        // Recalcula total dos SKUs visíveis
-        let total = 0;
-        $(`.prod-sku-estoque-input[data-produto-id="${prodId}"]`).each(function () {
-          total += parseInt($(this).val()) || 0;
-        });
-        $badge.text(total.toLocaleString('pt-BR'));
-      }
-
-      showToast(`Estoque ajustado: ${original} → ${novoEst}`, 'success');
-    } catch {
-      showToast('Erro ao ajustar estoque.', 'error');
     } finally {
       $btn.prop('disabled', false);
     }
@@ -4496,26 +4343,6 @@ $(document).on('change', '#pe-categoria', function () {
       }
     }
 
-    function somarEstoqueSKUs() {
-      let total = 0;
-      document.querySelectorAll('.pe-sku-estoque').forEach(input => {
-        total += parseInt(input.value) || 0;
-      });
-      const el = document.getElementById('pe-sku-estoque-total');
-      if (el) el.textContent = total.toLocaleString('pt-BR');
-
-      // Atualiza campo oculto de estoque_total
-      const estoqueInput = document.getElementById('pe-estoque');
-      if (estoqueInput) estoqueInput.value = total;
-    }
-
-    // Observa mudanças de estoque nos SKUs
-    $(document).on('input', '.pe-sku-estoque', function () {
-      if (document.getElementById('pe-tem-variacao')?.checked) {
-        // somarEstoqueSKUs();
-      }
-    });
-
     // Observa toggle de variações
     document.getElementById('pe-tem-variacao')?.addEventListener('change', atualizarModoEstoque);
     atualizarModoEstoque(); // inicializa
@@ -4595,153 +4422,6 @@ $(document).on('change', '#pe-categoria', function () {
     const getProdutoId = () => parseInt(
       document.getElementById('produto-id')?.value || 0
     );
-
-    // ── Helper: abre drawer de ajuste ──────────────────────
-    function abrirAjuste({ produtoId, skuId = null, skuCodigo = '', saldoAtual = 0 }) {
-      const titulo = skuId
-        ? `Ajustar estoque — ${skuCodigo}`
-        : 'Ajustar estoque';
-
-      const drawer = adminDrawer({
-        titulo,
-        tamanho : 'sm',
-        conteudo: buildAjusteHTML(saldoAtual),
-      });
-
-      inicializarAjuste(drawer, { produtoId, skuId, skuCodigo, saldoAtual });
-    }
-
-    function buildAjusteHTML(saldoAtual) {
-      return `
-        <div class="estoque-operacao-tabs">
-          <button type="button" class="estoque-op-tab active" data-op="entrada">
-            + Entrada
-          </button>
-          <button type="button" class="estoque-op-tab" data-op="saida">
-            − Saída
-          </button>
-          <button type="button" class="estoque-op-tab" data-op="corrigir">
-            = Corrigir
-          </button>
-        </div>
-        <input type="hidden" id="ajuste-operacao" value="entrada">
-
-        <div class="form-group" style="margin-top:20px;">
-          <label class="pe-label" id="ajuste-qtd-label">
-            Quantidade a adicionar
-          </label>
-          <input type="number" id="ajuste-quantidade"
-                class="form-control" min="1" value="1"
-                style="font-size:22px;font-weight:800;text-align:center;">
-        </div>
-
-        <div class="form-group">
-          <label class="pe-label">Observação</label>
-          <input type="text" id="ajuste-observacao" class="form-control"
-                placeholder="Ex: Recebimento NF 1234, Inventário...">
-        </div>
-
-        <div class="estoque-ajuste-preview">
-          <span>Saldo atual:
-            <strong id="preview-saldo-atual">${saldoAtual}</strong>
-          </span>
-          <span class="estoque-ajuste-arrow">→</span>
-          <span>Novo saldo:
-            <strong id="preview-saldo-novo">${saldoAtual}</strong>
-          </span>
-        </div>
-
-        <div style="margin-top:20px;">
-          <button type="button" class="btn btn-primary"
-                  style="width:100%;" id="btn-confirmar-ajuste">
-            Confirmar ajuste
-          </button>
-        </div>`;
-    }
-
-    function inicializarAjuste(drawer, { produtoId, skuId, skuCodigo, saldoAtual }) {
-      let saldoRef = saldoAtual;
-
-      function preview() {
-        const op  = document.getElementById('ajuste-operacao')?.value;
-        const qtd = parseInt(document.getElementById('ajuste-quantidade')?.value) || 0;
-        let   novo;
-
-        if (op === 'entrada')  novo = saldoRef + qtd;
-        if (op === 'saida')    novo = Math.max(0, saldoRef - qtd);
-        if (op === 'corrigir') novo = qtd;
-
-        const $novo = document.getElementById('preview-saldo-novo');
-        if ($novo) {
-          $novo.textContent = novo;
-          $novo.style.color = novo < saldoRef ? 'var(--danger)' : 'var(--success)';
-        }
-      }
-
-      // Tabs
-      $(drawer.body()).on('click', '.estoque-op-tab', function () {
-        const op = $(this).data('op');
-        document.getElementById('ajuste-operacao').value = op;
-        $(drawer.body()).find('.estoque-op-tab').removeClass('active');
-        $(this).addClass('active');
-
-        const labels = {
-          entrada : 'Quantidade a adicionar',
-          saida   : 'Quantidade a remover',
-          corrigir: 'Novo saldo absoluto',
-        };
-        document.getElementById('ajuste-qtd-label').textContent = labels[op];
-        preview();
-      });
-
-      $(drawer.body()).on('input', '#ajuste-quantidade', preview);
-      preview();
-
-      // Confirmar
-      $(drawer.body()).on('click', '#btn-confirmar-ajuste', async function () {
-        const op         = document.getElementById('ajuste-operacao').value;
-        const quantidade = parseInt(document.getElementById('ajuste-quantidade').value) || 0;
-        const obs        = document.getElementById('ajuste-observacao').value.trim();
-
-        if (quantidade <= 0) {
-          showToast('Informe uma quantidade válida.', 'error');
-          return;
-        }
-
-        const labelOp = { entrada: 'entrada', saida: 'saída', corrigir: 'correção' };
-        // const ok = await adminConfirm({
-        //   titulo   : 'Confirmar ajuste de estoque?',
-        //   mensagem : `${skuId ? 'SKU: ' + skuCodigo + ' — ' : ''}Operação: ${labelOp[op]} de ${quantidade} unidade(s).`,
-        //   tipo     : op === 'saida' ? 'warning' : 'info',
-        //   confirmar: 'Confirmar',
-        // });
-        // if (!ok) return;
-
-        $(this).prop('disabled', true).text('Salvando...');
-
-        $.post(BASE_URL + '/admin/estoque/ajustar', {
-          produto_id  : produtoId,
-          sku_id      : skuId || '',
-          operacao    : op,
-          quantidade  : quantidade,
-          observacao  : obs,
-          _csrf_token : CSRF_TOKEN,
-        }, function (res) {
-          $('#btn-confirmar-ajuste').prop('disabled', false).text('Confirmar ajuste');
-
-          if (!res.ok) { showToast(res.msg, 'error'); return; }
-
-          drawer.close();
-          showToast(
-            `Estoque ajustado: ${res.saldo_anterior} → ${res.saldo_posterior}`,
-            'success'
-          );
-
-          // Atualiza displays
-          atualizarDisplayEstoque(produtoId, skuId);
-        }, 'json');
-      });
-    }
 
     // ── Helper: abre drawer de histórico ───────────────────
     function abrirHistorico({ produtoId, skuId = null, skuCodigo = '' }) {
@@ -4897,68 +4577,7 @@ $(document).on('change', '#pe-categoria', function () {
       return html;
     }
 
-    // ── Helper: atualiza displays após ajuste ───────────────
-    function atualizarDisplayEstoque(produtoId, skuId) {
-        $.get(BASE_URL + '/admin/estoque/saldo', {
-            produto_id: produtoId,
-            sku_id    : skuId || '',
-        }, function (res) {
-            if (!res.ok) return;
-
-            if (skuId) {
-                // Atualiza a linha individual do SKU no breakdown
-                $(`#breakdown-sku-${skuId} .pe-estoque-sku-saldo`)
-                    .text(res.saldo.toLocaleString('pt-BR'));
-                $(`#breakdown-sku-${skuId} .pe-estoque-sku-reservado`)
-                    .text(res.reservado.toLocaleString('pt-BR'));
-                $(`#breakdown-sku-${skuId} .pe-estoque-sku-disponivel`)
-                    .text(res.disponivel.toLocaleString('pt-BR'));
-
-                // Atualiza data-saldo do botão de ajuste
-                $(`[data-sku-id="${skuId}"].btn-ajustar-sku-estoque`)
-                    .data('saldo', res.saldo);
-
-                // Atualiza input inline da tabela de SKUs
-                const $input = $(`.pe-sku-estoque[data-sku-id="${skuId}"]`);
-                if ($input.length) {
-                    $input.val(res.saldo).data('original', res.saldo);
-                }
-            }
-
-            // Sempre atualiza os totalizadores do card com dados reais do servidor
-            const elSaldo = document.getElementById('pe-saldo-atual');
-            const elDisp  = document.getElementById('pe-saldo-disponivel');
-            const elRes   = document.getElementById('pe-saldo-reservado');
-
-            if (elSaldo) elSaldo.textContent =
-                res.total_saldo.toLocaleString('pt-BR') + ' un';
-            if (elDisp)  elDisp.textContent  =
-                res.total_disponivel.toLocaleString('pt-BR') + ' un';
-            if (elRes)   elRes.textContent   =
-                res.total_reservado.toLocaleString('pt-BR') + ' un';
-
-        }, 'json');
-    }
-
     // ── Event listeners ────────────────────────────────────
-
-    // Ajustar produto sem variação
-    $(document).on('click', '#btn-ajustar-estoque', function () {
-      abrirAjuste({
-        produtoId  : $(this).data('produto-id'),
-        saldoAtual : $(this).data('saldo'),
-      });
-    });
-
-    // Ajustar SKU individual (breakdown)
-    $(document).on('click', '.btn-ajustar-sku-estoque', function () {
-      abrirAjuste({
-        produtoId  : $(this).data('produto-id'),
-        skuId      : $(this).data('sku-id'),
-        skuCodigo  : $(this).data('sku-codigo'),
-        saldoAtual : $(this).data('saldo'),
-      });
-    });
 
     // Histórico geral do produto
     $(document).on('click', '#btn-ver-historico-estoque', function () {
@@ -5009,128 +4628,6 @@ $(document).on('change', '#pe-categoria', function () {
       if (res.atualizados > 0) setTimeout(() => window.location.reload(), 1200);
     });
 
-  // })();
-// ── Estoque inline nos SKUs ───────────────────────────────
-// (function () {
-  if (!document.getElementById('pe-skus-tbody')) return;
-
-  // Detecta alteração no input de estoque do SKU
-  $(document).on('input', '.pe-sku-estoque', function () {
-    const $input  = $(this);
-    const skuId   = $input.data('sku-id');
-    const original= parseInt($input.data('original')) || 0;
-    const atual   = parseInt($input.val()) || 0;
-    const $btns   = $(`#sku-est-btns-${skuId}`);
-
-    if (atual !== original) {
-      $btns.stop(true).fadeIn(150);
-    } else {
-      $btns.stop(true).fadeOut(150);
-    }
-  });
-
-  // ── Confirmar alteração ───────────────────────────────
-  $(document).on('click', '.pe-sku-est-confirm', async function () {
-    const skuId     = $(this).data('sku-id');
-    const $input    = $(`.pe-sku-estoque[data-sku-id="${skuId}"]`);
-    const produtoId = $input.data('produto-id');
-    const original  = parseInt($input.data('original')) || 0;
-    const novoValor = parseInt($input.val()) || 0;
-    const diferenca = novoValor - original;
-    const $btns     = $(`#sku-est-btns-${skuId}`);
-    const $btn      = $(this);
-
-    if (diferenca === 0) { $btns.fadeOut(150); return; }
-
-    // Validação básica
-    if (novoValor < 0) {
-      showToast('Estoque não pode ser negativo.', 'error');
-      return;
-    }
-
-    // Confirmação personalizada
-    const label   = diferenca > 0
-      ? `Adicionar ${diferenca} unidade(s) ao estoque`
-      : `Remover ${Math.abs(diferenca)} unidade(s) do estoque`;
-
-    // const ok = await adminConfirm({
-    //   titulo   : 'Confirmar ajuste?',
-    //   mensagem : `${label}. Saldo atual: ${original} → Novo saldo: ${novoValor}`,
-    //   tipo     : diferenca < 0 ? 'warning' : 'info',
-    //   confirmar: 'Confirmar',
-    // });
-
-    // if (!ok) {
-    //   // Restaura o valor original
-    //   $input.val(original);
-    //   $btns.fadeOut(150);
-    //   return;
-    // }
-
-    $btn.prop('disabled', true);
-    $btn.html('<svg class="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg>');
-
-    $.post(BASE_URL + '/admin/estoque/ajustar-sku', {
-      sku_id      : skuId,
-      produto_id  : produtoId,
-      novo_valor  : novoValor,
-      valor_antes : original,
-      _csrf_token : CSRF_TOKEN,
-    }, function (res) {
-      $btn.prop('disabled', false);
-      $btn.html('<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>');
-
-      if (!res.ok) {
-        showToast(res.msg, 'error');
-        $input.val(original);
-        $btns.fadeOut(150);
-        return;
-      }
-
-      // Atualiza o valor de referência original
-      $input.data('original', res.saldo_posterior);
-      $input.val(res.saldo_posterior);
-      $btns.fadeOut(150);
-
-      // Feedback visual no input
-      $input.addClass('input-success');
-      setTimeout(() => $input.removeClass('input-success'), 2000);
-
-      showToast(res.msg, 'success');
-      // somarEstoqueSKUs();
-
-      atualizarDisplayEstoque(produtoId, skuId);
-    }, 'json').fail(() => {
-      $btn.prop('disabled', false);
-      showToast('Erro de conexão.', 'error');
-      $input.val(original);
-      $btns.fadeOut(150);
-    });
-  });
-
-  // ── Cancelar alteração ───────────────────────────────
-  $(document).on('click', '.pe-sku-est-cancel', function () {
-    const skuId  = $(this).data('sku-id');
-    const $input = $(`.pe-sku-estoque[data-sku-id="${skuId}"]`);
-    const $btns  = $(`#sku-est-btns-${skuId}`);
-
-    $input.val($input.data('original'));
-    $btns.stop(true).fadeOut(200);
-  });
-
-  // Também cancela com ESC
-  $(document).on('keydown', '.pe-sku-estoque', function (e) {
-    if (e.key === 'Escape') {
-      const skuId = $(this).data('sku-id');
-      $(this).val($(this).data('original'));
-      $(`#sku-est-btns-${skuId}`).stop(true).fadeOut(200);
-    }
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const skuId = $(this).data('sku-id');
-      $(`#sku-est-btns-${skuId}`).find('.pe-sku-est-confirm').trigger('click');
-    }
-  });
 
 })();
 
@@ -6222,7 +5719,6 @@ $(document).on('change', '#pe-categoria', function () {
     tr.innerHTML      = buildSkuRowHTML(key);
     document.getElementById('pe-skus-tbody')?.appendChild(tr);
     tr.querySelector('input[type="text"]')?.focus();
-    somarEstoqueSKUs();
   });
 
   function buildSkuRowHTML(key) {
@@ -6263,9 +5759,7 @@ $(document).on('change', '#pe-categoria', function () {
         </div>
       </td>
       <td>
-        <input type="number" name="skus[${key}][estoque]"
-               class="form-control form-control--sm pe-sku-estoque"
-               value="0" min="0">
+        <span class="pe-sku-estoque-valor" title="SKU novo: o saldo chega do Bling depois de salvo e vinculado">—</span>
       </td>
       <td style="text-align:center;">
         <label class="pe-toggle-mini">

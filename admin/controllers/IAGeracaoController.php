@@ -95,6 +95,8 @@ class IAGeracaoController extends Controller
             'teto_video' => (new IACustoService())->tetoVideo(),
             // Biblioteca: o JS filtra pelo tipo escolhido e aplica o padrão.
             'prompts'    => (new IAPromptService())->paraGerar(),
+            // Quem vai gerar: as IAs que a fila aceitaria, por capacidade.
+            'modelos_escolha' => (new IAModelo())->paraEscolha(['texto', 'imagem', 'video']),
             'csrf'    => $this->tokenCsrf(),
         ]);
 
@@ -191,6 +193,8 @@ class IAGeracaoController extends Controller
             'proporcao_video'  => trim((string) ($_POST['proporcao_video'] ?? '')),
             'audio'            => !empty($_POST['audio']),
             'usar_foto'        => !empty($_POST['usar_foto']),
+            // IA escolhida nos blocos; vazio = automático. O service revalida.
+            'modelo_id'        => (int) ($_POST['modelo_id'] ?? 0),
             // Banner (2C): o pipeline de composição lê estes três.
             'layout'           => trim((string) ($_POST['layout'] ?? '')),
             'banner_headline'  => trim((string) ($_POST['banner_headline'] ?? '')),

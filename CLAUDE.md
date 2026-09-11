@@ -130,7 +130,7 @@ Fonte única: `app/helpers/Cargos.php`. Alterar cargo = alterar **lá**, nunca d
 | Pedidos — status | ✅ | ✅ | ✅ | — | logístico |
 | Pedidos — pagamento / itens | ✅ | ✅ | — | — | — |
 | Catálogo (produtos, categorias, marcas) | ✅ | ✅ | — | ✅ | — |
-| Estoque | ✅ | ✅ | — | — | ✅ |
+| Estoque — consultar saldo (espelho do Bling) e puxar do Bling | ✅ | ✅ | — | ✅ | — |
 | Logística (torre, transportadoras, reversas, etiquetas…) | ✅ | ✅ | — | — | ✅ |
 | Logística — custo real de frete | ✅ | ✅ | — | — | — |
 | Promoções & Cupons | ✅ | ✅ | — | — | — |
@@ -142,6 +142,8 @@ Fonte única: `app/helpers/Cargos.php`. Alterar cargo = alterar **lá**, nunca d
 | **Integrações (Bling, Tray, chaves)** | ✅ | — | — | — | — |
 
 **Status "logístico"** = `Cargos::STATUS_LOGISTICOS` (`em_separacao`, `enviado`, `entregue`). Pagamento, cancelamento e devolução ficam fora — a devolução tem módulo próprio. `pedido_status` não tem coluna que diga o que é logístico: status custom novo precisa entrar na constante.
+
+**Estoque** — o saldo é do Bling (decisão de 02/09/2026). **Ajustar saldo não existe no painel** desde 11/09/2026: é pela origem, Syscar → Bling. `EstoqueController::ajustar()`/`ajustarSku()` respondem 410 com o motivo, as telas de produto só mostram o saldo, e salvar produto não grava `produto_skus.estoque`. O editor lê saldo e histórico e usa **Puxar do Bling** (o card vive no formulário de produto). Não reintroduza campo de estoque editável em tela nenhuma.
 
 **Duas decisões de segurança embutidas:**
 
@@ -365,8 +367,10 @@ $stmt->execute([Session::get('admin_id'), $registroId]);
 | Logística — Logistica, Transportadora, Frete, FreteFallback, Reversa, Divergencia, Rastreio, Etiqueta | `requirePermissaoOuNivel('logistica','super','gerente','estoque')` | ✅ 11/09 |
 | Logística — custo real de frete (`podeVerCustos`) | chave `logistica.custos` ou `('super','gerente')` | ✅ 11/09 |
 | E-mail marketing, inclusive transacional | `requirePermissaoOuNivel('email_marketing','super','gerente')` | ✅ |
-| Produtos, Categorias, Marcas | `('super','gerente','editor')` | ⏳ hoje aberto a todo cargo |
-| Estoque | `('super','gerente','estoque')` | ⏳ hoje aberto a todo cargo |
+| Catálogo — Produtos, Categorias, Marcas, Atributos, Características, Motos, Famílias, SEO com IA, upload de vídeo, ícones | `('super','gerente','editor')` | ✅ 11/09 |
+| Estoque — saldo e histórico (card do form de produto) | `('super','gerente','editor','estoque')` | ✅ 11/09 |
+| Estoque — puxar do Bling (`ressincronizar`) | construtor: `('super','gerente','editor','estoque')` | ✅ 11/09 |
+| Estoque — `ajustar`, `ajustarSku` | desativados: respondem 410 — o saldo é do Bling | ✅ 11/09 |
 | Central de Recuperação — construtor | `requireAdmin()` + guard próprio | ✅ |
 | Central de Recuperação — gestão | `('super','gerente')` | ✅ |
 
@@ -470,7 +474,7 @@ AuthLogService::registrar('admin_create')  — autor, alvo, cargo, código
 
 - [ ] Rodar `migration-cargos.sql` (`admin` → `gerente`, nasce `vendedor`) — local ✅; hml/prod: conferir (§4.2)
 - [x] Trocar `'atendimento'` → `'vendedor'` e tirar o `'admin'` do transacional — 11/09/2026 (§4.8.2)
-- [ ] Aplicar a matriz (§4.6 e `cargos-por-pagina.md`) — feito: cupons, promoções, pedidos (criar, status, etiqueta), logística, transacional; falta: catálogo, conteúdo, sistema, construtor de pedidos
+- [ ] Aplicar a matriz (§4.6 e `cargos-por-pagina.md`) — feito: cupons, promoções, pedidos (criar, status, etiqueta), logística, transacional, catálogo; falta: conteúdo, sistema, construtor de pedidos
 - [ ] Decidir o `{"all": true}` (§4.8.7)
 - [ ] Varredura anônima das rotas GET no ambiente (§4.8.6) — local limpa em 11/09/2026
 - [ ] `Session::set('usuario_id', (int)$user['id'])` no login do admin

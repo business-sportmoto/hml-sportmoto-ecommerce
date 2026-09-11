@@ -2,7 +2,9 @@
 class FamiliasController extends Controller {
 
     public function __construct() {
-        AuthHelper::requireAdmin();
+        // Família de produto é catálogo: super, gerente e editor. Até 11/09
+        // era requireAdmin(). Só o form de produto chama estas rotas.
+        AuthHelper::requireAdminLevel('super', 'gerente', 'editor');
     }
 
     // Ajax — busca famílias por nome

@@ -161,6 +161,11 @@ verificação, não defeito:
   ia-worker** — sem ele o vídeo fica em `aguardando_provedor` até o watchdog
   matar aos 15 min. Não verificado: o Veo com chamada real, o webhook e o
   Safari. Ver [[../12-decisoes-tecnicas/ia-prompts-visao-e-video]].
+- **Escolher a IA e filtrar modelos (11/09/2026).** Na tela Gerar, blocos com
+  as IAs que podem gerar o tipo escolhido (a escolhida vai na frente da fila;
+  se falhar, a reserva age). Na configuração, filtro por capacidade, provedor,
+  prioridade e status. Sem migration. Não verificado: clique real logado.
+  Ver [[../12-decisoes-tecnicas/ia-escolha-de-modelo]].
 - **Campanhas (3A/3B)** exercitadas em transação, nunca com o worker gerando de
   verdade.
 

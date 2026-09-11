@@ -2,7 +2,10 @@
 class MarcasController extends Controller {
 
     public function __construct() {
-        AuthHelper::requireAdmin();
+        // Catálogo: super, gerente e editor (CLAUDE.md §4.2). Até 11/09 era
+        // requireAdmin(). O autocomplete de marcas (/api/buscar-marcas) é
+        // do AdminApiController e segue aberto a todo cargo.
+        AuthHelper::requireAdminLevel('super', 'gerente', 'editor');
     }
 
     public function index(): void {

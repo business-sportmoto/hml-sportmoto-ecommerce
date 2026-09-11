@@ -2,7 +2,9 @@
 class AtributosController extends Controller {
 
     public function __construct() {
-        AuthHelper::requireAdmin();
+        // Catálogo: super, gerente e editor (CLAUDE.md §4.2). Até 11/09 era
+        // requireAdmin().
+        AuthHelper::requireAdminLevel('super', 'gerente', 'editor');
     }
 
     // Adicionar no AtributosController

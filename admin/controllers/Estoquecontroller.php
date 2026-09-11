@@ -4,71 +4,24 @@
 class EstoqueController extends Controller {
 
     public function __construct() {
-        AuthHelper::requireAdmin();
+        // O card de estoque do formulário de produto (editor) lê saldo e
+        // histórico e puxa do Bling. Ajuste manual não existe mais — o saldo
+        // é do Bling (ver ajustar()). Até 11/09 era requireAdmin().
+        AuthHelper::requireAdminLevel('super', 'gerente', 'editor', 'estoque');
     }
 
-    // ── Ajuste manual de estoque ──────────────────────────
+    // ── Ajuste manual: desativado (11/09/2026) ────────────
+    //
+    // O saldo é do Bling (decisão de 02/09/2026 — ver bling-estoque-modelo
+    // no Vault). O ajuste daqui gravava estoque_saldo e estoque_log locais,
+    // não chegava ao Bling, e o cron da hora seguinte sobrescrevia: ilusão de
+    // ajuste. Ajuste de verdade entra pela origem, Syscar → Bling; o painel
+    // espelha e oferece "Puxar do Bling" (ressincronizar()).
+    //
+    // As rotas seguem de pé para responder com o motivo, não com um 404.
     public function ajustar(): void {
         $this->verifyCsrf();
-
-        $produtoId  = SecurityHelper::sanitizeInt($_POST['produto_id']  ?? 0);
-        $skuId      = SecurityHelper::sanitizeInt($_POST['sku_id']      ?? 0) ?: null;
-        $operacao   = SecurityHelper::sanitizeString($_POST['operacao'] ?? 'entrada');
-        $quantidade = SecurityHelper::sanitizeInt($_POST['quantidade']  ?? 0);
-        $observacao = SecurityHelper::sanitizeString($_POST['observacao'] ?? '');
-
-        if (!$produtoId) {
-            $this->json(['ok' => false, 'msg' => 'Produto inválido.']);
-        }
-        if ($quantidade <= 0) {
-            $this->json(['ok' => false, 'msg' => 'Informe uma quantidade válida.']);
-        }
-        if (!in_array($operacao, ['entrada', 'saida', 'corrigir'])) {
-            $this->json(['ok' => false, 'msg' => 'Operação inválida.']);
-        }
-
-        $estoque   = new EstoqueService();
-        $usuarioId = (int)Session::get('admin_id');
-
-        try {
-            $resultado = match ($operacao) {
-                'entrada' => $estoque->entrada(
-                    produtoId : $produtoId,
-                    quantidade: $quantidade,
-                    tipo      : 'entrada_manual',
-                    origem    : 'admin',
-                    opcoes    : [
-                        'sku_id'     => $skuId,
-                        'observacao' => $observacao,
-                        'usuario_id' => $usuarioId,
-                    ]
-                ),
-                'saida'   => $estoque->saida(
-                    produtoId : $produtoId,
-                    quantidade: $quantidade,
-                    tipo      : 'saida_ajuste',
-                    origem    : 'admin',
-                    opcoes    : [
-                        'sku_id'     => $skuId,
-                        'observacao' => $observacao,
-                        'usuario_id' => $usuarioId,
-                    ]
-                ),
-                'corrigir' => $estoque->corrigir(
-                    produtoId  : $produtoId,
-                    novoSaldo  : $quantidade,
-                    observacao : $observacao,
-                    opcoes     : [
-                        'sku_id'     => $skuId,
-                        'usuario_id' => $usuarioId,
-                    ]
-                ),
-            };
-        } catch (\Exception $e) {
-            $this->json(['ok' => false, 'msg' => $e->getMessage()]);
-        }
-
-        $this->json($resultado);
+        $this->ajusteSoNoBling();
     }
 
     // ── Histórico de movimentações ────────────────────────
@@ -214,6 +167,8 @@ class EstoqueController extends Controller {
     // A pergunta certa passou a ser "qual o saldo no Bling agora?".
     public function ressincronizar(): void {
         $this->verifyCsrf();
+        // Sem guard extra: puxar do Bling só lê o Bling e grava o espelho —
+        // vale para quem vê o card (construtor: sup/ger/edi/est).
 
         $produtoId = SecurityHelper::sanitizeInt($_POST['produto_id'] ?? 0);
         if (!$produtoId) {
@@ -310,66 +265,15 @@ class EstoqueController extends Controller {
         ], 'admin');
     }
 
-    // Adicionar ao EstoqueController:
-
     public function ajustarSku(): void {
         $this->verifyCsrf();
+        $this->ajusteSoNoBling();
+    }
 
-        $skuId      = SecurityHelper::sanitizeInt($_POST['sku_id']      ?? 0);
-        $produtoId  = SecurityHelper::sanitizeInt($_POST['produto_id']  ?? 0);
-        $novoValor  = SecurityHelper::sanitizeInt($_POST['novo_valor']  ?? 0);
-        $valorAntes = SecurityHelper::sanitizeInt($_POST['valor_antes'] ?? 0);
-
-        if (!$skuId || !$produtoId) {
-            $this->json(['ok' => false, 'msg' => 'Dados inválidos.']);
-        }
-
-        $diferenca = $novoValor - $valorAntes;
-
-        if ($diferenca === 0) {
-            $this->json(['ok' => true, 'msg' => 'Sem alteração.', 'saldo' => $valorAntes]);
-        }
-
-        $estoque   = new EstoqueService();
-        $usuarioId = (int)Session::get('admin_id');
-
-        if ($diferenca > 0) {
-            $resultado = $estoque->entrada(
-                produtoId : $produtoId,
-                quantidade: $diferenca,
-                tipo      : 'entrada_manual',
-                origem    : 'admin',
-                opcoes    : [
-                    'sku_id'     => $skuId,
-                    'usuario_id' => $usuarioId,
-                    'observacao' => "Ajuste inline: {$valorAntes} → {$novoValor}",
-                ]
-            );
-        } else {
-            $resultado = $estoque->saida(
-                produtoId : $produtoId,
-                quantidade: abs($diferenca),
-                tipo      : 'saida_ajuste',
-                origem    : 'admin',
-                opcoes    : [
-                    'sku_id'     => $skuId,
-                    'usuario_id' => $usuarioId,
-                    'observacao' => "Ajuste inline: {$valorAntes} → {$novoValor}",
-                ]
-            );
-        }
-
-        if (!$resultado['ok']) {
-            $this->json($resultado);
-        }
-
+    private function ajusteSoNoBling(): void {
         $this->json([
-            'ok'              => true,
-            'saldo_posterior' => $resultado['saldo_posterior'],
-            'diferenca'       => $diferenca,
-            'msg'             => $diferenca > 0
-                                ? "+ {$diferenca} unidades adicionadas"
-                                : abs($diferenca) . " unidades removidas",
-        ]);
+            'ok'  => false,
+            'msg' => 'O saldo é do Bling: ajuste pela origem (Syscar → Bling) e use "Puxar do Bling" para trazer o número.',
+        ], 410);
     }
 }

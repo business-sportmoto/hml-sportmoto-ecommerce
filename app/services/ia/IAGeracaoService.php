@@ -73,13 +73,28 @@ class IAGeracaoService
             return ['ok' => false, 'msg' => 'Esta capacidade de mídia chega nas próximas fases.'];
         }
 
+        // IA escolhida na tela: vai na FRENTE da fila (o pino do tipo e a
+        // prioridade viram reserva). O id vem do navegador — revalidado:
+        // ativo, provedor ativo com chave, mesma capacidade do tipo.
+        $escolhido   = null;
+        $escolhidoId = (int) ($entrada['modelo_id'] ?? 0);
+        if ($escolhidoId > 0) {
+            $escolhido = (new IAModelo())->usavel($escolhidoId, $capacidade);
+            if ($escolhido === null) {
+                return ['ok' => false, 'msg' => 'A IA escolhida não está disponível para este tipo de conteúdo — escolha outra ou deixe no automático.'];
+            }
+            $tipo['modelo_id'] = (int) $escolhido['id'];
+        }
+
         // Proporção (só imagem) — vai para ia_geracoes.formato.
         // A lista aceita é a que o modelo PRIMÁRIO declara, não mais um trio
         // cravado: cadastrar um modelo com outro conjunto fazia a prediction
         // voltar em HTTP 422. Fora da lista, cai na primeira aceita.
         $proporcao = null;
         if ($capacidade === 'imagem') {
-            $aceitas   = (new IAModelo())->proporcoesDaCapacidade('imagem');
+            $aceitas   = $escolhido !== null
+                ? IAModelo::meta($escolhido['params_padrao'] ?? null)['proporcoes']
+                : (new IAModelo())->proporcoesDaCapacidade('imagem');
             $proporcao = (string) ($entrada['proporcao'] ?? '');
             if (!in_array($proporcao, $aceitas, true)) {
                 $proporcao = (string) reset($aceitas);
@@ -100,13 +115,17 @@ class IAGeracaoService
             if ($opcVideo === null) {
                 return ['ok' => false, 'msg' => 'Nenhum modelo de vídeo ativo com provedor configurado.'];
             }
+            // Com IA escolhida, o pedido se ajusta a ELA (o Veo não faz 5 s).
+            $metaVideo = $escolhido !== null
+                ? IAModelo::metaVideo($escolhido['params_padrao'] ?? null)
+                : $opcVideo['meta'];
             $ajuste = IAModelo::ajustarVideo(
-                $opcVideo['meta'],
+                $metaVideo,
                 (int) ($entrada['duracao'] ?? 0),
                 (string) ($entrada['resolucao'] ?? ''),
                 (string) ($entrada['proporcao_video'] ?? '')
             );
-            $videoPedido = $ajuste + ['audio' => !empty($entrada['audio']) && $opcVideo['meta']['audio']];
+            $videoPedido = $ajuste + ['audio' => !empty($entrada['audio']) && $metaVideo['audio']];
             $proporcao   = $ajuste['proporcao'];
         }
 
@@ -192,10 +211,14 @@ class IAGeracaoService
                     . $videoPedido['resolucao'] . ' — sem preço o teto de gasto não consegue barrar.'];
             }
         } elseif ($capacidade === 'imagem') {
-            $custoUnitario = $this->custo->estimarImagem($this->custo->custoConfigPrimario('imagem'));
+            $custoUnitario = $this->custo->estimarImagem($escolhido !== null
+                ? $this->custo->custoConfigDoModelo((int) $escolhido['id'])
+                : $this->custo->custoConfigPrimario('imagem'));
         } else {
             $custoUnitario = $this->custo->estimarTexto(
-                $this->custo->custoConfigPrimarioTexto(),
+                $escolhido !== null
+                    ? $this->custo->custoConfigDoModelo((int) $escolhido['id'])
+                    : $this->custo->custoConfigPrimarioTexto(),
                 mb_strlen($promptFinal) + mb_strlen((string) ($tipo['instrucoes_sistema'] ?? '')),
                 isset($tipo['max_tokens']) ? (int) $tipo['max_tokens'] : null
             );
@@ -218,6 +241,9 @@ class IAGeracaoService
         if ($videoPedido !== null) {
             $snapshot['video'] = $videoPedido; // o orquestrador grava o efetivo ao lado
         }
+        if ($escolhido !== null) {
+            $snapshot['modelo_escolhido'] = (int) $escolhido['id']; // o worker põe na frente da fila
+        }
         $contextoJson = json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         $uuids  = [];
@@ -233,6 +259,7 @@ class IAGeracaoService
 
             $dedup = hash('sha256', implode('|', [
                 $usuarioId, $produtoId, $tipoId, $angulo, md5($prompt), $minuto, $i, $variacoes, $origemId,
+                (int) ($escolhido['id'] ?? 0), // outra IA = outro pedido (comparar é legítimo)
             ]));
 
             $id = $this->modelo->criar([
@@ -309,6 +336,13 @@ class IAGeracaoService
         $contexto = json_decode((string) $g['contexto'], true);
         $briefing = is_array($contexto['briefing'] ?? null) ? $contexto['briefing'] : [];
 
+        // A IA escolhida volta junto — se ainda puder rodar. Desativada desde
+        // então, a refação cai no automático em vez de falhar.
+        $escolha = (int) ($contexto['modelo_escolhido'] ?? 0);
+        if ($escolha > 0 && (new IAModelo())->usavel($escolha, (string) $g['capacidade']) === null) {
+            $escolha = 0;
+        }
+
         return $this->enfileirar([
             'usuario_id'        => $usuarioId,
             'produto_id'        => (int) $g['produto_id'],
@@ -327,6 +361,7 @@ class IAGeracaoService
             'proporcao_video'   => (string) ($contexto['video']['proporcao'] ?? ''),
             'audio'             => !empty($contexto['video']['audio']),
             'usar_foto'         => ($g['capacidade'] ?? '') === 'video' && !empty($contexto['imagem_referencia']),
+            'modelo_id'         => $escolha,
         ]);
     }
 

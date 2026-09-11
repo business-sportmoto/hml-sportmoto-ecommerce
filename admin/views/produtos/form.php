@@ -839,20 +839,6 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
                   </span>
                   <div class="pe-estoque-sku-actions">
                     <button type="button"
-                            class="btn btn-xs btn-ghost btn-ajustar-sku-estoque"
-                            data-sku-id="<?= $es['id'] ?>"
-                            data-sku-codigo="<?= View::e($es['sku']) ?>"
-                            data-produto-id="<?= (int)$p['id'] ?>"
-                            data-saldo="<?= (int)$es['saldo'] ?>"
-                            title="Ajustar estoque">
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
-                          stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                        <line x1="12" y1="5" x2="12" y2="19"/>
-                        <line x1="5"  y1="12" x2="19" y2="12"/>
-                      </svg>
-                      Ajustar
-                    </button>
-                    <button type="button"
                             class="btn btn-xs btn-ghost btn-historico-sku-estoque"
                             data-sku-id="<?= $es['id'] ?>"
                             data-sku-codigo="<?= View::e($es['sku']) ?>"
@@ -906,21 +892,13 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
                 <?php endif; ?>
               </div>
 
+              <p class="pe-field-hint" style="margin:12px 0 0;">
+                O saldo é espelho do Bling. Para ajustar, lance pela origem
+                (Syscar → Bling) e use <strong>Puxar do Bling</strong>.
+              </p>
+
               <!-- ── Ações gerais ───────────────────────────────────── -->
               <div class="pe-estoque-actions">
-                <?php if (empty($p['tem_variacao'])): ?>
-                <button type="button" class="btn btn-sm btn-outline"
-                        id="btn-ajustar-estoque"
-                        data-produto-id="<?= (int)$p['id'] ?>"
-                        data-saldo="<?= $saldoTotal ?>">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                    <line x1="12" y1="5" x2="12" y2="19"/>
-                    <line x1="5"  y1="12" x2="19" y2="12"/>
-                  </svg>
-                  Ajustar estoque
-                </button>
-                <?php endif; ?>
                 <button type="button" class="btn btn-sm btn-ghost"
                         id="btn-ver-historico-estoque"
                         data-produto-id="<?= (int)$p['id'] ?>">
@@ -1181,10 +1159,9 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
                         </div>
                       </td>
                       <td>
-                        <input type="number" class="form-control form-control--sm"
-                               name="skus[<?= $sku['id'] ?>][estoque]"
-                               value="<?= (int)$sku['estoque'] ?>"
-                               min="0" style="max-width:80px;">
+                        <span class="pe-sku-estoque-valor"
+                              title="Espelho do Bling — ajuste pela origem (Syscar → Bling)"
+                              style="font-weight:600;"><?= (int)$sku['estoque'] ?></span>
                       </td>
                       <td>
                         <label class="pe-toggle-mini">
@@ -1327,42 +1304,13 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
                             </div>
                             </td>
 
-                            <!-- Substitua o <td> de estoque na tabela de SKUs por: -->
+                            <!-- Estoque: só leitura — o saldo é espelho do Bling -->
                             <td>
-                              <div class="pe-sku-estoque-wrap" id="sku-est-wrap-<?= $sku['id'] ?>">
-                                <input type="number"
-                                      name="skus[<?= $sku['id'] ?>][estoque]"
-                                      class="form-control form-control--sm pe-sku-estoque"
-                                      value="<?= (int)$sku['estoque'] ?>"
-                                      data-original="<?= (int)$sku['estoque'] ?>"
-                                      data-sku-id="<?= $sku['id'] ?>"
-                                      data-produto-id="<?= (int)$p['id'] ?>"
-                                      min="0"
-                                      style="max-width:72px;">
-                                <!-- Botões aparecem ao editar -->
-                                <div class="pe-sku-estoque-btns" id="sku-est-btns-<?= $sku['id'] ?>"
-                                    style="display:none;">
-                                  <button type="button"
-                                          class="pe-sku-est-confirm"
-                                          data-sku-id="<?= $sku['id'] ?>"
-                                          title="Confirmar alteração">
-                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                                        stroke="currentColor" stroke-width="3" stroke-linecap="round">
-                                      <polyline points="20 6 9 17 4 12"/>
-                                    </svg>
-                                  </button>
-                                  <button type="button"
-                                          class="pe-sku-est-cancel"
-                                          data-sku-id="<?= $sku['id'] ?>"
-                                          title="Cancelar">
-                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                                        stroke="currentColor" stroke-width="3" stroke-linecap="round">
-                                      <line x1="18" y1="6" x2="6"  y2="18"/>
-                                      <line x1="6"  y1="6" x2="18" y2="18"/>
-                                    </svg>
-                                  </button>
-                                </div>
-                              </div>
+                              <span class="pe-sku-estoque-valor"
+                                    title="Espelho do Bling — ajuste pela origem (Syscar → Bling)"
+                                    style="font-weight:600;">
+                                <?= (int)$sku['estoque'] ?>
+                              </span>
                             </td>
 
                             <td style="text-align:center;">

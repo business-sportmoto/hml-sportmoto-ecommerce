@@ -457,30 +457,7 @@ $totalFiltros = count($filtrosAtivos);
                   <span class="prod-massa-field-label">Preço (R$)</span>
                 </div>
 
-                <!-- Estoque — só para simples -->
-                <?php if (!$temVar): ?>
-                <div class="prod-massa-row" data-field="estoque">
-                  <div class="prod-massa-input-group">
-                    <input type="number"
-                           class="prod-massa-input prod-estoque-input"
-                           data-id="<?= $p['id'] ?>"
-                           data-original="<?= $estoque ?>"
-                           value="<?= $estoque ?>"
-                           min="0"
-                           placeholder="Estoque">
-                    <button type="button"
-                            class="prod-massa-btn prod-estoque-save"
-                            data-id="<?= $p['id'] ?>"
-                            title="Confirmar (Enter)">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                           stroke="currentColor" stroke-width="3" stroke-linecap="round">
-                        <polyline points="20 6 9 17 4 12"/>
-                      </svg>
-                    </button>
-                  </div>
-                  <span class="prod-massa-field-label">Estoque (un)</span>
-                </div>
-                <?php endif; ?>
+                <?php // Estoque saiu da edição em massa (11/09): o saldo é espelho do Bling. ?>
 
                 <!-- Variações: botão para expandir -->
                 <?php if ($temVar): ?>

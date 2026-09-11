@@ -79,7 +79,7 @@ class DashboardController extends Controller {
 
         // Produtos mais vendidos (mês)
         $stmtTop = $db->query(
-            "SELECT p.nome, p.slug, SUM(pi.quantidade) AS vendidos,
+            "SELECT p.id, p.nome, p.slug, SUM(pi.quantidade) AS vendidos,
                     SUM(pi.subtotal) AS receita
              FROM pedido_itens pi
              JOIN produtos p ON p.id = pi.produto_id

@@ -16,6 +16,73 @@ $av = $ctx['avaliacoes'] ?? null;
 $video      = $video ?? null;
 $teto_video = $teto_video ?? null;
 $prompts    = $prompts ?? [];
+$modelos_escolha = $modelos_escolha ?? [];
+
+// Modelos por capacidade, na ordem da fila (o primeiro é o principal).
+$porCap = [];
+foreach ($modelos_escolha as $m) {
+    $porCap[(string) $m['capacidade']][] = $m;
+}
+
+if (!function_exists('ia_arte_modelo')) {
+    /**
+     * Arte conceitual do modelo, desenhada aqui: nenhum logo de terceiro,
+     * nenhuma imagem externa. Cor pelo FABRICANTE (o dono do modelo, não o
+     * provedor — o Replicate hospeda modelos de várias casas), desenho pela
+     * CAPACIDADE, e uma variação estável tirada do código do modelo, para dois
+     * modelos da mesma casa não saírem iguais.
+     */
+    function ia_arte_modelo(array $m): string
+    {
+        $codigo = (string) ($m['codigo_modelo'] ?? '');
+        $fab    = str_contains($codigo, '/')
+            ? strtolower((string) strtok($codigo, '/'))
+            : strtolower((string) ($m['provedor_codigo'] ?? ''));
+        $paletas = [
+            'automatico'        => ['#1e3a8a', '#2563eb'],
+            'openai'            => ['#083d34', '#10a37f'],
+            'gemini'            => ['#1f3fb0', '#8e5fd0'],
+            'google'            => ['#1f3fb0', '#8e5fd0'],
+            'claude'            => ['#6b2f1a', '#d97757'],
+            'anthropic'         => ['#6b2f1a', '#d97757'],
+            'bytedance'         => ['#0c1f4a', '#1fb6d5'],
+            'black-forest-labs' => ['#1c1917', '#d97706'],
+            'kwaivgi'           => ['#3b0764', '#db2777'],
+        ];
+        [$c1, $c2] = $paletas[$fab] ?? ['#1e293b', '#64748b'];
+
+        $h   = crc32($codigo);
+        $gid = 'ia_arte_' . dechex($h);
+        $cx1 = 96 + ($h % 50);        $cy1 = 8 + (($h >> 6) % 30);   $r1 = 24 + (($h >> 12) % 18);
+        $cx2 = 18 + (($h >> 3) % 40); $cy2 = 58 + (($h >> 9) % 18);  $r2 = 10 + (($h >> 15) % 12);
+
+        $motivo = match ((string) ($m['capacidade'] ?? 'texto')) {
+            'imagem' => '<rect x="104" y="20" width="44" height="34" rx="4" fill="none" stroke="#fff" stroke-opacity=".75" stroke-width="2"/>'
+                      . '<circle cx="136" cy="29" r="4" fill="#fff" fill-opacity=".85"/>'
+                      . '<path d="M106 52l12-13 9 9 7-6 12 10z" fill="#fff" fill-opacity=".55"/>',
+            'video'  => '<rect x="100" y="18" width="52" height="38" rx="5" fill="#fff" fill-opacity=".14" stroke="#fff" stroke-opacity=".7" stroke-width="1.5"/>'
+                      . '<path d="M120 28v18l15-9z" fill="#fff" fill-opacity=".9"/>'
+                      . '<path d="M104 22h4M112 22h4M136 22h4M144 22h4M104 52h4M112 52h4M136 52h4M144 52h4" stroke="#fff" stroke-opacity=".6" stroke-width="2"/>',
+            default  => '<path d="M104 24h40M104 32h32M104 40h38M104 48h22" stroke="#fff" stroke-opacity=".7" stroke-width="3" stroke-linecap="round"/>'
+                      . '<rect x="129" y="44" width="2.5" height="8" fill="#fff" fill-opacity=".9"/>',
+        };
+
+        // Família (primeira palavra do nome), curta o bastante para não
+        // encostar no desenho: 9 caracteres a 17px cabem antes do x=100.
+        $familia = mb_strimwidth((string) strtok((string) ($m['nome'] ?? ''), ' '), 0, 9, '');
+
+        return '<svg viewBox="0 0 160 70" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid slice">'
+             . '<defs><linearGradient id="' . $gid . '" x1="0" y1="0" x2="1" y2="1">'
+             . '<stop offset="0" stop-color="' . $c1 . '"/><stop offset="1" stop-color="' . $c2 . '"/></linearGradient></defs>'
+             . '<rect width="160" height="70" fill="url(#' . $gid . ')"/>'
+             . '<circle cx="' . $cx1 . '" cy="' . $cy1 . '" r="' . $r1 . '" fill="#fff" fill-opacity=".08"/>'
+             . '<circle cx="' . $cx2 . '" cy="' . $cy2 . '" r="' . $r2 . '" fill="#fff" fill-opacity=".10"/>'
+             . $motivo
+             . '<text x="12" y="42" fill="#fff" fill-opacity=".95" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="17" font-weight="700">'
+             . htmlspecialchars($familia, ENT_QUOTES, 'UTF-8') . '</text>'
+             . '</svg>';
+    }
+}
 
 $grupos = [];
 foreach ($tipos as $t) {
@@ -116,7 +183,7 @@ $rotuloGrupo = [
                   elseif ($semVideo)      { $sufixo = ' (nenhum modelo de vídeo ativo)'; }
                   else                    { $sufixo = ' (em breve)'; }
                 ?>
-                <option value="<?= (int) $t['id'] ?>" data-cap="<?= ia_e($cap) ?>" <?= $habilitado ? '' : 'disabled' ?>>
+                <option value="<?= (int) $t['id'] ?>" data-cap="<?= ia_e($cap) ?>" data-modelo="<?= (int) ($t['modelo_id'] ?? 0) ?>" <?= $habilitado ? '' : 'disabled' ?>>
                   <?= ia_e($t['nome']) ?><?= $sufixo ?>
                 </option>
               <?php endforeach; ?>
@@ -237,6 +304,80 @@ $rotuloGrupo = [
         </p>
       </div>
     </div>
+
+    <?php // Quem vai gerar: um grupo de blocos por capacidade; o JS mostra o do tipo escolhido. ?>
+    <?php if ($porCap !== []):
+      // Para o JS: o que muda na tela conforme a IA — proporções (imagem),
+      // durações, resoluções e preço por segundo (vídeo).
+      $dadosModelos = [];
+      foreach ($modelos_escolha as $m) {
+          $cfgM = json_decode((string) ($m['custo_config'] ?? ''), true);
+          $cfgM = is_array($cfgM) ? $cfgM : [];
+          $d = ['cap' => (string) $m['capacidade'], 'nome' => (string) $m['nome']];
+          if ($m['capacidade'] === 'imagem') {
+              $d['proporcoes'] = IAModelo::meta($m['params_padrao'] ?? null)['proporcoes'];
+          }
+          if ($m['capacidade'] === 'video') {
+              $d['video']                 = IAModelo::metaVideo($m['params_padrao'] ?? null);
+              $d['usd_segundo']           = is_array($cfgM['usd_segundo'] ?? null) ? $cfgM['usd_segundo'] : [];
+              $d['usd_segundo_sem_audio'] = is_array($cfgM['usd_segundo_sem_audio'] ?? null) ? $cfgM['usd_segundo_sem_audio'] : [];
+          }
+          $dadosModelos[(string) $m['id']] = $d;
+      }
+    ?>
+    <div class="ia_form_grupo" id="ia_g_modelo_wrap" style="display:none">
+      <p class="ia_grupo_rotulo" id="ia_g_modelo_rot">Quem vai gerar</p>
+      <?php foreach ($porCap as $capM => $lista): ?>
+        <div class="ia_modelos" role="radiogroup" aria-labelledby="ia_g_modelo_rot" data-cap="<?= ia_e($capM) ?>" hidden>
+          <label class="ia_modelo">
+            <input type="radio" name="modelo_id" value="">
+            <span class="ia_modelo_arte"><?= ia_arte_modelo(['codigo_modelo' => 'automatico/' . $capM, 'capacidade' => $capM, 'nome' => 'Automático']) ?></span>
+            <span class="ia_modelo_corpo">
+              <span class="ia_modelo_nome">Automático</span>
+              <span class="ia_modelo_meta">O padrão do tipo e, se ele falhar, o próximo da fila.</span>
+            </span>
+          </label>
+          <?php foreach ($lista as $i => $m):
+              $img   = IAModelo::imagemConceito($m['params_padrao'] ?? null);
+              $fatos = [];
+              // Tempo médio só em texto: em imagem e vídeo ele mede a SUBMISSÃO
+              // ao provedor (1–2 s), não a espera real de minutos.
+              if ($m['capacidade'] === 'texto' && (int) $m['tempo_medio_ms'] > 0) {
+                  $fatos[] = '~' . number_format((int) $m['tempo_medio_ms'] / 1000, 1, ',', '') . ' s';
+              }
+              if ($m['capacidade'] === 'video') {
+                  $mv = IAModelo::metaVideo($m['params_padrao'] ?? null);
+                  $fatos[] = implode('/', $mv['duracoes']) . ' s · ' . implode('/', $mv['resolucoes']) . ($mv['audio'] ? ' · com som' : '');
+              }
+              if ($m['capacidade'] === 'imagem' && IAModelo::meta($m['params_padrao'] ?? null)['aceita_referencia']) {
+                  $fatos[] = 'aceita a foto como referência';
+              }
+              $usos = (int) $m['total_execucoes'];
+              if ($usos >= 5) {
+                  $fatos[] = round(100 * (1 - (int) $m['total_falhas'] / $usos)) . '% sem falha em ' . $usos . ' usos';
+              }
+          ?>
+          <label class="ia_modelo">
+            <input type="radio" name="modelo_id" value="<?= (int) $m['id'] ?>">
+            <span class="ia_modelo_arte"><?php if ($img !== null): ?><img src="<?= ia_e($img) ?>" alt="" loading="lazy"><?php else: ?><?= ia_arte_modelo($m) ?><?php endif; ?></span>
+            <span class="ia_modelo_corpo">
+              <span class="ia_modelo_nome"><?= ia_e($m['nome']) ?></span>
+              <span class="ia_modelo_meta"><?= ia_e($m['provedor_nome']) ?> · <span class="ia_mono"><?= ia_e($m['codigo_modelo']) ?></span></span>
+              <span class="ia_modelo_meta"><?= ia_e(IAModelo::resumoCusto($m['custo_config'])) ?></span>
+              <?php if ($fatos !== []): ?><span class="ia_modelo_meta"><?= ia_e(implode(' · ', $fatos)) ?></span><?php endif; ?>
+              <span class="ia_modelo_selos">
+                <?php if ($i === 0): ?><span class="ia_pill ia_pill_neutra">1ª da fila</span><?php endif; ?>
+                <span class="ia_pill ia_pill_azul ia_c_modelo_padrao" hidden>Padrão deste tipo</span>
+              </span>
+            </span>
+          </label>
+          <?php endforeach; ?>
+        </div>
+      <?php endforeach; ?>
+      <p class="ia_ajuda">Se a IA escolhida falhar, a Central passa para a próxima da fila — o resultado mostra quem gerou de fato.</p>
+      <script type="application/json" id="ia_modelos_dados"><?= json_encode($dadosModelos, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
+    </div>
+    <?php endif; ?>
 
     <div class="ia_form_linha">
       <div class="ia_form_grupo">

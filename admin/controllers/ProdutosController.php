@@ -6,7 +6,10 @@ class ProdutosController extends Controller {
     private ImageUploadService $img;
 
     public function __construct() {
-        AuthHelper::requireAdmin();
+        // Catálogo: super, gerente e editor (CLAUDE.md §4.2). Até 11/09 era
+        // requireAdmin() — vendedor e estoque criavam, editavam e excluíam
+        // produto, e mudavam preço. syncBling() segue sup/ger no método.
+        AuthHelper::requireAdminLevel('super', 'gerente', 'editor');
 
         $this->img = ImageUploadService::fromEnv();
     }
@@ -699,7 +702,7 @@ class ProdutosController extends Controller {
                     // "campo ausente no POST" (preserva) de "campo enviado
                     // vazio" (limpa de propósito).
                     "UPDATE produto_skus
-                    SET sku=?, preco=?, preco_promo=?, estoque=?, ativo=?,
+                    SET sku=?, preco=?, preco_promo=?, ativo=?,
                         custo = IF(?, ?, custo)
                     WHERE id=? AND produto_id=?"
                 );
@@ -722,7 +725,10 @@ class ProdutosController extends Controller {
                     $skuPromo  = !empty($sku['preco_promo']) && (float)$sku['preco_promo'] > 0
                                 ? (float)str_replace(',', '.', $sku['preco_promo'])
                                 : null;
-                    $skuEst    = SecurityHelper::sanitizeInt($sku['estoque']     ?? 0);
+                    // Estoque NÃO vem do formulário (11/09): o saldo é espelho do Bling,
+                    // gravado pela sincronização. O UPDATE com o número que estava
+                    // na tela desfazia a última sincronização. SKU novo nasce com 0
+                    // até o Bling responder (cron, webhook ou "Puxar do Bling").
                     $skuAtivo  = isset($sku['ativo']) && $sku['ativo'] == '1' ? 1 : 0;
                     // Custo do SKU tem precedência sobre o do produto:
                     // variações têm custo diferente. Vazio = NULL.
@@ -738,13 +744,13 @@ class ProdutosController extends Controller {
                     if (is_numeric($key) && (int)$key > 0) {
                         $skuId = (int)$key;
                         $stmtSkuUpdate->execute([
-                            $skuCodigo, $skuPreco, $skuPromo, $skuEst, $skuAtivo,
+                            $skuCodigo, $skuPreco, $skuPromo, $skuAtivo,
                             $temCusto ? 1 : 0, $skuCusto,
                             $skuId, $id,
                         ]);
                     } else {
                         $stmtSkuInsert->execute([
-                            $id, $skuCodigo, $skuPreco, $skuPromo, $skuEst, $skuAtivo, $skuCusto,
+                            $id, $skuCodigo, $skuPreco, $skuPromo, 0, $skuAtivo, $skuCusto,
                         ]);
                         $skuId = (int)$db->lastInsertId();
                     }

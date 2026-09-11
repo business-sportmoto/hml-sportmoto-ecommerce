@@ -38,7 +38,7 @@ final class Cargos {
             'capacidades' => [
                 'Pedidos'               => ['Ver todos os pedidos', 'Alterar status, pagamento e itens'],
                 'Catálogo'              => ['Produtos, categorias, marcas e características'],
-                'Estoque'               => ['Saldos e movimentações'],
+                'Estoque'               => ['Consultar saldo (espelho do Bling) e puxar do Bling'],
                 'Promoções & Cupons'    => ['Criar, editar, ativar e desativar'],
                 'Central de Recuperação'=> ['Ver TODOS os carrinhos (inclusive capturados por outros)',
                                             'Atribuir e transferir responsáveis',
@@ -72,17 +72,19 @@ final class Cargos {
             'capacidades' => [
                 'Catálogo' => ['Produtos: criar, editar, imagens e preços',
                                'Categorias, marcas e características',
-                               'Compatibilidade de motos'],
+                               'Compatibilidade de motos',
+                               'Consultar saldo de estoque (espelho do Bling)'],
             ],
         ],
         'estoque' => [
             'label'     => 'Estoque',
             'cor'       => '#0891b2',
             'bg'        => '#ecfeff',
-            'descricao' => 'Controle de estoque e apoio logístico aos pedidos.',
+            'descricao' => 'Expedição e logística dos pedidos. O saldo de estoque é do Bling — ajuste pela origem (Syscar).',
             'capacidades' => [
-                'Estoque' => ['Saldos, entradas e movimentações'],
-                'Pedidos' => ['Ver pedidos', 'Alterar status logístico (separação/envio)'],
+                'Pedidos'   => ['Ver pedidos', 'Alterar status logístico (separação/envio)',
+                                'Gerar etiqueta de envio'],
+                'Logística' => ['Torre de controle, transportadoras, etiquetas, reversas e divergências'],
             ],
         ],
     ];

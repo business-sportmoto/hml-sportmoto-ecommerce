@@ -145,58 +145,10 @@ $tier      = (string) ($pedido['tier'] ?? 'bronze');
 
   <!-- Decisão -->
   <?php
-    // ClearSale: estado atual + botão. Consultar NÃO decide o pedido — só
-    // traz o parecer para quem vai decidir, logo abaixo.
-    $cs        = $clearsale ?? ['configurado' => false, 'ambiente' => 'sandbox'];
-    $csProd    = ($cs['ambiente'] ?? '') === 'prod';
-    $csEnviado = $antifraude && !empty($antifraude['enviado_em']) && ($antifraude['status'] ?? '') !== 'erro';
+    // Card da ClearSale — template compartilhado com a resposta do botão.
+    // Consultar NÃO decide o pedido: só traz o parecer para quem decide aqui.
+    include __DIR__ . '/_clearsale-card.php';
   ?>
-  <div class="admin-card" style="margin-bottom:16px;padding:20px;" id="cs-card">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;">
-      <h3 style="margin:0;font-size:14px;">ClearSale</h3>
-      <span class="badge <?= $csProd ? 'badge-danger' : 'badge-info' ?>">
-        <?= $csProd ? 'Produção' : 'Homologação' ?>
-      </span>
-    </div>
-
-    <div id="cs-resultado" style="font-size:13.5px;line-height:1.6;margin-bottom:12px;">
-      <?php if ($csEnviado): ?>
-        Último parecer: <strong><?= View::e($antifraude['codigo_status'] ?? '—') ?></strong>
-        <?php if ($antifraude['score'] !== null): ?>
-          · score <strong><?= number_format((float) $antifraude['score'], 0) ?></strong>
-        <?php endif; ?>
-        <?php if (!empty($antifraude['respondido_em'])): ?>
-          <span style="color:var(--c-text-muted);">
-            · <?= date('d/m/Y H:i', strtotime((string) $antifraude['respondido_em'])) ?>
-          </span>
-        <?php endif; ?>
-      <?php elseif ($antifraude && ($antifraude['status'] ?? '') === 'erro'): ?>
-        O último envio falhou: <?= View::e(mb_strimwidth((string) ($antifraude['motivo'] ?? ''), 0, 160, '…')) ?>
-      <?php else: ?>
-        Este pedido ainda não foi enviado à ClearSale.
-      <?php endif; ?>
-    </div>
-
-    <?php if (empty($cs['configurado'])): ?>
-      <p style="color:var(--danger);font-size:13px;margin:0;">Sem credencial da ClearSale configurada.</p>
-    <?php else: ?>
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <button type="button" class="btn btn-outline" id="btn-clearsale"
-                data-modo="<?= $csEnviado ? 'consulta' : 'envio' ?>"
-                data-prod="<?= $csProd ? '1' : '0' ?>">
-          <?= $csEnviado ? 'Consultar parecer' : 'Enviar à ClearSale' ?>
-        </button>
-        <span class="cs-feedback" style="font-size:12.5px;"></span>
-      </div>
-    <?php endif; ?>
-
-    <p style="font-size:12px;color:var(--c-text-muted);margin:10px 0 0;">
-      Consultar não libera nem recusa o pedido — a decisão continua sendo sua, logo abaixo.
-      <?php if (!$csEnviado): ?>
-        A ClearSale analisa depois de receber: o score aparece ao consultar de novo, alguns minutos após o envio.
-      <?php endif; ?>
-    </p>
-  </div>
 
   <div class="admin-card" style="padding:20px;">
     <h3 style="margin:0 0 12px;font-size:14px;">Decisão</h3>
@@ -284,51 +236,52 @@ $tier      = (string) ($pedido['tier'] ?? 'bronze');
 </script>
 
 <script>
-/* Botão da ClearSale. Não toca na decisão do pedido: só busca o parecer e o
-   mostra no card. Em produção, o envio é uma consulta paga — daí a pergunta. */
+/* Botão da ClearSale.
+ *
+ * Delegação no documento: a resposta traz o CARD inteiro renderizado pelo
+ * servidor (o mesmo template da página), e o card é trocado no lugar — o botão
+ * novo não precisa ser religado. Nada aqui toca na decisão do pedido.
+ */
 (function () {
   'use strict';
-  var btn = document.getElementById('btn-clearsale');
-  if (!btn) return;
-
-  var fb    = document.querySelector('#cs-card .cs-feedback');
-  var saida = document.getElementById('cs-resultado');
   var token = document.querySelector('#form-decisao [name="_csrf_token"]');
 
-  btn.addEventListener('click', function () {
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('#btn-clearsale');
+    if (!btn || btn.disabled) return;
+
     var envio = btn.getAttribute('data-modo') === 'envio';
     if (envio && btn.getAttribute('data-prod') === '1'
         && !confirm('Enviar à ClearSale em PRODUÇÃO? Cada envio é uma consulta cobrada.')) return;
 
+    var card  = document.getElementById('cs-card');
     var dados = new FormData();
     dados.append('pedido_id', '<?= (int) $pedido['id'] ?>');
     dados.append('_csrf_token', token ? token.value : (window.CSRF_TOKEN || ''));
 
     btn.disabled = true;
-    fb.textContent = envio ? 'Enviando…' : 'Consultando…';
-    fb.style.color = 'var(--text-2)';
+    btn.textContent = envio ? 'Enviando…' : 'Consultando…';
+    if (card) card.setAttribute('aria-busy', 'true');
 
     fetch('<?= ADMIN_URL ?>/pagamentos/analise/clearsale', {
       method: 'POST', body: dados, credentials: 'same-origin',
       headers: { 'X-Requested-With': 'XMLHttpRequest' }
     }).then(function (r) { return r.json(); }).then(function (res) {
-      btn.disabled = false;
-      fb.textContent = '';
-
-      // textContent, nunca innerHTML: o motivo pode trazer texto da API.
-      saida.textContent = res.msg || 'Sem resposta.';
-      saida.style.color = res.ok ? '' : 'var(--danger)';
-
-      if (res.ok) {
-        // Depois do primeiro envio, o próximo clique já é consulta de parecer.
-        btn.setAttribute('data-modo', 'consulta');
-        btn.textContent = 'Consultar parecer';
+      if (res && res.html && card) {
+        card.outerHTML = res.html;
+        var novo = document.getElementById('btn-clearsale');
+        if (novo) novo.focus();
+      } else {
+        btn.disabled = false;
+        btn.textContent = envio ? 'Enviar à ClearSale' : 'Consultar parecer';
+        if (card) card.removeAttribute('aria-busy');
       }
-      if (window.Toast) { res.ok ? Toast.success(res.msg) : Toast.error(res.msg); }
+      if (window.Toast && res && res.msg) { res.ok ? Toast.success(res.msg) : Toast.error(res.msg); }
     }).catch(function () {
       btn.disabled = false;
-      fb.textContent = 'Erro de conexão.';
-      fb.style.color = 'var(--danger)';
+      btn.textContent = envio ? 'Enviar à ClearSale' : 'Consultar parecer';
+      if (card) card.removeAttribute('aria-busy');
+      if (window.Toast) Toast.error('Erro de conexão com o painel.');
     });
   });
 })();
