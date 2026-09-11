@@ -2,6 +2,19 @@
 
 class IconAdminController extends Controller
 {
+    /**
+     * Grava a biblioteca de ícones (arquivo JSON) — até 11/09 sem guard
+     * nenhum, então alcançável sem login: o token CSRF que o verifyCsrf()
+     * exige estava exposto nas páginas anônimas de cupons e promoções.
+     *
+     * requireAdmin() fecha o furo de AUTENTICAÇÃO sem decidir cargo. O cargo
+     * proposto está em [[cargos-por-pagina]].
+     */
+    public function __construct()
+    {
+        AuthHelper::requireAdmin();
+    }
+
     public function store(): void
     {
         $this->verifyCsrf();

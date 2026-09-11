@@ -17,11 +17,18 @@ class IAGeracaoService
     private const MAX_PROMPT_CHARS = 30000;
     private const VARIACOES_PERMITIDAS = [1, 3, 5];
 
-    public function __construct()
+    /** Frase que prende o vídeo ao produto quando a foto é o primeiro quadro. */
+    private const FRASE_PRIMEIRO_QUADRO = 'Animate the provided first frame. Keep the product identical to it: same shape, colors, graphics and logos.';
+
+    /** Orquestrador injetável (testes) — a reserva de vídeo reenvia por ele. */
+    private ?IAOrchestrator $orq;
+
+    public function __construct(?IAOrchestrator $orq = null)
     {
         $this->modelo  = new IAGeracao();
         $this->builder = new IAPromptBuilder();
         $this->custo   = new IACustoService();
+        $this->orq     = $orq;
     }
 
     /* ------------------------------------------------------------------ */
@@ -62,7 +69,7 @@ class IAGeracaoService
             return (new IAComposicaoService())->enfileirarBanner($entrada, $tipo);
         }
 
-        if (!in_array($capacidade, ['texto', 'imagem'], true)) {
+        if (!in_array($capacidade, ['texto', 'imagem', 'video'], true)) {
             return ['ok' => false, 'msg' => 'Esta capacidade de mídia chega nas próximas fases.'];
         }
 
@@ -82,6 +89,27 @@ class IAGeracaoService
             }
         }
 
+        // Vídeo: parâmetros pedidos, já ajustados ao modelo PRIMÁRIO (é o que
+        // a tela ofereceu). O orquestrador reajusta se cair no fallback.
+        $videoPedido = null;
+        if ($capacidade === 'video') {
+            if ($variacoes !== 1) {
+                return ['ok' => false, 'msg' => 'Vídeo é gerado um por vez.'];
+            }
+            $opcVideo = (new IAModelo())->opcoesVideo();
+            if ($opcVideo === null) {
+                return ['ok' => false, 'msg' => 'Nenhum modelo de vídeo ativo com provedor configurado.'];
+            }
+            $ajuste = IAModelo::ajustarVideo(
+                $opcVideo['meta'],
+                (int) ($entrada['duracao'] ?? 0),
+                (string) ($entrada['resolucao'] ?? ''),
+                (string) ($entrada['proporcao_video'] ?? '')
+            );
+            $videoPedido = $ajuste + ['audio' => !empty($entrada['audio']) && $opcVideo['meta']['audio']];
+            $proporcao   = $ajuste['proporcao'];
+        }
+
         $contexto = $this->builder->montarContexto($produtoId);
         if ($contexto === null) {
             return ['ok' => false, 'msg' => 'Produto não encontrado ou removido.'];
@@ -95,11 +123,30 @@ class IAGeracaoService
             }
         }
 
+        // Prompt salvo da biblioteca: é um prompt COMPLETO — ocupa o lugar da
+        // montagem automática. O id vem do navegador, então é revalidado aqui
+        // (ativo, natureza prompt, mesma capacidade do tipo).
+        $salvo   = null;
+        $salvoId = (int) ($entrada['prompt_salvo_id'] ?? 0);
+        if ($salvoId > 0) {
+            $salvo = (new IAPromptTemplate())->buscarPromptUsavel($salvoId, $capacidade);
+            if ($salvo === null) {
+                return ['ok' => false, 'msg' => 'Prompt salvo inválido, desativado ou de outro tipo de geração.'];
+            }
+            // A tela já copiou o corpo para o campo de prompt, e a pessoa pode
+            // ter editado. Campo vazio = usa o prompt salvo como está.
+            if ($custom === '') {
+                $custom = (string) $salvo['corpo'];
+            }
+        }
+
         // Prompt final: custom do usuário (com placeholders resolvidos) ou montagem automática
         if ($custom !== '') {
             $promptFinal = $this->builder->substituirPlaceholders($custom, $contexto);
         } elseif ($capacidade === 'imagem') {
             $promptFinal = $this->builder->montarPromptImagem($contexto, $tipo, $briefing);
+        } elseif ($capacidade === 'video') {
+            $promptFinal = $this->builder->montarPromptVideo($contexto, $tipo, $briefing);
         } else {
             $promptFinal = $this->builder->montarPrompt($contexto, $tipo, $template, $briefing);
         }
@@ -112,9 +159,12 @@ class IAGeracaoService
             return ['ok' => false, 'msg' => 'Prompt longo demais (máximo ' . self::MAX_PROMPT_CHARS . ' caracteres).'];
         }
 
-        // Foto do produto como referência (só imagem; FLUX.2 via Replicate)
+        // Foto do produto: na imagem (FLUX.2) é referência; no vídeo é o
+        // PRIMEIRO QUADRO — é o que prende o clipe ao produto que está à venda.
         $imagemReferencia = null;
-        if ($capacidade === 'imagem' && !empty($entrada['usar_referencia'])) {
+        $querFoto = ($capacidade === 'imagem' && !empty($entrada['usar_referencia']))
+                 || ($capacidade === 'video' && !empty($entrada['usar_foto']));
+        if ($querFoto) {
             $imgRef = (new IARecorteService())->imagemDoProduto($produtoId);
             if ($imgRef === null) {
                 return ['ok' => false, 'msg' => 'Produto sem imagem cadastrada para usar como referência.'];
@@ -123,11 +173,25 @@ class IAGeracaoService
                 return ['ok' => false, 'msg' => 'A foto do produto não tem URL pública — não dá para usá-la como referência.'];
             }
             $imagemReferencia = (string) $imgRef['url'];
-            $promptFinal .= "\nUse a imagem de referência fornecida: mantenha o produto idêntico ao da foto (forma, cores, rótulos, proporções).";
+            if ($capacidade === 'video') {
+                // Em inglês, como o resto do prompt de vídeo. Uma refação já
+                // traz a frase no prompt anterior — não repete.
+                if (!str_contains($promptFinal, self::FRASE_PRIMEIRO_QUADRO)) {
+                    $promptFinal .= "\n" . self::FRASE_PRIMEIRO_QUADRO;
+                }
+            } else {
+                $promptFinal .= "\nUse a imagem de referência fornecida: mantenha o produto idêntico ao da foto (forma, cores, rótulos, proporções).";
+            }
         }
 
-        // Custo estimado (modelo primário da capacidade) e limites — barra ANTES de gastar
-        if ($capacidade === 'imagem') {
+        // Custo estimado e limites — barra ANTES de gastar
+        if ($capacidade === 'video') {
+            $custoUnitario = $this->estimarVideoConservador($videoPedido, $tipo);
+            if ($custoUnitario === null) {
+                return ['ok' => false, 'msg' => 'O modelo de vídeo principal não tem preço cadastrado para '
+                    . $videoPedido['resolucao'] . ' — sem preço o teto de gasto não consegue barrar.'];
+            }
+        } elseif ($capacidade === 'imagem') {
             $custoUnitario = $this->custo->estimarImagem($this->custo->custoConfigPrimario('imagem'));
         } else {
             $custoUnitario = $this->custo->estimarTexto(
@@ -137,18 +201,24 @@ class IAGeracaoService
             );
         }
 
-        $chk = $this->custo->podeGerar($usuarioId, $custoUnitario * $variacoes, $variacoes);
+        $chk = ($capacidade === 'video')
+            ? $this->custo->podeGerarVideo($usuarioId, $custoUnitario)
+            : $this->custo->podeGerar($usuarioId, $custoUnitario * $variacoes, $variacoes);
         if (!$chk['ok']) {
             return ['ok' => false, 'msg' => $chk['msg']];
         }
 
         // Snapshot de contexto (o que o modelo viu) + briefing para refazer/variações
-        $contextoJson = json_encode([
+        $snapshot = [
             'produto'           => $contexto,
             'briefing'          => $briefing,
             'sistema'           => $tipo['instrucoes_sistema'] ?? null,
             'imagem_referencia' => $imagemReferencia,
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        ];
+        if ($videoPedido !== null) {
+            $snapshot['video'] = $videoPedido; // o orquestrador grava o efetivo ao lado
+        }
+        $contextoJson = json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         $uuids  = [];
         $minuto = (int) floor(time() / 60);
@@ -178,8 +248,12 @@ class IAGeracaoService
                 'capacidade'               => $capacidade,
                 'formato'                  => $proporcao,
                 'angulo'                   => $angulo !== '' ? $angulo : null,
-                'prompt_template_id'       => $template !== null ? (int) $template['id'] : null,
-                'prompt_template_snapshot' => $template !== null ? (string) $template['corpo'] : null,
+                // Procedência do prompt: o salvo da biblioteca prevalece (foi ele
+                // que ocupou o lugar da montagem); senão o ângulo, como antes.
+                'prompt_template_id'       => $salvo !== null ? (int) $salvo['id']
+                                            : ($template !== null ? (int) $template['id'] : null),
+                'prompt_template_snapshot' => $salvo !== null ? (string) $salvo['corpo']
+                                            : ($template !== null ? (string) $template['corpo'] : null),
                 'prompt_final'             => $prompt,
                 'contexto'                 => $contextoJson,
                 // A campanha manda a própria chave: determinística por par
@@ -198,6 +272,10 @@ class IAGeracaoService
             }
 
             $uuids[] = $this->modelo->uuidDe($id);
+        }
+
+        if ($salvo !== null) {
+            (new IAPromptTemplate())->registrarUso((int) $salvo['id']);
         }
 
         LogService::audit('ia_geracao_enfileirada', [
@@ -242,6 +320,13 @@ class IAGeracaoService
                                        : (string) $g['prompt_final'],
             'variacoes'         => 1,
             'geracao_origem_id' => $geracaoId,
+            // Vídeo refeito com os MESMOS parâmetros e a mesma foto — sem isto
+            // a refação caía nos padrões e perdia o primeiro quadro.
+            'duracao'           => (int) ($contexto['video']['duracao'] ?? 0),
+            'resolucao'         => (string) ($contexto['video']['resolucao'] ?? ''),
+            'proporcao_video'   => (string) ($contexto['video']['proporcao'] ?? ''),
+            'audio'             => !empty($contexto['video']['audio']),
+            'usar_foto'         => ($g['capacidade'] ?? '') === 'video' && !empty($contexto['imagem_referencia']),
         ]);
     }
 
@@ -264,6 +349,25 @@ class IAGeracaoService
             // Recorte de produto: alimenta o cache (nunca pagar duas vezes)
             if ($capacidade === 'remocao_fundo') {
                 (new IARecorteService())->gravarCache($geracao, $caminhos[0], $r->modeloCodigo);
+            }
+        }
+
+        if ($capacidade === 'video') {
+            $caminhos = empty($r->videos) ? [] : $this->salvarVideos($geracao, $r->videos);
+            if (empty($caminhos)) {
+                // Gerado e COBRADO: a falha é nossa (storage). O gasto entra no
+                // rollup mesmo assim — falhar() lança custo zero, e o teto de
+                // vídeo deixaria de ver dinheiro que já saiu.
+                $this->modelo->marcarFalha((int) $geracao['id'],
+                    '[salvar_arquivo] Vídeo gerado, mas falhou ao gravar no storage.', $r->tempoMs);
+                $this->custo->registrarRollup(
+                    (int) $geracao['usuario_id'],
+                    (string) ($r->provedorCodigo ?? 'replicate'),
+                    'video',
+                    (float) ($r->custoRealUsd ?? $geracao['custo_estimado_usd'] ?? 0),
+                    true
+                );
+                return;
             }
         }
 
@@ -310,7 +414,7 @@ class IAGeracaoService
      * varredura do worker. Idempotente: só age se a geração ainda estiver
      * em aguardando_provedor (releituras/duplicatas viram no-op).
      *
-     * Retorna: 'concluida' | 'falhou' | 'pendente' | 'ignorado'
+     * Retorna: 'concluida' | 'falhou' | 'pendente' | 'ignorado' | 'reenviada'
      */
     public function processarRetornoProvedor(array $geracao, array $remoto, ReplicateAdapter $adapter): string
     {
@@ -331,6 +435,18 @@ class IAGeracaoService
 
         if (in_array($statusRemoto, ['failed', 'canceled'], true)) {
             $erro = is_string($remoto['error'] ?? null) ? $remoto['error'] : 'Prediction falhou no provedor.';
+
+            // Vídeo: a recusa costuma ser de POLÍTICA do modelo — em 11/09 o
+            // Seedance aceitou, rodou 102 s e barrou por "possível restrição de
+            // direitos autorais". A reserva existe para isso; sem ela o Refazer
+            // mandava de novo para o mesmo modelo, que recusava igual.
+            if (($geracao['capacidade'] ?? '') === 'video' && $statusRemoto === 'failed') {
+                $re = $this->reenviarVideo($geracao, $erro);
+                if ($re !== null) {
+                    return $re;
+                }
+            }
+
             $rf = IAResultado::falha('provedor_' . $statusRemoto, $erro, false);
             $rf->provedorCodigo = (string) ($geracao['provedor_codigo'] ?? 'replicate');
             $this->falhar($geracao, $rf);
@@ -344,6 +460,10 @@ class IAGeracaoService
             $rf->provedorCodigo = (string) ($geracao['provedor_codigo'] ?? 'replicate');
             $this->falhar($geracao, $rf);
             return 'falhou';
+        }
+
+        if (($geracao['capacidade'] ?? '') === 'video') {
+            return $this->concluirVideoDoProvedor($geracao, $remoto, $adapter, (string) $urls[0]);
         }
 
         $imagens = [];
@@ -370,6 +490,123 @@ class IAGeracaoService
 
         $this->concluir($geracao, $r);
         return 'concluida';
+    }
+
+    /**
+     * Reserva PÓS-aceite de vídeo: registra a recusa do modelo que rodou e
+     * submete ao próximo da cadeia ainda não tentado NESTA geração.
+     *
+     * Devolve 'reenviada', 'ignorado' (o retorno é de uma prediction que já
+     * foi substituída) ou null (não sobrou modelo — quem chamou falha a
+     * geração com o erro original).
+     *
+     * O teto não é checado de novo: a estimativa do enfileiramento já é o
+     * maior custo da cadeia inteira.
+     */
+    private function reenviarVideo(array $geracao, string $erro): ?string
+    {
+        // Relê a linha: a varredura e o webhook podem trazer uma cópia velha.
+        // Se o external_id mudou, esta recusa é da prediction ANTIGA e a
+        // reserva já foi acionada — reenviar de novo pagaria duas vezes.
+        $atual = $this->modelo->buscarPorId((int) $geracao['id']);
+        if ($atual === null || $atual['status'] !== 'aguardando_provedor'
+            || (string) $atual['external_id'] !== (string) ($geracao['external_id'] ?? '')) {
+            return 'ignorado';
+        }
+
+        $orq    = $this->orq ?? new IAOrchestrator();
+        $recusou = (string) ($atual['modelo_codigo'] ?? '');
+        $orq->logRoteamento((int) $atual['id'], [
+            'prov_codigo'   => (string) ($atual['provedor_codigo'] ?? 'replicate'),
+            'codigo_modelo' => $recusou,
+        ], 'falha', 'recusa_pos_aceite', $erro, 0);
+
+        $tipo = (new IATipoConteudo())->buscar((int) $atual['tipo_conteudo_id']);
+        if ($tipo === null) {
+            return null;
+        }
+
+        $r = $orq->executarVideo($atual, $tipo, $this->modelo->modelosTentados((int) $atual['id']));
+        if (!$r->aguardando) {
+            return null;
+        }
+
+        $this->aguardar($atual, $r);
+        $this->modelo->renovarInicio((int) $atual['id']);
+        LogService::warning('ia_video_reserva_acionada', [
+            'geracao_id' => (int) $atual['id'],
+            'recusou'    => $recusou,
+            'reserva'    => $r->modeloCodigo,
+            'motivo'     => mb_substr($erro, 0, 200),
+        ]);
+        return 'reenviada';
+    }
+
+    /**
+     * Conclusão de VÍDEO vinda do provedor (varredura ou webhook). O custo
+     * real sai dos parâmetros EFETIVOS gravados na submissão — o modelo que
+     * rodou pode ter ajustado a duração pedida.
+     */
+    private function concluirVideoDoProvedor(array $geracao, array $remoto, ReplicateAdapter $adapter, string $url): string
+    {
+        $dl = $adapter->baixarSaida($url);
+        if (!$dl['ok']) {
+            LogService::warning('ia_download_video_falhou', [
+                'geracao_id' => (int) $geracao['id'],
+                'erro'       => $dl['erro'],
+            ]);
+            return 'pendente'; // não marca nada — a varredura refaz o download
+        }
+
+        $ctx = json_decode((string) ($geracao['contexto'] ?? ''), true);
+        $ef  = is_array($ctx['video_efetivo'] ?? null) ? $ctx['video_efetivo'] : [];
+        $dur = (int) ($ef['duracao'] ?? 0);
+
+        $r = IAResultado::sucessoVideo([[
+            'binario'   => $dl['binario'],
+            'mime'      => $dl['mime'],
+            'extensao'  => $dl['extensao'],
+            'duracao_s' => $dur > 0 ? $dur : null,
+        ]]);
+        $r->modeloId       = isset($geracao['modelo_id']) ? (int) $geracao['modelo_id'] : null;
+        $r->provedorCodigo = (string) ($geracao['provedor_codigo'] ?? 'replicate');
+        $r->modeloCodigo   = (string) ($geracao['modelo_codigo'] ?? '');
+        $r->custoRealUsd   = $this->custo->custoRealVideoPorModelo(
+            $r->modeloId, $dur, (string) ($ef['resolucao'] ?? ''), !empty($ef['audio'])
+        );
+        $r->tempoMs = isset($remoto['metrics']['predict_time'])
+            ? (int) round(((float) $remoto['metrics']['predict_time']) * 1000)
+            : 0;
+
+        $this->concluir($geracao, $r);
+        return 'concluida';
+    }
+
+    /**
+     * Estimativa de vídeo para BARRAR antes de gastar: o maior custo entre os
+     * modelos que podem rodar, cada um com o pedido ajustado a ele — o
+     * fallback pode cair num mais caro. null se o PRINCIPAL não tem preço.
+     */
+    private function estimarVideoConservador(array $pedido, array $tipo): ?float
+    {
+        $pino    = (int) ($tipo['modelo_id'] ?? 0) > 0 ? (int) $tipo['modelo_id'] : null;
+        $modelos = (new IAOrchestrator())->modelosDaCapacidade('video', $pino);
+        $maior   = null;
+
+        foreach (array_values($modelos) as $i => $m) {
+            $meta = IAModelo::metaVideo($m['params_padrao'] ?? null);
+            $aj   = IAModelo::ajustarVideo($meta, (int) $pedido['duracao'], (string) $pedido['resolucao'], (string) $pedido['proporcao']);
+            $cfg  = json_decode((string) ($m['custo_config'] ?? ''), true);
+            $est  = $this->custo->estimarVideo(is_array($cfg) ? $cfg : null, $aj['duracao'], $aj['resolucao'],
+                                               !empty($pedido['audio']) && $meta['audio']);
+            if ($i === 0 && $est === null) {
+                return null;
+            }
+            if ($est !== null && ($maior === null || $est > $maior)) {
+                $maior = $est;
+            }
+        }
+        return $maior;
     }
 
     public function falhar(array $geracao, IAResultado $r): void
@@ -448,6 +685,58 @@ class IAGeracaoService
             return $caminhos;
         } catch (Throwable $e) {
             LogService::error('ia_salvar_imagens_erro', ['geracao_id' => (int) $geracao['id'], 'erro' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /**
+     * Grava o vídeo em IA_STORAGE_PATH/videos/AAAA/MM e indexa em ia_arquivos
+     * com a duração. Extensão e mime são forçados para vídeo: se a URL de
+     * entrega viesse com Content-Type errado, o arquivo continuaria tocável.
+     */
+    private function salvarVideos(array $geracao, array $videos): array
+    {
+        try {
+            $base = defined('IA_STORAGE_PATH')
+                ? rtrim(IA_STORAGE_PATH, '/')
+                : rtrim(dirname(__DIR__, 3), '/') . '/storage/ia';
+
+            $dir = $base . '/videos/' . date('Y/m');
+            if (!is_dir($dir) && !mkdir($dir, 0750, true) && !is_dir($dir)) {
+                LogService::error('ia_storage_videos_indisponivel', ['dir' => $dir]);
+                return [];
+            }
+
+            $caminhos = [];
+            foreach (array_values($videos) as $i => $v) {
+                if (empty($v['binario'])) {
+                    continue;
+                }
+                $ext     = in_array($v['extensao'] ?? '', ['mp4', 'webm', 'mov'], true) ? $v['extensao'] : 'mp4';
+                $mime    = str_starts_with((string) ($v['mime'] ?? ''), 'video/') ? (string) $v['mime'] : 'video/mp4';
+                $sufixo  = (count($videos) > 1) ? '-' . ($i + 1) : '';
+                $caminho = $dir . '/' . $geracao['uuid'] . $sufixo . '.' . $ext;
+
+                if (file_put_contents($caminho, $v['binario'], LOCK_EX) === false) {
+                    LogService::error('ia_gravar_video_falhou', ['caminho' => $caminho]);
+                    continue;
+                }
+
+                $this->modelo->registrarArquivo(
+                    (int) $geracao['id'],
+                    'video',
+                    $caminho,
+                    $mime,
+                    strlen($v['binario']),
+                    hash('sha256', $v['binario']),
+                    isset($v['duracao_s']) ? (int) $v['duracao_s'] : null
+                );
+                $caminhos[] = $caminho;
+            }
+
+            return $caminhos;
+        } catch (Throwable $e) {
+            LogService::error('ia_salvar_videos_erro', ['geracao_id' => (int) $geracao['id'], 'erro' => $e->getMessage()]);
             return [];
         }
     }

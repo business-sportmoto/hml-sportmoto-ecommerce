@@ -9,7 +9,11 @@ class EmailTransacionalAdminController extends Controller
 
     public function __construct()
     {
-        AuthHelper::requireAdminLevel('super', 'admin');
+        // Havia um requireAdminLevel('super', 'admin') aqui. `admin` virou
+        // `gerente` na migration de cargos e deixou de existir: a linha
+        // travava o gerente e deixava o módulo super-only. A cascata abaixo
+        // já é a regra de todo o e-mail marketing — chave `email_marketing`
+        // ou super/gerente.
         // parent::__construct();
         $this->requirePermission();
         $this->svc = new EmailTransacionalService();

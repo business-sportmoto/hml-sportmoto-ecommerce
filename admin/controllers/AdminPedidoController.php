@@ -180,7 +180,10 @@ class AdminPedidoController extends Controller {
     // ── POST /admin/pedidos/novo ──────────────────────────
     public function criarManual(): void {
         $this->verifyCsrf();
-        AuthHelper::requireAdminLevel('super','gerente','atendimento');
+        // Era 'atendimento' — nível que não existe no ENUM nem no Cargos.php,
+        // nome antigo do vendedor (CLAUDE.md §4.8.2). O vendedor, que o
+        // Cargos.php diz criar pedido manual, tomava 403.
+        AuthHelper::requireAdminLevel('super', 'gerente', 'vendedor');
 
         $dados = [
             'cliente_id'          => (int)($_POST['cliente_id']          ?? 0),
@@ -230,7 +233,9 @@ class AdminPedidoController extends Controller {
     // ── POST /admin/pedidos/{id}/status ───────────────────
     public function updateStatus(int $id): void {
         $this->verifyCsrf();
-        AuthHelper::requireAdminLevel('super','gerente','atendimento');
+        // Era 'atendimento' (nível fantasma). Vendedor muda status; estoque
+        // também, mas só para status logístico — ver o bloqueio logo abaixo.
+        AuthHelper::requireAdminLevel('super', 'gerente', 'vendedor', 'estoque');
 
         $novoStatus = SecurityHelper::sanitizeString($_POST['status_pedido'] ?? '');
         $observacao = SecurityHelper::sanitizeString($_POST['observacao']    ?? '');
@@ -245,6 +250,15 @@ class AdminPedidoController extends Controller {
             $this->json(['ok' => false, 'msg' => 'Status inválido ou inativo.']);
         } 
  
+        // Estoque move pedido só pelos passos da expedição (CLAUDE.md §4.2,
+        // "status logístico"). Quem também passa como gestor ou vendedor não
+        // cai aqui: hasLevel() dá o bypass do super e cobre os outros dois.
+        if (!AuthHelper::hasLevel('super', 'gerente', 'vendedor')
+            && !in_array($novoStatus, Cargos::STATUS_LOGISTICOS, true)) {
+            $this->json(['ok' => false,
+                'msg' => 'Seu cargo só move o pedido para separação, enviado ou entregue.'], 403);
+        }
+
         // Motivo de cancelamento — o service só o usa quando o status
         // destino é classe_bi='cancelamento', então mandar sempre é
         // inofensivo e evita um if aqui que teria que repetir a regra.
@@ -462,7 +476,8 @@ class AdminPedidoController extends Controller {
     // Emite a etiqueta de envio pelo modulo de logistica. Cobrado: so no clique.
     public function gerarEtiqueta(int $id): void {
         $this->verifyCsrf();
-        AuthHelper::requireAdminLevel('super', 'gerente', 'vendedor');
+        // Etiqueta de envio é expedição: estoque entra (matriz de cargos).
+        AuthHelper::requireAdminLevel('super', 'gerente', 'vendedor', 'estoque');
 
         // A trava da NF-e vale aqui tambem. A view ja esconde o botao, mas isso
         // e so a tela: sem esta linha um POST direto emitiria etiqueta cobrada

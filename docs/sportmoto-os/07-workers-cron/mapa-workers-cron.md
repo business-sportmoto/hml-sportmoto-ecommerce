@@ -474,3 +474,13 @@ Flags: `--dry-run` · `--sem-confirmacao` · `--silencioso` (não manda e-mail �
 use ao limpar backlog antigo) · `--limite=N` (padrão 200).
 
 → [[../03-funcionalidades/devolucoes-e-trocas]] §5.5
+
+### ia-worker e vídeo (11/09/2026)
+
+O `ia-worker.php` passou a despachar a capacidade `video` (`executarVideo`)
+e a varredura dele é o que CONCLUI o vídeo: submete, e a cada volta consulta
+as predictions em `aguardando_provedor` há mais de 20 s, baixa o mp4 e grava.
+Um clipe leva ~2 min no Seedance. **Sem o cron do worker no servidor, nenhum
+vídeo termina** — fica aguardando até o watchdog falhar aos 15 min. O webhook
+do Replicate só adianta a conclusão; a varredura continua sendo a rede.
+Ver [[../12-decisoes-tecnicas/ia-prompts-visao-e-video]].

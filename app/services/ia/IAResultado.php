@@ -41,6 +41,12 @@ class IAResultado
      */
     public array $imagens = [];
 
+    /**
+     * Vídeos já baixados (capacidade video).
+     * Cada item: ['binario' => string, 'mime' => string, 'extensao' => string, 'duracao_s' => ?int]
+     */
+    public array $videos = [];
+
     /* ---- Conversa com ferramentas (capacidade agente) ---------------- */
 
     /** end_turn | tool_use | max_tokens | refusal — o loop decide por ele. */
@@ -75,6 +81,16 @@ class IAResultado
         $r = new self();
         $r->ok = true;
         $r->imagens = $imagens;
+        $r->retryable = false;
+        return $r;
+    }
+
+    /** Sucesso de vídeo: o binário já foi baixado da URL de entrega. */
+    public static function sucessoVideo(array $videos): self
+    {
+        $r = new self();
+        $r->ok = true;
+        $r->videos = $videos;
         $r->retryable = false;
         return $r;
     }

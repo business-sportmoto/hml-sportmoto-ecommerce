@@ -11,6 +11,10 @@ class AdminPromocaoController extends Controller {
     private PromocaoService $service;
 
     public function __construct() {
+        // Promoção mexe em preço: gerente+ (CLAUDE.md §4.2). Até 11/09 abria
+        // sem login — mesmo furo do AdminCouponController.
+        AuthHelper::requireAdminLevel('super', 'gerente');
+
         $this->model   = new Promocao();
         $this->service = new PromocaoService();
     }

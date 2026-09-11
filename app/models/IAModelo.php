@@ -242,6 +242,87 @@ class IAModelo
         return self::meta($primario['params_padrao'] ?? null)['proporcoes'];
     }
 
+    /**
+     * Metadados de VÍDEO do bloco `ia` — o que o modelo aceita de fato,
+     * tirado do esquema de entrada de cada um na API do Replicate:
+     *
+     *   {"ia": {"proporcoes": ["9:16","16:9"], "duracoes": [4,6,8],
+     *           "resolucoes": ["720p"], "img_param": "image",
+     *           "resolucao_param": "resolution", "aceita_referencia": true,
+     *           "audio": true}}
+     *
+     * resolucao_param null = o modelo não tem campo de resolução (Kling:
+     * vem do `mode`). Sem declaração, cai num conjunto mínimo seguro.
+     */
+    public static function metaVideo(?string $json): array
+    {
+        $ia = self::decodificar($json)['ia'] ?? [];
+        $ia = is_array($ia) ? $ia : [];
+
+        $proporcoes = array_values(array_filter(array_map('strval', (array) ($ia['proporcoes'] ?? [])),
+            fn($p) => (bool) preg_match('/^\d{1,2}:\d{1,2}$/', $p)));
+
+        $duracoes = array_values(array_unique(array_filter(array_map('intval', (array) ($ia['duracoes'] ?? [])),
+            fn($d) => $d >= 1 && $d <= 60)));
+        sort($duracoes);
+
+        $resolucoes = array_values(array_filter(array_map('strval', (array) ($ia['resolucoes'] ?? [])),
+            fn($r) => (bool) preg_match('/^(\d{3,4}p|4k)$/', $r)));
+
+        $resParam = array_key_exists('resolucao_param', $ia) ? $ia['resolucao_param'] : 'resolution';
+
+        return [
+            'proporcoes'        => $proporcoes !== [] ? $proporcoes : ['16:9'],
+            'duracoes'          => $duracoes !== [] ? $duracoes : [5],
+            'resolucoes'        => $resolucoes !== [] ? $resolucoes : ['720p'],
+            'img_param'         => (is_string($ia['img_param'] ?? null) && $ia['img_param'] !== '') ? $ia['img_param'] : 'image',
+            'resolucao_param'   => (is_string($resParam) && $resParam !== '') ? $resParam : null,
+            'aceita_referencia' => !empty($ia['aceita_referencia']),
+            'audio'             => !empty($ia['audio']),
+        ];
+    }
+
+    /**
+     * Ajusta o pedido ao que o MODELO aceita. Fonte única da regra — usada
+     * no enfileiramento (estimativa) e no orquestrador (payload), para os
+     * dois nunca discordarem. Pedido fora da lista não vira HTTP 422:
+     *  - duração: a maior aceita que não passa do pedido; se nenhuma cabe,
+     *    a menor aceita. Nunca cobra tempo a mais quando existe opção menor;
+     *  - resolução e proporção: a pedida se aceita, senão a primeira.
+     */
+    public static function ajustarVideo(array $meta, int $duracao, string $resolucao, string $proporcao): array
+    {
+        $cabem = array_filter($meta['duracoes'], fn($d) => $d <= $duracao);
+
+        return [
+            'duracao'   => (int) ($cabem !== [] ? max($cabem) : min($meta['duracoes'])),
+            'resolucao' => in_array($resolucao, $meta['resolucoes'], true) ? $resolucao : (string) reset($meta['resolucoes']),
+            'proporcao' => in_array($proporcao, $meta['proporcoes'], true) ? $proporcao : (string) reset($meta['proporcoes']),
+        ];
+    }
+
+    /**
+     * O que a tela de gerar oferece para vídeo: opções e preço por segundo
+     * do modelo PRIMÁRIO — o custo aparece antes do clique. null quando
+     * não há modelo de vídeo ativo com provedor configurado.
+     */
+    public function opcoesVideo(): ?array
+    {
+        $p = $this->primarioDaCapacidade('video');
+        if ($p === null) {
+            return null;
+        }
+        $cfg = self::decodificar($p['custo_config'] ?? null);
+
+        return [
+            'modelo'                => (string) $p['codigo_modelo'],
+            'nome'                  => (string) $p['nome'],
+            'meta'                  => self::metaVideo($p['params_padrao'] ?? null),
+            'usd_segundo'           => is_array($cfg['usd_segundo'] ?? null) ? $cfg['usd_segundo'] : [],
+            'usd_segundo_sem_audio' => is_array($cfg['usd_segundo_sem_audio'] ?? null) ? $cfg['usd_segundo_sem_audio'] : [],
+        ];
+    }
+
     private static function decodificar(?string $json): array
     {
         if ($json === null || trim($json) === '') {
@@ -268,6 +349,17 @@ class IAModelo
                 $in  = self::fmtUsd((float) ($cfg['usd_in_1m'] ?? 0));
                 $out = self::fmtUsd((float) ($cfg['usd_out_1m'] ?? 0));
                 return "US$ {$in} / {$out} · 1M tokens";
+
+            case 'por_segundo':
+                $precos = is_array($cfg['usd_segundo'] ?? null) ? $cfg['usd_segundo'] : [];
+                if ($precos === []) {
+                    return 'sem preço cadastrado';
+                }
+                $partes = [];
+                foreach ($precos as $res => $usd) {
+                    $partes[] = 'US$ ' . self::fmtUsd((float) $usd) . ' (' . $res . ')';
+                }
+                return implode(' · ', $partes) . ' / s';
 
             case 'por_imagem':
                 return 'US$ ' . self::fmtUsd((float) ($cfg['usd_imagem'] ?? 0)) . ' / imagem';

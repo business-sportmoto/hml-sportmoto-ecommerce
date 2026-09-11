@@ -10,7 +10,13 @@ class AdminCouponController extends Controller {
     private PDO           $db;
 
     public function __construct() {
-        // parent::__construct();
+        // Cupom é dinheiro saindo da loja: gerente+, nunca operacional
+        // (CLAUDE.md §4.2). Até 11/09 este construtor não tinha guard nenhum
+        // e o painel não barra anônimo antes do dispatch — a lista, o
+        // formulário de criar e o relatório abriam SEM LOGIN, com o token
+        // CSRF na própria página. Ver [[cargos-por-pagina]].
+        AuthHelper::requireAdminLevel('super', 'gerente');
+
         $this->model   = new Coupon();
         $this->service = new CouponService();
         $this->db      = Database::getInstance()->getConnection();

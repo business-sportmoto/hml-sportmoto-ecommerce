@@ -495,7 +495,9 @@ class IAConfigController extends Controller
         $alerta     = (int) ($_POST['alerta_percentual'] ?? 70);
         $ativo      = isset($_POST['ativo']) ? 1 : 0;
 
-        if (!in_array($escopo, ['global', 'usuario'], true)) {
+        // 'video' entra para o teto de vídeo ser ajustável pela tela; a linha
+        // nasce na migration de vídeo e é editada, não criada, por aqui.
+        if (!in_array($escopo, ['global', 'usuario', 'video'], true)) {
             $this->json(['ok' => false, 'msg' => 'Escopo inválido.']);
             return;
         }
@@ -503,7 +505,7 @@ class IAConfigController extends Controller
             $this->json(['ok' => false, 'msg' => 'Informe o ID do usuário para escopo por usuário.']);
             return;
         }
-        if ($escopo === 'global') {
+        if ($escopo !== 'usuario') {
             $referencia = 0;
         }
         if ($alerta < 1 || $alerta > 100) {

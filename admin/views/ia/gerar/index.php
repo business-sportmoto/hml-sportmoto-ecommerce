@@ -12,9 +12,10 @@ if (!function_exists('ia_e')) {
   <div class="ia_topo">
     <div>
       <h1 class="ia_titulo"><?= IconLibrary::render('wand-stars', 'ia_ico', ['aria-hidden' => 'true']) ?>Central de Marketing IA</h1>
-      <p class="ia_sub">Gere legendas, anúncios, descrições e textos de WhatsApp a partir dos dados reais do produto.</p>
+      <p class="ia_sub">Gere legendas, anúncios, descrições, textos de WhatsApp e vídeos a partir dos dados reais do produto.</p>
     </div>
     <div class="ia_topo_acoes">
+      <a href="/admin/ia/prompts" class="ia_btn"><?= IconLibrary::render('docs', 'ia_ico', ['aria-hidden' => 'true']) ?> Biblioteca de prompts</a>
       <a href="/admin/ia/historico" class="ia_btn"><?= IconLibrary::render('history-toggle-off', 'ia_ico', ['aria-hidden' => 'true']) ?> Histórico</a>
       <a href="/admin/ia/config" class="ia_btn"><?= IconLibrary::render('settings', 'ia_ico', ['aria-hidden' => 'true']) ?> Configurações</a>
     </div>
@@ -151,6 +152,84 @@ jQuery(function ($) {
     if (cap !== 'texto') { $('#ia_g_angulo').val(''); }
   });
 
+  /* ------------------------------------------------------------ */
+  /* Vídeo e biblioteca de prompts                                  */
+  /* ------------------------------------------------------------ */
+
+  function dadosJson(sel) {
+    try { return JSON.parse($(sel).text() || 'null'); } catch (e) { return null; }
+  }
+
+  function usdBr(v) { return 'US$ ' + Number(v).toFixed(2).replace('.', ','); }
+
+  // Custo do clipe ANTES do clique: preço por segundo do modelo primário.
+  function atualizarCustoVideo() {
+    var d = dadosJson('#ia_video_dados');
+    var $alvo = $('#ia_g_video_custo');
+    if (!d || !$alvo.length) { return; }
+    var dur = parseInt($('#ia_g_duracao').val(), 10) || 0;
+    var res = $('#ia_g_resolucao').val();
+    var comAudio = $('#ia_form_gerar [name=audio]').is(':checked');
+    var tabela = (!comAudio && d.usd_segundo_sem_audio && d.usd_segundo_sem_audio[res]) ? d.usd_segundo_sem_audio : d.usd_segundo;
+    var preco = (tabela && tabela[res]) ? tabela[res] * dur : null;
+    var txt = preco !== null
+      ? 'Custo estimado: ' + usdBr(preco) + ' (' + d.nome + ' · ' + dur + ' s · ' + res + ').'
+      : 'Sem preço cadastrado para ' + res + ' — a geração será recusada.';
+    if (d.teto && d.teto.limite_diario_usd) {
+      txt += ' Hoje: ' + usdBr(d.teto.gasto_hoje_usd) + ' de ' + usdBr(d.teto.limite_diario_usd) + ' do teto de vídeo.';
+    }
+    $alvo.text(txt);
+  }
+
+  // A lista de prompts salvos segue o tipo escolhido. O padrão do tipo entra
+  // no campo sozinho — mas nunca por cima do que a pessoa já escreveu.
+  function preencherSalvos(tipoId, cap) {
+    var $s = $('#ia_g_salvo');
+    if (!$s.length) { return; }
+    var todos = dadosJson('#ia_prompts_dados') || [];
+    $s.find('option:not(:first)').remove();
+    var padrao = null;
+    todos.forEach(function (p) {
+      if (p.cap !== cap || (p.tipo !== null && p.tipo !== tipoId)) { return; }
+      var ehPadrao = p.padrao && p.tipo === tipoId;
+      $('<option></option>').val(p.id).text(p.nome + (ehPadrao ? ' (padrão)' : '')).appendTo($s);
+      if (ehPadrao) { padrao = p; }
+    });
+    $s.val('');
+    $('#ia_g_salvo_wrap').toggle($s.find('option').length > 1);
+    if (padrao && $.trim($('#ia_g_prompt').val()) === '') {
+      $s.val(String(padrao.id));
+      $('#ia_g_prompt').val(padrao.corpo);
+    }
+  }
+
+  $(document).on('change', '#ia_g_tipo', function () {
+    var cap = $(this).find('option:selected').data('cap') || 'texto';
+    $('#ia_g_video_wrap').toggle(cap === 'video');
+    // Vídeo sai um por vez: o servidor recusa mais, então a tela nem oferece.
+    var $var = $('#ia_g_variacoes');
+    $var.find('option').not('[value="1"]').prop('disabled', cap === 'video');
+    if (cap === 'video') { $var.val('1'); }
+    preencherSalvos(parseInt($(this).val(), 10) || 0, cap);
+    atualizarCustoVideo();
+  });
+
+  $(document).on('change', '#ia_g_duracao, #ia_g_resolucao, #ia_form_gerar [name=audio]', atualizarCustoVideo);
+
+  $(document).on('change', '#ia_g_salvo', function () {
+    var id = parseInt($(this).val(), 10) || 0;
+    if (!id) { return; }
+    var p = (dadosJson('#ia_prompts_dados') || []).filter(function (x) { return x.id === id; })[0];
+    if (!p) { return; }
+    var atual = $.trim($('#ia_g_prompt').val());
+    if (atual !== '' && atual !== $.trim(p.corpo)
+        && !window.confirm('Trocar o texto do campo de prompt pelo prompt salvo "' + p.nome + '"?')) {
+      $(this).val('');
+      return;
+    }
+    $('#ia_g_prompt').val(p.corpo);
+  });
+
   // Remoção de fundo da foto do produto (cache-first): reusa o card + polling.
   $(document).on('click', '#ia_btn_recorte', function () {
     var $b  = $(this).prop('disabled', true);
@@ -273,11 +352,25 @@ jQuery(function ($) {
     if (g.status === 'na_fila') {
       $pill.attr('class', 'ia_pill ia_pill_azul').html('<span class="ia_spin"></span> Na fila');
     } else if (g.status === 'processando' || g.status === 'aguardando_provedor') {
-      $pill.attr('class', 'ia_pill ia_pill_azul').html('<span class="ia_spin"></span> Gerando…');
+      // Vídeo fica minutos no provedor — dizer isso evita achar que travou.
+      $pill.attr('class', 'ia_pill ia_pill_azul').html('<span class="ia_spin"></span> ' +
+        (g.capacidade === 'video' ? 'Gerando o vídeo — de 1 a 3 min…' : 'Gerando…'));
     } else if (g.status === 'concluida') {
       $pill.attr('class', 'ia_pill ia_pill_ok').html(IA_ICO.ok + ' Concluída');
       if (!$corpo.data('pronto')) {
-        if (g.capacidade === 'imagem' && g.arquivo_id) {
+        if (g.capacidade === 'video' && g.arquivo_id) {
+          $corpo.data('pronto', 1).html(
+            '<div class="ia_resultado_img"><video controls playsinline preload="metadata"></video></div>' +
+            '<div class="ia_resultado_acoes">' +
+              '<a class="ia_btn ia_ac_baixar" target="_blank" rel="noopener">' + IA_ICO.baixar + ' Baixar</a>' +
+              '<button type="button" class="ia_btn ia_ac_aprovar">' + IA_ICO.aprovar + ' Aprovar</button>' +
+              '<button type="button" class="ia_btn ia_ac_reprovar">' + IA_ICO.reprovar + ' Reprovar</button>' +
+              '<button type="button" class="ia_btn ia_ac_refazer">' + IA_ICO.refazer + ' Refazer</button>' +
+            '</div>'
+          );
+          $corpo.find('video').attr('src', '/admin/ia/arquivo?id=' + g.arquivo_id);
+          $corpo.find('.ia_ac_baixar').attr('href', '/admin/ia/arquivo?id=' + g.arquivo_id + '&download=1');
+        } else if (g.capacidade === 'imagem' && g.arquivo_id) {
           $corpo.data('pronto', 1).html(
             '<div class="ia_resultado_img"><img alt="Imagem gerada" loading="lazy"></div>' +
             '<div class="ia_resultado_acoes">' +

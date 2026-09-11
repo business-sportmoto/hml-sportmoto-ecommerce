@@ -155,6 +155,42 @@ class IAPromptBuilder
         return implode("\n", $partes);
     }
 
+    /**
+     * Prompt de VÍDEO: curto, visual e em inglês (Seedance e Veo obedecem
+     * melhor). As diretrizes do tipo abrem o prompt — geração de vídeo não
+     * tem papel "system".
+     *
+     * A frase do primeiro quadro NÃO mora aqui: quem a acrescenta é o
+     * enfileiramento, só quando a foto vai junto — e assim ela vale também
+     * para o prompt que vem pronto da biblioteca.
+     */
+    public function montarPromptVideo(array $contexto, array $tipo, array $briefing): string
+    {
+        $partes = [];
+
+        if (!empty($tipo['instrucoes_sistema'])) {
+            $partes[] = trim((string) $tipo['instrucoes_sistema']);
+        }
+
+        $identidade = 'Product: ' . $contexto['nome'];
+        if (!empty($contexto['marca'])) {
+            $identidade .= ', brand ' . $contexto['marca'];
+        }
+        if (!empty($contexto['categoria'])) {
+            $identidade .= ' (' . $contexto['categoria'] . ')';
+        }
+        $partes[] = $identidade . '.';
+
+        foreach (['objetivo' => 'Goal', 'tom' => 'Mood'] as $chave => $rotulo) {
+            $valor = trim((string) ($briefing[$chave] ?? ''));
+            if ($valor !== '') {
+                $partes[] = $rotulo . ': ' . $valor . '.';
+            }
+        }
+
+        return $this->substituirPlaceholders(implode("\n", $partes), $contexto);
+    }
+
     /** Suporte a {{placeholders}} em templates editados pelo usuário. */
     public function substituirPlaceholders(string $texto, array $contexto): string
     {

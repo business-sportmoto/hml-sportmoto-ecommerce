@@ -31,13 +31,33 @@ class OpenAIAdapter extends IAProviderBase
         return IAResultado::falha($codigo, $msg, false);
     }
 
+    /** Visão: imagem vai como parte image_url (data URI) da mensagem. */
+    public function suportaImagemEntrada(): bool
+    {
+        return true;
+    }
+
     public function gerarTexto(array $job): IAResultado
     {
         $mensagens = [];
         if (!empty($job['instrucoes'])) {
             $mensagens[] = ['role' => 'system', 'content' => (string) $job['instrucoes']];
         }
-        $mensagens[] = ['role' => 'user', 'content' => (string) $job['prompt']];
+
+        // Com imagem, o conteúdo vira lista de partes. Sem imagem continua
+        // string — o formato de sempre, que o fallback de texto já exercita.
+        $imagens = array_filter((array) ($job['imagens'] ?? []),
+            fn($i) => !empty($i['base64']) && !empty($i['mime']));
+        if ($imagens !== []) {
+            $partes = [['type' => 'text', 'text' => (string) $job['prompt']]];
+            foreach ($imagens as $img) {
+                $partes[] = ['type' => 'image_url',
+                             'image_url' => ['url' => 'data:' . $img['mime'] . ';base64,' . $img['base64']]];
+            }
+            $mensagens[] = ['role' => 'user', 'content' => $partes];
+        } else {
+            $mensagens[] = ['role' => 'user', 'content' => (string) $job['prompt']];
+        }
 
         $payload = [
             'model'    => (string) $job['modelo_codigo'],

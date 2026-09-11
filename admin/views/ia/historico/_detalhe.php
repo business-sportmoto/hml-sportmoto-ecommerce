@@ -37,7 +37,17 @@ $contexto = json_decode((string) ($g['contexto'] ?? ''), true);
   <div class="ia_detalhe_item"><b>Tentativas</b><?= (int) $g['tentativas'] ?></div>
 </div>
 
-<?php if ($g['status'] === 'concluida' && ($g['capacidade'] ?? 'texto') === 'imagem' && !empty($arquivo_id)): ?>
+<?php if ($g['status'] === 'concluida' && ($g['capacidade'] ?? 'texto') === 'video' && !empty($arquivo_id)): ?>
+  <p class="ia_card_titulo" style="margin-top:4px"><?= IconLibrary::render('videocam', 'ia_ico', ['aria-hidden' => 'true']) ?> Vídeo gerado</p>
+  <div class="ia_resultado_img" style="margin-bottom:10px">
+    <video src="/admin/ia/arquivo?id=<?= (int) $arquivo_id ?>" controls playsinline preload="metadata"></video>
+  </div>
+  <div class="ia_resultado_acoes" style="margin-bottom:16px">
+    <a class="ia_btn" href="/admin/ia/arquivo?id=<?= (int) $arquivo_id ?>&download=1" target="_blank" rel="noopener">
+      <?= IconLibrary::render('cloud-download', 'ia_ico', ['aria-hidden' => 'true']) ?> Baixar
+    </a>
+  </div>
+<?php elseif ($g['status'] === 'concluida' && ($g['capacidade'] ?? 'texto') === 'imagem' && !empty($arquivo_id)): ?>
   <p class="ia_card_titulo" style="margin-top:4px"><?= IconLibrary::render('gallery', 'ia_ico', ['aria-hidden' => 'true']) ?> Imagem gerada</p>
   <div class="ia_resultado_img" style="margin-bottom:10px">
     <img src="/admin/ia/arquivo?id=<?= (int) $arquivo_id ?>" alt="Imagem gerada" loading="lazy">

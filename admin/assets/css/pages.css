@@ -2730,6 +2730,9 @@ td.ia_num { text-align: right; font-variant-numeric: tabular-nums; white-space: 
   text-align: center;
 }
 .ia_resultado_img img { max-width: 100%; max-height: 480px; border-radius: 8px; display: inline-block; }
+/* Vídeo gerado: fundo preto é o letterbox do próprio vídeo, igual nos dois
+   temas — não é cor de interface. */
+.ia_resultado_img video { width: 100%; max-height: 520px; border-radius: 8px; display: block; background: #000; }
 .ia_resultado_acoes { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 
 /* ==== campanhas (Fase 3B) ================================================== */

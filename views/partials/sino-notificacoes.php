@@ -2,9 +2,9 @@
 // ════════════════════════════════════════════════════════
 // views/partials/sino-notificacoes.php
 //
-// O sino do SITE. O painel tem o seu próprio, dentro de
-// admin/views/layouts/admin.php — mesmos endpoints, marcação e CSS
-// separados. Ver 03-funcionalidades/Notificações Controller no Vault.
+// O sino do SITE, que le a caixa do CLIENTE em /notificacoes/*. O painel
+// tem o seu, em admin/views/layouts/admin.php, lendo a caixa do ADMIN em
+// /admin/notificacoes/*. Ver 03-funcionalidades/Notificacoes Controller.
 //
 // Só renderiza para cliente logado: sem sessão não há destinatário, e o
 // contador responderia 0 eternamente. Quem não está logado nem vê o botão.

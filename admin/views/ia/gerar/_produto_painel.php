@@ -12,6 +12,11 @@ if (!function_exists('ia_brl')) {
 
 $av = $ctx['avaliacoes'] ?? null;
 
+// Chegam do controller; o padrão mantém a view renderizável sem eles.
+$video      = $video ?? null;
+$teto_video = $teto_video ?? null;
+$prompts    = $prompts ?? [];
+
 $grupos = [];
 foreach ($tipos as $t) {
     $grupos[$t['grupo'] ?: 'outros'][] = $t;
@@ -102,11 +107,13 @@ $rotuloGrupo = [
                   // Banner depende do Imagick. Desabilitar aqui, com o motivo
                   // no rótulo, é melhor que deixar clicar e falhar depois.
                   $semImagick = ($cap === 'composicao' && !IACompositorService::disponivel());
-                  $habilitado = in_array($cap, ['texto', 'imagem', 'composicao'], true) && !$semImagick;
+                  // Vídeo só com modelo de vídeo ativo e provedor configurado.
+                  $semVideo   = ($cap === 'video' && empty($video));
+                  $habilitado = in_array($cap, ['texto', 'imagem', 'composicao', 'video'], true) && !$semImagick && !$semVideo;
 
                   if ($habilitado)        { $sufixo = ''; }
                   elseif ($semImagick)    { $sufixo = ' (requer Imagick no servidor)'; }
-                  elseif ($cap === 'video') { $sufixo = ' (Fase 4)'; }
+                  elseif ($semVideo)      { $sufixo = ' (nenhum modelo de vídeo ativo)'; }
                   else                    { $sufixo = ' (em breve)'; }
                 ?>
                 <option value="<?= (int) $t['id'] ?>" data-cap="<?= ia_e($cap) ?>" <?= $habilitado ? '' : 'disabled' ?>>
@@ -154,6 +161,63 @@ $rotuloGrupo = [
           </label>
         <?php endif; ?>
       </div>
+
+      <?php // Vídeo: opções do modelo PRIMÁRIO; o servidor reajusta se cair no fallback. ?>
+      <?php if (!empty($video)): $vMeta = $video['meta']; ?>
+      <div class="ia_form_grupo" id="ia_g_video_wrap" style="display:none">
+        <div class="ia_form_linha">
+          <div class="ia_form_grupo">
+            <label for="ia_g_duracao">Duração</label>
+            <select id="ia_g_duracao" name="duracao" class="ia_input">
+              <?php foreach ($vMeta['duracoes'] as $i => $d): ?>
+                <option value="<?= (int) $d ?>"<?= $i === 0 ? ' selected' : '' ?>><?= (int) $d ?> segundos</option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div class="ia_form_grupo">
+            <label for="ia_g_resolucao">Qualidade</label>
+            <select id="ia_g_resolucao" name="resolucao" class="ia_input">
+              <?php
+              $rotRes = ['480p' => '480p — rascunho, mais barato', '720p' => '720p — versão final', '1080p' => '1080p'];
+              foreach ($vMeta['resolucoes'] as $i => $r): ?>
+                <option value="<?= ia_e($r) ?>"<?= $i === 0 ? ' selected' : '' ?>><?= ia_e($rotRes[$r] ?? $r) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div class="ia_form_grupo">
+            <label for="ia_g_vproporcao">Formato</label>
+            <select id="ia_g_vproporcao" name="proporcao_video" class="ia_input">
+              <?php
+              $rotProp = ['9:16' => 'Vertical 9:16 — Reels e Stories', '16:9' => 'Horizontal 16:9 — site', '1:1' => 'Quadrado 1:1 — feed'];
+              foreach ($vMeta['proporcoes'] as $i => $pr): ?>
+                <option value="<?= ia_e($pr) ?>"<?= $i === 0 ? ' selected' : '' ?>><?= ia_e($rotProp[$pr] ?? $pr) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+        </div>
+        <?php if (!empty($imagem['url'])): ?>
+          <label class="ia_check ia_check_solto">
+            <input type="checkbox" name="usar_foto" value="1" checked>
+            Partir da foto real do produto (primeiro quadro) — é o que garante que o vídeo mostra o produto à venda
+          </label>
+        <?php else: ?>
+          <p class="ia_ajuda">Este produto não tem foto: o vídeo sairá só do texto e pode não mostrar o produto real.</p>
+        <?php endif; ?>
+        <?php if (!empty($vMeta['audio'])): ?>
+          <label class="ia_check ia_check_solto">
+            <input type="checkbox" name="audio" value="1" checked>
+            Som ambiente (motor, vento, rua) — sem narração
+          </label>
+        <?php endif; ?>
+        <p class="ia_ajuda" id="ia_g_video_custo" aria-live="polite"></p>
+        <script type="application/json" id="ia_video_dados"><?= json_encode([
+            'nome'                  => $video['nome'],
+            'usd_segundo'           => $video['usd_segundo'],
+            'usd_segundo_sem_audio' => $video['usd_segundo_sem_audio'],
+            'teto'                  => $teto_video,
+        ], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
+      </div>
+      <?php endif; ?>
 
       <?php // Compositor de banners (Fase 2C): só aparece no tipo de capacidade 'composicao'. ?>
       <div class="ia_form_grupo" id="ia_g_layout_wrap" style="display:none">
@@ -204,6 +268,22 @@ $rotuloGrupo = [
         <input type="text" id="ia_g_condicao" name="briefing_condicao" class="ia_input" maxlength="200"
                placeholder="ex.: frete grátis Sul, cupom MOTO10">
       </div>
+    </div>
+
+    <?php // Biblioteca: o JS filtra pela capacidade e pelo tipo escolhidos, e aplica o padrão do tipo. ?>
+    <div class="ia_form_grupo" id="ia_g_salvo_wrap" style="display:none">
+      <label for="ia_g_salvo">Prompt salvo <span class="ia_label_nota">(<a href="/admin/ia/prompts" target="_blank" rel="noopener">abrir a biblioteca</a>)</span></label>
+      <select id="ia_g_salvo" name="prompt_salvo_id" class="ia_input">
+        <option value="">Nenhum — montar automaticamente</option>
+      </select>
+      <script type="application/json" id="ia_prompts_dados"><?= json_encode(array_map(fn($p) => [
+          'id'     => (int) $p['id'],
+          'nome'   => (string) $p['nome'],
+          'cap'    => (string) $p['capacidade'],
+          'tipo'   => $p['tipo_conteudo_id'] !== null ? (int) $p['tipo_conteudo_id'] : null,
+          'padrao' => (int) $p['padrao'] === 1,
+          'corpo'  => (string) $p['corpo'],
+      ], $prompts), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
     </div>
 
     <div class="ia_form_grupo">

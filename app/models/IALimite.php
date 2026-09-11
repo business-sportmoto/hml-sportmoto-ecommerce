@@ -107,6 +107,11 @@ class IALimite
         if ($limite['escopo'] === 'global') {
             return ['ok' => false, 'msg' => 'O limite global não pode ser excluído — edite os valores.'];
         }
+        // Sem a linha de vídeo, o vídeo volta a disputar só o global — é o
+        // que o teto próprio existe para impedir. Editar ou desativar, sim.
+        if ($limite['escopo'] === 'video') {
+            return ['ok' => false, 'msg' => 'O teto de vídeo não pode ser excluído — edite os valores ou desative.'];
+        }
 
         try {
             $stmt = $this->db->prepare('DELETE FROM ia_limites WHERE id = :id LIMIT 1');

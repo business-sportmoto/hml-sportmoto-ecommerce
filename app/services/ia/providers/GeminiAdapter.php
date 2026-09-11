@@ -45,11 +45,27 @@ class GeminiAdapter extends IAProviderBase
         return IAResultado::falha('conexao', 'Gemini indisponível: ' . $msg, true);
     }
 
+    /** Visão: imagens seguem como inline_data na mesma mensagem. */
+    public function suportaImagemEntrada(): bool
+    {
+        return true;
+    }
+
     public function gerarTexto(array $job): IAResultado
     {
+        // Imagem ANTES do texto — é a ordem que o Google recomenda para
+        // pergunta sobre imagem. Sem imagem, a mensagem fica como sempre foi.
+        $partes = [];
+        foreach ((array) ($job['imagens'] ?? []) as $img) {
+            if (!empty($img['base64']) && !empty($img['mime'])) {
+                $partes[] = ['inline_data' => ['mime_type' => (string) $img['mime'], 'data' => (string) $img['base64']]];
+            }
+        }
+        $partes[] = ['text' => (string) $job['prompt']];
+
         $payload = [
             'contents' => [
-                ['role' => 'user', 'parts' => [['text' => (string) $job['prompt']]]],
+                ['role' => 'user', 'parts' => $partes],
             ],
         ];
 

@@ -370,7 +370,7 @@ class ClearSaleService
         // Só o que a loja pode guardar: BIN, últimos 4, validade e titular.
         // O PAN completo nunca sai daqui — foi a premissa do projeto.
         if ($cartao) {
-            $pg['card'] = array_filter([
+            $card = array_filter([
                 'bin'          => (string) ($cartao['bin'] ?? ''),
                 'end'          => (string) ($cartao['ultimos4'] ?? ''),
                 'validityDate' => (string) ($cartao['validade'] ?? ''),
@@ -378,6 +378,17 @@ class ClearSaleService
                 'document'     => self::digitos((string) ($cartao['documento'] ?? '')),
                 'nsu'          => (string) ($cartao['nsu'] ?? ''),
             ], static fn($v) => $v !== '');
+
+            // Só manda `card` se sobrou algum campo. Array vazio vira `[]` no
+            // JSON, e a ClearSale recusa o pedido inteiro com HTTP 400:
+            //   payments[0].card: "Expected Object, Null but got Array"
+            // Acontecia com cartão que tem só a bandeira (ela não tem campo
+            // aqui) — pedido importado da Tray, e cartão salvo sem BIN nem
+            // últimos 4 no checkout. Sem `card`, a análise segue sem os dados
+            // do cartão; com `card: []`, não segue.
+            if ($card) {
+                $pg['card'] = $card;
+            }
         }
 
         return $pg;

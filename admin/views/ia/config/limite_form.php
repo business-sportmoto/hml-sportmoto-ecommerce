@@ -6,6 +6,9 @@ if (!function_exists('ia_e')) {
 $novo     = ($lim === null);
 $escopo   = $novo ? 'usuario' : $lim['escopo'];
 $ehGlobal = ($escopo === 'global');
+// Escopos sem usuário: não pedem ID de referência.
+$semRef   = in_array($escopo, ['global', 'video', 'agentes_bi'], true);
+$rotulos  = ['global' => 'Global', 'video' => 'Vídeo (teto próprio)', 'agentes_bi' => 'Agentes de BI', 'usuario' => 'Por usuário'];
 $dec      = function ($v) {
     return ($v === null || $v === '') ? '' : number_format((float) $v, 2, '.', '');
 };
@@ -23,11 +26,11 @@ $dec      = function ($v) {
       <p class="ia_ajuda">Já existe uma linha global? Selecionar "Global" atualiza os valores dela.</p>
     <?php else: ?>
       <input type="hidden" name="escopo" value="<?= ia_e($escopo) ?>">
-      <input type="text" class="ia_input" value="<?= $ehGlobal ? 'Global' : 'Por usuário' ?>" disabled>
+      <input type="text" class="ia_input" value="<?= ia_e($rotulos[$escopo] ?? 'Por usuário') ?>" disabled>
     <?php endif; ?>
   </div>
 
-  <div class="ia_form_grupo" id="ia_lim_ref_wrap" <?= $ehGlobal ? 'style="display:none"' : '' ?>>
+  <div class="ia_form_grupo" id="ia_lim_ref_wrap" <?= $semRef ? 'style="display:none"' : '' ?>>
     <label for="ia_lim_ref">ID do usuário</label>
     <?php if ($novo): ?>
       <input type="number" id="ia_lim_ref" name="referencia_id" class="ia_input"

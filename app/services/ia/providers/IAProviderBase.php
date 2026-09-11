@@ -88,6 +88,26 @@ abstract class IAProviderBase
     /* ------------------------------------------------------------------ */
 
     /**
+     * Vídeo — só provedores assíncronos de mídia implementam (Replicate).
+     * Falha retryable: o próximo modelo da cadeia pode ser de outro provedor.
+     */
+    public function gerarVideo(array $job): IAResultado
+    {
+        return IAResultado::falha('sem_suporte_video', 'Este provedor não gera vídeo.', true);
+    }
+
+    /**
+     * O adapter sabe mandar imagem junto do prompt (visão)? Padrão: não.
+     * Quando a geração leva imagem, o orquestrador PULA quem não sabe — um
+     * modelo que não vê a imagem responderia inventando, e isso é pior do
+     * que falhar.
+     */
+    public function suportaImagemEntrada(): bool
+    {
+        return false;
+    }
+
+    /**
      * GET binário sem cabeçalhos de auth (URLs de entrega são assinadas).
      * Retorna ['ok'=>bool, 'binario'=>?string, 'mime'=>?string, 'extensao'=>?string, 'erro'=>?string]
      */
@@ -114,7 +134,19 @@ abstract class IAProviderBase
         }
 
         $mime = strtolower(trim(explode(';', $mime)[0] ?? ''));
-        $mapa = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp', 'image/gif' => 'gif'];
+        $mapa = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp', 'image/gif' => 'gif',
+                 'video/mp4' => 'mp4', 'video/webm' => 'webm', 'video/quicktime' => 'mov'];
+
+        // Vídeo: a URL de entrega pode chegar com Content-Type genérico
+        // (application/octet-stream). Sem olhar a extensão, o mp4 caía no
+        // padrão de imagem abaixo e era gravado como .png, mime image/png.
+        if (!isset($mapa[$mime])) {
+            $ext    = strtolower((string) pathinfo((string) parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION));
+            $porExt = ['mp4' => 'video/mp4', 'webm' => 'video/webm', 'mov' => 'video/quicktime'];
+            if (isset($porExt[$ext])) {
+                $mime = $porExt[$ext];
+            }
+        }
 
         return [
             'ok'       => true,

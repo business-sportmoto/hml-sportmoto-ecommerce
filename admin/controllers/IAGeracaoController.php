@@ -90,6 +90,11 @@ class IAGeracaoController extends Controller
             'layouts'    => (new IAComposicaoService())->listarLayouts(),
             'angulos' => (new IAPromptTemplate())->listarAngulos(),
             'imagem'  => (new IARecorteService())->imagemDoProduto($produtoId),
+            // Vídeo: opções e preço do modelo primário, e o teto do dia.
+            'video'      => (new IAModelo())->opcoesVideo(),
+            'teto_video' => (new IACustoService())->tetoVideo(),
+            // Biblioteca: o JS filtra pelo tipo escolhido e aplica o padrão.
+            'prompts'    => (new IAPromptService())->paraGerar(),
             'csrf'    => $this->tokenCsrf(),
         ]);
 
@@ -142,9 +147,13 @@ class IAGeracaoController extends Controller
             : null;
         $briefing = $this->lerBriefing();
 
-        $prompt = ($tipo['capacidade'] === 'imagem')
-            ? $builder->montarPromptImagem($contexto, $tipo, $briefing)
-            : $builder->montarPrompt($contexto, $tipo, $template, $briefing);
+        if ($tipo['capacidade'] === 'imagem') {
+            $prompt = $builder->montarPromptImagem($contexto, $tipo, $briefing);
+        } elseif ($tipo['capacidade'] === 'video') {
+            $prompt = $builder->montarPromptVideo($contexto, $tipo, $briefing);
+        } else {
+            $prompt = $builder->montarPrompt($contexto, $tipo, $template, $briefing);
+        }
 
         $this->json(['ok' => true, 'prompt' => $prompt]);
     }
@@ -174,6 +183,14 @@ class IAGeracaoController extends Controller
             'variacoes'        => (int) ($_POST['variacoes'] ?? 1),
             'proporcao'        => trim((string) ($_POST['proporcao'] ?? '1:1')),
             'usar_referencia'  => !empty($_POST['usar_referencia']),
+            // Biblioteca: o service revalida o id (ativo, mesma capacidade).
+            'prompt_salvo_id'  => (int) ($_POST['prompt_salvo_id'] ?? 0),
+            // Vídeo: o service ajusta ao que o modelo aceita.
+            'duracao'          => (int) ($_POST['duracao'] ?? 0),
+            'resolucao'        => trim((string) ($_POST['resolucao'] ?? '')),
+            'proporcao_video'  => trim((string) ($_POST['proporcao_video'] ?? '')),
+            'audio'            => !empty($_POST['audio']),
+            'usar_foto'        => !empty($_POST['usar_foto']),
             // Banner (2C): o pipeline de composição lê estes três.
             'layout'           => trim((string) ($_POST['layout'] ?? '')),
             'banner_headline'  => trim((string) ($_POST['banner_headline'] ?? '')),
@@ -205,7 +222,7 @@ class IAGeracaoController extends Controller
         $id  = (int) ($_GET['id'] ?? 0);
         $arq = ($id > 0) ? (new IAGeracao())->arquivoPorId($id) : null;
 
-        if ($arq === null || $arq['tipo'] !== 'imagem') {
+        if ($arq === null || !in_array($arq['tipo'], ['imagem', 'video'], true)) {
             http_response_code(404);
             exit('Arquivo não encontrado.');
         }
@@ -223,13 +240,71 @@ class IAGeracaoController extends Controller
             exit('Arquivo não encontrado.');
         }
 
+        // A partir daqui é só envio de bytes: libera a sessão, senão um vídeo
+        // tocando segura o lock e trava toda outra requisição do painel.
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();
+        }
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
+        $tamanho = (int) filesize($real);
         header('Content-Type: ' . ($arq['mime'] ?: 'application/octet-stream'));
-        header('Content-Length: ' . (string) filesize($real));
         header('Cache-Control: private, max-age=86400');
+        header('Accept-Ranges: bytes');
         if (!empty($_GET['download'])) {
             header('Content-Disposition: attachment; filename="' . basename($real) . '"');
         }
-        readfile($real);
+
+        // Range: o <video> pede o arquivo em pedaços para buscar no tempo, e o
+        // Safari NÃO toca vídeo sem 206. Um intervalo por pedido — é o que os
+        // players mandam; multipart/byteranges não vale o código.
+        $inicio = 0;
+        $fim    = $tamanho - 1;
+        $range  = trim((string) ($_SERVER['HTTP_RANGE'] ?? ''));
+        if ($range !== '' && $tamanho > 0) {
+            if (!preg_match('/^bytes=(\d*)-(\d*)$/', $range, $m) || ($m[1] === '' && $m[2] === '')) {
+                http_response_code(416);
+                header('Content-Range: bytes */' . $tamanho);
+                exit;
+            }
+            if ($m[1] === '') {                  // sufixo: os últimos N bytes
+                $inicio = max(0, $tamanho - (int) $m[2]);
+            } else {
+                $inicio = (int) $m[1];
+                if ($m[2] !== '') {
+                    $fim = min((int) $m[2], $tamanho - 1);
+                }
+            }
+            if ($inicio > $fim || $inicio >= $tamanho) {
+                http_response_code(416);
+                header('Content-Range: bytes */' . $tamanho);
+                exit;
+            }
+            http_response_code(206);
+            header('Content-Range: bytes ' . $inicio . '-' . $fim . '/' . $tamanho);
+        }
+
+        $comprimento = $fim - $inicio + 1;
+        header('Content-Length: ' . (string) max(0, $comprimento));
+
+        $fh = fopen($real, 'rb');
+        if ($fh === false) {
+            exit;
+        }
+        fseek($fh, $inicio);
+        $resta = $comprimento;
+        while ($resta > 0 && !feof($fh)) {
+            $bloco = fread($fh, (int) min(262144, $resta));
+            if ($bloco === false || $bloco === '') {
+                break;
+            }
+            echo $bloco;
+            $resta -= strlen($bloco);
+            flush();
+        }
+        fclose($fh);
         exit;
     }
 

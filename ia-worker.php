@@ -208,9 +208,15 @@ try {
                 // orquestrador trata as duas capacidades ali. Comparar só com
                 // 'imagem' mandava todo recorte para um modelo de TEXTO, que
                 // voltava sem binário e derrubava a geração em salvar_arquivo.
-                $r = in_array($capacidade, ['imagem', 'remocao_fundo'], true)
-                    ? $orq->executarImagem($g, $tipo)
-                    : $orq->executarTexto($g, $tipo);
+                // Vídeo é sempre assíncrono: executarVideo só SUBMETE e volta
+                // com aguardando — a conclusão sai da varredura acima.
+                if ($capacidade === 'video') {
+                    $r = $orq->executarVideo($g, $tipo);
+                } elseif (in_array($capacidade, ['imagem', 'remocao_fundo'], true)) {
+                    $r = $orq->executarImagem($g, $tipo);
+                } else {
+                    $r = $orq->executarTexto($g, $tipo);
+                }
 
                 if ($r->aguardando) {
                     $servico->aguardar($g, $r);

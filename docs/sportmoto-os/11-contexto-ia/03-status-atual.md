@@ -153,6 +153,14 @@ verificação, não defeito:
   (campanhas, envios, editor visual) passaram só pela auditoria estática da
   folha, sem serem abertas no navegador em modo claro. Ver
   [[../12-decisoes-tecnicas/ia-email-templates-lista-e-tema]].
+- **Vídeo e biblioteca de prompts (11/09/2026).** A Central gera vídeo de
+  verdade (Seedance 2.0, reserva Veo 3.1 Fast, teto de US$ 3/dia), tem
+  biblioteca de prompts com padrão por tipo e lê imagem devolvendo o prompt.
+  Exercitado com chamada paga: um clipe de 5 s em 480p a US$ 0,514. Para
+  subir: `php cli/ia-migrar.php --aplicar` (3 migrations novas) e o **cron do
+  ia-worker** — sem ele o vídeo fica em `aguardando_provedor` até o watchdog
+  matar aos 15 min. Não verificado: o Veo com chamada real, o webhook e o
+  Safari. Ver [[../12-decisoes-tecnicas/ia-prompts-visao-e-video]].
 - **Campanhas (3A/3B)** exercitadas em transação, nunca com o worker gerando de
   verdade.
 

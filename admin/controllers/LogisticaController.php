@@ -16,8 +16,10 @@ class LogisticaController extends Controller
 
     public function __construct()
     {
-        // Cascata: requirePermission -> requireAdminLevel -> requireAdmin.
-        AuthHelper::requirePermission('logistica');
+        // Logística é do estoque (CLAUDE.md §4.2): chave nominal `logistica`
+        // ou cargo. Era requirePermission() sem fallback — um admin `estoque`
+        // criado pela tela (permissoes NULL) não entrava em tela nenhuma.
+        AuthHelper::requirePermissaoOuNivel('logistica', 'super', 'gerente', 'estoque');
         $this->logistica = new LogisticaService();
     }
 
@@ -88,19 +90,17 @@ class LogisticaController extends Controller
     }
 
     /**
-     * Permissão granular para ver custo real de frete.
-     * Se o projeto expuser uma checagem booleana de permissão, usa-a;
-     * caso contrário, cai para o nível já garantido no construtor.
-     * (Ver "Pontos para AJUSTAR" no README para fixar a checagem fina.)
+     * Quem vê o custo real de frete: a chave fina `logistica.custos`, ou gestor.
+     *
+     * As duas checagens que viviam aqui procuravam AuthHelper::pode() e
+     * ::temPermissao(), que não existem — o método sempre devolvia true. Com o
+     * estoque entrando na logística, isso daria a ele o custo real de frete
+     * sem ninguém ter decidido. A permissão fina que o comentário original
+     * previa passa a valer; o gestor passa pelo cargo.
      */
     private function podeVerCustos(): bool
     {
-        if (method_exists('AuthHelper', 'pode')) {
-            return (bool) AuthHelper::pode('logistica.custos');
-        }
-        if (method_exists('AuthHelper', 'temPermissao')) {
-            return (bool) AuthHelper::temPermissao('logistica.custos');
-        }
-        return true; // fallback: já passou por requirePermission('logistica')
+        return Session::adminTemPermissao('logistica.custos')
+            || AuthHelper::hasLevel('super', 'gerente');
     }
 }

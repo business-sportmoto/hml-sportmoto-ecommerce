@@ -60,6 +60,15 @@ class IAOrchestrator
                 continue;
             }
 
+            // Leitura de imagem: um modelo que não recebe a imagem responderia
+            // inventando o que "vê". Pular é melhor do que devolver lixo com
+            // cara de resposta.
+            if (!empty($tipo['imagens']) && !$adapter->suportaImagemEntrada()) {
+                $this->logRoteamento((int) $geracao['id'], $m, 'pulado', 'sem_visao',
+                    'Adapter não envia imagem ao modelo.', 0);
+                continue;
+            }
+
             $job = [
                 'prompt'        => (string) $geracao['prompt_final'],
                 'instrucoes'    => $tipo['instrucoes_sistema'] ?? null,
@@ -72,6 +81,9 @@ class IAOrchestrator
                 // devolver JSON parseável em vez do envelope cru do provedor
                 // — a causa do SEO que era salvo em branco em silêncio.
                 'saida_json'    => (($tipo['saida'] ?? 'texto') === 'json'),
+                // Visão: [['mime' => ..., 'base64' => ...]]. Nunca vai para o
+                // banco — só existe durante a chamada.
+                'imagens'       => is_array($tipo['imagens'] ?? null) ? $tipo['imagens'] : [],
             ];
 
             $resultado = $adapter->gerarTexto($job);
@@ -472,6 +484,137 @@ class IAOrchestrator
         }
 
         return $ultimo ?? IAResultado::falha('todos_falharam', 'Todos os modelos da capacidade falharam.', false);
+    }
+
+    /**
+     * Executa uma geração de VÍDEO — sempre assíncrona (Replicate).
+     *
+     * Mesmo esqueleto do executarImagem: candidatos por capacidade, teto do
+     * provedor e fallback enquanto a SUBMISSÃO falha. Aceita = para aqui; a
+     * varredura do ia-worker (ou o webhook) conclui.
+     *
+     * O pedido (contexto.video) é ajustado ao modelo que vai rodar, e os
+     * valores EFETIVOS voltam para o contexto: o custo real é calculado na
+     * conclusão com eles. O Veo não faz 5 s — um pedido de 5 s que caiu no
+     * Veo roda, e cobra, 4 s.
+     */
+    public function executarVideo(array $geracao, array $tipo, array $excluir = []): IAResultado
+    {
+        $ctx = json_decode((string) ($geracao['contexto'] ?? ''), true);
+        $ctx = is_array($ctx) ? $ctx : [];
+
+        $pedido     = is_array($ctx['video'] ?? null) ? $ctx['video'] : [];
+        $referencia = !empty($ctx['imagem_referencia']) ? (string) $ctx['imagem_referencia'] : null;
+
+        $candidatos = $this->modelosDaCapacidade('video', isset($tipo['modelo_id']) ? (int) $tipo['modelo_id'] : null);
+        if (empty($candidatos)) {
+            return IAResultado::falha('sem_modelos', 'Nenhum modelo de vídeo ativo com provedor configurado.', false);
+        }
+
+        $ultimo = null;
+
+        foreach ($candidatos as $m) {
+            // Reserva pós-aceite: quem já recusou esta geração não é tentado de novo.
+            if (in_array((string) $m['codigo_modelo'], $excluir, true)) {
+                continue;
+            }
+
+            $meta = IAModelo::metaVideo($m['params_padrao'] ?? null);
+
+            if ($referencia !== null && !$meta['aceita_referencia']) {
+                $this->logRoteamento((int) $geracao['id'], $m, 'pulado', 'sem_suporte_referencia',
+                    'Modelo não aceita a foto como primeiro quadro.', 0);
+                continue;
+            }
+
+            $efetivo = IAModelo::ajustarVideo(
+                $meta,
+                (int) ($pedido['duracao'] ?? 5),
+                (string) ($pedido['resolucao'] ?? ''),
+                (string) ($pedido['proporcao'] ?? ($geracao['formato'] ?? ''))
+            );
+            $efetivo['audio'] = !empty($pedido['audio']) && $meta['audio'];
+
+            // Sem preço não roda: o teto foi checado com uma estimativa, e um
+            // modelo sem preço gastaria sem aparecer em lugar nenhum.
+            $preco = $this->custo->estimarVideo($this->decodificarJson($m['custo_config']),
+                $efetivo['duracao'], $efetivo['resolucao'], $efetivo['audio']);
+            if ($preco === null) {
+                $this->logRoteamento((int) $geracao['id'], $m, 'pulado', 'sem_preco',
+                    'Modelo sem preço cadastrado para ' . $efetivo['resolucao'] . '.', 0);
+                continue;
+            }
+
+            $limiteProv = ($m['prov_limite'] !== null) ? (float) $m['prov_limite'] : null;
+            if ($limiteProv !== null && $this->custo->gastoProvedorHoje($m['prov_codigo']) >= $limiteProv) {
+                $this->logRoteamento((int) $geracao['id'], $m, 'pulado', 'limite_provedor', 'Teto diário do provedor atingido.', 0);
+                continue;
+            }
+
+            $adapter = $this->fabricarAdapter($m);
+            if ($adapter === null) {
+                $this->logRoteamento((int) $geracao['id'], $m, 'pulado', 'sem_adapter', 'Adapter indisponível ou chave não decifrável.', 0);
+                continue;
+            }
+
+            $resultado = $adapter->gerarVideo([
+                'prompt'                 => (string) $geracao['prompt_final'],
+                'duracao'                => $efetivo['duracao'],
+                'resolucao'              => $efetivo['resolucao'],
+                'proporcao'              => $efetivo['proporcao'],
+                'audio'                  => $efetivo['audio'],
+                'imagem_primeiro_quadro' => $referencia,
+                'modelo_codigo'          => (string) $m['codigo_modelo'],
+                'timeout_s'              => (int) $m['timeout_s'],
+                'params'                 => IAModelo::paramsApi($m['params_padrao'] ?? null),
+                'meta'                   => $meta,
+            ]);
+
+            if ($resultado->aguardando) {
+                $ctx['video_efetivo'] = $efetivo + [
+                    'modelo'             => (string) $m['codigo_modelo'],
+                    'custo_estimado_usd' => $preco,
+                ];
+                (new IAGeracao())->atualizarContexto(
+                    (int) $geracao['id'],
+                    (string) json_encode($ctx, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                );
+                $this->logRoteamento((int) $geracao['id'], $m, 'aguardando', null, null, $resultado->tempoMs);
+                $resultado->modeloId       = (int) $m['id'];
+                $resultado->provedorCodigo = (string) $m['prov_codigo'];
+                $resultado->modeloCodigo   = (string) $m['codigo_modelo'];
+                return $resultado;
+            }
+
+            $this->atualizarEstatisticas((int) $m['id'], false, $resultado->tempoMs);
+            $this->logRoteamento(
+                (int) $geracao['id'],
+                $m,
+                ($resultado->erroCodigo === 'rede') ? 'timeout' : 'falha',
+                $resultado->erroCodigo,
+                $resultado->erro,
+                $resultado->tempoMs
+            );
+
+            $ultimo = $resultado;
+
+            if (!$resultado->retryable) {
+                LogService::warning('ia_video_fallback_interrompido', [
+                    'geracao_id' => (int) $geracao['id'],
+                    'modelo'     => $m['codigo_modelo'],
+                    'erro'       => $resultado->erroCodigo,
+                ]);
+                return $resultado;
+            }
+
+            LogService::warning('ia_video_fallback_proximo_modelo', [
+                'geracao_id' => (int) $geracao['id'],
+                'falhou'     => $m['codigo_modelo'],
+                'erro'       => $resultado->erroCodigo,
+            ]);
+        }
+
+        return $ultimo ?? IAResultado::falha('todos_falharam', 'Nenhum modelo de vídeo aceitou o pedido.', false);
     }
 
     /**

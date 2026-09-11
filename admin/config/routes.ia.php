@@ -86,6 +86,18 @@ AdminRouter::get ('/ia/intencao',                   'IAIntencaoController@index'
 AdminRouter::get ('/ia/intencao/detalhe',           'IAIntencaoController@detalhe');
 AdminRouter::post('/ia/intencao/recalcular',        'IAIntencaoController@recalcular');
 
+// ── IA · Biblioteca de prompts ────────────────────────────
+// Permissão marketing_ia. Prompts salvos (texto, imagem, vídeo), um padrão
+// por tipo, e leitura de imagem → prompt (visão, gemini-3.1-flash-lite).
+AdminRouter::get ('/ia/prompts',                    'IAPromptController@index');
+AdminRouter::get ('/ia/prompts/form',               'IAPromptController@form');
+AdminRouter::post('/ia/prompts/salvar',             'IAPromptController@salvar');
+AdminRouter::post('/ia/prompts/alternar',           'IAPromptController@alternar');
+AdminRouter::post('/ia/prompts/padrao',             'IAPromptController@padrao');
+AdminRouter::post('/ia/prompts/duplicar',           'IAPromptController@duplicar');
+AdminRouter::post('/ia/prompts/excluir',            'IAPromptController@excluir');
+AdminRouter::post('/ia/prompts/ler-imagem',         'IAPromptController@lerImagem');
+
 // ── IA · Histórico e curadoria (Fase 1) ───────────────────
 AdminRouter::get ('/ia/historico',                  'IAGeracaoController@historico');
 AdminRouter::get ('/ia/historico/linhas',           'IAGeracaoController@historicoLinhas');

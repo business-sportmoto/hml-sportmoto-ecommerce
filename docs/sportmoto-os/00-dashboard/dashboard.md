@@ -18,6 +18,7 @@ atualizado: 2026-09-03
 - [[../12-decisoes-tecnicas/chat-indice|Chat / Instagram / IA — índice]]
 - [[../13-comandos-snippets/chat-diagnostico|Chat — diagnóstico em 3 comandos]]
 - [[../90-inbox/inbox|Inbox]]
+- [[E-mail Marketing]]
 
 ## Projeto agora
 

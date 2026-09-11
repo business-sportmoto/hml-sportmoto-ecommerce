@@ -4,7 +4,7 @@
 > **Stack (essencial, sem segredos):** PHP 8.3 OOP · MVC próprio (sem framework) · MySQL 8.4 LTS · jQuery 4 · Cloudflare (WAF/CDN/R2/Stream).
 > **Propósito deste arquivo:** fonte única de contexto para assistentes de IA. **Leia a seção 3 (Regras Fundamentais) antes de propor qualquer alteração.** Infra sensível (IPs, IDs de conta, tokens) **não** mora aqui — vive no Vault e no `.env`.
 
-**Versão:** 1.0 · Consolidado em 25/08/2026
+**Versão:** 1.1 · Consolidado em 25/08/2026 · §4 (RBAC) revisado em 11/09/2026
 
 ---
 
@@ -81,7 +81,9 @@ Referências externas do Vault (`docs/sportmoto-os/`) que a IA deve carregar com
 
 ## 4. Arquitetura de Permissões do Admin (RBAC)
 
-> Referência do sistema de níveis de acesso do painel. Documenta o que **está no código hoje** (verificado em `AuthHelper.php`, `Cargos.php`, `admin/index.php` e no schema). Itens ainda **não aplicados** estão marcados com `⏳`.
+> Referência do sistema de níveis de acesso do painel. Documenta o que **está no código hoje** (verificado em `AuthHelper.php`, `Cargos.php`, `admin/index.php` e no schema; revisado em 11/09/2026). Itens ainda **não aplicados** estão marcados com `⏳`.
+>
+> **Matriz página a página** — os ~94 controllers do painel, cargo atual × proposto, e as decisões pendentes: `docs/sportmoto-os/12-decisoes-tecnicas/cargos-por-pagina.md`.
 
 ### 4.1 Modelo de identidade — a base de tudo
 
@@ -129,6 +131,8 @@ Fonte única: `app/helpers/Cargos.php`. Alterar cargo = alterar **lá**, nunca d
 | Pedidos — pagamento / itens | ✅ | ✅ | — | — | — |
 | Catálogo (produtos, categorias, marcas) | ✅ | ✅ | — | ✅ | — |
 | Estoque | ✅ | ✅ | — | — | ✅ |
+| Logística (torre, transportadoras, reversas, etiquetas…) | ✅ | ✅ | — | — | ✅ |
+| Logística — custo real de frete | ✅ | ✅ | — | — | — |
 | Promoções & Cupons | ✅ | ✅ | — | — | — |
 | Central de Recuperação — **operar** | ✅ | ✅ | ✅ | — | — |
 | Central de Recuperação — **gerir** | ✅ | ✅ | — | — | — |
@@ -136,6 +140,8 @@ Fonte única: `app/helpers/Cargos.php`. Alterar cargo = alterar **lá**, nunca d
 | Config de automação | ✅ | ✅ | — | — | — |
 | **Usuários / cargos** | ✅ | — | — | — | — |
 | **Integrações (Bling, Tray, chaves)** | ✅ | — | — | — | — |
+
+**Status "logístico"** = `Cargos::STATUS_LOGISTICOS` (`em_separacao`, `enviado`, `entregue`). Pagamento, cancelamento e devolução ficam fora — a devolução tem módulo próprio. `pedido_status` não tem coluna que diga o que é logístico: status custom novo precisa entrar na constante.
 
 **Duas decisões de segurança embutidas:**
 
@@ -145,16 +151,21 @@ Fonte única: `app/helpers/Cargos.php`. Alterar cargo = alterar **lá**, nunca d
 #### Estado do ENUM `⏳`
 
 ```sql
--- HOJE no banco:
+-- ANTES da migration-cargos.sql:
 nivel enum('super','admin','editor','estoque')
 
--- DEPOIS da migration-cargos.sql:
+-- DEPOIS:
 nivel enum('super','gerente','vendedor','editor','estoque')
 ```
 
-Enquanto a migration não rodar, **`gerente` e `vendedor` não existem** — e todo `requireAdminLevel('super','gerente')` no código deixa passar **só o super**. Ver §4.8.
+| Ambiente | Estado |
+|---|---|
+| Local | ✅ migrado (conferido em 11/09/2026) |
+| Homologação / produção | ⏳ **não conferido** — `SHOW COLUMNS FROM admins LIKE 'nivel';` antes do deploy |
 
-### 4.3 A API — 6 funções
+Onde a migration não rodou, **`gerente` e `vendedor` não existem** — e todo `requireAdminLevel('super','gerente')` no código deixa passar **só o super**. Ver §4.8.1.
+
+### 4.3 A API
 
 #### `AuthHelper::requireAdmin(): void`
 
@@ -216,9 +227,36 @@ $adm = AuthHelper::adminDisplay();
 // ['nome' => 'João Silva', 'nivel' => 'vendedor', 'label' => 'Vendedor']
 ```
 
-#### `AuthHelper::requirePermission(string $permissao): void` `⏳`
+#### `AuthHelper::requirePermissaoOuNivel(string $permissao, string ...$niveis): void`
 
-Camada **granular** por permissão individual, lendo `admins.permissoes` (JSON). Existe no código, mas **não está em uso** — a Fase A protege por cargo. Reservado para exceções pontuais no futuro ("este vendedor também mexe em cupons").
+**A regra padrão para tela que tem permissão nominal.** Cascata em que cada camada só concede:
+
+1. a chave nominal (ou `all`) em `admins.permissoes` concede;
+2. não havendo, o cargo decide (`hasLevel`, com o bypass do super);
+3. só então nega — Ajax recebe JSON 403, navegação recebe a view `errors/403`.
+
+```php
+public function __construct() {
+    AuthHelper::requirePermissaoOuNivel('logistica', 'super', 'gerente', 'estoque');
+}
+```
+
+O cargo é o padrão; a chave nominal é a exceção ("este vendedor também mexe em cupons"). Em uso em 24 controllers (e-mail marketing, fluxos, notificações, logística…).
+
+#### `AuthHelper::requirePermission(string $permissao): void`
+
+Só a chave nominal, **sem fallback de cargo**. Admin criado pela tela de usuários nasce com `permissoes = NULL` — não passa em nenhuma `requirePermission()`. Por isso ela **não serve como regra de tela**: tranca o cargo dono do assunto (a logística ficou fechada para o estoque assim até 11/09/2026). Uso legítimo: ação pontual sensível — `PaymentController`, estorno e reprocessamento, chave `financeiro`. `HelpFaqController` ainda a usa no construtor (`⏳` matriz).
+
+> Nega **sempre com HTML**, mesmo em Ajax — não replica o `isAjax()` (§4.8.5).
+
+#### `Session::adminTemPermissao(string $permissao): bool`
+
+A checagem nominal **não-fatal** (menu, blocos de view). `super` → `true`; `{"all": true}` → `true` (§4.8.7); senão, a chave.
+
+```php
+$logisticaVer = Session::adminTemPermissao('logistica')
+             || AuthHelper::hasLevel('super', 'gerente', 'estoque');   // mesma cascata do guard
+```
 
 #### `Cargos` — a fonte da verdade
 
@@ -227,6 +265,7 @@ Cargos::existe('vendedor');   // bool — whitelist server-side
 Cargos::get('vendedor');      // array com label, cor, bg, descricao, capacidades
 Cargos::label('vendedor');    // 'Vendedor'
 Cargos::paraJson();           // matriz completa para o modal de capacidades
+Cargos::STATUS_LOGISTICOS;    // status para onde o estoque pode mover um pedido
 ```
 
 ### 4.4 O bypass do `super` — leia isto
@@ -260,6 +299,7 @@ Isso é **intencional** — super é o cargo de última instância. Mas tem duas
 | `usuario_id` | `usuarios.id` | login `⏳` + lazy do `usuarioId()` |
 | `usuario_nome` | nome da pessoa | login `⏳` + lazy do `adminDisplay()` |
 | `admin_nome` | nome (legado) | `Session::loginAdmin()` |
+| `admin_permissoes` | `admins.permissoes` decodificado (chaves nominais, `all`) | `Session::loginAdmin()` |
 
 > `admin_nome` e `usuario_nome` guardam a mesma coisa por caminhos diferentes — redundância a limpar quando o patch da topbar entrar.
 
@@ -310,18 +350,27 @@ $stmt->execute([Session::get('admin_id'), $registroId]);
 
 **Mapa de aplicação por controller:**
 
-| Controller | Nível exigido |
-|---|---|
-| `AdminUsuarioController` | `('super')` |
-| Integrações (Bling, Tray) | `('super')` |
-| `AdminPromocaoController`, Cupons | `('super','gerente')` |
-| Config de automação | `('super','gerente')` |
-| `AdminPedidoController` — construtor | `('super','gerente','vendedor','estoque')` |
-| `AdminPedidoController` — pagamento/itens | `('super','gerente')` |
-| Produtos, Categorias, Marcas | `('super','gerente','editor')` |
-| Estoque | `('super','gerente','estoque')` |
-| Central de Recuperação — construtor | `requireAdmin()` + guard próprio |
-| Central de Recuperação — gestão | `('super','gerente')` |
+| Controller | Nível exigido | No código |
+|---|---|---|
+| `AdminUsuarioController` | `('super')` | ✅ |
+| Integrações — Bling; chaves de API de logística (`ApiKeyController`) | `('super')` | ✅ |
+| Integrações — Tray (`TrayImportController`) | `('super')` | ⏳ código está `('super','gerente')` — decisão pendente |
+| `AdminPromocaoController`, `AdminCouponController` | `('super','gerente')` | ✅ 11/09 — antes **sem guard, abriam sem login** |
+| Config de automação | `('super','gerente')` | ✅ |
+| `AdminPedidoController` — construtor | `('super','gerente','vendedor','estoque')` | ⏳ hoje `requireAdmin()` (editor vê) |
+| `AdminPedidoController` — `criarManual` | `('super','gerente','vendedor')` | ✅ 11/09 |
+| `AdminPedidoController` — `updateStatus` | `('super','gerente','vendedor','estoque')`, estoque só `STATUS_LOGISTICOS` | ✅ 11/09 |
+| `AdminPedidoController` — `gerarEtiqueta` | `('super','gerente','vendedor','estoque')` | ✅ 11/09 |
+| `AdminPedidoController` — pagamento/itens | `('super','gerente')` | ✅ |
+| Logística — Logistica, Transportadora, Frete, FreteFallback, Reversa, Divergencia, Rastreio, Etiqueta | `requirePermissaoOuNivel('logistica','super','gerente','estoque')` | ✅ 11/09 |
+| Logística — custo real de frete (`podeVerCustos`) | chave `logistica.custos` ou `('super','gerente')` | ✅ 11/09 |
+| E-mail marketing, inclusive transacional | `requirePermissaoOuNivel('email_marketing','super','gerente')` | ✅ |
+| Produtos, Categorias, Marcas | `('super','gerente','editor')` | ⏳ hoje aberto a todo cargo |
+| Estoque | `('super','gerente','estoque')` | ⏳ hoje aberto a todo cargo |
+| Central de Recuperação — construtor | `requireAdmin()` + guard próprio | ✅ |
+| Central de Recuperação — gestão | `('super','gerente')` | ✅ |
+
+O mapa cobre os controllers de política já definida. Os demais, página a página: `docs/sportmoto-os/12-decisoes-tecnicas/cargos-por-pagina.md`.
 
 ### 4.7 Visibilidade por linha (Central de Recuperação)
 
@@ -354,11 +403,15 @@ if (!$rec || !$this->podeAcessar($rec)) { /* 404 */ }
 
 ### 4.8 Armadilhas conhecidas
 
-**4.8.1 `gerente` não existe no ENUM `⏳`**
-8 pontos do código chamam `requireAdminLevel('super','gerente')` — 7 no `AdminPedidoController`, 1 no `TrayImportController`. Enquanto a migration não rodar, **só o super passa** (pelo bypass). Um usuário `admin` toma 403 sem entender por quê.
+**4.8.1 `gerente` não existe no ENUM `⏳` (onde a migration não rodou)**
+Local já migrado (11/09/2026); homologação e produção, não conferidos. Hoje dezenas de guards citam `'gerente'` — cupons, promoções, pedidos, e-mail marketing, logística, chat. Num banco com o ENUM antigo, **todos deixam passar só o super** (pelo bypass), e um usuário `admin` toma 403 sem entender por quê.
 
-**4.8.2 Nível fantasma `atendimento` `⏳`**
-`AdminPedidoController` linhas 137 e 187 citam `'atendimento'` — nível que **não existe** nem no ENUM nem no `Cargos.php`. É inerte: não concede nada. A intenção era o que hoje se chama `vendedor`.
+**4.8.2 Níveis fantasma — ✅ corrigido em 11/09/2026**
+`AdminPedidoController::criarManual()` e `::updateStatus()` exigiam `'atendimento'` (nome antigo do vendedor); `EmailTransacionalAdminController` exigia `('super','admin')`. Nenhum dos dois existe no ENUM nem no `Cargos.php`. **Não eram inertes**: justamente por não concederem nada, o vendedor não criava pedido manual nem mudava status, e o transacional ficava super-only. **Cargo em guard sai do `Cargos.php`, nunca de memória.** Conferência — deve voltar só comentário:
+
+```bash
+grep -rnE "(requireAdminLevel|hasLevel|requirePermissaoOuNivel)\s*\([^)]*'(admin|atendimento)'" admin app core --include=*.php
+```
 
 **4.8.3 Relogin obrigatório pós-migration**
 `admin_nivel` fica gravado **na sessão**. Depois de renomear `admin` → `gerente`, quem já estava logado carrega o valor morto. **Forçar relogin geral no deploy.**
@@ -376,7 +429,15 @@ if (AuthHelper::usuarioId() <= 0) {
 Auditoria periódica: `SELECT id FROM admins WHERE usuario_id IS NULL;`
 
 **4.8.5 Ajax vs navegação**
-Antes do patch, `requireAdminLevel` sempre renderizava HTML — os `$.post` do painel recebiam markup onde esperavam JSON e falhavam com erro genérico. Hoje o `isAjax()` resolve. **Se criar outro guard, replique esse comportamento.**
+Antes do patch, `requireAdminLevel` sempre renderizava HTML — os `$.post` do painel recebiam markup onde esperavam JSON e falhavam com erro genérico. Hoje o `isAjax()` resolve. **Se criar outro guard, replique esse comportamento.** Exceção que ainda resta: `requirePermission()` nega sempre com HTML — mais um motivo para preferir `requirePermissaoOuNivel()`.
+
+**4.8.6 O painel não barra anônimo**
+O `admin/index.php` restaura a sessão e chama `AdminRouter::dispatch()` **mesmo sem ninguém logado** — não há rede de segurança. Controller sem `AuthHelper::require*` no construtor serve a página para **qualquer pessoa na internet**, não "qualquer cargo". Até 11/09/2026, `/admin/cupons` (com o formulário de criar e o token CSRF na própria página) e `/admin/promocoes` abriam assim. **Todo controller novo abre o construtor com um guard** — o cargo da matriz, ou `requireAdmin()` no mínimo.
+
+Para auditar: varrer as rotas GET sem sessão (`curl -sk -o /dev/null -w '%{http_code}'` — esperado 302). As rotas estão em `admin/config/routes.php` **e** nos quatro que ele inclui (`routes.chat.php`, `routes.email-marketing.php`, `routes.ia.php`, `routes.logistic.php`), e o padrão tem de aceitar `AdminRouter::get (` com espaço — com `get\(` a varredura testa um terço das rotas e diz que nada está aberto.
+
+**4.8.7 `{"all": true}` concede tudo na camada nominal `⏳`**
+`Session::adminTemPermissao()` devolve `true` para quem tem `{"all": true}` em `admins.permissoes`, **qualquer que seja o cargo**. Todo `requirePermissaoOuNivel('x', ...)` deixa esse admin passar pela primeira perna — um vendedor com `all` entra na logística. Os dois admins do banco local estão assim, inclusive o vendedor. Decisão pendente: tirar o `all` de quem não é super, ou fazer o `all` valer só para super/gerente. Enquanto isso, **testar cargo com `admin_permissoes` vazio** — é como nasce um admin criado pela tela.
 
 ### 4.9 Fluxo de concessão de acesso
 
@@ -407,9 +468,11 @@ AuthLogService::registrar('admin_create')  — autor, alvo, cargo, código
 
 ### 4.10 Checklist de deploy `⏳`
 
-- [ ] Rodar `migration-cargos.sql` (`admin` → `gerente`, nasce `vendedor`)
-- [ ] Trocar `'atendimento'` → `'vendedor'` (`AdminPedidoController` 137 e 187)
-- [ ] Aplicar `requireAdminLevel` no mapa da §4.6
+- [ ] Rodar `migration-cargos.sql` (`admin` → `gerente`, nasce `vendedor`) — local ✅; hml/prod: conferir (§4.2)
+- [x] Trocar `'atendimento'` → `'vendedor'` e tirar o `'admin'` do transacional — 11/09/2026 (§4.8.2)
+- [ ] Aplicar a matriz (§4.6 e `cargos-por-pagina.md`) — feito: cupons, promoções, pedidos (criar, status, etiqueta), logística, transacional; falta: catálogo, conteúdo, sistema, construtor de pedidos
+- [ ] Decidir o `{"all": true}` (§4.8.7)
+- [ ] Varredura anônima das rotas GET no ambiente (§4.8.6) — local limpa em 11/09/2026
 - [ ] `Session::set('usuario_id', (int)$user['id'])` no login do admin
 - [ ] Logout via POST + CSRF
 - [ ] **Forçar relogin geral**

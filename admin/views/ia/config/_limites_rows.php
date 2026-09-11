@@ -16,7 +16,8 @@ if (empty($limites)): ?>
 <?php else: ?>
   <?php foreach ($limites as $l):
       $ehGlobal = ($l['escopo'] === 'global');
-      $nomeRef  = $ehGlobal
+      $ehVideo  = ($l['escopo'] === 'video');
+      $nomeRef  = ($ehGlobal || $ehVideo)
           ? '—'
           : (!empty($l['usuario_nome']) ? $l['usuario_nome'] : ('Usuário #' . (int) $l['referencia_id']));
   ?>
@@ -24,6 +25,8 @@ if (empty($limites)): ?>
     <td>
       <?php if ($ehGlobal): ?>
         <span class="ia_pill ia_pill_ok"><?= IconLibrary::render('globe-location', 'ia_ico', ['aria-hidden' => 'true']) ?> Global</span>
+      <?php elseif ($ehVideo): ?>
+        <span class="ia_pill ia_pill_azul"><?= IconLibrary::render('videocam', 'ia_ico', ['aria-hidden' => 'true']) ?> Vídeo</span>
       <?php else: ?>
         <span class="ia_pill ia_pill_off"><?= IconLibrary::render('person-circle', 'ia_ico', ['aria-hidden' => 'true']) ?> Usuário</span>
       <?php endif; ?>
@@ -46,7 +49,7 @@ if (empty($limites)): ?>
                 data-id="<?= (int) $l['id'] ?>" title="Editar limite" aria-label="Editar limite">
           <?= IconLibrary::render('pencil', 'ia_ico', ['aria-hidden' => 'true']) ?>
         </button>
-        <?php if (!$ehGlobal): ?>
+        <?php if (!$ehGlobal && !$ehVideo): ?>
         <button type="button" class="ia_btn ia_btn_icone ia_perigo ia_ac_lim_excluir"
                 data-id="<?= (int) $l['id'] ?>" title="Excluir limite" aria-label="Excluir limite">
           <?= IconLibrary::render('trash', 'ia_ico', ['aria-hidden' => 'true']) ?>

@@ -122,6 +122,53 @@ class IACustoService
         };
     }
 
+    /**
+     * VÍDEO: preço por segundo por resolução, com tabela opcional sem áudio
+     * (o Veo cobra menos sem som). null = sem preço para a resolução — e o
+     * enfileiramento RECUSA, porque sem preço o teto não barra nada.
+     */
+    public function estimarVideo(?array $custoConfig, int $duracao, string $resolucao, bool $audio): ?float
+    {
+        if (empty($custoConfig) || ($custoConfig['tipo'] ?? '') !== 'por_segundo' || $duracao <= 0) {
+            return null;
+        }
+
+        $semAudio = $custoConfig['usd_segundo_sem_audio'] ?? null;
+        $tabela   = (!$audio && is_array($semAudio) && isset($semAudio[$resolucao]))
+            ? $semAudio
+            : ($custoConfig['usd_segundo'] ?? []);
+
+        if (!is_array($tabela) || !isset($tabela[$resolucao]) || (float) $tabela[$resolucao] <= 0) {
+            return null;
+        }
+        return round($duracao * (float) $tabela[$resolucao], 6);
+    }
+
+    /** Custo real de vídeo do modelo que executou, com os parâmetros EFETIVOS. */
+    public function custoRealVideoPorModelo(?int $modeloId, int $duracao, string $resolucao, bool $audio): ?float
+    {
+        $cfg = $this->custoConfigDoModelo($modeloId);
+        return $cfg === null ? null : $this->estimarVideo($cfg, $duracao, $resolucao, $audio);
+    }
+
+    /** custo_config de UM modelo (o pino do tipo, ou o que executou). */
+    public function custoConfigDoModelo(?int $modeloId): ?array
+    {
+        if ($modeloId === null || $modeloId <= 0) {
+            return null;
+        }
+        try {
+            $stmt = $this->db->prepare('SELECT custo_config FROM ia_modelos WHERE id = :id LIMIT 1');
+            $stmt->execute([':id' => $modeloId]);
+            $json = $stmt->fetchColumn();
+            $cfg  = is_string($json) ? json_decode($json, true) : null;
+            return is_array($cfg) ? $cfg : null;
+        } catch (Throwable $e) {
+            LogService::error('ia_custo_modelo_erro', ['modelo_id' => $modeloId, 'erro' => $e->getMessage()]);
+            return null;
+        }
+    }
+
     /* ------------------------------------------------------------------ */
     /* Limites                                                             */
     /* ------------------------------------------------------------------ */
@@ -264,6 +311,66 @@ class IACustoService
 
         return $this->checarTeto($this->gastoCapacidadeMes('agente'), $custoEstimado,
                                  $escopo['limite_mensal_usd'], 'o limite mensal dos agentes de BI');
+    }
+
+    /**
+     * Limites de VÍDEO: todos os gerais (podeGerar) E o teto do escopo
+     * `video`. Mesmo desenho do podeGerarAgente, com uma diferença que
+     * importa: o gasto conta também o que está EM CURSO. O rollup só vê o
+     * que concluiu, e um clipe leva minutos no provedor — sem isto, três
+     * cliques seguidos de US$ 1,16 passavam todos por um teto de US$ 3.
+     */
+    public function podeGerarVideo(int $usuarioId, float $custoEstimado): array
+    {
+        $chk = $this->podeGerar($usuarioId, $custoEstimado, 1);
+        if (!$chk['ok']) { return $chk; }
+
+        $escopo = $this->limite('video', 0);
+        if ($escopo === null) { return ['ok' => true]; }
+
+        $emCurso = $this->emCursoCapacidade('video');
+
+        $chk = $this->checarTeto($this->gastoCapacidadeHoje('video') + $emCurso, $custoEstimado,
+                                 $escopo['limite_diario_usd'], 'o limite diário de vídeo');
+        if (!$chk['ok']) { return $chk; }
+
+        return $this->checarTeto($this->gastoCapacidadeMes('video') + $emCurso, $custoEstimado,
+                                 $escopo['limite_mensal_usd'], 'o limite mensal de vídeo');
+    }
+
+    /**
+     * Situação do teto de vídeo para a tela: o limite diário e o gasto do
+     * dia (concluído + estimado do que está em curso). null sem linha ativa.
+     */
+    public function tetoVideo(): ?array
+    {
+        $escopo = $this->limite('video', 0);
+        if ($escopo === null) {
+            return null;
+        }
+        return [
+            'limite_diario_usd' => $escopo['limite_diario_usd'] !== null ? (float) $escopo['limite_diario_usd'] : null,
+            'gasto_hoje_usd'    => round($this->gastoCapacidadeHoje('video') + $this->emCursoCapacidade('video'), 6),
+        ];
+    }
+
+    /** Estimado das gerações da capacidade ainda em curso hoje (o rollup só conta o que concluiu). */
+    private function emCursoCapacidade(string $capacidade): float
+    {
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT COALESCE(SUM(custo_estimado_usd), 0)
+                   FROM ia_geracoes
+                  WHERE capacidade = :c
+                    AND status IN ('na_fila', 'processando', 'aguardando_provedor')
+                    AND criado_em >= CURDATE()"
+            );
+            $stmt->execute([':c' => $capacidade]);
+            return (float) $stmt->fetchColumn();
+        } catch (Throwable $e) {
+            LogService::error('ia_em_curso_erro', ['capacidade' => $capacidade, 'erro' => $e->getMessage()]);
+            return 0.0;
+        }
     }
 
     /* ------------------------------------------------------------------ */

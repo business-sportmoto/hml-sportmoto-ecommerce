@@ -99,6 +99,24 @@ final class Cargos {
         return self::LISTA[$nivel]['label'] ?? ucfirst($nivel);
     }
 
+    /**
+     * Status para onde o cargo ESTOQUE pode mover um pedido.
+     *
+     * A §4.2 do CLAUDE.md dá ao estoque "status logístico" — não o status
+     * inteiro. `pedido_status` não tem coluna que diga o que é logístico:
+     * `classe_bi` separa venda, pré-venda, cancelamento e devolução, e
+     * `pagamento_aprovado` também é `venda`. Então a lista é explícita — os
+     * três passos da expedição.
+     *
+     * Fora de propósito: pagamento (é do gestor), cancelamento (cancela cupom)
+     * e devolução (tem módulo próprio, que o estoque já acessa).
+     *
+     * Status CUSTOM criado depois não entra sozinho: acrescente aqui. O
+     * definitivo seria uma coluna `logistico` em `pedido_status`, editável na
+     * tela de status.
+     */
+    public const STATUS_LOGISTICOS = ['em_separacao', 'enviado', 'entregue'];
+
     /** Payload seguro para o front (modal de capacidades). */
     public static function paraJson(): array {
         return self::LISTA; // sem dados sensíveis: é documentação de papéis

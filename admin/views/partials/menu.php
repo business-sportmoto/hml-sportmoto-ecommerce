@@ -295,13 +295,22 @@
         $ehEmailLay  = str_contains($uriIa, '/admin/ia/email-layout');
         $ehEmailCont = str_contains($uriIa, '/admin/ia/email-conteudo');
         $ehIntencao  = str_contains($uriIa, '/admin/ia/intencao');
-        $ehCentral   = str_contains($uriIa, '/admin/ia/') && !$ehCampanhas && !$ehAgentes && !$ehEmailLay && !$ehEmailCont && !$ehIntencao;
+        $ehPrompts   = str_contains($uriIa, '/admin/ia/prompts');
+        $ehCentral   = str_contains($uriIa, '/admin/ia/') && !$ehCampanhas && !$ehAgentes && !$ehEmailLay && !$ehEmailCont && !$ehIntencao && !$ehPrompts;
       ?>
       <a href="<?= BASE_URL ?>/admin/ia/gerar" class="admin-nav-item<?= $ehCentral ? ' active' : '' ?>">
         <span class="admin-nav-icon">
           <?= IconLibrary::render('wand-stars', 'icon icon--md') ?>
         </span>
         Central de IA
+      </a>
+
+      <?php // Prompts salvos, um padrão por tipo, e leitura de imagem → prompt. ?>
+      <a href="<?= BASE_URL ?>/admin/ia/prompts" class="admin-nav-item<?= $ehPrompts ? ' active' : '' ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('docs', 'icon icon--md') ?>
+        </span>
+        Biblioteca de prompts
       </a>
 
       <a href="<?= BASE_URL ?>/admin/ia/campanhas" class="admin-nav-item<?= $ehCampanhas ? ' active' : '' ?>">
@@ -351,6 +360,13 @@
       </a>
     </div>
     
+    <?php
+    // Mesma cascata do guard dos controllers de logística. Sem isto o editor
+    // via a seção inteira no menu e tomava 403 em cada link.
+    $logisticaVer = Session::adminTemPermissao('logistica')
+                 || AuthHelper::hasLevel('super', 'gerente', 'estoque');
+    if ($logisticaVer):
+    ?>
     <div class="admin-nav-section">
       <span class="admin-nav-section-title">Logistica</span>
       <a href="<?= BASE_URL ?>/admin/logistica" class="admin-nav-item<?= adminIsActive('/admin/logistica/torre') ?>">
@@ -396,6 +412,7 @@
         Fallback
       </a>
     </div>
+    <?php endif; ?>
 
     <div class="admin-nav-section">
       <span class="admin-nav-section-title">Sistema</span>

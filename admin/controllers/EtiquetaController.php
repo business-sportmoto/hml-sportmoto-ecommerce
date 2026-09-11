@@ -11,7 +11,10 @@ class EtiquetaController extends Controller
 
     public function __construct()
     {
-        AuthHelper::requirePermission('logistica');
+        // Logística é do estoque (CLAUDE.md §4.2): chave nominal `logistica`
+        // ou cargo. Era requirePermission() sem fallback — um admin `estoque`
+        // criado pela tela (permissoes NULL) não entrava em tela nenhuma.
+        AuthHelper::requirePermissaoOuNivel('logistica', 'super', 'gerente', 'estoque');
         $this->etiquetas = new EtiquetaService();
     }
 

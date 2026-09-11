@@ -59,10 +59,10 @@ AdminRouter::post('/seo-ia/aplicado', 'SeoIaController@aplicado');
 // Mesmas respostas das rotas do site, outra caixa. Quem decide de quem é a
 // caixa e a ROTA, nao a sessao — a mesma pessoa pode ser admin e cliente, e
 // nesse caso tem duas. Ver app/controllers/NotificacaoController.php.
-AdminRouter::get ('/notificacoes/contador',     'NotificacaoController@contadorAdmin');
-AdminRouter::get ('/notificacoes/listar',       'NotificacaoController@listarAdmin');
-AdminRouter::post('/notificacoes/marcar-lida',  'NotificacaoController@marcarLidaAdmin');
-AdminRouter::post('/notificacoes/marcar-todas', 'NotificacaoController@marcarTodasAdmin');
+AdminRouter::get ('/notificacoes/contador',     'NotificacaoSinoAdminController@contadorAdmin');
+AdminRouter::get ('/notificacoes/listar',       'NotificacaoSinoAdminController@listarAdmin');
+AdminRouter::post('/notificacoes/marcar-lida',  'NotificacaoSinoAdminController@marcarLidaAdmin');
+AdminRouter::post('/notificacoes/marcar-todas', 'NotificacaoSinoAdminController@marcarTodasAdmin');
 
 AdminRouter::get ('/notificacoes',                       'NotificacaoAdminController@index');
 AdminRouter::post('/notificacoes/enviar',                'NotificacaoAdminController@enviar');
@@ -342,6 +342,7 @@ AdminRouter::get ('/pagamentos/analise',                 'AdminAnaliseController
 AdminRouter::get ('/pagamentos/analise/{id:\d+}',        'AdminAnaliseController@detalhe');
 AdminRouter::post('/pagamentos/analise/aprovar',         'AdminAnaliseController@aprovar');
 AdminRouter::post('/pagamentos/analise/recusar',         'AdminAnaliseController@recusar');
+AdminRouter::post('/pagamentos/analise/clearsale',       'AdminAnaliseController@consultarClearSale');
 AdminRouter::get ('/pagamentos/fluxos',                  'AdminPagamentoFluxoController@index');
 AdminRouter::get ('/pagamentos/fluxos/editor',           'AdminPagamentoFluxoController@editor');
 AdminRouter::post('/pagamentos/fluxos/salvar',           'AdminPagamentoFluxoController@salvar');

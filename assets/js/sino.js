@@ -1,9 +1,9 @@
 /* ════════════════════════════════════════════════════════
  * sino.js — notificações no header do site
  *
- * Fala com as MESMAS rotas do painel (`/notificacoes/*`); o controller
- * resolve o destinatário pela sessão, então cliente e admin nunca veem a
- * caixa um do outro.
+ * Fala com /notificacoes/* - a caixa do CLIENTE. O painel tem a sua em
+ * /admin/notificacoes/*: e a ROTA que decide de quem e a caixa, entao a
+ * mesma pessoa, sendo admin e cliente, nunca ve uma no lugar da outra.
  *
  * ── POLLING EM TRÊS VELOCIDADES ─────────────────────────
  *

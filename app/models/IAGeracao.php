@@ -233,6 +233,35 @@ class IAGeracao
         }
     }
 
+    /** Modelos que já receberam esta geração (aceitaram, falharam ou estouraram o tempo). */
+    public function modelosTentados(int $geracaoId): array
+    {
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT DISTINCT modelo_codigo FROM ia_roteamento_log
+                  WHERE geracao_id = :g AND resultado IN ('aguardando', 'falha', 'timeout')"
+            );
+            $stmt->execute([':g' => $geracaoId]);
+            return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []);
+        } catch (Throwable $e) {
+            LogService::error('ia_modelos_tentados_erro', ['geracao_id' => $geracaoId, 'erro' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /**
+     * Recomeça o relógio do watchdog (15 min em aguardando_provedor). Só a
+     * reserva de vídeo usa: a submissão ao segundo modelo é uma espera nova.
+     */
+    public function renovarInicio(int $id): void
+    {
+        try {
+            $this->db->prepare('UPDATE ia_geracoes SET iniciado_em = NOW() WHERE id = :id LIMIT 1')->execute([':id' => $id]);
+        } catch (Throwable $e) {
+            LogService::error('ia_renovar_inicio_erro', ['id' => $id, 'erro' => $e->getMessage()]);
+        }
+    }
+
     /** Localiza a geração pela referência do provedor (webhook). */
     public function buscarPorExternalId(string $externalId): ?array
     {
@@ -271,12 +300,12 @@ class IAGeracao
         }
     }
 
-    /** Primeiro arquivo de imagem de uma geração (detalhe do histórico). */
+    /** Primeiro arquivo de mídia (imagem ou vídeo) de uma geração (detalhe do histórico). */
     public function arquivoPrincipalDe(int $geracaoId): ?int
     {
         try {
             $stmt = $this->db->prepare(
-                "SELECT MIN(id) FROM ia_arquivos WHERE geracao_id = :g AND tipo = 'imagem'"
+                "SELECT MIN(id) FROM ia_arquivos WHERE geracao_id = :g AND tipo IN ('imagem', 'video')"
             );
             $stmt->execute([':g' => $geracaoId]);
             $id = $stmt->fetchColumn();
@@ -354,16 +383,23 @@ class IAGeracao
         }
     }
 
-    public function registrarArquivo(int $geracaoId, string $tipo, string $caminho, string $mime, int $bytes, string $hash): void
+    /**
+     * Indexa um arquivo gerado. Devolve o id (0 em erro) — a biblioteca de
+     * prompts guarda o id da imagem de origem. duracao_s só para vídeo.
+     */
+    public function registrarArquivo(int $geracaoId, string $tipo, string $caminho, string $mime, int $bytes, string $hash, ?int $duracaoS = null): int
     {
         try {
             $stmt = $this->db->prepare(
-                'INSERT INTO ia_arquivos (geracao_id, tipo, caminho, mime, tamanho_bytes, hash_sha256)
-                 VALUES (:g, :t, :c, :m, :b, :h)'
+                'INSERT INTO ia_arquivos (geracao_id, tipo, caminho, mime, tamanho_bytes, hash_sha256, duracao_s)
+                 VALUES (:g, :t, :c, :m, :b, :h, :d)'
             );
-            $stmt->execute([':g' => $geracaoId, ':t' => $tipo, ':c' => $caminho, ':m' => $mime, ':b' => $bytes, ':h' => $hash]);
+            $stmt->execute([':g' => $geracaoId, ':t' => $tipo, ':c' => $caminho, ':m' => $mime,
+                            ':b' => $bytes, ':h' => $hash, ':d' => $duracaoS]);
+            return (int) $this->db->lastInsertId();
         } catch (Throwable $e) {
             LogService::error('ia_arquivo_erro', ['geracao_id' => $geracaoId, 'erro' => $e->getMessage()]);
+            return 0;
         }
     }
 
@@ -411,7 +447,7 @@ class IAGeracao
                         g.custo_real_usd, g.custo_estimado_usd, g.modelo_codigo, g.provedor_codigo,
                         g.tempo_ms, g.angulo, g.criado_em, g.capacidade, g.formato,
                         (SELECT MIN(a.id) FROM ia_arquivos a
-                          WHERE a.geracao_id = g.id AND a.tipo = 'imagem') AS arquivo_id,
+                          WHERE a.geracao_id = g.id AND a.tipo IN ('imagem', 'video')) AS arquivo_id,
                         t.nome AS tipo_nome
                    FROM ia_geracoes g
              INNER JOIN ia_tipos_conteudo t ON t.id = g.tipo_conteudo_id

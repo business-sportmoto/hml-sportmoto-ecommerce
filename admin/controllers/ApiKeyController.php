@@ -10,7 +10,9 @@ class ApiKeyController extends Controller
 
     public function __construct()
     {
-        AuthHelper::requirePermission('logistica');
+        // Chave de API é credencial de integração: super, como Bling e Tray
+        // (CLAUDE.md §4.2). Não segue a cascata do resto da logística.
+        AuthHelper::requireAdminLevel('super');
         $this->keys = new ApiKeyService();
     }
 

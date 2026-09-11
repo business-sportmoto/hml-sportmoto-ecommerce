@@ -1787,6 +1787,21 @@ class CheckoutController extends Controller {
             );
         }
 
+        // IP de quem está comprando, resolvido UMA vez e usado em três
+        // lugares: pedidos.ip_origem, o contexto do antifraude (que a ClearSale
+        // recebe) e pgto_transacoes.ip_origem (gravado pelo roteador).
+        //
+        // SecurityHelper::clientIp() confia só no CF-Connecting-IP — o
+        // REMOTE_ADDR cru, que se usava aqui, pode ser o IP do próprio
+        // Cloudflare. O '0.0.0.0' que ele devolve sem nenhum IP válido vira
+        // NULL: IP inventado atrapalha a análise mais do que IP ausente.
+        //
+        // O INSERT antigo gravava `ip_origem` (ver o bloco comentado acima);
+        // a coluna ficou de fora quando ele foi reescrito, e desde então
+        // nenhum pedido tinha IP.
+        $ipCliente = SecurityHelper::clientIp();
+        if ($ipCliente === '0.0.0.0') $ipCliente = null;
+
         // 5. Transação: cria pedido + itens + reserva estoque
         $db->beginTransaction();
         try {
@@ -1805,8 +1820,8 @@ class CheckoutController extends Controller {
                 endereco_entrega_id, frete_descricao, frete_prazo, frete_codigo,
                 observacao_cliente, cartao_bandeira, cartao_ultimos_4,
                 codigo_vendedor, endereco_entrega_snapshot, canal,
-                utm_source, utm_medium, utm_campaign, click_id, criado_em)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())"
+                utm_source, utm_medium, utm_campaign, click_id, ip_origem, criado_em)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())"
             )->execute([
                 $clienteId, $codigo,
                 'aguardando_pagamento', 'pendente',
@@ -1826,6 +1841,7 @@ class CheckoutController extends Controller {
                 $atrib['utm_medium'],
                 $atrib['utm_campaign'],
                 $atrib['click_id'],
+                $ipCliente,
             ]);
             $pedidoId = (int)$db->lastInsertId();
     
@@ -2106,7 +2122,7 @@ class CheckoutController extends Controller {
                 'bandeira'          => $cartaoSalvo['bandeira'] ?? ($cartaoTemp['bandeira'] ?? null),
                 'cliente'           => $cliente,
                 'entrega'           => $cliente['endereco'] ?? [],
-                'ip_cliente'        => $_SERVER['REMOTE_ADDR'] ?? null,
+                'ip_cliente'        => $ipCliente,
                 'session_id'        => class_exists('ClearSaleFingerprint')
                                         ? ClearSaleFingerprint::sessionId() : null,
             ];

@@ -87,6 +87,75 @@ class ReplicateAdapter extends IAProviderBase
     }
 
     /**
+     * Vídeo ASSÍNCRONO: cria a prediction e devolve pendente(id).
+     *
+     * Duração, proporção e resolução chegam JÁ ajustadas ao modelo pelo
+     * orquestrador (IAModelo::ajustarVideo). Aqui só se traduz para o nome
+     * de campo de cada modelo, que varia: Seedance e Veo usam `image`, o
+     * Kling usa `start_image` e não tem campo de resolução (vem do `mode`
+     * em params_padrao).
+     */
+    public function gerarVideo(array $job): IAResultado
+    {
+        $meta  = is_array($job['meta'] ?? null) ? $job['meta'] : [];
+        $input = [
+            'prompt'         => (string) $job['prompt'],
+            'duration'       => (int) $job['duracao'],
+            'aspect_ratio'   => (string) $job['proporcao'],
+            'generate_audio' => !empty($job['audio']),
+        ];
+
+        // array_key_exists, não ??: resolucao_param null quer dizer "este modelo
+        // não tem campo de resolução" (Kling). Com ??, o null virava
+        // 'resolution' e o campo ia para um modelo que não o conhece.
+        $campoRes = array_key_exists('resolucao_param', $meta) ? $meta['resolucao_param'] : 'resolution';
+        if (is_string($campoRes) && $campoRes !== '' && !empty($job['resolucao'])) {
+            $input[$campoRes] = (string) $job['resolucao'];
+        }
+
+        if (!empty($job['imagem_primeiro_quadro'])) {
+            $campoImg = (string) ($meta['img_param'] ?? 'image');
+            $input[$campoImg !== '' ? $campoImg : 'image'] = (string) $job['imagem_primeiro_quadro'];
+        }
+
+        $params = is_array($job['params'] ?? null) ? $job['params'] : [];
+        foreach ($params as $chave => $valor) {
+            if (!array_key_exists($chave, $input)) {
+                $input[$chave] = $valor;
+            }
+        }
+
+        $payload = ['input' => $input];
+        if (defined('IA_WEBHOOK_BASE') && IA_WEBHOOK_BASE !== '') {
+            $payload['webhook']               = rtrim((string) IA_WEBHOOK_BASE, '/') . '/webhooks/ia/replicate';
+            $payload['webhook_events_filter'] = ['completed'];
+        }
+
+        $resp = $this->httpJson('POST', '/models/' . $job['modelo_codigo'] . '/predictions', $payload,
+            (int) max(30, $job['timeout_s'] ?? 30));
+
+        if ($resp['status'] === 0) {
+            $r = IAResultado::falha('rede', 'Sem resposta do provedor: ' . ($resp['erro'] ?? 'falha de rede'));
+            $r->tempoMs = $resp['tempo_ms'];
+            return $r;
+        }
+
+        if (!in_array($resp['status'], [200, 201], true) || !is_array($resp['corpo']) || empty($resp['corpo']['id'])) {
+            [$codigo, $msg] = $this->extrairErro($resp['corpo'], $resp['status']);
+            // Retryable mesmo em 422: o esquema recusado é DESTE modelo; o
+            // próximo da cadeia tem outro esquema e pode aceitar o pedido.
+            $r = IAResultado::falha($codigo, $msg, true);
+            $r->tempoMs = $resp['tempo_ms'];
+            $r->respostaBruta = $resp['corpo_bruto'];
+            return $r;
+        }
+
+        $r = IAResultado::pendente((string) $resp['corpo']['id']);
+        $r->tempoMs = $resp['tempo_ms'];
+        return $r;
+    }
+
+    /**
      * Remoção de fundo (bria) — assíncrona como toda prediction.
      * A imagem de origem PRECISA ser uma URL pública que o Replicate
      * consiga baixar (IA_PRODUTO_IMG_BASE + produto_imagens.arquivo).

@@ -96,6 +96,10 @@ class AdminAnaliseController extends Controller
             'antifraude' => $this->antifraudePorPedido([$pedido['codigo']])[$pedido['codigo']] ?? null,
             'tentativas' => $this->tentativas($pedido['codigo']),
             'transacao'  => $this->transacao($pedido['codigo']),
+            'clearsale'  => (function () {
+                $cs = new ClearSaleService();
+                return ['configurado' => $cs->configurado(), 'ambiente' => $cs->ambiente()];
+            })(),
         ], 'admin');
     }
 
@@ -237,6 +241,192 @@ class AdminAnaliseController extends Controller
     }
 
     // =========================================================================
+
+    /**
+     * POST /admin/pagamentos/analise/clearsale  { pedido_id }
+     *
+     * O botão "Consultar ClearSale" da tela de análise.
+     *
+     * DOIS MODOS, porque a ClearSale é assíncrona:
+     *   - pedido nunca enviado  → ENVIA (analisar). Volta `NVO`: recebido,
+     *     ainda sem parecer. Em produção, é uma consulta paga.
+     *   - pedido já enviado     → CONSULTA o parecer (consultarStatus). É aqui
+     *     que o score aparece, alguns minutos depois do envio.
+     *
+     * NÃO DECIDE NADA. Grava o parecer em pgto_antifraude e devolve para a
+     * tela; liberar ou recusar continua nos botões de decisão, na mão de quem
+     * está olhando. (O worker da ClearSale, se estiver no cron, segue a regra
+     * dele para pedidos que receberam `NVO` — ver pagamentos-antifraude.)
+     */
+    public function consultarClearSale(): void
+    {
+        $this->verifyCsrf();
+
+        $pedido = $this->carregarPedido((int) ($_POST['pedido_id'] ?? 0));
+        if (!$pedido) {
+            $this->json(['ok' => false, 'msg' => 'Pedido não encontrado.']);
+            return;
+        }
+
+        $cs = new ClearSaleService();
+        if (!$cs->configurado()) {
+            $this->json(['ok' => false, 'msg' => 'ClearSale sem credencial configurada.']);
+            return;
+        }
+
+        $codigo = (string) $pedido['codigo'];
+        $af     = $this->antifraudePorPedido([$codigo])[$codigo] ?? null;
+
+        // "Já enviado" = houve envio e ele não terminou em erro. Um envio que
+        // falhou (ex.: o 400 do documento vazio) não existe do lado deles.
+        $jaEnviado = $af && !empty($af['enviado_em']) && ($af['status'] ?? '') !== 'erro';
+
+        try {
+            if ($jaEnviado) {
+                $acao = 'consulta';
+                $r    = $cs->consultarStatus($codigo);
+            } else {
+                $payload   = (new ClearSalePedidoMontador($this->db))->montar((int) $pedido['id']);
+                $problemas = ClearSalePedidoMontador::problemas($payload);
+                if ($problemas) {
+                    $this->json([
+                        'ok'        => false,
+                        'msg'       => 'Dados incompletos para a ClearSale: ' . implode('; ', $problemas) . '.',
+                        'problemas' => $problemas,
+                    ]);
+                    return;
+                }
+
+                $acao = 'envio';
+                $r    = $cs->analisar($payload);
+
+                // Já existe do lado deles (enviado por outro caminho — o teste
+                // em massa, por exemplo)? Então o que se quer é o parecer.
+                //
+                // A resposta real, conferida em homologação (11/09/2026):
+                //   HTTP 400 {"Message":"The request is invalid.",
+                //             "ModelState":{"existing-orders":["62399744"]}}
+                // `existing-orders` é o que importa; os outros termos ficam de
+                // reserva caso produção responda com outro texto.
+                if (($r['status'] ?? '') === 'erro'
+                    && preg_match('/existing-orders|already|duplic|j[aá] (existe|cadastrad)/i', (string) ($r['motivo'] ?? ''))) {
+                    $acao = 'consulta';
+                    $r    = $cs->consultarStatus($codigo);
+                }
+            }
+        } catch (\Throwable $e) {
+            LogService::exception($e, 'error', 'pagamento', ['acao' => 'clearsale_manual', 'pedido' => $codigo]);
+            $this->json(['ok' => false, 'msg' => 'Falha ao falar com a ClearSale.']);
+            return;
+        }
+
+        $this->gravarConsultaClearSale($pedido, $af, $r, $acao);
+
+        $aguardando = ClearSaleService::aguardandoParecer($r['codigo_status'] ?? null);
+        $this->json([
+            'ok'            => ($r['status'] ?? '') !== 'erro',
+            'acao'          => $acao,
+            'ambiente'      => $cs->ambiente(),
+            'status'        => $r['status'] ?? null,
+            'codigo_status' => $r['codigo_status'] ?? null,
+            'score'         => $r['score'] ?? null,
+            'risco'         => $r['risco'] ?? null,
+            'aguardando'    => $aguardando,
+            'msg'           => self::significadoClearSale($r, $acao, $aguardando),
+        ]);
+    }
+
+    /** O parecer em uma frase que quem decide entende. */
+    private static function significadoClearSale(array $r, string $acao, bool $aguardando): string
+    {
+        $cod = (string) ($r['codigo_status'] ?? '');
+        if (($r['status'] ?? '') === 'erro') {
+            return 'A ClearSale não respondeu o parecer: ' . ($r['motivo'] ?? 'erro desconhecido') . '.';
+        }
+        if ($aguardando) {
+            return $acao === 'envio'
+                ? "Enviado. A ClearSale recebeu ({$cod}) e ainda vai analisar — consulte de novo em alguns minutos."
+                : "Ainda sem parecer ({$cod}). Consulte de novo em alguns minutos.";
+        }
+        $score = $r['score'] !== null ? ' Score ' . number_format((float) $r['score'], 0) . '.' : '';
+        return match ($r['status'] ?? '') {
+            'aprovado'  => "Aprovado pela ClearSale ({$cod}).{$score}",
+            'reprovado' => "Reprovado pela ClearSale ({$cod}).{$score}",
+            'fraude'    => "Suspeita de fraude segundo a ClearSale ({$cod}).{$score}",
+            default     => "Parecer {$cod} — em revisão.{$score}",
+        };
+    }
+
+    /**
+     * Grava o resultado da consulta manual, sem mexer no pedido.
+     *
+     * Erro de uma consulta não apaga o parecer bom que já estava gravado: só
+     * conta a tentativa.
+     */
+    private function gravarConsultaClearSale(array $pedido, ?array $af, array $r, string $acao): void
+    {
+        $erro = ($r['status'] ?? '') === 'erro';
+
+        $status = in_array($r['status'] ?? '', ['pendente', 'aprovado', 'reprovado', 'revisao', 'fraude', 'erro'], true)
+            ? $r['status'] : 'revisao';
+        if (!$erro && ClearSaleService::aguardandoParecer($r['codigo_status'] ?? null)) {
+            $status = 'revisao';
+        }
+        $resposta = json_encode($r['bruto'] ?? [], JSON_UNESCAPED_UNICODE) ?: '{}';
+
+        try {
+            if ($af && $erro) {
+                $this->db->prepare(
+                    "UPDATE pgto_antifraude
+                        SET consultas = COALESCE(consultas, 0) + 1, consultado_em = NOW(), atualizado_em = NOW()
+                      WHERE id = ?"
+                )->execute([(int) $af['id']]);
+                return;
+            }
+
+            if ($af) {
+                $this->db->prepare(
+                    "UPDATE pgto_antifraude
+                        SET status        = ?,
+                            score         = ?,
+                            recomendacao  = ?,
+                            codigo_status = ?,
+                            analise_id    = COALESCE(?, analise_id),
+                            motivo        = ?,
+                            response_json = ?,
+                            enviado_em    = COALESCE(enviado_em, IF(? = 'envio', NOW(), NULL)),
+                            respondido_em = NOW(),
+                            consultas     = COALESCE(consultas, 0) + 1,
+                            consultado_em = NOW(),
+                            atualizado_em = NOW()
+                      WHERE id = ?"
+                )->execute([
+                    $status, $r['score'] ?? null, $r['status'] ?? null, $r['codigo_status'] ?? null,
+                    $r['analise_id'] ?? null, mb_substr((string) ($r['motivo'] ?? ''), 0, 255),
+                    $resposta, $acao, (int) $af['id'],
+                ]);
+                return;
+            }
+
+            $this->db->prepare(
+                "INSERT INTO pgto_antifraude
+                    (pedido_id, order_id_loja, provedor, modo, status, score, recomendacao,
+                     codigo_status, analise_id, motivo, response_json,
+                     decisao_pre, regra_aplicada, motivo_pre, score_cliente, tier_cliente,
+                     enviado_em, respondido_em, consultas, consultado_em, criado_em)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),?,1,NOW(),NOW())"
+            )->execute([
+                (int) $pedido['id'], (string) $pedido['codigo'], 'clearsale', 'pos_captura',
+                $status, $r['score'] ?? null, $r['status'] ?? null, $r['codigo_status'] ?? null,
+                $r['analise_id'] ?? null, mb_substr((string) ($r['motivo'] ?? ''), 0, 255), $resposta,
+                'antifraude', 'consulta_manual', 'Consulta manual pelo painel de análise.',
+                (int) ($pedido['score_total'] ?? 0), (string) ($pedido['tier'] ?? ''),
+                $erro ? null : date('Y-m-d H:i:s'),
+            ]);
+        } catch (\Throwable $e) {
+            LogService::exception($e, 'error', 'pagamento', ['acao' => 'gravar_clearsale_manual']);
+        }
+    }
 
     private function carregarPedido(int $id): ?array
     {

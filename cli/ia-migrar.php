@@ -133,6 +133,27 @@ $migrations = [
     // DEPENDENCIA EXTERNA: `clientes` e `historico_navegacao`, da loja.
     ['2026-09-08_ia_intencao_cliente.sql', 'Intencao de compra por cliente (Fase 3)',
         fn () => $temTabela('ia_cliente_intencao')],
+    // Detector: a coluna `natureza`. O ALTER não é idempotente; o UPDATE
+    // dos ângulos é, então o detector só precisa da coluna.
+    ['2026-09-11_ia_prompt_biblioteca.sql', 'Biblioteca de prompts (padrão por tipo, procedência)',
+        fn () => $temColuna('ia_prompt_templates', 'natureza')],
+    // Detector: o tipo. O INSERT é IGNORE sobre uk_ia_tipo_codigo, então
+    // um falso "pendente" não duplica. Liga no gemini-3.1-flash-lite por
+    // código; sem ele o tipo nasce sem pino e cai na cadeia de fallback.
+    ['2026-09-11_ia_prompt_de_imagem.sql', 'Leitura de imagem gerando prompt (visão)',
+        function () use ($pdo, $temTabela) {
+            if (!$temTabela('ia_tipos_conteudo')) { return false; }
+            return (int) $pdo->query("SELECT COUNT(*) FROM ia_tipos_conteudo WHERE codigo = 'prompt_de_imagem'")->fetchColumn() > 0;
+        }],
+    // Detector: o tipo video_produto, última instrução do arquivo. O ALTER
+    // de ENUM repete a mesma lista (no-op) e os INSERTs são IGNORE sobre
+    // chaves únicas — um falso "pendente" é inofensivo.
+    // DEPENDÊNCIA: o provedor `replicate` (fase0); os modelos ligam por código.
+    ['2026-09-11_ia_video.sql', 'Vídeo real — Seedance 2.0 + Veo 3.1 Fast, teto próprio',
+        function () use ($pdo, $temTabela) {
+            if (!$temTabela('ia_tipos_conteudo')) { return false; }
+            return (int) $pdo->query("SELECT COUNT(*) FROM ia_tipos_conteudo WHERE codigo = 'video_produto'")->fetchColumn() > 0;
+        }],
 ];
 
 /*
