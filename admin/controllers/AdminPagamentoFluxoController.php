@@ -93,7 +93,7 @@ class AdminPagamentoFluxoController extends Controller
         }
 
         [$nos, $conexoes] = $this->lerGrafoDoPost();
-        $validacao = PagamentoNoCatalogo::validarGrafo($nos, $conexoes);
+        $validacao = PagamentoNoCatalogo::validarGrafo($nos, $conexoes, $this->adquirentesAtivas());
 
         $this->gravarGrafo($id, $nos, $conexoes, $_POST['canvas'] ?? null);
 
@@ -115,7 +115,7 @@ class AdminPagamentoFluxoController extends Controller
         if (!$fx) $this->json(['ok' => false, 'msg' => 'Fluxo não encontrado.']);
 
         [$nos, $conexoes] = $this->lerGrafoDoPost();
-        $validacao = PagamentoNoCatalogo::validarGrafo($nos, $conexoes);
+        $validacao = PagamentoNoCatalogo::validarGrafo($nos, $conexoes, $this->adquirentesAtivas());
 
         // Erro barra a publicação. Publicar grafo quebrado significa cliente
         // no checkout sem roteamento — pior do que não publicar.
@@ -196,6 +196,22 @@ class AdminPagamentoFluxoController extends Controller
     }
 
     // =========================================================================
+
+    /**
+     * Códigos das adquirentes ligadas — o que um fluxo pode chamar.
+     *
+     * O editor já marcava "(inativa)" no seletor, mas deixava publicar. Com
+     * esta lista, o validarGrafo barra a publicação de nó com adquirente
+     * desligada (no rascunho, o erro aparece mas o rascunho é salvo).
+     *
+     * @return string[]
+     */
+    private function adquirentesAtivas(): array
+    {
+        return array_map('strval', Database::getInstance()->getConnection()
+            ->query("SELECT codigo FROM pgto_gateways WHERE ativo = 1")
+            ->fetchAll(PDO::FETCH_COLUMN));
+    }
 
     private function carregarFluxo(int $id): ?array
     {

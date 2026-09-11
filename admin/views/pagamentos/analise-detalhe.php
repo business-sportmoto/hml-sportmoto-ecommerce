@@ -121,11 +121,20 @@ $tier      = (string) ($pedido['tier'] ?? 'bronze');
   <div class="admin-card" style="margin-bottom:16px;padding:0;">
     <h3 style="margin:0;padding:16px 20px 10px;font-size:14px;">Tentativas de pagamento</h3>
     <table class="admin-table" style="margin:0;">
-      <thead><tr><th>#</th><th>Adquirente</th><th>Resultado</th><th>Motivo</th><th>Bandeira</th><th class="num">Tempo</th></tr></thead>
+      <?php
+        // Quando, método e versão do fluxo: sem eles, duas tentativas "#1" de
+        // checkouts diferentes (um Pix numa data, um cartão noutra) pareciam
+        // a mesma, e não havia como saber qual versão do fluxo mandou para
+        // qual adquirente.
+        $rotMetodo = ['cartao_credito' => 'Cartão', 'pix' => 'Pix', 'boleto' => 'Boleto'];
+      ?>
+      <thead><tr><th>#</th><th>Quando</th><th>Método</th><th>Adquirente</th><th>Resultado</th><th>Motivo</th><th>Bandeira</th><th>Fluxo</th><th class="num">Tempo</th></tr></thead>
       <tbody>
       <?php foreach ($tentativas as $t): ?>
         <tr>
           <td><?= (int) $t['sequencia'] ?></td>
+          <td class="num" style="font-size:12px;white-space:nowrap;"><?= $t['criado_em'] ? date('d/m/Y H:i', strtotime((string) $t['criado_em'])) : '—' ?></td>
+          <td style="font-size:12px;"><?= View::e($rotMetodo[$t['metodo']] ?? (string) $t['metodo']) ?></td>
           <td><?= View::e($t['adquirente_codigo']) ?></td>
           <td><strong><?= View::e($t['resultado']) ?></strong></td>
           <td style="font-size:12px;">
@@ -135,6 +144,10 @@ $tier      = (string) ($pedido['tier'] ?? 'bronze');
             <?php endif; ?>
           </td>
           <td><?= View::e($t['bandeira'] ?? '—') ?></td>
+          <td style="font-size:12px;white-space:nowrap;"
+              title="pgto_fluxos.id = <?= (int) ($t['fluxo_id'] ?? 0) ?>">
+            <?= !empty($t['fluxo_versao']) ? 'v' . (int) $t['fluxo_versao'] : '—' ?>
+          </td>
           <td class="num" style="font-size:12px;color:var(--c-text-muted);"><?= (int) $t['duracao_ms'] ?>ms</td>
         </tr>
       <?php endforeach; ?>

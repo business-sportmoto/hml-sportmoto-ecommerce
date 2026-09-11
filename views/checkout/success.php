@@ -11,6 +11,12 @@ $isCartao        = $metodo === 'cartao';
 $isCancelado     = $statusPedido === 'cancelado';
 $isTroca         = $statusPedido === 'troca_devolucao';
 
+// Cobrança tentada e não aceita (cartão recusado, Pix/boleto que falhou).
+// O hero e o card de pagamento leem ESTA variável. Até 11/09/2026 ela só
+// existia dentro do card: o hero não sabia da recusa e o cartão recusado
+// caía no texto do boleto ("Após compensação do boleto…").
+$recusado        = in_array($statusPagamento, ['recusado', 'erro', 'falhou'], true);
+
 // ── Mapa de progressão numérica ────────────────────────
 // Determina em qual "degrau" o pedido está agora.
 // Regra: em_separacao e enviado só existem se status_pagamento = aprovado.
@@ -70,13 +76,14 @@ $stepDefs = [
     [
         'nivel'       => 0,
         'label_done'  => 'Pago',
-        'label_act'   => 'Aguardando',
+        'label_act'   => $recusado ? 'Não autorizado' : 'Aguardando',
         'label_fut'   => 'Pagamento',
         'sub_done'    => $pagoEm ? 'Em ' . $pagoEm : ($dataDe('pagamento_aprovado') ?? 'Aprovado'),
-        'sub_act'     => match($metodo) {
+        'sub_act'     => $recusado ? 'Tente outro pagamento' : match($metodo) {
             'pix'    => 'Aguardando Pix',
             'boleto' => 'Aguardando boleto',
-            default  => 'Cartão pendente',
+            'cartao' => 'Cartão pendente',
+            default  => 'Aguardando pagamento',
         },
         'sub_fut'     => '—',
     ],
@@ -174,6 +181,13 @@ $steps = array_map(function ($def) use ($nivelAtual, $isCancelado) {
                       stroke="currentColor" stroke-width="2.8"
                       stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
+          <?php elseif ($recusado): ?>
+          <!-- Exclamação, não relógio: recusado não é "aguarde", é "aja". -->
+          <svg viewBox="0 0 52 52" fill="none">
+            <circle cx="26" cy="26" r="23" stroke="currentColor" stroke-width="2.2"/>
+            <line x1="26" y1="14" x2="26" y2="30" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/>
+            <circle cx="26" cy="37.5" r="1.9" fill="currentColor"/>
+          </svg>
           <?php else: ?>
           <svg viewBox="0 0 52 52" fill="none">
             <circle cx="26" cy="26" r="23" stroke="currentColor" stroke-width="2.2"/>
@@ -192,6 +206,7 @@ $steps = array_map(function ($def) use ($nivelAtual, $isCancelado) {
         <?php elseif ($statusPedido === 'em_separacao'): ?>Em separação
         <?php elseif ($statusPedido === 'troca_devolucao'): ?>Em troca/devolução
         <?php elseif ($aprovado): ?>Pedido confirmado!
+        <?php elseif ($recusado): ?>Pagamento não autorizado
         <?php elseif ($isPix): ?>Aguardando Pix
         <?php elseif ($isBoleto): ?>Aguardando boleto
         <?php else: ?>Pedido recebido!<?php endif; ?>
@@ -207,11 +222,25 @@ $steps = array_map(function ($def) use ($nivelAtual, $isCancelado) {
         <?php elseif ($aprovado): ?>
           Pagamento aprovado · E-mail enviado para
           <strong><?= View::e($pedido['cliente_email'] ?? '') ?></strong>
+        <?php elseif ($recusado): ?>
+          <?= $isCartao ? 'O pagamento no cartão não foi autorizado.' : 'Não foi possível concluir o pagamento.' ?>
+          <?php if ($podeTrocarPagamento): ?>
+            Use <strong>Mudar a forma de pagamento</strong>, abaixo, para tentar de novo.
+          <?php endif; ?>
         <?php elseif ($isPix): ?>
           Efetue o pagamento abaixo · Confirmação em segundos
-        <?php else: ?>
+        <?php elseif ($isBoleto): ?>
           Após compensação do boleto (1–2 dias úteis) seu pedido é separado
+        <?php elseif ($isCartao): ?>
+          Estamos confirmando o pagamento com o emissor do cartão · Você recebe um e-mail assim que for aprovado
+        <?php else: ?>
+          Assim que o pagamento for confirmado, seu pedido é separado
         <?php endif; ?>
+        <?php
+        // Cada método com a sua frase. O `else` final era o texto do boleto:
+        // qualquer caso não previsto — cartão pendente, cartão recusado —
+        // dizia ao cliente que ele tinha pago com boleto.
+        ?>
       </p>
 
       <!-- Código do pedido + rastreio -->
@@ -669,7 +698,6 @@ $steps = array_map(function ($def) use ($nivelAtual, $isCancelado) {
         <h3 class="success-card-title">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
           <?php
-          $recusado = in_array($statusPagamento, ['recusado', 'erro', 'falhou'], true);
           echo $aprovado ? 'Pagamento aprovado'
              : ($recusado ? 'Pagamento não autorizado' : 'Pagamento pendente');
           ?>

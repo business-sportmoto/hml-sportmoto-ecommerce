@@ -502,7 +502,7 @@ class AdminAnaliseController extends Controller
         $st = $this->db->prepare(
             "SELECT sequencia, adquirente_codigo, metodo, parcelas, bandeira,
                     resultado, classe_erro, codigo_adquirente, mensagem_cliente,
-                    duracao_ms, criado_em
+                    duracao_ms, criado_em, fluxo_id, fluxo_versao
                FROM pgto_tentativas
               WHERE order_id_loja = ?
            ORDER BY id"

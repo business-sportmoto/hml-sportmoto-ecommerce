@@ -180,9 +180,12 @@ class PagamentoNoCatalogo
      *
      * @param array $nos      [{no_ref, tipo, config}]
      * @param array $conexoes [{no_origem, porta_origem, no_destino}]
+     * @param string[]|null $adquirentesAtivas  códigos ligados em
+     *        Pagamentos > Adquirentes. Informado, nó que chama adquirente
+     *        desligada vira ERRO (barra a publicação). Null = não confere.
      * @return array{erros:string[], avisos:string[]}
      */
-    public static function validarGrafo(array $nos, array $conexoes): array
+    public static function validarGrafo(array $nos, array $conexoes, ?array $adquirentesAtivas = null): array
     {
         $erros = [];
         $avisos = [];
@@ -218,6 +221,13 @@ class PagamentoNoCatalogo
             $cfg = is_array($n['config'] ?? null) ? $n['config'] : (json_decode((string) ($n['config'] ?? ''), true) ?: []);
             if (empty($cfg['adquirente'])) {
                 $erros[] = "O nó '{$n['no_ref']}' não tem adquirente escolhida.";
+            } elseif ($adquirentesAtivas !== null
+                      && !in_array((string) $cfg['adquirente'], $adquirentesAtivas, true)) {
+                // Erro, e não aviso: o roteador nunca chama adquirente
+                // desligada, então publicar isto é publicar um nó que só
+                // sabe pular — todo pagamento dele sai por "indisponível".
+                $erros[] = "O nó '{$n['no_ref']}' usa a adquirente '{$cfg['adquirente']}', que está desligada. "
+                         . 'Ligue-a em Adquirentes ou troque o nó — adquirente desligada nunca é chamada.';
             }
         }
 

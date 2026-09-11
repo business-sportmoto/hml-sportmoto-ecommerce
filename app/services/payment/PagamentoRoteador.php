@@ -38,10 +38,17 @@ class PagamentoRoteador
 
     private PagamentoNotificador $notificador;
 
-    public function __construct(?PDO $db = null, ?callable $fabrica = null)
+    /** @var callable(string): bool  a adquirente está ligada? */
+    private $estaAtiva;
+
+    /** @var array<string, bool>  uma consulta por adquirente por pagamento */
+    private array $ativasCache = [];
+
+    public function __construct(?PDO $db = null, ?callable $fabrica = null, ?callable $estaAtiva = null)
     {
         $this->db      = $db ?? Database::getInstance()->getConnection();
         $this->fabrica     = $fabrica ?? [$this, 'adquirentePorCodigo'];
+        $this->estaAtiva   = $estaAtiva ?? [$this, 'adquirenteAtiva'];
         $this->notificador = new PagamentoNotificador($this->db);
     }
 
@@ -207,6 +214,31 @@ class PagamentoRoteador
         }
 
         $codigo = (string) ($cfg['adquirente'] ?? '');
+
+        // ── ADQUIRENTE DESLIGADA NUNCA É CHAMADA ─────────────────────
+        //
+        // Desligar na página de adquirentes (`pgto_gateways.ativo = 0`) tem de
+        // bastar. Até 11/09/2026 não bastava: nada neste caminho olhava o
+        // `ativo` — o `configurado()` de cada adapter só confere credencial —
+        // e uma adquirente desligada, com credencial salva, era chamada
+        // sempre que um fluxo publicado a citasse.
+        //
+        // A checagem mora AQUI, na hora de cobrar, e não no AdquirenteFactory:
+        // o factory também atende estorno e consulta de transação antiga
+        // (paraTransacao), e desligar a adquirente não pode impedir estornar
+        // uma cobrança que ela já fez.
+        //
+        // Sai pela mesma porta da adquirente sem credencial: indisponível,
+        // e o fluxo segue para onde essa porta estiver ligada.
+        if (!($this->estaAtiva)($codigo)) {
+            $this->gravarTentativa($ctx, $r, $noRef, $codigo, null, 'pulado',
+                'adquirente_inativa', 'Adquirente desligada em Pagamentos > Adquirentes');
+            LogService::warning('Fluxo cita adquirente desligada — pulada', [
+                'adquirente' => $codigo, 'fluxo_id' => $r->fluxoId, 'no' => $noRef,
+                'order_id_loja' => $ctx['order_id_loja'] ?? null,
+            ], 'pagamento');
+            return PagamentoClassificacao::INDISPONIVEL;
+        }
 
         // TOKEN DE CARTAO SO VALE ONDE NASCEU.
         //
@@ -733,6 +765,18 @@ class PagamentoRoteador
      * com o fluxo aparentemente correto. Um registro em dois lugares e um
      * registro que vai ficar pela metade.
      */
+    /** Ligada em Pagamentos > Adquirentes? Código desconhecido conta como desligado. */
+    private function adquirenteAtiva(string $codigo): bool
+    {
+        if ($codigo === '') return false;
+        if (!array_key_exists($codigo, $this->ativasCache)) {
+            $st = $this->db->prepare("SELECT ativo FROM pgto_gateways WHERE codigo = ? LIMIT 1");
+            $st->execute([$codigo]);
+            $this->ativasCache[$codigo] = (int) ($st->fetchColumn() ?: 0) === 1;
+        }
+        return $this->ativasCache[$codigo];
+    }
+
     private function adquirentePorCodigo(string $codigo): ?AdquirenteInterface
     {
         return AdquirenteFactory::porCodigo($codigo);
