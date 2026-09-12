@@ -371,6 +371,7 @@ $stmt->execute([Session::get('admin_id'), $registroId]);
 | Estoque — saldo e histórico (card do form de produto) | `('super','gerente','editor','estoque')` | ✅ 11/09 |
 | Estoque — puxar do Bling (`ressincronizar`) | construtor: `('super','gerente','editor','estoque')` | ✅ 11/09 |
 | Estoque — `ajustar`, `ajustarSku` | desativados: respondem 410 — o saldo é do Bling | ✅ 11/09 |
+| Erros 404 e redirecionamentos (`SeoUrlAdminController`) | `('super')` | ✅ 12/09 — redireciona visitante e mostra IP |
 | Central de Recuperação — construtor | `requireAdmin()` + guard próprio | ✅ |
 | Central de Recuperação — gestão | `('super','gerente')` | ✅ |
 

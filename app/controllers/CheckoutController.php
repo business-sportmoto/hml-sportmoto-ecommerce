@@ -2703,8 +2703,7 @@ class CheckoutController extends Controller {
     }
 
     private function notFound(): void {
-        http_response_code(404);
-        $this->render('errors/404');
+        $this->naoEncontrado('main');
         exit;
     }
 

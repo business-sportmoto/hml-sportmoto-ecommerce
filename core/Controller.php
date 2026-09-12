@@ -19,6 +19,25 @@ abstract class Controller {
         exit;
     }
 
+    /**
+     * Resposta 404 da loja — o ponto ÚNICO por onde todo "não achei" passa.
+     *
+     * Antes de mostrar a página de erro, `Erro404Service::interceptar()`:
+     *   1. procura o endereço no mapa de redirecionamentos — 301 e 302 saem
+     *      daqui mesmo, sem renderizar nada; 410 responde "essa página
+     *      acabou", que o Google tira do índice mais rápido que um 404;
+     *   2. não havendo regra, registra o endereço quebrado com origem, IP e
+     *      user agent — é o que alimenta a tela de 404 do painel.
+     *
+     * Até 11/09/2026 cada controller respondia 404 por conta própria (dez
+     * lugares) e ninguém registrava nada: o 404 acontecia em silêncio.
+     */
+    protected function naoEncontrado(string $layout = 'minimal'): void {
+        $status = Erro404Service::interceptar();   // 301/302 não voltam daqui
+        http_response_code($status);
+        $this->render('errors/404', ['status_http' => $status], $layout);
+    }
+
     protected function parseError(Exception $err){
         return 'Message:'.$err->getMessage().' File:'.$err->getFile().' Line:'.$err->getLine();
     }

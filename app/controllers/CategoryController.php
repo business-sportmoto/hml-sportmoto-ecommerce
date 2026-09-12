@@ -19,8 +19,7 @@ class CategoryController extends Controller {
         $category = $this->categoryModel->findBySlug($slug);
 
         if (!$category) {
-            http_response_code(404);
-            $this->render('errors/404', [], 'minimal');
+            $this->naoEncontrado('minimal');
             return;
         }
 
@@ -196,6 +195,26 @@ class CategoryController extends Controller {
         }
         unset($p);
 
+        // ── SEO ───────────────────────────────────────────────
+        // Tudo o que a página já sabe (nome, descrição, total, produtos)
+        // vira title, canonical, Open Graph e JSON-LD.
+        SeoHelper::setColecao([
+            'titulo'    => $pageTitle,
+            'descricao' => $pageDescription
+                        ?: $category['nome'] . ': ' . ($total ?? count($products)) . ' produtos com entrega para todo o Brasil.',
+            'url'       => BASE_URL . '/categoria/' . $category['slug'],
+            'produtos'  => $products,
+            'total'     => (int) ($total ?? count($products)),
+            'pagina'    => (int) $page,
+            'totalPaginas' => (int) $pag->totalPages(),
+            'porPagina' => (int) $pag->getPerPage(),
+            'filtrado'  => $this->temFiltroAtivo($filters),
+            'breadcrumb' => [
+                ['label' => 'Início',          'url' => BASE_URL],
+                ['label' => $category['nome'], 'url' => BASE_URL . '/categoria/' . $category['slug']],
+            ],
+        ]);
+
         TrackingService::registrar('categoria_vista', 'categoria', (int)$category['id']);
 
         // ── Render ────────────────────────────────────────────
@@ -232,6 +251,25 @@ class CategoryController extends Controller {
         ]));
     }
 
+    /**
+     * Filtro aplicado pelo visitante (cor, preço, marca, atributo…).
+     *
+     * Cada combinação é uma URL diferente com o mesmo conteúdo — se todas
+     * forem indexáveis, o índice do Google enche de páginas quase iguais e a
+     * categoria "de verdade" perde força. Com filtro: noindex, follow.
+     *
+     * Ordenação e página NÃO contam: `ordenar` só muda a ordem e `pagina` tem
+     * canonical próprio.
+     */
+    private function temFiltroAtivo(array $filters): bool
+    {
+        foreach (['preco_min','preco_max','marca','marcas','atributos','caracteristicas',
+                  'montadora_id','modelo_id','ano','q','promo','disponivel'] as $chave) {
+            if (!empty($filters[$chave])) return true;
+        }
+        return false;
+    }
+
     public function brand(string $slug): void {
         $db   = Database::getInstance()->getConnection();
 
@@ -240,8 +278,7 @@ class CategoryController extends Controller {
         $marca = $stmt->fetch();
 
         if (!$marca) {
-            http_response_code(404);
-            $this->render('errors/404', [], 'minimal');
+            $this->naoEncontrado('minimal');
             return;
         }
 
@@ -279,11 +316,26 @@ class CategoryController extends Controller {
         $metaDesc  = $marca['meta_description']
                 ?: 'Confira todos os produtos ' . $marca['nome'] . '. ' . $total . ' produtos disponíveis.';
 
-        SeoHelper::setTitle($metaTitle);
-        SeoHelper::setDescription($metaDesc);
-        SeoHelper::setCanonical(BASE_URL . '/marca/' . $marca['slug']);
-        SeoHelper::setRobots('index, follow');
-        SeoHelper::setJsonLd([
+        SeoHelper::setColecao([
+            'titulo'       => $metaTitle,
+            'descricao'    => $metaDesc,
+            'url'          => BASE_URL . '/marca/' . $marca['slug'],
+            'produtos'     => $products,
+            'total'        => (int) $total,
+            'pagina'       => (int) $page,
+            'totalPaginas' => (int) $pag->totalPages(),
+            'porPagina'    => (int) $pag->getPerPage(),
+            'filtrado'     => $this->temFiltroAtivo($filters),
+            'breadcrumb'   => [
+                ['label' => 'Início',      'url' => BASE_URL],
+                ['label' => 'Marcas',      'url' => BASE_URL . '/marcas'],
+                ['label' => $marca['nome'], 'url' => BASE_URL . '/marca/' . $marca['slug']],
+            ],
+        ]);
+
+        // Dados da marca em si — complementa o CollectionPage do setColecao.
+        // `array_filter` porque schema com campo nulo é lixo para o validador.
+        SeoHelper::setJsonLd(array_filter([
             '@context'    => 'https://schema.org',
             '@type'       => 'Brand',
             'name'        => $marca['nome'],
@@ -291,12 +343,7 @@ class CategoryController extends Controller {
             'logo'        => !empty($marca['logo']) ? UPLOAD_URL . '/brands/' . $marca['logo'] : null,
             'description' => $marca['descricao'] ?? null,
             'sameAs'      => $marca['site'] ?? null,
-        ]);
-        SeoHelper::setBreadcrumb([
-            ['label' => 'Início', 'url' => BASE_URL],
-            ['label' => 'Marcas', 'url' => BASE_URL . '/marcas'],
-            ['label' => $marca['nome'], 'url' => null],
-        ]);
+        ]));
 
         
 

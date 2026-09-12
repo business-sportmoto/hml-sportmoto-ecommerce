@@ -28,16 +28,14 @@ class PageController extends Controller {
         if (!is_dir($pageDir) || !file_exists($pageDir . '/index.php')) {
             if ($this->mostrarDoBanco($slug)) return;
 
-            http_response_code(404);
-            $this->render('errors/404', [], 'main');
+            $this->naoEncontrado('main');
             return;
         }
 
         $config = $this->loadConfig($pageDir);
 
         if (!($config['ativa'] ?? true)) {
-            http_response_code(404);
-            $this->render('errors/404', [], 'main');
+            $this->naoEncontrado('main');
             return;
         }
 

@@ -62,10 +62,11 @@ $(function () {
           // usar o mesmo mecanismo de exibir mensagem que o login já tem
           $err.text(res.msg); // ← adapte ao nome real da função
         }
-        var emailParam = encodeURIComponent(res.email || '');
-        setTimeout(function () {
-          window.location.href = AUTH_CONFIG.baseUrl + '/recuperar-senha?email=' + emailParam;
-        }, 1200); // pequeno delay pra mensagem ser lida; ajuste à vontade
+        // O destino vem pronto do servidor, com origem=tray — é o que faz a
+        // tela de recuperação explicar que a senha precisa ser CRIADA.
+        var destino = res.redirect || (AUTH_CONFIG.baseUrl + '/recuperar-senha?origem=tray&email='
+                    + encodeURIComponent(res.email || ''));
+        setTimeout(function () { window.location.href = destino; }, 1200);
         return;
       }
 
@@ -188,10 +189,11 @@ $(function () {
           // usar o mesmo mecanismo de exibir mensagem que o login já tem
           mostrarMensagemLogin(res.msg); // ← adapte ao nome real da função
         }
-        var emailParam = encodeURIComponent(res.email || '');
-        setTimeout(function () {
-          window.location.href = AUTH_CONFIG.baseUrl + '/recuperar-senha?email=' + emailParam;
-        }, 1200); // pequeno delay pra mensagem ser lida; ajuste à vontade
+        // O destino vem pronto do servidor, com origem=tray — é o que faz a
+        // tela de recuperação explicar que a senha precisa ser CRIADA.
+        var destino = res.redirect || (AUTH_CONFIG.baseUrl + '/recuperar-senha?origem=tray&email='
+                    + encodeURIComponent(res.email || ''));
+        setTimeout(function () { window.location.href = destino; }, 1200);
         return;
       }
 
@@ -489,10 +491,13 @@ $(function () {
     e.preventDefault();
     clearErrors();
 
-    const email = $('#email').val().trim();
+    const login  = $('#login').val().trim();
+    const soNums = login.replace(/\D/g, '');
+    const ehCpf  = soNums.length === 11;
 
-    if (!isValidEmail(email)) {
-      showError('#err-email', 'Informe um e-mail válido.');
+    // E-mail OU CPF: quem veio da loja antiga costuma lembrar só do CPF.
+    if (!ehCpf && !isValidEmail(login)) {
+      showError('#err-login', 'Informe um e-mail válido ou o CPF (11 dígitos).');
       return;
     }
 
@@ -505,13 +510,31 @@ $(function () {
       data:     $(this).serialize(),
       dataType: 'json',
     }).done(function (res) {
-      notify(res.msg, res.ok ? 'success' : 'error');
       setLoading($btn, false);
-      $('#email').val('');
+
+      // Conta encontrada: mostra PARA ONDE o link foi, no lugar do formulário.
+      if (res.ok && res.email_mascarado) {
+        $('#forgot-enviado-email').text(res.email_mascarado);
+        $('#forgot-enviado-validade').text(res.validade_min || 60);
+        $('#forgot-enviado-titulo').text(res.migrado ? 'Link para criar sua senha' : 'Link enviado');
+        $('#form-forgot').prop('hidden', true);
+        $('#forgot-enviado').prop('hidden', false);
+        return;
+      }
+
+      notify(res.msg, res.ok ? 'success' : 'error');
+      if (res.ok) $('#login').val('');
     }).fail(function () {
       notify('Erro de conexão.', 'error');
       setLoading($btn, false);
     });
+  });
+
+  // "Tente outro e-mail ou CPF" — volta ao formulário sem recarregar.
+  $('#forgot-retry').on('click', function () {
+    $('#forgot-enviado').prop('hidden', true);
+    $('#form-forgot').prop('hidden', false);
+    $('#login').val('').trigger('focus');
   });
 
   // ════════════════════════════════════════════════════════

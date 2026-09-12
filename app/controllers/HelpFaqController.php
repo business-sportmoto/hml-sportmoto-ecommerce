@@ -45,8 +45,7 @@ class HelpCenterController extends Controller {
     public function categoria(string $slug): void {
         $categoria = $this->categoriaModel->getBySlug($slug);
         if (!$categoria) {
-            http_response_code(404);
-            $this->render('errors/404', [],'minimal');
+            $this->naoEncontrado('minimal');
             return;
         }
 

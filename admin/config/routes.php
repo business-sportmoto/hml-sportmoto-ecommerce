@@ -611,6 +611,18 @@ AdminRouter::post('/vida-util/salvar',   'VidaUtilAdminController@salvar');
 AdminRouter::post('/vida-util/pausar',   'VidaUtilAdminController@pausar');
 AdminRouter::post('/vida-util/excluir',  'VidaUtilAdminController@excluir');
 
+# SEO — rastreador de 404 e mapa de redirecionamentos (só super)
+AdminRouter::get ('/seo/404',                        'SeoUrlAdminController@erros');
+AdminRouter::get ('/seo/404/{id:\d+}/acessos',       'SeoUrlAdminController@acessos');
+AdminRouter::post('/seo/404/status',                 'SeoUrlAdminController@marcarStatus');
+AdminRouter::post('/seo/404/redirecionar',           'SeoUrlAdminController@redirecionarDe404');
+
+AdminRouter::get ('/seo/redirecionamentos',          'SeoUrlAdminController@redirecionamentos');
+AdminRouter::post('/seo/redirecionamentos/salvar',   'SeoUrlAdminController@salvar');
+AdminRouter::post('/seo/redirecionamentos/alternar', 'SeoUrlAdminController@alternar');
+AdminRouter::post('/seo/redirecionamentos/excluir',  'SeoUrlAdminController@excluir');
+AdminRouter::get ('/seo/redirecionamentos/{id:\d+}', 'SeoUrlAdminController@obter');
+
 require __DIR__ . '/routes.email-marketing.php';
 require __DIR__ . '/routes.ia.php';
 require __DIR__ . '/routes.logistic.php';

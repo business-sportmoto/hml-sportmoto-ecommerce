@@ -123,9 +123,21 @@ class SearchController extends Controller {
         }
         unset($p);
 
-        SeoHelper::setTitle("Busca: {$q}");
-        SeoHelper::setDescription("Resultados para \"{$q}\" na " . ConfigHelper::get('site_nome', ''));
-        SeoHelper::setRobots('noindex, follow');
+        // Busca interna não entra no índice (o Google desaconselha), mas
+        // precisa de title, canonical e imagem — é link que as pessoas mandam
+        // por WhatsApp o tempo todo.
+        SeoHelper::setColecao([
+            'titulo'     => "Busca: {$q}",
+            'descricao'  => "Resultados para \"{$q}\" na " . ConfigHelper::get('site_nome', ''),
+            'url'        => BASE_URL . '/busca?q=' . urlencode($q),
+            'produtos'   => $products ?? [],
+            'total'      => (int) ($total ?? 0),
+            'indexavel'  => false,
+            'breadcrumb' => [
+                ['label' => 'Início', 'url' => BASE_URL],
+                ['label' => 'Busca',  'url' => null],
+            ],
+        ]);
 
         TrackingService::registrar('busca', null, null, [
             'q'          => mb_substr($q, 0, 120),

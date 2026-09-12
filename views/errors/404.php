@@ -1,6 +1,14 @@
 <?php
 // views/errors/404.php
-http_response_code(404);
+// 404 por padrão; 410 quando o mapa de redirecionamentos diz que a página
+// acabou de vez. Quem define é o Controller::naoEncontrado() / Router.
+http_response_code($status_http ?? 404);
+
+$erroCodigo = (int) ($status_http ?? 404);
+$erroTitulo = $erroCodigo === 410 ? 'Página removida' : 'Página não encontrada';
+$erroTexto  = $erroCodigo === 410
+    ? 'Esta página saiu do ar de vez. Veja na busca ou na home se o que você procura mudou de lugar.'
+    : 'A página que você procura não existe, foi movida ou o endereço foi digitado incorretamente.';
 ?>
 
 <style>
@@ -15,10 +23,10 @@ http_response_code(404);
 
 <main class="error-page main-content">
   <div>
-    <div class="error-code">404</div>
-    <h1 class="error-title">Página não encontrada</h1>
+    <div class="error-code"><?= $erroCodigo ?></div>
+    <h1 class="error-title"><?= $erroTitulo ?></h1>
     <p class="error-desc">
-      A página que você procura não existe, foi movida ou o endereço foi digitado incorretamente.
+      <?= $erroTexto ?>
     </p>
     <div class="error-actions">
       <a href="<?= BASE_URL ?>" class="btn btn-primary">Ir para a home</a>

@@ -285,7 +285,7 @@ class AuthController extends Controller {
                     'ok'            => false,
                     'definir_senha' => true,
                     'email'         => $user['email'],
-                    'redirect'      => BASE_URL . '/recuperar-senha?email=' . urlencode($user['email']),
+                    'redirect'      => BASE_URL . '/recuperar-senha?origem=tray&email=' . urlencode($user['email']),
                     'msg'           => 'Identificamos sua conta da nossa loja anterior. '
                                      . 'Por segurança, defina uma nova senha para continuar.',
                 ]);
@@ -1728,65 +1728,116 @@ class AuthController extends Controller {
         $this->render('auth/forgot-password', [], 'minimal');
     }
 
+    /**
+     * Envia o link de recuperação.
+     *
+     * ── ACEITA E-MAIL OU CPF ─────────────────────────────────────────
+     * Quem vem da loja anterior cai aqui pela tela de login (conta sem senha
+     * local) e muitas vezes só lembra do CPF. Antes o campo era `email` e
+     * exigia e-mail válido: quem digitava o CPF levava "E-mail inválido".
+     *
+     * ── POR QUE DEVOLVEMOS O E-MAIL MASCARADO ────────────────────────
+     * Sem ele o cliente não sabe PARA ONDE o link foi — e-mail antigo, domínio
+     * que não usa mais, erro de digitação no cadastro. O mascarado
+     * (`jo****@gmail.com`) responde isso sem revelar o endereço.
+     *
+     * Isso confirma que a conta existe. É a mesma informação que a etapa 1 do
+     * login já dá (`checkIdentity`), com as mesmas defesas: limite por
+     * identificador E por IP, e atraso artificial igual para achou e não
+     * achou. Conta inexistente continua recebendo a resposta genérica.
+     */
     public function forgot(): void {
         $this->verifyCsrf();
 
-        $email = SecurityHelper::sanitizeEmail($_POST['email'] ?? '');
+        // `login` é o campo novo; `email` continua aceito para não quebrar
+        // nada que ainda poste o nome antigo.
+        $login = trim(SecurityHelper::sanitizeString($_POST['login'] ?? $_POST['email'] ?? ''));
+        $ehCpf = (bool) preg_match('/^\d{11}$/', preg_replace('/\D/', '', $login));
 
-        // Rate limit: evita spam de e-mails de recuperação
-        if (SecurityHelper::rateLimitExceeded('forgot_' . md5($email), 3, 900)) {
+        $generica = 'Se a conta existir, você receberá as instruções em instantes.';
+
+        $responder = function (array $dados, string $flashTipo, string $flashMsg): void {
+            if (AuthHelper::isAjax()) $this->json($dados);
+            Session::flash($flashTipo, $flashMsg);
+            $this->redirect(BASE_URL . '/recuperar-senha');
+        };
+
+        if ($login === '') {
+            $responder(['ok' => false, 'msg' => 'Informe seu e-mail ou CPF.'], 'error', 'Informe seu e-mail ou CPF.');
+            return;
+        }
+
+        if (!$ehCpf && !SecurityHelper::validateEmail($login)) {
+            $msg = 'Informe um e-mail válido ou o CPF (11 dígitos).';
+            $responder(['ok' => false, 'msg' => $msg], 'error', $msg);
+            return;
+        }
+
+        // Dois limites: por identificador (assédio a uma conta) e por IP
+        // (varredura de várias contas a partir do mesmo lugar).
+        $ipKey = md5($_SERVER['REMOTE_ADDR'] ?? '');
+        if (SecurityHelper::rateLimitExceeded('forgot_' . md5(mb_strtolower($login)), 3, 900)
+            || SecurityHelper::rateLimitExceeded('forgot_ip_' . $ipKey, 10, 900)) {
             // [LOG] Flood de e-mails de recuperação = tentativa de assédio ao
             // titular ou de descoberta de contas.
             LogService::warning('Rate limit em recuperação de senha', [
-                'login_hash' => $this->logId($email),
+                'login_hash' => $this->logId($login),
             ], 'auth');
-
-            if (AuthHelper::isAjax()) {
-                $this->json(['ok' => true, 'msg' => 'Se o e-mail existir, você receberá as instruções.']);
-            }
-            Session::flash('info', 'Se o e-mail existir em nossa base, você receberá as instruções.');
-            $this->redirect(BASE_URL . '/recuperar-senha');
+            usleep(random_int(150000, 400000));
+            $responder(['ok' => true, 'msg' => $generica], 'info', $generica);
             return;
         }
 
-        if (!SecurityHelper::validateEmail($email)) {
-            if (AuthHelper::isAjax()) {
-                $this->json(['ok' => false, 'msg' => 'E-mail inválido.']);
-            }
-            Session::flash('error', 'Informe um e-mail válido.');
-            $this->redirect(BASE_URL . '/recuperar-senha');
+        $db   = Database::getInstance()->getConnection();
+        $user = $this->findUserByLogin($db, $login);
+
+        // Mesmo atraso do checkIdentity: iguala o tempo de "achou" e "não
+        // achou" para a diferença não virar oráculo.
+        usleep(random_int(150000, 400000));
+
+        if (!$user || ($user['tipo'] ?? '') !== 'cliente' || empty($user['ativo'])) {
+            $responder(['ok' => true, 'msg' => $generica], 'info', $generica);
             return;
         }
 
-        $user = $this->userModel->findByEmail($email);
+        try {
+            $token = $this->tokenService->createPasswordResetToken((int) $user['id']);
+            MailHelper::sendPasswordReset($user['email'], $user['nome'], $token);
 
-        // Resposta genérica independente de existir ou não (evita user enumeration)
-        if ($user && $user['tipo'] === 'cliente' && $user['ativo']) {
-            try {
-                $token = $this->tokenService->createPasswordResetToken($user['id']);
-                MailHelper::sendPasswordReset($user['email'], $user['nome'], $token);
+            // [LOG] NUNCA logue o $token — quem lê o log redefine a senha.
+            LogService::audit('Recuperação de senha solicitada', [
+                'usuario_id' => (int) $user['id'],
+                'por_cpf'    => $ehCpf,
+            ]);
 
-                // [LOG] NUNCA logue o $token — quem lê o log redefine a senha.
-                LogService::audit('Recuperação de senha solicitada', [
-                    'usuario_id' => (int) $user['id'],
-                ]);
+        } catch (\Throwable $e) {
+            // [LOG] error: o cliente não recebe o link e fica sem acesso.
+            LogService::exception($e, 'error', 'auth', [
+                'usuario_id' => (int) $user['id'],
+                'acao'       => 'envio_reset_senha',
+            ]);
 
-            } catch (\Throwable $e) {
-                // [LOG] error: o cliente não recebe o link e fica sem acesso.
-                LogService::exception($e, 'error', 'auth', [
-                    'usuario_id' => (int) $user['id'],
-                    'acao'       => 'envio_reset_senha',
-                ]);
-            }
+            $msg = 'Não conseguimos enviar o e-mail agora. Tente de novo em alguns minutos.';
+            $responder(['ok' => false, 'msg' => $msg], 'error', $msg);
+            return;
         }
 
-        $msg = 'Se o e-mail estiver cadastrado, você receberá as instruções em breve.';
+        // Cliente migrado: sem senha local e com origem na loja anterior.
+        $migrado   = (int) ($user['senha_definida'] ?? 1) === 0 && !empty($user['tray_id']);
+        $mascarado = $this->maskEmail((string) $user['email']);
 
-        if (AuthHelper::isAjax()) {
-            $this->json(['ok' => true, 'msg' => $msg]);
-        }
-        Session::flash('success', $msg);
-        $this->redirect(BASE_URL . '/recuperar-senha');
+        $msg = $migrado
+             ? 'Enviamos o link para você criar sua nova senha.'
+             : 'Enviamos o link para redefinir sua senha.';
+
+        $responder([
+            'ok'              => true,
+            'enviado'         => true,
+            'migrado'         => $migrado,
+            'email_mascarado' => $mascarado,
+            'validade_min'    => (int) round(TOKEN_EXPIRY / 60),
+            'msg'             => $msg,
+        ], 'success', $msg . ' Confira ' . $mascarado . '.');
     }
 
     // ── Redefinir senha ───────────────────────────────────────

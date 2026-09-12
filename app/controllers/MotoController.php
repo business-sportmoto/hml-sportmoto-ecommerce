@@ -151,6 +151,31 @@ class MotoController extends Controller {
             $anos = $stmt->fetchAll();
         }
 
+        // ── SEO ──────────────────────────────────────────────────────
+        // `/montadora/honda`, `/montadora/honda/cg-160` e
+        // `/montadora/honda/cg-160-2017` são três páginas indexáveis
+        // diferentes, e nenhuma tinha title, canonical ou Open Graph: o
+        // título era o nome da loja e o og:url apontava para a home.
+        $urlSeo = BASE_URL . '/montadora/' . $montadora['slug']
+                . ($modeloSlug ? '/' . $modeloSlug . ($ano ? '-' . $ano : '') : '');
+
+        SeoHelper::setColecao([
+            'titulo'       => $seoTitle,
+            'descricao'    => $seoDesc,
+            'url'          => $urlSeo,
+            'produtos'     => $produtos,
+            'total'        => (int) $total,
+            'pagina'       => (int) $page,
+            'totalPaginas' => (int) max(1, (int) ceil(max(1, (int) $total) / max(1, (int) $perPage))),
+            'porPagina'    => (int) $perPage,
+            'paramPagina'  => 'page',
+            // So conta filtro que muda o CONJUNTO de produtos. `ordem` sempre
+            // vem preenchida ('relevancia') e marcava toda montadora como
+            // filtrada — a pagina inteira saia noindex.
+            'filtrado'     => !empty($filtros['categoria_id']) || !empty($filtros['marca_id']) || !empty($filtros['q']),
+            'breadcrumb'   => $breadcrumb,
+        ]);
+
         TrackingService::registrar(
             'catalogo_moto_visto',
             'modelo_moto',
@@ -201,10 +226,41 @@ class MotoController extends Controller {
         );
         $montadoras = $stmt->fetchAll();
 
+        $titulo = 'Peças por moto — escolha a marca da sua';
+        $desc   = 'Encontre peças e acessórios compatíveis com a sua moto: '
+                . count($montadoras) . ' marcas com compatibilidade conferida.';
+
+        SeoHelper::setColecao([
+            'titulo'     => $titulo,
+            'descricao'  => $desc,
+            'url'        => BASE_URL . '/motos',
+            'breadcrumb' => [
+                ['label' => 'Início',        'url' => BASE_URL],
+                ['label' => 'Peças por moto', 'url' => BASE_URL . '/motos'],
+            ],
+        ]);
+
+        // A lista de marcas de moto é a entidade desta página.
+        SeoHelper::addJsonLd([
+            '@context'        => 'https://schema.org',
+            '@type'           => 'ItemList',
+            'name'            => $titulo,
+            'numberOfItems'   => count($montadoras),
+            'itemListElement' => array_values(array_map(
+                static fn(int $i, array $m) => [
+                    '@type'    => 'ListItem',
+                    'position' => $i + 1,
+                    'name'     => $m['nome'] ?? '',
+                    'url'      => BASE_URL . '/montadora/' . ($m['slug'] ?? ''),
+                ],
+                array_keys($montadoras), $montadoras
+            )),
+        ]);
+
         $this->render('moto/montadoras', [
             'montadoras' => $montadoras,
-            'seoTitle'   => 'Peças por Moto',
-            'seoDesc'    => 'Encontre peças compatíveis com a sua moto.',
+            'seoTitle'   => $titulo,
+            'seoDesc'    => $desc,
         ]);
     }
 

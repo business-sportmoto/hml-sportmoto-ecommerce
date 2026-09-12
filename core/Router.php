@@ -44,6 +44,15 @@ class Router {
         $method = strtoupper($_SERVER['REQUEST_METHOD']);
         $uri    = self::getUri();
 
+        // HEAD é GET sem corpo (RFC 9110): tem de casar com as rotas GET.
+        // Antes, 'HEAD' não batia com 'GET' e TODA requisição HEAD do site
+        // respondia 404 — monitor de uptime, verificador de link e parte dos
+        // rastreadores usam HEAD. Achado no pré-voo da virada, em 12/09/2026.
+        // O corpo é descartado pelo servidor; a view não muda.
+        if ($method === 'HEAD') {
+            $method = 'GET';
+        }
+
         foreach (self::$routes as $route) {
             // Verifica método HTTP
             if ($route['method'] !== 'ANY' && $route['method'] !== $method) {
@@ -124,7 +133,13 @@ class Router {
      * Resposta 404 padrão.
      */
     private static function notFound(): void {
-        http_response_code(404);
+        // Mesmo caminho do Controller::naoEncontrado(): o mapa de
+        // redirecionamentos primeiro (301/302 saem aqui dentro), o registro
+        // do endereço quebrado depois. $status_http chega à view incluída
+        // abaixo — é 404, ou 410 quando a regra diz que a página acabou.
+        $status_http = Erro404Service::interceptar();
+        http_response_code($status_http);
+
         // Tenta renderizar uma view 404 customizada
         $view404 = VIEW_PATH . '/errors/404.php';
         if (file_exists($view404)) {

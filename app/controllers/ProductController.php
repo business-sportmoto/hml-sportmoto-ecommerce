@@ -62,8 +62,7 @@ class ProductController extends Controller {
         $product = $this->productModel->findBySlug($slug);
 
         if (!$product) {
-            http_response_code(404);
-            $this->render('errors/404', [], 'minimal');
+            $this->naoEncontrado('minimal');
             return;
         }
 
@@ -139,9 +138,18 @@ class ProductController extends Controller {
         // }
 
         // SEO do produto
+        // As imagens vão como 2º argumento: é delas que sai o og:image. Sem
+        // isto todo produto caía na imagem padrão (que nem existia).
+        //
+        // `review_stats` vira aggregateRating no JSON-LD (estrelas na busca).
+        // Vinha de um segundo bloco Product montado dentro da view; agora é
+        // um bloco só, montado aqui.
+        $avaliacoes = (new Review())->getResumo((int) $product['id']);
+
         SeoHelper::setProduct(array_merge($product, [
             'imagem_principal' => $images[0]['arquivo'] ?? null,
-        ]));
+            'review_stats'     => !empty($avaliacoes['total']) ? $avaliacoes : null,
+        ]), $images);
 
         // Canonical inclui o variant_id se houver
         $canonical = BASE_URL . '/produto/' . $product['slug'];

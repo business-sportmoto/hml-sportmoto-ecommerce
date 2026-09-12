@@ -21,14 +21,10 @@ $resumo = (new Review())->getResumo((int)$product['id']);
 
 // var_dump($images);
 
-View::partial('products/schema-jsonld',
-[
-  'product'=> $product,
-  'semEstoque'=>$semEstoque,
-  'preco'=>$preco,
-  'images'=>$images,
-  'resumo'=>$resumo,
-]);
+// O JSON-LD do produto sai do SeoHelper::setProduct() (ProductController),
+// fonte unica: a pagina emitia DOIS blocos Product, um daqui e outro de la.
+// As avaliacoes que este partial acrescentava agora vao pelo controller,
+// em `review_stats`.
 
 $favoritado  = false;
 $listasProduto = [];

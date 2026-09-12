@@ -11,7 +11,14 @@ $categoryModel    = new Category();
 <head>  
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <?php View::partial('partials/seo-tags') ?>
-  <?php include VIEW_PATH . '/partials/schema-organization.php'; ?>
+  <?php
+  // O Store/Organization sai do SeoHelper::setOrganization() (linha acima),
+  // que le nome, logo, endereco e horario da configuracao. O antigo
+  // partials/schema-organization.php emitia um SEGUNDO bloco Store, com nome
+  // e logo cravados no codigo e apontando para o dominio de homologacao —
+  // dois Store na mesma pagina, um deles errado. O arquivo continua no
+  // projeto; o que saiu foi a duplicacao.
+  ?>
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/main.css') ?>">
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/clips.css') ?>">
   <link rel="stylesheet" href="<?= PerformanceHelper::assetVersion('css/lightbox.css') ?>">
