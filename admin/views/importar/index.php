@@ -61,6 +61,7 @@ $statusLabels = [
   <div class="admin-tabs" style="margin-bottom:0;">
     <button class="admin-tab is-active" data-tab="produtos">📦 Produtos</button>
     <button class="admin-tab" data-tab="variacoes">🔀 Variações</button>
+    <button class="admin-tab" data-tab="ean">🏷️ Só EAN</button>
     <button class="admin-tab" data-tab="clientes">👥 Clientes</button>
     <button class="admin-tab" data-tab="pedidos">📦 Pedidos</button>
     <button class="admin-tab" data-tab="imagens">🖼️ Imagens</button>
@@ -262,6 +263,121 @@ $statusLabels = [
   </div>
 
   <!-- ── Aba Clientes ───────────────────────────── -->
+  <!-- ── Aba Só EAN ──────────────────────────────── -->
+  <div class="admin-tab-content" id="tab-ean">
+    <div class="admin-card" style="padding:0;">
+
+      <div style="padding:20px 20px 0;">
+        <h3 style="margin:0;font-size:15px;font-weight:800;">Importar somente o código de barras</h3>
+        <p style="margin:10px 0 0;font-size:12.5px;color:var(--c-text-muted);line-height:1.6;">
+          Usa o <strong>mesmo CSV que a Tray exporta</strong> — só as colunas
+          <code>Referência</code> e <code>EAN</code> são lidas. Nome, preço, estoque e
+          fotos do site <strong>não são tocados</strong>.
+          A verificação roda primeiro e <strong>não grava nada</strong>.
+        </p>
+      </div>
+
+      <?php // O que importar: o arquivo diz onde o EAN vai. ?>
+      <div style="padding:16px 20px 0;">
+        <span class="pe-label" style="display:block;margin-bottom:6px;">Qual arquivo você vai enviar?</span>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <label class="import-ean-op">
+            <input type="radio" name="ean_origem" value="ean" checked>
+            <span>
+              <strong>CSV de produtos</strong>
+              <small>casa pela Referência → produto simples</small>
+            </span>
+          </label>
+          <label class="import-ean-op">
+            <input type="radio" name="ean_origem" value="ean_var">
+            <span>
+              <strong>CSV de variações</strong>
+              <small>casa pelo SKU → cada variação</small>
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <div class="import-upload-area" id="upload-area-ean" style="margin:16px 20px;">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 5v14"/><path d="M7 5v14"/><path d="M11 5v14"/><path d="M15 5v14"/><path d="M21 5v14"/>
+        </svg>
+        <p>Arraste o CSV aqui</p>
+        <small>Só as colunas "Referência" e "EAN" são lidas</small>
+        <label class="btn btn-outline" style="margin-top:12px;cursor:pointer;">
+          Selecionar arquivo
+          <input type="file" id="file-ean" accept=".csv" style="display:none;">
+        </label>
+        <div id="file-ean-nome" style="display:none;margin-top:10px;font-size:13px;color:var(--c-text-muted);"></div>
+      </div>
+
+      <div id="preview-ean" style="display:none;">
+        <div style="padding:0 20px 4px;display:flex;align-items:center;justify-content:space-between;">
+          <h4 style="margin:0;font-size:13px;font-weight:800;">Amostra — 5 primeiras linhas</h4>
+          <span id="preview-ean-total" class="odh-count-badge"></span>
+        </div>
+        <div class="table-wrap" style="padding:0 20px;">
+          <table class="admin-table" id="preview-ean-table">
+            <thead><tr>
+              <th style="width:120px;">Referência</th>
+              <th>Produto</th>
+              <th style="width:230px;">EAN atual → do CSV</th>
+              <th style="width:140px;">Situação</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div style="padding:14px 20px;border-top:1px solid var(--c-border);margin-top:12px;">
+          <button type="button" class="btn btn-primary" id="btn-verificar-ean">
+            Verificar todas as linhas
+          </button>
+          <span style="font-size:12.5px;color:var(--c-text-muted);margin-left:10px;">
+            Percorre o CSV inteiro sem gravar nada.
+          </span>
+        </div>
+      </div>
+
+      <div id="progresso-ean" style="display:none;padding:0 20px 20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <h4 style="margin:0;font-size:13px;font-weight:800;" id="ean-fase-titulo">Verificando…</h4>
+          <span id="prog-ean-pct" style="font-size:20px;font-weight:900;color:#2563eb;">0%</span>
+        </div>
+        <div style="height:8px;background:#f1f5f9;border-radius:99px;overflow:hidden;margin-bottom:14px;">
+          <div id="prog-ean-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#f59e0b,#2563eb);border-radius:99px;transition:width .3s;"></div>
+        </div>
+
+        <div id="ean-resumo" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;font-size:12.5px;margin-bottom:14px;"></div>
+
+        <div id="ean-relatorio" style="display:none;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <h4 style="margin:0;font-size:13px;font-weight:800;">O que muda e o que não entra</h4>
+            <span id="ean-relatorio-nota" style="font-size:12px;color:var(--c-text-muted);"></span>
+          </div>
+          <div class="table-wrap" style="max-height:420px;overflow:auto;">
+            <table class="admin-table" id="ean-relatorio-table">
+              <thead><tr>
+                <th style="width:60px;">Linha</th>
+                <th style="width:120px;">Referência</th>
+                <th>EAN</th>
+                <th style="width:220px;">Situação</th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="ean-acoes" style="display:none;margin-top:16px;padding-top:14px;border-top:1px solid var(--c-border);">
+          <button type="button" class="btn btn-primary" id="btn-aplicar-ean">Gravar os EANs</button>
+          <button type="button" class="btn btn-ghost" id="btn-cancelar-ean">Cancelar</button>
+          <div id="ean-aviso-aplicar" style="font-size:12.5px;color:var(--c-text-muted);margin-top:10px;"></div>
+        </div>
+
+        <div id="ean-msg" style="margin-top:12px;font-size:13px;color:var(--c-text-muted);"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="admin-tab-content" id="tab-clientes">
     <div class="admin-card import-upload-card">
       <div class="import-upload-area" id="upload-area-clientes">
@@ -459,6 +575,15 @@ $statusLabels = [
     </div>
   </div>
 </div>
+
+<style>
+.import-ean-op{display:flex;align-items:center;gap:9px;border:1.5px solid var(--c-border);
+  border-radius:12px;padding:10px 14px;cursor:pointer;flex:1;min-width:230px;background:#fff}
+.import-ean-op:has(input:checked){border-color:#2563eb;background:#eff6ff}
+.import-ean-op span{display:flex;flex-direction:column;line-height:1.35}
+.import-ean-op strong{font-size:13px;font-weight:800}
+.import-ean-op small{font-size:11.5px;color:var(--c-text-muted)}
+</style>
 
 <?php function renderProgressCard(string $tipo): string { return "
 <div class='admin-card' style='padding:20px;'>

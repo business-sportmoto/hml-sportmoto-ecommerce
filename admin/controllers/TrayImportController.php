@@ -39,7 +39,9 @@ class TrayImportController extends Controller {
 
         try {
             $tipo = SecurityHelper::sanitizeString($_POST['tipo'] ?? '');
-            if (!in_array($tipo, ['produtos', 'variacoes', 'clientes', 'pedidos', 'slugs'])) {
+            // 'ean' = CSV de produtos, 'ean_var' = CSV de variações. Nos dois
+            // só o código de barras é gravado.
+            if (!in_array($tipo, ['produtos', 'variacoes', 'clientes', 'pedidos', 'slugs', 'ean', 'ean_var'])) {
                 $this->json(['ok' => false, 'msg' => 'Tipo inválido.']);
                 throw new Exception('Tipo inválido.');
             }
@@ -101,6 +103,12 @@ class TrayImportController extends Controller {
             // valor (ausente, vazio, lixo) cai em dry-run. O padrão de um
             // endpoint que reescreve URL em massa tem que ser não gravar.
             'slugs'    => $this->service->processarChunkSlugs(
+                              $jobId,
+                              ($_POST['aplicar'] ?? '0') === '1'
+                          ),
+            // Mesmo cuidado do slugs: só grava com 'aplicar' explicitamente
+            // "1". Qualquer outro valor cai em verificação.
+            'ean', 'ean_var' => $this->service->processarChunkEan(
                               $jobId,
                               ($_POST['aplicar'] ?? '0') === '1'
                           ),

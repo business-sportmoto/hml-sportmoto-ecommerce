@@ -1776,6 +1776,195 @@ function fecharModal(id) {
   setupUpload('clientes');
   setupUpload('slugs');
 
+  // ── Importar só o EAN (jobs 'ean' e 'ean_var') ────────
+  //
+  // Mesmo desenho do job de slugs: duas passadas sobre o MESMO arquivo —
+  // verificar (não grava) e depois gravar. Código de barras errado em massa
+  // é caro de desfazer, então o botão de gravar só aparece depois de a
+  // pessoa ver o que vai mudar.
+  var EAN_ROTULOS = {
+    atualizado     : ['Vai gravar',     '#2563eb'],
+    ja_igual       : ['Já correto',     '#16a34a'],
+    sem_referencia : ['Sem referência', '#94a3b8'],
+    sem_ean        : ['Sem EAN',        '#94a3b8'],
+    invalido       : ['EAN inválido',   '#dc2626'],
+    nao_encontrado : ['Não encontrado', '#f59e0b'],
+    ambiguo        : ['Ambíguo',        '#f59e0b'],
+    duplicado      : ['Já é de outro',  '#dc2626'],
+    tem_variacao   : ['Use o CSV de variações', '#f59e0b']
+  };
+
+  var _eanJobId = null, _eanTipo = 'ean', _eanLinhas = [], _eanTotais = {};
+
+  function eanTipoEscolhido() {
+    return $('input[name="ean_origem"]:checked').val() || 'ean';
+  }
+
+  function eanBadge(status) {
+    var r = EAN_ROTULOS[status] || [status, '#64748b'];
+    return '<span style="font-size:11px;font-weight:700;color:' + r[1] + '">' + r[0] + '</span>';
+  }
+
+  // Upload próprio: o tipo vem do seletor, não do id do campo.
+  $('#file-ean').on('change', function () {
+    var f = this.files[0];
+    if (!f) return;
+    $('#file-ean-nome').text(f.name).show();
+    eanEnviar(f);
+  });
+  $('#upload-area-ean').on('dragover', function (e) { e.preventDefault(); $(this).addClass('is-drag'); })
+                       .on('dragleave', function () { $(this).removeClass('is-drag'); })
+                       .on('drop', function (e) {
+    e.preventDefault(); $(this).removeClass('is-drag');
+    var f = e.originalEvent.dataTransfer.files[0];
+    if (!f) return;
+    $('#file-ean-nome').text(f.name).show();
+    eanEnviar(f);
+  });
+
+  function eanEnviar(file) {
+    _eanTipo = eanTipoEscolhido();
+    var fd = new FormData();
+    fd.append('csv', file);
+    fd.append('tipo', _eanTipo);
+    fd.append('_token', $('meta[name="csrf-token"]').attr('content') || '');
+
+    $('#preview-ean').hide();
+    $('#progresso-ean').hide();
+
+    $.ajax({ url: IMPORT_URL + '/upload', method: 'POST', data: fd,
+             contentType: false, processData: false })
+    .done(function (res) {
+      if (!res || !res.ok) { Toast.error((res && res.msg) || 'Falha no envio.'); return; }
+      _eanJobId = res.job_id;
+      $.get(IMPORT_URL + '/preview', { job_id: res.job_id, tipo: _eanTipo })
+       .done(function (pres) {
+          if (!pres || pres.ok === false) { Toast.error((pres && pres.msg) || 'CSV inválido.'); return; }
+          eanRenderPreview(pres);
+       });
+    })
+    .fail(function () { Toast.error('Erro ao enviar o arquivo.'); });
+  }
+
+  function eanRenderPreview(res) {
+    $('#preview-ean-total').text(res.total + ' linhas no arquivo');
+    var tbody = $('#preview-ean-table tbody').empty();
+    (res.preview || []).forEach(function (p) {
+      var de = p.de ? '<code style="font-size:11px;">' + p.de + '</code>' : '<span style="color:#94a3b8;">—</span>';
+      tbody.append('<tr>'
+        + '<td><code style="font-size:11px;">' + (p.referencia || '—') + '</code></td>'
+        + '<td style="font-size:12px;">' + (p.nome || '<span style="color:#94a3b8;">—</span>') + '</td>'
+        + '<td>' + de + ' → <code style="font-size:11px;">' + (p.para || '—') + '</code></td>'
+        + '<td>' + eanBadge(p.status) + '</td></tr>');
+    });
+    $('#preview-ean').show();
+  }
+
+  function eanRodar(aplicar, aoFim) {
+    $.post(IMPORT_URL + '/chunk', { job_id: _eanJobId, tipo: _eanTipo, aplicar: aplicar ? '1' : '0' })
+    .done(function (res) {
+      if (!res || !res.ok) { Toast.error((res && res.msg) || 'Falha ao processar.'); return; }
+
+      Object.keys(res.resumo || {}).forEach(function (k) {
+        _eanTotais[k] = (_eanTotais[k] || 0) + res.resumo[k];
+      });
+      // Só o que muda ou falhou volta do servidor; o teto evita travar a
+      // tela num arquivo de milhares de linhas.
+      if (_eanLinhas.length < 500) _eanLinhas = _eanLinhas.concat(res.linhas || []);
+
+      var pct = res.total > 0 ? Math.round(res.processadas / res.total * 100) : 100;
+      $('#prog-ean-pct').text(pct + '%');
+      $('#prog-ean-bar').css('width', pct + '%');
+      $('#ean-msg').text('Linha ' + res.processadas + ' de ' + res.total + '…');
+      eanRenderResumo();
+
+      if (res.concluido) { eanRenderRelatorio(); if (aoFim) aoFim(); }
+      else { setTimeout(function () { eanRodar(aplicar, aoFim); }, 120); }
+    })
+    .fail(function () { Toast.error('Erro de conexão durante o processamento.'); });
+  }
+
+  function eanRenderResumo() {
+    var html = '';
+    Object.keys(EAN_ROTULOS).forEach(function (k) {
+      if (!_eanTotais[k]) return;
+      var r = EAN_ROTULOS[k];
+      html += '<div style="text-align:center;padding:8px;background:#f8fafc;border-radius:8px;">'
+           +  '<div style="font-size:17px;font-weight:900;color:' + r[1] + '">' + _eanTotais[k] + '</div>'
+           +  '<div style="color:var(--c-text-muted);font-size:11.5px;">' + r[0] + '</div></div>';
+    });
+    $('#ean-resumo').html(html);
+  }
+
+  function eanRenderRelatorio() {
+    var tbody = $('#ean-relatorio-table tbody').empty();
+    _eanLinhas.forEach(function (l) {
+      var de = l.de ? '<code style="font-size:11px;">' + l.de + '</code> → ' : '';
+      tbody.append('<tr>'
+        + '<td>' + l.linha + '</td>'
+        + '<td><code style="font-size:11px;">' + (l.referencia || '—') + '</code></td>'
+        + '<td style="font-size:12px;">' + de + '<code style="font-size:11px;">' + (l.para || '—') + '</code>'
+        + (l.nome ? '<div style="color:var(--c-text-muted);font-size:11px;">' + l.nome + '</div>' : '') + '</td>'
+        + '<td>' + eanBadge(l.status)
+        + (l.detalhe ? '<div style="color:var(--c-text-muted);font-size:11px;">' + l.detalhe + '</div>' : '')
+        + '</td></tr>');
+    });
+    $('#ean-relatorio-nota').text(_eanLinhas.length + ' linha(s) listada(s)');
+    $('#ean-relatorio').toggle(_eanLinhas.length > 0);
+  }
+
+  $('#btn-verificar-ean').on('click', function () {
+    if (!_eanJobId) return;
+    _eanLinhas = []; _eanTotais = {};
+    $('#preview-ean').hide();
+    $('#progresso-ean').show();
+    $('#ean-acoes').hide();
+    $('#ean-fase-titulo').text('Verificando (nada é gravado)…');
+
+    $.post(IMPORT_URL + '/slugs/reset', {
+      job_id: _eanJobId, _token: $('meta[name="csrf-token"]').attr('content') || ''
+    }).done(function (res) {
+      if (!res || !res.ok) { Toast.error((res && res.msg) || 'Não foi possível reiniciar o job.'); return; }
+      eanRodar(false, function () {
+        var vaiGravar = _eanTotais.atualizado || 0;
+        $('#ean-msg').text('Verificação concluída.');
+        if (vaiGravar > 0) {
+          $('#ean-aviso-aplicar').html('<strong>' + vaiGravar + '</strong> código(s) de barras serão gravados. '
+            + 'O resto continua como está.');
+          $('#ean-acoes').show();
+        } else {
+          $('#ean-msg').text('Nada a gravar: nenhuma linha muda o EAN atual.');
+        }
+      });
+    });
+  });
+
+  $('#btn-aplicar-ean').on('click', function () {
+    if (!_eanJobId) return;
+    _eanLinhas = []; _eanTotais = {};
+    $('#ean-acoes').hide();
+    $('#ean-fase-titulo').text('Gravando…');
+
+    $.post(IMPORT_URL + '/slugs/reset', {
+      job_id: _eanJobId, _token: $('meta[name="csrf-token"]').attr('content') || ''
+    }).done(function () {
+      eanRodar(true, function () {
+        $('#ean-msg').html('✓ ' + (_eanTotais.atualizado || 0) + ' EAN(s) gravados.');
+        Toast.success('EANs importados.');
+        $.post(IMPORT_URL + '/slugs/finalizar', {
+          job_id: _eanJobId, _token: $('meta[name="csrf-token"]').attr('content') || ''
+        });
+      });
+    });
+  });
+
+  $('#btn-cancelar-ean').on('click', function () {
+    $('#progresso-ean').hide();
+    $('#file-ean').val('');
+    $('#file-ean-nome').hide();
+    _eanJobId = null; _eanLinhas = []; _eanTotais = {};
+  });
+
   // ── Sobrescrever URLs (job 'slugs') ───────────────────
   // Duas passadas sobre o MESMO arquivo: verificação (não grava) e
   // aplicação. O botão de aplicar só aparece depois da verificação —

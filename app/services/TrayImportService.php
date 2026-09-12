@@ -197,6 +197,10 @@ class TrayImportService {
             return $this->previewSlugs($job);
         }
 
+        if (in_array($job['tipo'], ['ean', 'ean_var'], true)) {
+            return $this->previewEan($job);
+        }
+
         $this->resolverColunas($job['arquivo_tmp']);
 
         $rows    = $this->lerLinhas($job['arquivo_tmp'], 1, 5);
@@ -533,10 +537,19 @@ class TrayImportService {
      * A verificação percorre o CSV inteiro; sem isto, a aplicação
      * começaria de processadas = total e não faria nada.
      */
+    /**
+     * Zera os contadores para a segunda passada sobre o MESMO arquivo.
+     *
+     * Serve a todo job de duas passadas — slugs e EAN: os dois verificam
+     * primeiro (sem gravar) e só então aplicam. O nome ficou por causa do
+     * primeiro caso; o endpoint é o mesmo.
+     */
     public function resetarJobSlugs(int $jobId): array {
         $job = $this->getJob($jobId);
-        if (!$job)                    return ['ok' => false, 'msg' => 'Job não encontrado.'];
-        if ($job['tipo'] !== 'slugs') return ['ok' => false, 'msg' => 'Job não é do tipo "slugs".'];
+        if (!$job) return ['ok' => false, 'msg' => 'Job não encontrado.'];
+        if (!in_array($job['tipo'], ['slugs', 'ean', 'ean_var'], true)) {
+            return ['ok' => false, 'msg' => 'Este job não é de duas passadas.'];
+        }
 
         if (!is_file($job['arquivo_tmp'])) {
             return ['ok' => false, 'msg' => 'O arquivo do job expirou. Envie o CSV novamente.'];
@@ -550,6 +563,247 @@ class TrayImportService {
         )->execute([$jobId]);
 
         return ['ok' => true, 'total' => (int)$job['total_linhas']];
+    }
+
+    // ════════════════════════════════════════════════════
+    // IMPORTAR SÓ O EAN
+    //
+    // O CSV é o MESMO que a Tray já exporta (produtos ou variações): os dois
+    // trazem "Referência" e "EAN". Aqui nada além do EAN é tocado — nome,
+    // preço e estoque ficam como estão no site.
+    //
+    // Duas passadas sobre o mesmo arquivo, como no job de slugs: verificar
+    // (não grava nada) e aplicar. Código de barras errado em massa é caro de
+    // desfazer; ver antes o que vai mudar é o mínimo.
+    // ════════════════════════════════════════════════════
+
+    private const EAN_OK            = 'atualizado';
+    private const EAN_IGUAL         = 'ja_igual';
+    private const EAN_SEM_REF       = 'sem_referencia';
+    private const EAN_SEM_EAN       = 'sem_ean';
+    private const EAN_INVALIDO      = 'invalido';
+    private const EAN_NAO_ENCONTRADO= 'nao_encontrado';
+    private const EAN_AMBIGUO       = 'ambiguo';
+    private const EAN_DUPLICADO     = 'duplicado';
+    private const EAN_TEM_VARIACAO  = 'tem_variacao';
+
+    /**
+     * Processa um chunk do job 'ean' (produtos) ou 'ean_var' (variações).
+     *
+     * @param bool $aplicar false = verificação (dry-run, não grava nada).
+     */
+    public function processarChunkEan(int $jobId, bool $aplicar): array {
+        $job = $this->getJob($jobId);
+        if (!$job) return ['ok' => false, 'msg' => 'Job não encontrado.'];
+        if (!in_array($job['tipo'], ['ean', 'ean_var'], true)) {
+            return ['ok' => false, 'msg' => 'Job não é de importação de EAN.'];
+        }
+
+        $ehVar = $job['tipo'] === 'ean_var';
+
+        if (!$ehVar) {
+            $this->resolverColunas($job['arquivo_tmp']);
+            // Sem estas duas o arquivo não serve: para antes de varrer tudo.
+            $faltando = array_values(array_intersect(['referencia', 'ean'], $this->colunasPorFallback));
+            if ($faltando) {
+                return ['ok' => false, 'msg' =>
+                    'O CSV não tem as colunas "Referência" e/ou "EAN". '
+                    . 'Exporte os produtos de novo pelo painel da Tray.'];
+            }
+        }
+
+        $this->db->prepare("UPDATE import_jobs SET status = 'processando' WHERE id = ?")
+                 ->execute([$jobId]);
+
+        $offset = (int)$job['processadas'];
+        $rows   = $this->lerLinhas($job['arquivo_tmp'], $offset + 1, self::CHUNK_SIZE);
+
+        if (empty($rows)) {
+            $this->finalizarJob($jobId);
+            return ['ok' => true, 'concluido' => true, 'processadas' => $offset,
+                    'total' => (int)$job['total_linhas'], 'resumo' => [], 'linhas' => []];
+        }
+
+        $resumo = array_fill_keys([
+            self::EAN_OK, self::EAN_IGUAL, self::EAN_SEM_REF, self::EAN_SEM_EAN,
+            self::EAN_INVALIDO, self::EAN_NAO_ENCONTRADO, self::EAN_AMBIGUO,
+            self::EAN_DUPLICADO, self::EAN_TEM_VARIACAO,
+        ], 0);
+        $linhas = [];
+
+        foreach ($rows as $idx => $r) {
+            $res = $this->avaliarLinhaEan($r, $aplicar, $ehVar);
+            $resumo[$res['status']]++;
+
+            // "Já igual" e "sem EAN" são a maioria num export completo e não
+            // interessam ao relatório — só o que muda ou o que falhou.
+            if (!in_array($res['status'], [self::EAN_IGUAL, self::EAN_SEM_EAN], true)) {
+                $linhas[] = ['linha' => $offset + $idx + 2] + $res;
+            }
+        }
+
+        $novasProcessadas = $offset + count($rows);
+        $concluido        = $novasProcessadas >= (int)$job['total_linhas'];
+
+        $this->db->prepare(
+            "UPDATE import_jobs SET
+                processadas  = processadas + ?,
+                atualizados  = atualizados + ?,
+                ignorados    = ignorados   + ?,
+                status       = IF(? >= total_linhas, 'concluido', 'processando'),
+                concluido_em = IF(? >= total_linhas, NOW(), NULL)
+             WHERE id = ?"
+        )->execute([
+            count($rows),
+            $resumo[self::EAN_OK],
+            count($rows) - $resumo[self::EAN_OK],
+            $novasProcessadas, $novasProcessadas,
+            $jobId,
+        ]);
+
+        // O arquivo sobrevive entre as duas passadas; quem apaga é o
+        // finalizarJobSlugs(), chamado pela tela no fim.
+        return [
+            'ok'          => true,
+            'concluido'   => $concluido,
+            'processadas' => $novasProcessadas,
+            'total'       => (int)$job['total_linhas'],
+            'resumo'      => $resumo,
+            'linhas'      => $linhas,
+        ];
+    }
+
+    /**
+     * Avalia (e opcionalmente grava) o EAN de UMA linha do CSV.
+     *
+     * Cada guarda é um motivo diferente de não gravar, e o relatório precisa
+     * distinguir todos — é o que diz ao admin o que corrigir na origem:
+     *   1. sem Referência          → não dá para casar com o site
+     *   2. sem EAN                 → linha sem o que importar
+     *   3. EAN inválido            → dígito verificador não fecha (EanService)
+     *   4. nada casou              → produto/variação não existe aqui
+     *   5. casou mais de um        → referência duplicada, não dá para escolher
+     *   6. produto tem variação    → o EAN é de cada variação, outro arquivo
+     *   7. já é esse EAN           → no-op
+     *   8. EAN é de outro produto  → violaria o índice único; reporta o dono
+     */
+    private function avaliarLinhaEan(array $r, bool $aplicar, bool $ehVar): array {
+        if ($ehVar) {
+            $referencia = trim($this->utf8($r[self::V['referencia']] ?? ''));
+            $eanBruto   = trim($this->utf8($r[self::V['ean']]        ?? ''));
+        } else {
+            $referencia = trim($this->utf8($r[$this->colP['referencia']] ?? ''));
+            $eanBruto   = trim($this->utf8($r[$this->colP['ean']]        ?? ''));
+        }
+
+        $base = ['referencia' => $referencia, 'nome' => null,
+                 'de' => null, 'para' => null, 'produto_id' => null];
+
+        if ($referencia === '') {
+            return $base + ['status' => self::EAN_SEM_REF,
+                            'detalhe' => 'Linha sem "Referência" — impossível casar com o site.'];
+        }
+        if ($eanBruto === '') {
+            return $base + ['status' => self::EAN_SEM_EAN, 'detalhe' => 'Linha sem EAN.'];
+        }
+
+        if ($problema = EanService::problema($eanBruto)) {
+            return $base + ['para' => $eanBruto, 'status' => self::EAN_INVALIDO, 'detalhe' => $problema];
+        }
+        $ean = (string) EanService::normalizar($eanBruto);
+
+        // ── Onde este EAN vai ─────────────────────────────────────
+        if ($ehVar) {
+            $st = $this->db->prepare(
+                "SELECT s.id, s.ean, s.produto_id, p.nome
+                   FROM produto_skus s
+                   JOIN produtos p ON p.id = s.produto_id AND p.deleted_at IS NULL
+                  WHERE s.sku = ? LIMIT 2"
+            );
+        } else {
+            $st = $this->db->prepare(
+                "SELECT id, ean, nome, tem_variacao
+                   FROM produtos WHERE sku_legado = ? AND deleted_at IS NULL LIMIT 2"
+            );
+        }
+        $st->execute([$referencia]);
+        $achados = $st->fetchAll(PDO::FETCH_ASSOC);
+
+        if (!$achados) {
+            return $base + ['para' => $ean, 'status' => self::EAN_NAO_ENCONTRADO,
+                            'detalhe' => $ehVar
+                                ? 'Nenhuma variação com este SKU no site.'
+                                : 'Nenhum produto com esta referência no site.'];
+        }
+        if (count($achados) > 1) {
+            return $base + ['para' => $ean, 'status' => self::EAN_AMBIGUO,
+                            'detalhe' => 'Mais de um registro com esta referência — corrija a duplicidade antes.'];
+        }
+
+        $alvo = $achados[0];
+        $base['nome']       = mb_substr((string) $alvo['nome'], 0, 90);
+        $base['produto_id'] = (int) ($alvo['produto_id'] ?? $alvo['id']);
+        $base['de']         = $alvo['ean'] !== null && $alvo['ean'] !== '' ? (string) $alvo['ean'] : null;
+        $base['para']       = $ean;
+
+        if (!$ehVar && !empty($alvo['tem_variacao'])) {
+            return $base + ['status' => self::EAN_TEM_VARIACAO,
+                            'detalhe' => 'Produto tem variações: o EAN é de cada uma. Use o CSV de variações.'];
+        }
+
+        if ($base['de'] === $ean) {
+            return $base + ['status' => self::EAN_IGUAL, 'detalhe' => null];
+        }
+
+        $dono = EanService::dono(
+            $ean,
+            $ehVar ? null : (int) $alvo['id'],
+            $ehVar ? (int) $alvo['id'] : null,
+            $this->db
+        );
+        if ($dono) {
+            return $base + ['status' => self::EAN_DUPLICADO,
+                            'detalhe' => EanService::mensagemDuplicado($ean, $dono)];
+        }
+
+        if ($aplicar) {
+            $sql = $ehVar
+                ? "UPDATE produto_skus SET ean = ? WHERE id = ?"
+                : "UPDATE produtos SET ean = ? WHERE id = ?";
+            $this->db->prepare($sql)->execute([$ean, (int) $alvo['id']]);
+        }
+
+        return $base + ['status' => self::EAN_OK, 'detalhe' => null];
+    }
+
+    /** Preview do job de EAN: o de/para das 5 primeiras linhas. */
+    private function previewEan(array $job): array {
+        $ehVar = $job['tipo'] === 'ean_var';
+
+        if (!$ehVar) {
+            $this->resolverColunas($job['arquivo_tmp']);
+            $faltando = array_values(array_intersect(['referencia', 'ean'], $this->colunasPorFallback));
+            if ($faltando) {
+                return ['ok' => false, 'msg' =>
+                    'CSV sem as colunas necessárias: ' . implode(', ', $faltando)
+                    . '. Exporte novamente pelo painel da Tray.'];
+            }
+        }
+
+        $preview = [];
+        foreach ($this->lerLinhas($job['arquivo_tmp'], 1, 5) as $r) {
+            $res = $this->avaliarLinhaEan($r, false, $ehVar);   // nunca grava
+            $preview[] = [
+                'referencia' => $res['referencia'],
+                'nome'       => $res['nome'],
+                'de'         => $res['de'],
+                'para'       => $res['para'],
+                'status'     => $res['status'],
+                'detalhe'    => $res['detalhe'] ?? null,
+            ];
+        }
+
+        return ['ok' => true, 'preview' => $preview, 'total' => (int)$job['total_linhas']];
     }
 
     /** Apaga o CSV temporário do job de slugs (fim das duas passadas). */
