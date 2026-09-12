@@ -79,9 +79,12 @@ Ver [[../04-bugs/Bugs para resolver]].
 - [[../12-decisoes-tecnicas/modulo-chat-whatsapp|Chat / WhatsApp]]
 - [[../12-decisoes-tecnicas/expedicao-etiqueta-e-impressao|Expedição — etiqueta e impressão]]
 - [[../12-decisoes-tecnicas/frete-divergencia-automatica|Frete — divergência automática]]
+- [[../12-decisoes-tecnicas/cobertura-areas-de-entrega|Cobertura — áreas de entrega]]
+- [[../12-decisoes-tecnicas/padroes-de-ui-do-painel|Padrões de UI do painel]]
 - [[../12-decisoes-tecnicas/conteudo-editavel-rodape-e-paginas|Rodapé e criador de páginas]]
 - [[../12-decisoes-tecnicas/newsletter-cupom-boas-vindas|Newsletter — cupom de boas-vindas]]
 - [[../12-decisoes-tecnicas/admin-produtos-midia-e-clips|Produtos — mídia e Clips]]
+- [[../12-decisoes-tecnicas/familias-de-produtos|Famílias de produtos]]
 - [[../12-decisoes-tecnicas/bling-log-operacoes|Bling — log de operações]]
 
 ## Operação

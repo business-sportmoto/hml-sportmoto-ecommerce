@@ -37,7 +37,16 @@ function tempoDesde(string $dt): string {
             vertical-align:middle;margin-left:6px;"><?= (int)$total ?></span>
     </h1>
   </div>
-  <div style="display:flex;gap:10px;">
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+    <?php // Mesmos filtros nos dois modos: o link leva a query adiante. ?>
+    <?php $qsAtual = array_filter($_GET ?? [], static fn($v, $k) => $v !== '' && $k !== 'page', ARRAY_FILTER_USE_BOTH); ?>
+    <span style="display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+      <a href="<?= ADMIN_URL ?>/carrinhos-abandonados<?= $qsAtual ? '?' . http_build_query($qsAtual) : '' ?>"
+         style="padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;
+                background:var(--primary, #2563eb);color:#fff;">Lista</a>
+      <a href="<?= ADMIN_URL ?>/carrinhos-abandonados/quadro<?= $qsAtual ? '?' . http_build_query($qsAtual) : '' ?>"
+         style="padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;color:var(--text-2);">Quadro</a>
+    </span>
     <a href="<?= ADMIN_URL ?>/carrinhos-abandonados/templates" class="btn">⚙ Templates</a>
     <a href="<?= ADMIN_URL ?>/carrinhos-abandonados/dashboard" class="btn">📊 Dashboard</a>
     <a href="<?= ADMIN_URL ?>/carrinhos-abandonados/exportar" class="btn">⬇ Exportar CSV</a>

@@ -63,6 +63,17 @@
         </span>
         Motos
       </a>
+      <?php // Família agrupa produtos irmãos (mesma linha, cores diferentes). ?>
+      <a href="<?= BASE_URL ?>/admin/familias" class="admin-nav-item<?= adminIsActive('/admin/familias') ?>">
+        <span class="admin-nav-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <rect x="2" y="3" width="6" height="18" rx="2"/>
+            <rect x="9" y="3" width="6" height="18" rx="2"/>
+            <rect x="16" y="3" width="6" height="18" rx="2"/>
+          </svg>
+        </span>
+        Famílias
+      </a>
     </div>
     <?php endif; ?>
 
@@ -118,8 +129,23 @@
       </a>
     </div>
 
+    <?php
+      // Gate da seção, espelhando o guard de cada controller. Sem isto o menu
+      // oferece link que responde 403: o editor via "E-mail Marketing" e batia
+      // na porta. Mesma forma do $logisticaVer mais abaixo — a chave nominal
+      // concede, senão o cargo decide.
+      $emailMktVer  = Session::adminTemPermissao('email_marketing')
+                   || AuthHelper::hasLevel('super', 'gerente');
+      $automacaoVer = Session::adminTemPermissao('automacao')
+                   || AuthHelper::hasLevel('super', 'gerente');
+      $vidaUtilVer  = Session::adminTemPermissao('vida_util')
+                   || AuthHelper::hasLevel('super', 'gerente');
+      // Carrinho abandonado fica de fora: o controller exige só requireAdmin()
+      // e tem guard por linha próprio (o vendedor vê os dele).
+    ?>
     <div class="admin-nav-section">
       <span class="admin-nav-section-title">Marketing</span>
+      <?php if ($emailMktVer): ?>
       <a href="<?= BASE_URL ?>/admin/email-marketing" class="admin-nav-item<?= adminIsActive('/admin/email-marketing/') ?>">
         <span class="admin-nav-icon">
           <?= IconLibrary::render('mark_email_read', 'icon icon--md') ?>
@@ -141,12 +167,33 @@
         </span>
         Segmentos
       </a>
+      <?php // Supressões: quem não pode mais receber (bounce, reclamação,
+            // descadastro). Só chegava por URL digitada. ?>
+      <a href="<?= BASE_URL ?>/admin/email-marketing/supressoes" class="admin-nav-item<?= adminIsActive('/admin/email-marketing/supressoes') ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('cancel', 'icon icon--md') ?>
+        </span>
+        Supressões
+      </a>
+      <?php // Transacional: e-mail disparado pelo sistema (senha, verificação).
+            // O único acesso era um botão dentro de Templates, escrito
+            // "Transasional". ?>
+      <a href="<?= BASE_URL ?>/admin/email-marketing/transacional" class="admin-nav-item<?= adminIsActive('/admin/email-marketing/transacional') ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('zap', 'icon icon--md') ?>
+        </span>
+        Transacional
+      </a>
+      <?php endif; ?>
+
+      <?php if ($automacaoVer): ?>
       <a href="<?= BASE_URL ?>/admin/fluxos" class="admin-nav-item<?= adminIsActive('/admin/fluxos') ?>">
         <span class="admin-nav-icon">
           <?= IconLibrary::render('automation', 'icon icon--md') ?>
         </span>
         Automações
       </a>
+      <?php endif; ?>
       <a href="<?= BASE_URL ?>/admin/carrinhos-abandonados" class="admin-nav-item<?= adminIsActive('/admin/carrinhos-abandonados/') ?>">
         <span class="admin-nav-icon">
           <?= IconLibrary::render('cart-alert', 'icon icon--md') ?>
@@ -154,12 +201,14 @@
         Carrinho abandonado
       </a>
       
+      <?php if ($vidaUtilVer): ?>
       <a href="<?= BASE_URL ?>/admin/vida-util" class="admin-nav-item<?= adminIsActive('/admin/vida-util') ?>">
         <span class="admin-nav-icon">
           <?= IconLibrary::render('automation-02', 'icon icon--md') ?>
         </span>
         Vida útil
       </a>
+      <?php endif; ?>
     </div>
 
     <?php
@@ -367,12 +416,17 @@
         Agentes de IA
       </a>
 
+      <?php // Mesmo destino do "Automações" em Marketing — dois pontos de
+            // entrada para a mesma tela. O gate tem de ser o mesmo, senão
+            // este aqui vaza o 403 para quem o outro já esconde. ?>
+      <?php if ($automacaoVer): ?>
       <a href="<?= BASE_URL ?>/admin/fluxos" class="admin-nav-item<?= adminIsActive('/admin/fluxos') ?>">
         <span class="admin-nav-icon">
           <?= IconLibrary::render('automation-02', 'icon icon--md') ?>
         </span>
         Central de Automações
       </a>
+      <?php endif; ?>
     </div>
     
     <?php
@@ -396,9 +450,15 @@
         </span>
         Transportadoras
       </a>
+      <a href="<?= BASE_URL ?>/admin/logistica/cobertura" class="admin-nav-item<?= adminIsActive('/admin/logistica/cobertura') ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('globe-location'); ?>
+        </span>
+        Cobertura e envios
+      </a>
       <a href="<?= BASE_URL ?>/admin/logistica/regras" class="admin-nav-item<?= adminIsActive('/admin/logistica/regras') ?>">
         <span class="admin-nav-icon">
-          <?= IconLibrary::render('rule'); ?> 
+          <?= IconLibrary::render('rule'); ?>
         </span>
         Regras
       </a>

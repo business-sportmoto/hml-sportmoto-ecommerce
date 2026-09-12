@@ -133,6 +133,9 @@ depende da libiconv da plataforma: no Windows `ç` vira `c'`, produzindo
 
 ## CSS
 
+> Regras de desenho do painel — toggle x checkbox, reuso de componente,
+> ausência perigosa — em [[../12-decisoes-tecnicas/padroes-de-ui-do-painel]].
+
 - **Regra de componente precisa ser escopada no componente.** Dois sistemas de
   toggle dividiam a classe `.toggle-slider`; as regras de `.toggle-switch`
   estavam soltas com `position:absolute; inset:0`, mesma especificidade e mais

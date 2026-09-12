@@ -1,10 +1,80 @@
 <?php
 class FamiliasController extends Controller {
 
+    private FamiliaService $service;
+
     public function __construct() {
         // Família de produto é catálogo: super, gerente e editor. Até 11/09
-        // era requireAdmin(). Só o form de produto chama estas rotas.
+        // era requireAdmin(). Até 12/09 só o form de produto chamava estas
+        // rotas; agora a família tem tela própria (index/ver).
         AuthHelper::requireAdminLevel('super', 'gerente', 'editor');
+        $this->service = new FamiliaService();
+    }
+
+    /** GET /admin/familias — a lista que não existia. */
+    public function index(): void {
+        $filtros = [
+            'busca'    => SecurityHelper::sanitizeString($_GET['busca'] ?? ''),
+            'situacao' => SecurityHelper::sanitizeString($_GET['situacao'] ?? ''),
+        ];
+        $page    = max(1, (int) ($_GET['page'] ?? 1));
+        $perPage = 20;
+
+        $lista = $this->service->listar($filtros, $page, $perPage);
+
+        $this->render('familias/index', [
+            'page_title' => 'Famílias de produtos',
+            'familias'   => $lista['itens'],
+            'total'      => $lista['total'],
+            'page'       => $page,
+            'perPage'    => $perPage,
+            'filtros'    => $filtros,
+            'resumo'     => $this->service->resumo(),
+        ], 'admin');
+    }
+
+    /** GET /admin/familias/{id} — quem está dentro dela. */
+    public function ver(int $id): void {
+        $familia = $this->service->detalhe($id);
+        if (!$familia) {
+            Session::flash('error', 'Família não encontrada.');
+            $this->redirect(BASE_URL . '/admin/familias');
+            return;
+        }
+
+        $this->render('familias/ver', [
+            'page_title' => 'Família: ' . $familia['nome'],
+            'familia'    => $familia,
+        ], 'admin');
+    }
+
+    /** Ajax — POST /admin/familias/salvar: nome, descrição e situação. */
+    public function salvar(): void {
+        $this->verifyCsrf();
+        $id = SecurityHelper::sanitizeInt($_POST['id'] ?? 0);
+        if (!$id) $this->json(['ok' => false, 'msg' => 'Família inválida.']);
+
+        $this->json($this->service->salvar($id, [
+            'nome'      => SecurityHelper::sanitizeString($_POST['nome'] ?? ''),
+            'descricao' => SecurityHelper::sanitizeString($_POST['descricao'] ?? ''),
+            'ativo'     => ($_POST['ativo'] ?? '0') === '1',
+        ]));
+    }
+
+    /**
+     * Ajax — GET /admin/familias/sugerir: famílias que combinam com o produto.
+     *
+     * Serve o formulário de produto. Quem cadastra um produto novo não sabe
+     * de cor o que já existe, e sem isto cria uma família repetida ao lado
+     * da que deveria ter usado.
+     */
+    public function sugerir(): void {
+        $this->json(['ok' => true, 'sugestoes' => $this->service->sugerir([
+            'nome'         => SecurityHelper::sanitizeString($_GET['nome'] ?? ''),
+            'marca_id'     => (int) ($_GET['marca_id'] ?? 0),
+            'categoria_id' => (int) ($_GET['categoria_id'] ?? 0),
+            'produto_id'   => (int) ($_GET['produto_id'] ?? 0),
+        ])]);
     }
 
     // Ajax — busca famílias por nome
@@ -63,23 +133,17 @@ class FamiliasController extends Controller {
     }
 
     // Ajax — excluir família
+    //
+    // A regra (desvincular produto, limpar agrupadores, registrar quem fez)
+    // mora no FamiliaService: a tela de famílias e o form de produto chamam
+    // o mesmo caminho, e antes cada um apagava do seu jeito — o agrupador
+    // ficava órfão quando a exclusão vinha daqui.
     public function excluir(): void {
         $this->verifyCsrf();
         $id = SecurityHelper::sanitizeInt($_POST['id'] ?? 0);
-        if (!$id) $this->json(['ok' => false]);
+        if (!$id) $this->json(['ok' => false, 'msg' => 'Família inválida.']);
 
-        $db   = Database::getInstance()->getConnection();
-
-        // Desvincula produtos antes de excluir
-        $db->prepare(
-            "UPDATE produtos SET familia_id = NULL WHERE familia_id = ?"
-        )->execute([$id]);
-
-        $db->prepare(
-            "DELETE FROM familia_produtos WHERE id = ?"
-        )->execute([$id]);
-
-        $this->json(['ok' => true, 'msg' => 'Família excluída e produtos desvinculados.']);
+        $this->json($this->service->excluir($id));
     }
 
     // Ajax — vincular produto a família

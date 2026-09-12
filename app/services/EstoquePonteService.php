@@ -257,19 +257,18 @@ class EstoquePonteService
     /**
      * Traduz um evento em zero ou mais movimentos a despachar.
      *
-     * FASE 1: só a perna A (movimento vindo do Syscar) está traduzida. A perna
-     * B — pedido do Bling virando baixa item a item — entra na fase 2, junto
-     * com o corte. Evento de origem `bling` é marcado como ignorado com motivo
-     * explícito, para aparecer na tela em vez de sumir.
-     *
      * @return array{movimentos:array, motivo_ignorado:?string}
      */
     public function traduzirEvento(array $evento): array
     {
-        if ($evento['origem'] !== 'syscar') {
-            return ['movimentos' => [], 'motivo_ignorado' => 'perna_b_chega_na_fase_2'];
-        }
+        return ($evento['origem'] === 'bling')
+            ? $this->traduzirEventoBling($evento)
+            : $this->traduzirEventoSyscar($evento);
+    }
 
+    /** Perna A: o movimento que o Syscar empurrou vira escrita no Bling. */
+    private function traduzirEventoSyscar(array $evento): array
+    {
         $p = json_decode((string)$evento['payload'], true);
         if (!is_array($p)) {
             throw new \RuntimeException('Payload do evento não é JSON válido.');
@@ -337,6 +336,224 @@ class EstoquePonteService
         ];
     }
 
+    /**
+     * Perna B: o pedido do Bling vira baixa no Syscar, item a item.
+     *
+     * ── Por que NÃO usa `bling_pedidos_map` ──────────────────────────
+     * Esse mapa só tem pedido que nasceu no site. `processarAtualizacaoStatus`
+     * sai cedo quando o pedido não está lá — e é justamente o pedido de
+     * marketplace que mais precisa baixar. Aqui o pedido é lido do Bling pelo
+     * id do evento, e o vínculo com o site é pelo SKU.
+     *
+     * ── Por que busca o pedido na API ────────────────────────────────
+     * O payload do webhook é resumo: traz id, número e total, não traz itens.
+     * Custa 1 chamada por evento, no mesmo teto de 3 req/s compartilhado com a
+     * fila de pedidos e o espelho de saldo.
+     */
+    private function traduzirEventoBling(array $evento): array
+    {
+        $p = json_decode((string)$evento['payload'], true);
+        if (!is_array($p)) {
+            throw new \RuntimeException('Payload do evento não é JSON válido.');
+        }
+
+        $blingPedidoId = (int)($p['id'] ?? 0);
+        if ($blingPedidoId <= 0) {
+            return ['movimentos' => [], 'motivo_ignorado' => 'evento_sem_id_de_pedido'];
+        }
+
+        // NÃO desembrulhar `data` aqui. O BlingApiClient::request() já devolve
+        // `$json['data'] ?? $json`, e o pedido do Bling TEM um campo `data` —
+        // a data do pedido, uma string. Um `$resp['data'] ?? $resp` devolveria
+        // "2025-09-11" no lugar do pedido, e o tradutor quebraria em silêncio.
+        $pedido = (new BlingApiClient())->get('/pedidos/vendas/' . $blingPedidoId);
+
+        if (!isset($pedido['itens']) && !isset($pedido['situacao'])) {
+            throw new \RuntimeException(
+                'Resposta do Bling não parece um pedido (chaves: '
+                . implode(', ', array_slice(array_keys((array)$pedido), 0, 8)) . ')'
+            );
+        }
+
+        return $this->montarMovimentosDoPedido($pedido, (int)$evento['id'], $blingPedidoId, $p);
+    }
+
+    /**
+     * A parte testável da perna B: dado o pedido, quais movimentos nascem.
+     *
+     * Sem chamada de API de propósito — é o que permite exercitar a regra
+     * (venda, estorno, FULL, SKU sem vínculo, ciclo) com pedido sintético,
+     * antes de existir qualquer corte em produção.
+     */
+    public function montarMovimentosDoPedido(
+        array $pedido,
+        int   $eventoId,
+        int   $blingPedidoId,
+        array $resumo = []
+    ): array {
+        $situacaoId = (string)($pedido['situacao']['id'] ?? $resumo['situacao']['id'] ?? '');
+        $acao       = $this->acaoDoPedido($situacaoId);
+
+        if ($acao === 'IGNORAR') {
+            // Situação que o site não mapeia em `bling_status_map`. Não chuta:
+            // não mover estoque é o lado seguro do erro, e o evento fica
+            // visível na tela para alguém mapear.
+            return ['movimentos' => [],
+                    'motivo_ignorado' => 'situacao_nao_mapeada:' . $situacaoId];
+        }
+
+        $itens = $pedido['itens'] ?? [];
+        if (!$itens) {
+            return ['movimentos' => [], 'motivo_ignorado' => 'pedido_sem_itens'];
+        }
+
+        $canalId = $this->resolverCanal(
+            isset($pedido['loja']['id']) ? (int)$pedido['loja']['id'] : null
+        );
+
+        // Pedido FULL não baixa — mas o movimento é REGISTRADO como ignorado.
+        // No admin.loja ele some, e aí a análise por canal diverge do log de
+        // estoque sem ninguém entender por quê.
+        $situacaoFull = trim($this->config('estoque_ponte_situacao_full', ''));
+        $ehFull       = ($situacaoFull !== '' && $situacaoId === $situacaoFull);
+
+        $operacao  = ($acao === 'ESTORNO') ? 'E' : 'S';
+        $movimentos = [];
+
+        foreach ($itens as $item) {
+            $codigo = trim((string)($item['codigo'] ?? $item['produto']['codigo'] ?? ''));
+            $qtd    = abs((float)($item['quantidade'] ?? 0));
+            $valor  = (float)($item['valor'] ?? $item['valorUnidade'] ?? 0);
+
+            if ($codigo === '' || $qtd <= 0) continue;
+
+            $alvo      = $this->resolverProdutoPorSku($codigo);
+            $produtoId = $alvo['produto_id'] ?? null;
+
+            $status = 'pendente';
+            $motivo = null;
+            $ciclo  = null;
+
+            if ($ehFull) {
+                $status = 'ignorado';
+                $motivo = 'pedido_full_nao_baixa';
+            } elseif (!$alvo) {
+                // Produto que o site não conhece: catálogo desalinhado, não
+                // erro. Registra para a cobertura aparecer na tela.
+                $status = 'ignorado';
+                $motivo = 'sku_sem_vinculo_no_site';
+            } else {
+                $ciclo = $this->proximoCiclo($blingPedidoId, (int)$produtoId, $acao);
+
+                // Estorno de uma venda que este painel nunca registrou. É o
+                // guard que torna o corte seguro: pedido criado antes do corte
+                // e cancelado depois não gera devolução fantasma.
+                if ($ciclo === null) {
+                    $status = 'ignorado';
+                    $motivo = 'estorno_sem_venda_registrada';
+                }
+            }
+
+            $movimentos[] = [
+                'evento_id'       => $eventoId,
+                'direcao'         => 'para_syscar',
+                'protocolo'       => $this->protocolo([
+                    'acao'   => $acao,
+                    'ciclo'  => $ciclo ?? 0,
+                    'pedido' => $blingPedidoId,
+                    'sku'    => $codigo,
+                    'qtd'    => $qtd,
+                    'val'    => $valor,
+                ]),
+                'ciclo'           => $ciclo,
+                'produto_id'      => $produtoId,
+                'sku_id'          => $alvo['sku_id'] ?? null,
+                'sku_codigo'      => $codigo,
+                'operacao'        => $operacao,
+                'quantidade'      => $qtd,
+                'valor'           => $valor,
+                'pedido_bling_id' => $blingPedidoId,
+                'canal_id'        => $canalId,
+                'status'          => $status,
+                'motivo_ignorado' => $motivo,
+            ];
+        }
+
+        return ['movimentos' => $movimentos, 'motivo_ignorado' => null];
+    }
+
+    /**
+     * VENDA para qualquer situação conhecida, ESTORNO para as de cancelamento.
+     *
+     * ── Por que NÃO decide só pelo `bling_status_map` ────────────────
+     * Aquele mapa existe para EXIBIR status no site, e em 12/09/2026 ele foi
+     * medido contra a conta real: estava errado. A situação 12 é **Cancelado**
+     * no Bling e o mapa a traduzia como `entregue`; e `7 -> cancelado`
+     * apontava para uma situação que a conta nem tem (numeração do Bling v2).
+     *
+     * Com isso, decidir estorno por ele faria um CANCELAMENTO virar baixa —
+     * o oposto do certo. Estoque é caro demais para depender de um mapa cuja
+     * finalidade é outra.
+     *
+     * Então a lista de situações que estornam é explícita, em
+     * `estoque_ponte_situacoes_estorno` (ids do Bling separados por vírgula).
+     * Só quando ela está vazia é que cai no mapa antigo — e nesse caso a
+     * perna B não deve estar ligada ainda.
+     */
+    private function acaoDoPedido(string $situacaoId): string
+    {
+        if ($situacaoId === '') return 'IGNORAR';
+
+        $lista = trim($this->config('estoque_ponte_situacoes_estorno', ''));
+        if ($lista !== '') {
+            $ids = array_filter(array_map('trim', explode(',', $lista)), 'strlen');
+            if (in_array($situacaoId, $ids, true)) return 'ESTORNO';
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT status_local FROM bling_status_map WHERE bling_id = ? LIMIT 1"
+        );
+        $stmt->execute([$situacaoId]);
+        $local = $stmt->fetchColumn();
+
+        // Situação que o site não conhece: não chuta. Não mover estoque é o
+        // lado seguro do erro, e o evento fica visível na tela para alguém
+        // mapear.
+        if ($local === false) return 'IGNORAR';
+
+        // Só considera cancelado pelo mapa quando a lista explícita não existe.
+        if ($lista === '' && (string)$local === 'cancelado') return 'ESTORNO';
+
+        return 'VENDA';
+    }
+
+    /**
+     * O canal da venda. Loja desconhecida é cadastrada na hora com um nome
+     * provisório: perder a dimensão é pior que ter um rótulo feio, e a tela
+     * de canais permite renomear.
+     */
+    public function resolverCanal(?int $blingLojaId): ?int
+    {
+        $blingLojaId = $blingLojaId ?? 0;
+
+        $stmt = $this->db->prepare(
+            "SELECT id FROM estoque_canais WHERE bling_loja_id = ? LIMIT 1"
+        );
+        $stmt->execute([$blingLojaId]);
+        if ($id = $stmt->fetchColumn()) return (int)$id;
+
+        try {
+            $this->db->prepare(
+                "INSERT INTO estoque_canais (bling_loja_id, nome) VALUES (?, ?)"
+            )->execute([$blingLojaId, 'Loja ' . $blingLojaId]);
+            return (int)$this->db->lastInsertId();
+        } catch (\PDOException) {
+            $stmt->execute([$blingLojaId]);
+            $id = $stmt->fetchColumn();
+            return $id ? (int)$id : null;
+        }
+    }
+
     // ════════════════════════════════════════════════════
     // MOVIMENTOS — a fila de saída
     // ════════════════════════════════════════════════════
@@ -388,13 +605,22 @@ class EstoquePonteService
         }
     }
 
-    /** Movimentos à espera de envio. */
+    /**
+     * Movimentos à espera de envio.
+     *
+     * O JOIN com `estoque_canais` não é enfeite: o SyscarClient monta a
+     * descrição do lançamento com o nome do canal, e é essa linha que a pessoa
+     * lê dentro do Syscar. Sem ele o lançamento chega como "E-commerce|12345",
+     * sem dizer de qual marketplace veio a venda.
+     */
     public function movimentosPendentes(int $limite = 50): array
     {
         $stmt = $this->db->prepare(
-            "SELECT * FROM estoque_movimentos
-              WHERE status = 'pendente' AND tentativas < ?
-              ORDER BY tentativas ASC, id ASC
+            "SELECT m.*, c.nome AS canal_nome
+               FROM estoque_movimentos m
+               LEFT JOIN estoque_canais c ON c.id = m.canal_id
+              WHERE m.status = 'pendente' AND m.tentativas < ?
+              ORDER BY m.tentativas ASC, m.id ASC
               LIMIT ?"
         );
         $stmt->bindValue(1, $this->maxTentativas(), PDO::PARAM_INT);

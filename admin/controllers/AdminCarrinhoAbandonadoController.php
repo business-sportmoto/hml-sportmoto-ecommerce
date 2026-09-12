@@ -29,20 +29,37 @@ class AdminCarrinhoAbandonadoController extends Controller {
     }
 
     // ── GET /admin/carrinhos-abandonados ──────────────────
-    public function index(): void {
-        $filtros = [
-            'q'              => SecurityHelper::sanitizeString($_GET['q']              ?? ''),
-            'status'         => SecurityHelper::sanitizeString($_GET['status']         ?? ''),
-            'prioridade'     => SecurityHelper::sanitizeString($_GET['prioridade']     ?? ''),
-            'responsavel_id' => (int)($_GET['responsavel_id'] ?? 0),
-            'data_de'        => SecurityHelper::sanitizeString($_GET['data_de']        ?? ''),
-            'data_ate'       => SecurityHelper::sanitizeString($_GET['data_ate']       ?? ''),
-            'valor_min'      => SecurityHelper::sanitizeString($_GET['valor_min']      ?? ''),
-            'valor_max'      => SecurityHelper::sanitizeString($_GET['valor_max']      ?? ''),
-            'contato'        => SecurityHelper::sanitizeString($_GET['contato']        ?? ''),
-            'ordenar'        => SecurityHelper::sanitizeString($_GET['ordenar']        ?? 'prioridade'),
+    /** Cards carregados por vez em cada coluna do quadro. */
+    private const CARDS_POR_COLUNA = 15;
+
+    /**
+     * Os filtros da tela, num lugar só — a lista e o quadro usam os mesmos, e
+     * é isso que deixa alternar entre as duas sem perder o contexto.
+     *
+     * `responsavel_id` NÃO leva `(int)`: o valor 'pool' (sem responsável) é
+     * string, e o cast transformava em 0 — o filtro do pool não fazia nada na
+     * lista, embora a opção aparecesse no formulário.
+     */
+    private function filtrosDaRequisicao(): array {
+        $resp = trim((string) ($_GET['responsavel_id'] ?? ''));
+
+        return [
+            'q'              => SecurityHelper::sanitizeString($_GET['q']          ?? ''),
+            'status'         => SecurityHelper::sanitizeString($_GET['status']     ?? ''),
+            'prioridade'     => SecurityHelper::sanitizeString($_GET['prioridade'] ?? ''),
+            'responsavel_id' => $resp === 'pool' ? 'pool' : (int) $resp,
+            'data_de'        => SecurityHelper::sanitizeString($_GET['data_de']    ?? ''),
+            'data_ate'       => SecurityHelper::sanitizeString($_GET['data_ate']   ?? ''),
+            'valor_min'      => SecurityHelper::sanitizeString($_GET['valor_min']  ?? ''),
+            'valor_max'      => SecurityHelper::sanitizeString($_GET['valor_max']  ?? ''),
+            'contato'        => SecurityHelper::sanitizeString($_GET['contato']    ?? ''),
+            'ordenar'        => SecurityHelper::sanitizeString($_GET['ordenar']    ?? 'prioridade'),
         ];
-        $page = max(1, (int)($_GET['page'] ?? 1));
+    }
+
+    public function index(): void {
+        $filtros = $this->filtrosDaRequisicao();
+        $page    = max(1, (int)($_GET['page'] ?? 1));
 
         $resultado = $this->model->listar(
             $filtros, $page, 25,
@@ -99,9 +116,69 @@ class AdminCarrinhoAbandonadoController extends Controller {
         ], 'admin');
     }
 
+    // ── GET /admin/carrinhos-abandonados/quadro ───────────
+    //
+    // Mesmo escopo e mesmos filtros da lista; muda a leitura.
+    public function quadro(): void {
+        $filtros = $this->filtrosDaRequisicao();
+        $visivel = $this->ehGestor() ? null : (int) Session::get('usuario_id');
+
+        $colunas = [];
+        foreach (CarrinhoAbandonado::COLUNAS_QUADRO as $chave => $col) {
+            $r = $this->model->listar(
+                ['status' => $col['status']] + $filtros, 1, self::CARDS_POR_COLUNA, $visivel, false
+            );
+            $colunas[$chave] = $col + ['cards' => $r['rows']];
+        }
+
+        $this->render('carrinhos-abandonados/quadro', [
+            'colunas'      => $colunas,
+            'resumo'       => $this->model->resumoPorStatus($filtros, $visivel),
+            'porColuna'    => self::CARDS_POR_COLUNA,
+            'filtros'      => $filtros,
+            'responsaveis' => $this->model->getResponsaveis(),
+            'ehGestor'     => $this->ehGestor(),
+            'ehSuper'      => AuthHelper::hasLevel('super'),
+        ], 'admin');
+    }
+
+    // ── GET /admin/carrinhos-abandonados/quadro/coluna ────
+    //
+    // Uma página de UMA coluna. É isto que faz o quadro aguentar milhares de
+    // carrinhos: nada carrega o board inteiro de uma vez.
+    public function quadroColuna(): void {
+        $chave = SecurityHelper::sanitizeString($_GET['coluna'] ?? '');
+        $col   = CarrinhoAbandonado::COLUNAS_QUADRO[$chave] ?? null;
+        if (!$col) $this->json(['ok' => false, 'msg' => 'Coluna inválida.'], 404);
+
+        $pagina  = max(1, (int) ($_GET['pagina'] ?? 1));
+        $filtros = $this->filtrosDaRequisicao();
+        $visivel = $this->ehGestor() ? null : (int) Session::get('usuario_id');
+
+        $r = $this->model->listar(
+            ['status' => $col['status']] + $filtros, $pagina, self::CARDS_POR_COLUNA, $visivel, false
+        );
+
+        $html = '';
+        foreach ($r['rows'] as $rec) {
+            $html .= View::capture(
+                ROOT_PATH . '/admin/views/carrinhos-abandonados/_card.php',
+                ['rec' => $rec, 'ehGestor' => $this->ehGestor()]
+            );
+        }
+
+        $this->json([
+            'ok'      => true,
+            'html'    => $html,
+            'pagina'  => $pagina,
+            'temMais' => count($r['rows']) === self::CARDS_POR_COLUNA,
+        ]);
+    }
+
     // ── POST /admin/carrinhos-abandonados/{id}/status ─────
     public function mudarStatus(int $id): void {
         $this->verifyCsrf();
+        $this->exigirAcesso($id);
         $this->json($this->service->mudarStatus(
             $id,
             SecurityHelper::sanitizeString($_POST['status'] ?? ''),
@@ -135,6 +212,7 @@ class AdminCarrinhoAbandonadoController extends Controller {
     // ── POST /admin/carrinhos-abandonados/{id}/anotacao ───
     public function anotar(int $id): void {
         $this->verifyCsrf();
+        $this->exigirAcesso($id);
         $this->json($this->service->anotar(
             $id,
             SecurityHelper::sanitizeString($_POST['texto'] ?? ''),
@@ -145,6 +223,7 @@ class AdminCarrinhoAbandonadoController extends Controller {
     // ── POST /admin/carrinhos-abandonados/{id}/agendar ────
     public function agendar(int $id): void {
         $this->verifyCsrf();
+        $this->exigirAcesso($id);
         $this->json($this->service->agendarContato(
             $id,
             SecurityHelper::sanitizeString($_POST['quando'] ?? ''),
@@ -172,6 +251,7 @@ class AdminCarrinhoAbandonadoController extends Controller {
     // ── POST /admin/carrinhos-abandonados/{id}/link ───────
     public function gerarLink(int $id): void {
         $this->verifyCsrf();
+        $this->exigirAcesso($id);
         $token = $this->service->gerarToken($id);
         $this->json($token
             ? ['ok' => true, 'link' => BASE_URL . '/carrinho/recuperar/' . $token]
@@ -598,6 +678,25 @@ class AdminCarrinhoAbandonadoController extends Controller {
      * pool ou próprio. OBRIGATÓRIO em toda action que recebe {id} —
      * listagem filtrada com show() aberto seria a falha clássica.
      */
+    /**
+     * Guard por ID das actions que recebem {id}.
+     *
+     * Filtrar só a listagem é teatro: basta digitar o id na URL. O `show()` já
+     * fazia esta checagem; `mudarStatus`, `anotar`, `agendar` e `gerarLink`
+     * não faziam — um vendedor mexia no carrinho de outro mandando o id
+     * (CLAUDE.md §4.7).
+     *
+     * Responde **404, nunca 403**: confirmar que o registro existe já entrega
+     * o pipeline do colega para quem enumera id.
+     */
+    private function exigirAcesso(int $id): array {
+        $rec = $this->model->findById($id);
+        if (!$rec || !$this->podeAcessar($rec)) {
+            $this->json(['ok' => false, 'msg' => 'Carrinho não encontrado.'], 404);
+        }
+        return $rec;
+    }
+
     private function podeAcessar(array $rec): bool {
         if ($this->ehGestor()) return true;
         $donoId = (int)($rec['responsavel_id'] ?? 0);

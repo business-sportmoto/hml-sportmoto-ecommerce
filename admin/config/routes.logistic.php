@@ -102,3 +102,14 @@ AdminRouter::post('/logistica/frete-fallback/alternar', 'FreteFallbackController
 AdminRouter::get('/logistica/etiquetas/buscar-cep',     'EtiquetaController@buscarCep');
 AdminRouter::get('/logistica/etiquetas/buscar-cliente', 'EtiquetaController@buscarCliente');
 AdminRouter::get('/logistica/etiquetas/dados-loja',     'EtiquetaController@dadosLoja');
+
+// Configuração de envio das transportadoras que cotam localmente (áreas com
+// custo próprio, operação diária, feriados). Ver CoberturaController.
+AdminRouter::get ('/logistica/cobertura',                'CoberturaController@index');
+AdminRouter::get ('/logistica/cobertura/dados',          'CoberturaController@dados');
+AdminRouter::get ('/logistica/cobertura/testar-cep',     'CoberturaController@testarCep');
+AdminRouter::post('/logistica/cobertura/area',           'CoberturaController@salvarArea');
+AdminRouter::post('/logistica/cobertura/area/excluir',   'CoberturaController@excluirArea');
+AdminRouter::post('/logistica/cobertura/area/alternar',  'CoberturaController@alternarArea');
+AdminRouter::post('/logistica/cobertura/operacao',       'CoberturaController@salvarOperacao');
+AdminRouter::post('/logistica/cobertura/feriado',        'CoberturaController@salvarFeriado');

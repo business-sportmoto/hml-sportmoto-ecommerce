@@ -19,6 +19,33 @@ class RegrasAdminService
     ];
     public const OPERADORES = ['=', '!=', '>', '<', '>=', '<=', 'in', 'not_in', 'between', 'contem'];
 
+    /**
+     * Campos de condição que são ESCOPO, não gatilho.
+     *
+     * O `transportadora` é editado por um seletor próprio no alto do
+     * formulário — e não pela lista genérica de condições, onde ficava como
+     * texto livre no meio de outros 16 campos. Regra de preço sem escopo vale
+     * para TODAS as transportadoras (`MotorRegras::opcaoNoEscopo` termina em
+     * "sem condição de escopo => aplica a todas"), e isso é perigoso: a única
+     * cujo preço é nosso é a LogManager. Nas outras o preço vem da API delas,
+     * e mexer nele altera margem sem que ninguém tenha decidido isso.
+     */
+    public const ESCOPO = ['transportadora', 'modalidade'];
+
+    /** Transportadoras para o seletor de escopo (todas, ativas ou não). */
+    public function transportadorasParaEscopo(): array
+    {
+        try {
+            return $this->pdo->query(
+                "SELECT id, nome, slug, adapter, status FROM log_transportadoras
+                  ORDER BY prioridade ASC, nome ASC"
+            )->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (\Throwable $e) {
+            LogService::error('Falha ao listar transportadoras para escopo', ['erro' => $e->getMessage()]);
+            return [];
+        }
+    }
+
     public function __construct(?PDO $pdo = null)
     {
         $this->pdo = $pdo ?? Database::getInstance()->getConnection();
@@ -42,11 +69,63 @@ class RegrasAdminService
             LogService::error('Falha ao listar regras', ['erro' => $e->getMessage()]);
             return [];
         }
+        // Escopo resolvido aqui, uma vez, porque a lista é desenhada em dois
+        // lugares — PHP na primeira carga e JS depois de recarregar. Calcular
+        // nos dois seria manter duas versões da mesma regra de leitura.
+        $escopos = $this->escopoPorRegra(array_column($rows, 'id'));
         foreach ($rows as &$r) {
             $r['acoes'] = json_decode((string)$r['acoes'], true) ?: [];
             $r['resumo_acoes'] = self::resumirAcoes($r['acoes']);
+            $r['escopo_nomes'] = $escopos[(int)$r['id']] ?? [];
         }
         return $rows;
+    }
+
+    /**
+     * Nomes das transportadoras no escopo de cada regra.
+     *
+     * Lista vazia = a regra vale para TODAS — e a tela precisa dizer isso em
+     * voz alta, porque é o estado perigoso e é o padrão silencioso de
+     * `MotorRegras::opcaoNoEscopo()`.
+     *
+     * @param array<int,mixed> $regraIds
+     * @return array<int,array<int,string>> regra_id => nomes
+     */
+    public function escopoPorRegra(array $regraIds): array
+    {
+        $ids = array_values(array_filter(array_map('intval', $regraIds)));
+        if (!$ids) return [];
+        $in = implode(',', $ids);
+
+        try {
+            $cs = $this->pdo->query(
+                "SELECT regra_id, valor FROM log_regra_condicoes
+                  WHERE regra_id IN ($in) AND campo = 'transportadora'"
+            )->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            if (!$cs) return [];
+
+            $nomes = [];
+            foreach ($this->transportadorasParaEscopo() as $t) {
+                $nomes[(string)$t['id']]   = $t['nome'];
+                $nomes[(string)$t['slug']] = $t['nome'];
+            }
+
+            $out = [];
+            foreach ($cs as $c) {
+                $v = json_decode((string)$c['valor'], true);
+                if (!is_array($v)) $v = array_map('trim', explode(',', (string)$v));
+                foreach ($v as $x) {
+                    $x = trim((string)$x);
+                    if ($x === '') continue;
+                    $out[(int)$c['regra_id']][] = $nomes[$x] ?? $x;
+                }
+            }
+            foreach ($out as &$lista) $lista = array_values(array_unique($lista));
+            return $out;
+        } catch (\Throwable $e) {
+            LogService::error('Falha ao resolver escopo das regras', ['erro' => $e->getMessage()]);
+            return [];
+        }
     }
 
     public function obter(int $id): ?array
@@ -181,9 +260,32 @@ class RegrasAdminService
             elseif (!in_array($oper, self::OPERADORES, true)) $e["condicao_$i"] = 'Operador inválido.';
         }
 
+        // Escopo obrigatório. Sem ele, MotorRegras::opcaoNoEscopo() aplica a
+        // regra a TODAS as transportadoras — inclusive as que cotam por API,
+        // onde mexer no preço altera margem sem ninguém ter decidido.
+        //
+        // Vale só para o que passa por aqui: regra antiga sem escopo continua
+        // funcionando como está até alguém abri-la. Mudar o motor tiraria do ar
+        // uma promoção ativa sem aviso, e isso não é correção, é incidente.
+        $temEscopo = false;
+        foreach (($d['condicoes'] ?? []) as $c) {
+            if ((string)($c['campo'] ?? '') !== 'transportadora') continue;
+            // O valor chega como texto do formulário ou como array já
+            // decodificado, dependendo de quem chama.
+            $v = $c['valor'] ?? '';
+            $preenchido = is_array($v)
+                ? count(array_filter($v, static fn($x) => trim((string)$x) !== '')) > 0
+                : trim((string)$v) !== '';
+            if ($preenchido) { $temEscopo = true; break; }
+        }
+        if (!$temEscopo) {
+            $e['escopo'] = 'Escolha ao menos uma transportadora para a regra.';
+        }
+
         // Precisa ter ao menos uma ação com efeito.
         $ac = self::sanitizarAcoes($d['acoes'] ?? []);
-        $temEfeito = $ac['frete_gratis'] || $ac['bloquear_frete_gratis'] || $ac['bloquear_frete']
+        $temEfeito = $ac['frete_gratis'] || $ac['frete_gratis_mais_barato']
+            || $ac['bloquear_frete_gratis'] || $ac['bloquear_frete']
             || $ac['desconto_pct'] > 0 || $ac['desconto_fixo'] > 0 || $ac['acrescimo'] > 0
             || $ac['prazo_adicional'] > 0 || !empty($ac['ocultar_servicos'])
             || $ac['subsidio_max_valor'] !== null || $ac['subsidio_max_pct'] !== null;
@@ -228,6 +330,13 @@ class RegrasAdminService
         if (!is_array($ocultar)) $ocultar = array_filter(array_map('trim', explode(',', (string)$ocultar)));
         return [
             'frete_gratis'          => !empty($a['frete_gratis']),
+            // Faltava nesta lista. O formulário oferece a caixa
+            // (logistica.js) e o motor a usa (MotorRegras:110), mas o
+            // sanitizador não a conhecia — então QUALQUER salvamento pelo
+            // painel apagava a flag em silêncio. Dois sanitizadores para as
+            // mesmas ações: MotorRegras::normalizarAcoes tinha a chave, este
+            // não. Ao acrescentar ação nova, os dois precisam saber.
+            'frete_gratis_mais_barato' => !empty($a['frete_gratis_mais_barato']),
             'bloquear_frete_gratis' => !empty($a['bloquear_frete_gratis']),
             'bloquear_frete'        => !empty($a['bloquear_frete']),
             'desconto_pct'          => max(0.0, (float)($a['desconto_pct'] ?? 0)),
@@ -249,6 +358,9 @@ class RegrasAdminService
             elseif (!empty($a['subsidio_max_pct'])) $txt .= ' (teto ' . rtrim(rtrim(number_format((float)$a['subsidio_max_pct'], 2, ',', '.'), '0'), ',') . '%)';
             $r[] = $txt;
         }
+        // Sai como chip próprio porque muda o alcance: em vez de zerar todas as
+        // opções do escopo, zera só a mais barata.
+        if (!empty($a['frete_gratis_mais_barato'])) $r[] = 'Grátis no mais barato';
         if (!empty($a['desconto_pct']))    $r[] = '-' . rtrim(rtrim(number_format((float)$a['desconto_pct'], 2, ',', '.'), '0'), ',') . '%';
         if (!empty($a['desconto_fixo']))   $r[] = '-R$ ' . number_format((float)$a['desconto_fixo'], 2, ',', '.');
         if (!empty($a['acrescimo']))       $r[] = '+R$ ' . number_format((float)$a['acrescimo'], 2, ',', '.');

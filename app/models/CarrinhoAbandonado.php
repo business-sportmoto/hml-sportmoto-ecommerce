@@ -119,8 +119,110 @@ class CarrinhoAbandonado {
     /**
      * @return array{rows: array, total: int}
      */
+    /**
+     * As colunas do quadro (kanban).
+     *
+     * O ENUM tem 11 status; quadro com 11 colunas ninguém usa. Aqui eles viram
+     * **6 etapas**, na ordem da esteira de recuperação. O status exato continua
+     * na etiqueta do card — agrupar muda a leitura, não perde informação.
+     *
+     * `canonico` é o status gravado quando o card é arrastado PARA a coluna:
+     * dentro do grupo, é o começo daquela etapa.
+     */
+    public const COLUNAS_QUADRO = [
+        'novos' => [
+            'titulo'   => 'Novos',
+            'status'   => ['novo', 'abandonado'],
+            'canonico' => 'abandonado',
+            'cor'      => 'var(--danger)',
+        ],
+        'recuperando' => [
+            'titulo'   => 'Em recuperação',
+            'status'   => ['em_recuperacao', 'msg_enviada'],
+            'canonico' => 'em_recuperacao',
+            'cor'      => 'var(--warning)',
+        ],
+        'aguardando' => [
+            'titulo'   => 'Aguardando resposta',
+            'status'   => ['aguardando_resposta'],
+            'canonico' => 'aguardando_resposta',
+            'cor'      => 'var(--purple)',
+        ],
+        'conversa' => [
+            'titulo'   => 'Em conversa',
+            'status'   => ['respondeu', 'negociacao'],
+            'canonico' => 'respondeu',
+            'cor'      => 'var(--info)',
+        ],
+        'ganhos' => [
+            'titulo'   => 'Recuperados',
+            'status'   => ['recuperado'],
+            'canonico' => 'recuperado',
+            'cor'      => 'var(--success)',
+        ],
+        'encerrados' => [
+            'titulo'   => 'Encerrados',
+            'status'   => ['perdido', 'sem_contato', 'ignorado'],
+            'canonico' => 'perdido',
+            'cor'      => 'var(--text-3)',
+        ],
+    ];
+
+    /**
+     * Quantos e quanto em cada status, com os mesmos filtros da tela.
+     *
+     * UMA consulta para o quadro inteiro. Com milhares de carrinhos, seis
+     * `COUNT(*)` separados seriam seis varreduras; o agrupamento por coluna
+     * acontece em PHP, sobre no máximo 11 linhas.
+     */
+    public function resumoPorStatus(array $f, ?int $apenasVisiveisPara = null): array {
+        unset($f['status']);          // o resumo cobre TODAS as colunas
+        // buildWhere() ja devolve a clausula com a palavra WHERE dentro.
+        [$where, $params] = $this->buildWhere($f);
+
+        if ($apenasVisiveisPara !== null) {
+            $where   .= ' AND (cr.responsavel_id IS NULL OR cr.responsavel_id = ?)';
+            $params[] = $apenasVisiveisPara;
+        }
+
+        $sql = "SELECT cr.status,
+                       COUNT(*)                            AS total,
+                       COALESCE(SUM(cr.valor_snapshot), 0) AS valor
+                  FROM carrinho_recuperacao cr
+             LEFT JOIN clientes c  ON c.id  = cr.cliente_id
+             LEFT JOIN usuarios uc ON uc.id = c.usuario_id
+                 {$where}
+              GROUP BY cr.status";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+
+        $porStatus = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $porStatus[$r['status']] = ['total' => (int) $r['total'], 'valor' => (float) $r['valor']];
+        }
+
+        $porColuna = [];
+        foreach (self::COLUNAS_QUADRO as $chave => $col) {
+            $total = 0; $valor = 0.0;
+            foreach ($col['status'] as $s) {
+                $total += $porStatus[$s]['total'] ?? 0;
+                $valor += $porStatus[$s]['valor'] ?? 0.0;
+            }
+            $porColuna[$chave] = ['total' => $total, 'valor' => $valor];
+        }
+
+        return $porColuna;
+    }
+
+    /**
+     * @param bool $comTotal Faz a contagem do conjunto filtrado. O quadro passa
+     *   `false`: os contadores dele vêm de `resumoPorStatus()`, numa consulta
+     *   só — com 50 mil carrinhos, as 6 contagens repetidas custavam mais que
+     *   as 6 listagens juntas.
+     */
     public function listar(array $f, int $page = 1, int $porPagina = 25,
-                           ?int $apenasVisiveisPara = null): array {
+                           ?int $apenasVisiveisPara = null, bool $comTotal = true): array {
         [$where, $params] = $this->buildWhere($f);
  
         if ($apenasVisiveisPara !== null) {
@@ -156,6 +258,10 @@ class CarrinhoAbandonado {
         $stmt->execute($params);
         $rows = $stmt->fetchAll();
 
+        if (!$comTotal) {
+            return ['rows' => $rows, 'total' => count($rows)];
+        }
+
         // O mesmo JOIN do SELECT: o WHERE referencia `uc` (nome e e-mail
         // do cliente moram em `usuarios`, não em `clientes`), e sem o join
         // aqui o COUNT quebra em toda busca.
@@ -186,8 +292,14 @@ class CarrinhoAbandonado {
             array_push($p, $like, $like, $like, $like, $like);
         }
         if (!empty($f['status'])) {
-            $w[] = 'cr.status = ?';
-            $p[] = $f['status'];
+            // Lista: é o que o quadro manda — uma coluna agrupa vários status.
+            if (is_array($f['status'])) {
+                $w[] = 'cr.status IN (' . implode(',', array_fill(0, count($f['status']), '?')) . ')';
+                foreach ($f['status'] as $s) $p[] = $s;
+            } else {
+                $w[] = 'cr.status = ?';
+                $p[] = $f['status'];
+            }
         }
         if (!empty($f['prioridade'])) {
             $w[] = 'cr.prioridade = ?';

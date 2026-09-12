@@ -5065,3 +5065,97 @@ html[data-theme="dark"] .fp-selo{background:var(--pgto-surface-2) !important;col
 .cs-aviso { margin: 0 0 12px; font-size: 13px; padding: 8px 12px; border-radius: 6px; }
 .cs-aviso--ok   { background: var(--success-lt); color: var(--success); }
 .cs-aviso--erro { background: var(--danger-lt);  color: var(--danger); }
+
+/* ══════════════════════════════════════════════════════════════
+   Famílias de produtos — /admin/familias e o bloco de sugestão
+   dentro do formulário de produto.
+   ══════════════════════════════════════════════════════════════ */
+
+/* filtros da listagem */
+.fam-filtros { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; width: 100%; }
+.fam-filtro-select { width: auto; min-width: 190px; }
+
+/* coluna "quem está nela" */
+.fam-membros { line-height: 2; }
+.fam-chip {
+  display: inline-block; margin: 0 4px 2px 0; padding: 2px 8px;
+  border-radius: 999px; background: var(--surface2);
+  font-size: 11.5px; color: var(--text-2); white-space: nowrap;
+}
+.fam-chip--mais { background: transparent; color: var(--text-3); font-weight: 700; }
+.fam-inativos   { display: block; margin-top: 3px; font-size: 11px; color: var(--warning); }
+.fam-nome-link  { text-decoration: none; }
+.fam-nome-link:hover { color: var(--blue); }
+
+/* detalhe */
+.fam-voltar {
+  display: inline-flex; align-items: center; gap: 5px;
+  margin-bottom: 6px; font-size: 12.5px; font-weight: 600;
+  color: var(--text-3); text-decoration: none;
+}
+.fam-voltar:hover { color: var(--blue); }
+
+.fam-aviso {
+  display: flex; gap: 10px; align-items: flex-start;
+  margin-bottom: 20px; padding: 12px 16px;
+  border: 1px solid rgba(217,119,6,.2); border-radius: var(--r-md);
+  background: var(--warning-lt); color: var(--warning);
+  font-size: 13px; line-height: 1.5;
+}
+.fam-aviso svg { flex-shrink: 0; margin-top: 1px; }
+.fam-aviso strong { display: block; color: var(--warning); }
+
+.fam-grid { display: grid; grid-template-columns: 380px 1fr; gap: 20px; align-items: start; }
+@media (max-width: 1100px) { .fam-grid { grid-template-columns: 1fr; } }
+
+.fam-ativo-row .form-hint { margin-top: 6px; }
+.fam-form-foot {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border);
+}
+.fam-slug-nota { font-size: 11.5px; color: var(--text-3); }
+
+.fam-agrupadores { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+.fam-bloco-titulo {
+  display: block; margin-bottom: 4px;
+  font-size: 11px; font-weight: 700; letter-spacing: .6px;
+  text-transform: uppercase; color: var(--text-3);
+}
+.fam-agrupadores .admin-badge { margin: 6px 4px 0 0; }
+
+/* adicionar produto pelo lado da família */
+.fam-membros-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.fam-add-box { padding: 14px 22px; border-bottom: 1px solid var(--border); background: var(--surface2); }
+.fam-add-results { margin-top: 10px; }
+.fam-add-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 8px 10px; border-radius: var(--r-md); background: var(--surface);
+  border: 1px solid var(--border); margin-bottom: 6px;
+}
+.fam-add-item-info { display: flex; flex-direction: column; min-width: 0; }
+.fam-add-item-nome { font-size: 13px; font-weight: 600; color: var(--text); }
+.fam-add-item-meta { font-size: 11.5px; color: var(--text-3); }
+.fam-hint-linha { margin: 0; font-size: 12px; color: var(--text-3); }
+
+/* ── Sugestões de família dentro do produto ─────────────────── */
+.pe-familia-sugestoes {
+  margin-top: 18px; padding-top: 16px;
+  border-top: 1px dashed var(--border2); text-align: left;
+}
+.pe-familia-sug-titulo {
+  display: block; margin-bottom: 2px;
+  font-size: 11px; font-weight: 700; letter-spacing: .6px;
+  text-transform: uppercase; color: var(--text-3);
+}
+.pe-familia-sug-hint { margin: 0 0 10px; font-size: 12px; color: var(--text-3); }
+.pe-familia-sug-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 12px; margin-bottom: 6px;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--surface); transition: border-color var(--t), box-shadow var(--t);
+}
+.pe-familia-sug-item:hover { border-color: var(--blue); box-shadow: var(--shadow-sm); }
+.pe-familia-sug-info { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.pe-familia-sug-nome { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.pe-familia-sug-motivo { font-size: 11.5px; color: var(--text-2); }
+.pe-familia-sug-exemplos { font-size: 11px; color: var(--text-3); }

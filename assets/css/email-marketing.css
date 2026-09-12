@@ -1430,3 +1430,82 @@ html[data-theme="dark"] .em_meta_inline,
 html[data-theme="dark"] .em_pag_gap {
   color: var(--em-text-muted);
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SETA DO <select> — precisa vir por último
+
+   A regra da linha ~463 aplica `background: linear-gradient(...)` a todos os
+   campos. É SHORTHAND: substitui a imagem pelo gradiente e reseta repeat,
+   size e position. Como ela vem DEPOIS das regras que desenhavam a seta
+   (~149/158/208), o resultado era:
+
+     claro  → select sem seta nenhuma
+     escuro → a regra de tema devolvia só o `background-image`, e a seta era
+              pintada com `repeat` + `size:auto` do reset: LADRILHAVA a largura
+
+   Aqui as duas camadas são declaradas juntas — seta primeiro, gradiente
+   depois — com repeat/position/size para cada uma. `.em_regra select` entra
+   junto: ele nunca teve seta em nenhum tema.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.em_filtros select,
+.em_regra select,
+.em_form select,
+.em_modal_box select {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%236e6e73' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"), linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  background-repeat: no-repeat, no-repeat;
+  background-size: 12px, auto;
+}
+
+/* Campo compacto (filtros e regras de segmento) e campo grande (form e modal)
+   têm respiro diferente à direita — a seta acompanha. */
+.em_filtros select,
+.em_regra select {
+  background-position: right 10px center, 0 0;
+  padding-right: 30px;
+}
+.em_form select,
+.em_modal_box select {
+  background-position: right 12px center, 0 0;
+  padding-right: 34px;
+}
+
+/* `background-position` precisa entrar AQUI, e não só na regra clara acima:
+   a regra de tema escuro do meio do arquivo usa o shorthand `background:` com
+   especificidade maior (html[data-theme] + classe + elemento), e shorthand
+   zera a posição para `0% 0%`. Declarada só na regra de baixa especificidade,
+   a posição perdia — a seta ia parar no canto superior esquerdo. */
+html[data-theme="dark"] .em_filtros select,
+html[data-theme="dark"] .em_regra select {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"), linear-gradient(180deg, #121c2c 0%, #0e1725 100%);
+  background-repeat: no-repeat, no-repeat;
+  background-position: right 10px center, 0 0;
+  background-size: 12px, auto;
+}
+html[data-theme="dark"] .em_form select,
+html[data-theme="dark"] .em_modal_box select {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"), linear-gradient(180deg, #121c2c 0%, #0e1725 100%);
+  background-repeat: no-repeat, no-repeat;
+  background-position: right 12px center, 0 0;
+  background-size: 12px, auto;
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .em_filtros select,
+  html:not([data-theme="light"]) .em_regra select {
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"), linear-gradient(180deg, #121c2c 0%, #0e1725 100%);
+    background-repeat: no-repeat, no-repeat;
+    background-position: right 10px center, 0 0;
+    background-size: 12px, auto;
+  }
+  html:not([data-theme="light"]) .em_form select,
+  html:not([data-theme="light"]) .em_modal_box select {
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"), linear-gradient(180deg, #121c2c 0%, #0e1725 100%);
+    background-repeat: no-repeat, no-repeat;
+    background-position: right 12px center, 0 0;
+    background-size: 12px, auto;
+  }
+}

@@ -80,6 +80,12 @@ $f = $filtros ?? [];
                                 <strong><?= $e($r['nome']) ?><?= !empty($r['acumulativa']) ? ' <span class="log_badge is-info log_badge--plain">acumulativa</span>' : '' ?></strong>
                                 <?php if (!empty($r['descricao'])): ?><span class="log_muted"><?= $e($r['descricao']) ?></span><?php endif; ?>
                                 <?php if ($ag): ?><span class="log_muted"><?= $ico('calendar-today', 15) ?> <?= $e($ag) ?></span><?php endif; ?>
+                                <?php // Escopo vazio não é "sem configuração": é "vale para todas". ?>
+                                <?php if (!empty($r['escopo_nomes'])): ?>
+                                    <span class="log_muted reg_escopo_chip"><?= $e(implode(', ', $r['escopo_nomes'])) ?></span>
+                                <?php else: ?>
+                                    <span class="log_badge is-warn log_badge--plain reg_escopo_chip">todas as transportadoras</span>
+                                <?php endif; ?>
                             </div>
                         </td>
                         <td><span class="log_mono"><?= (int)($r['condicoes_qtd'] ?? 0) ?></span></td>
@@ -111,7 +117,12 @@ $f = $filtros ?? [];
 
 <script>
     window.LOG_REGRAS_BASE   = '/admin/logistica/regras';
-    window.LOG_REGRAS_CAMPOS = <?= json_encode($campos ?? [], JSON_UNESCAPED_UNICODE) ?>;
-    window.LOG_REGRAS_OPERS  = <?= json_encode($opers ?? [], JSON_UNESCAPED_UNICODE) ?>;
+    // Os JSON_HEX_* impedem que um nome de transportadora feche a tag <script>.
+    window.LOG_REGRAS_CAMPOS = <?= json_encode($campos ?? [], JSON_UNESCAPED_UNICODE
+        | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    window.LOG_REGRAS_OPERS  = <?= json_encode($opers ?? [], JSON_UNESCAPED_UNICODE
+        | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    window.LOG_REGRAS_TRANSP = <?= json_encode($transportadoras ?? [], JSON_UNESCAPED_UNICODE
+        | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 </script>
 

@@ -34,6 +34,9 @@ class FreteController extends Controller
             'campos'  => RegrasAdminService::CAMPOS_CONDICAO,
             'opers'   => RegrasAdminService::OPERADORES,
             'filtros' => $filtros,
+            // Para o seletor de escopo do formulário: regra de preço precisa
+            // dizer em qual transportadora age. Ver RegrasAdminService::ESCOPO.
+            'transportadoras' => $this->regras->transportadorasParaEscopo(),
         ], 'admin');
     }
 

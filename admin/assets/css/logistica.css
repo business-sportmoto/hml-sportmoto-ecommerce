@@ -2488,3 +2488,402 @@ grid-column:1 / -1
 grid-column:span 1
 }
 }
+
+/* ── Configuração de envios (cobertura.php) ────────────────────────────────
+   Áreas à esquerda e mapa à direita, como no desenho de referência. Abaixo de
+   1100px a coluna do mapa vai para baixo: lista de área é o que se lê, mapa é
+   o que se confere. */
+
+.cob_sec {
+margin:26px 0 12px;
+font-size:15px;
+font-weight:680;
+color:var(--log-ink)
+}
+
+.cob_resumo {
+display:grid;
+grid-template-columns:repeat(3,minmax(0,1fr));
+gap:18px;
+padding:18px 20px
+}
+
+.cob_kpi_rot {
+font-size:11px;
+font-weight:600;
+letter-spacing:.04em;
+text-transform:uppercase;
+color:var(--log-ink-3);
+margin-bottom:6px
+}
+
+.cob_kpi_val {
+font-size:17px;
+font-weight:650;
+color:var(--log-ink)
+}
+
+.cob_kpi_sub {
+margin-top:4px;
+font-size:11.5px;
+color:var(--log-ink-2)
+}
+
+.cob_cobertura {
+display:grid;
+grid-template-columns:minmax(300px,380px) 1fr;
+gap:16px;
+align-items:start
+}
+
+.cob_areas {
+padding:14px;
+max-height:560px;
+overflow-y:auto
+}
+
+.cob_areas_head {
+display:flex;
+align-items:center;
+justify-content:space-between;
+gap:10px;
+margin-bottom:12px
+}
+
+.cob_banda + .cob_banda {
+margin-top:14px
+}
+
+.cob_banda_tit {
+font-size:11px;
+font-weight:640;
+letter-spacing:.03em;
+color:var(--log-ink-2);
+margin-bottom:7px
+}
+
+.cob_area {
+border:1px solid var(--log-border);
+border-radius:var(--log-radius-sm);
+padding:10px 12px;
+margin-bottom:8px;
+transition:border-color .15s,opacity .15s
+}
+
+.cob_area:hover {
+border-color:var(--log-border-strong)
+}
+
+.cob_area.is-off {
+opacity:.55
+}
+
+.cob_area_chk {
+display:flex;
+align-items:center;
+gap:8px
+}
+
+.cob_area_nome {
+font-weight:600;
+color:var(--log-ink)
+}
+
+.cob_area_meta {
+margin-top:5px;
+font-size:12px
+}
+
+.cob_area_valor {
+font-weight:650;
+color:var(--log-ok)
+}
+
+.cob_area_cep {
+margin-top:3px;
+font-size:11px;
+color:var(--log-ink-3);
+word-break:break-all
+}
+
+.cob_area_acoes {
+display:flex;
+gap:5px;
+justify-content:flex-end;
+margin-top:6px
+}
+
+.cob_vazio {
+padding:18px 8px
+}
+
+.cob_teste {
+margin-top:14px;
+padding-top:14px;
+border-top:1px dashed var(--log-border)
+}
+
+.cob_teste > label {
+display:block;
+margin-bottom:6px;
+font-size:10.5px;
+font-weight:600;
+letter-spacing:.04em;
+text-transform:uppercase;
+color:var(--log-ink-3)
+}
+
+.cob_teste_res {
+margin-top:9px;
+font-size:12.5px;
+display:flex;
+align-items:center;
+gap:7px;
+flex-wrap:wrap
+}
+
+.cob_mapa_wrap {
+padding:12px
+}
+
+.cob_mapa {
+height:480px;
+border-radius:var(--log-radius-sm);
+overflow:hidden;
+background:var(--log-surface-2)
+}
+
+.cob_mapa_nota,.cob_dims_nota,.cob_form_nota {
+margin-top:9px;
+font-size:11.5px;
+line-height:1.45
+}
+
+/* ── Operação diária ── */
+
+.cob_op tr.is-off td:not(:first-child) {
+opacity:.45
+}
+
+.cob_janela {
+display:flex;
+align-items:center;
+gap:6px
+}
+
+.cob_janela .log_input {
+min-width:0
+}
+
+.cob_misto {
+margin-left:8px
+}
+
+/* ── Extras ── */
+
+.cob_extras {
+display:grid;
+grid-template-columns:1fr minmax(0,420px);
+gap:16px;
+align-items:start
+}
+
+.cob_extras > .log_card {
+padding:16px
+}
+
+.cob_bloco_tit {
+display:flex;
+align-items:center;
+gap:8px;
+font-size:12px;
+font-weight:640;
+letter-spacing:.02em;
+text-transform:uppercase;
+color:var(--log-ink-2);
+margin-bottom:12px
+}
+
+.cob_feriado {
+display:flex;
+align-items:center;
+gap:9px;
+padding:8px 0;
+border-bottom:1px solid var(--log-border)
+}
+
+.cob_feriado:last-child {
+border-bottom:0
+}
+
+.cob_feriado_st {
+margin-left:auto;
+font-size:11px;
+white-space:nowrap
+}
+
+.cob_unidade {
+display:flex;
+align-items:center;
+gap:6px
+}
+
+.cob_unidade .log_input {
+min-width:0
+}
+
+.cob_unidade > span {
+font-size:11.5px;
+color:var(--log-ink-3)
+}
+
+.cob_salvar {
+display:flex;
+align-items:center;
+justify-content:flex-end;
+gap:12px;
+margin:20px 0 8px
+}
+
+/* ── Mini-mapa do formulário de área ── */
+
+.cob_form_mapa {
+height:260px;
+border-radius:var(--log-radius-sm);
+overflow:hidden;
+background:var(--log-surface-2);
+margin-bottom:12px
+}
+
+.cob_form_geo {
+align-items:end
+}
+
+@media (max-width: 1100px) {
+.cob_cobertura,.cob_extras {
+grid-template-columns:1fr
+}
+
+.cob_areas {
+max-height:none
+}
+
+.cob_resumo {
+grid-template-columns:1fr
+}
+}
+
+/* ── Escopo da regra de frete ──────────────────────────────────────────────
+   O seletor fica no alto do formulário porque decidir "em qual transportadora"
+   vem antes de "quando" e "o quê". Escopo vazio vale para todas, e a lista
+   marca isso em amarelo — é ausência perigosa, não ausência neutra. */
+
+.reg_escopo {
+display:grid;
+grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+gap:8px
+}
+
+.reg_escopo_item {
+display:flex;
+align-items:center;
+gap:8px;
+padding:9px 11px;
+border:1px solid var(--log-border);
+border-radius:var(--log-radius-sm);
+cursor:pointer;
+transition:border-color .15s,background .15s;
+/* Nome longo quebra em duas linhas e empurrava o selo de status para fora do
+   card, invadindo o vizinho. min-width:0 deixa o conteudo encolher; o
+   overflow fecha a porta para o que ainda assim passar. */
+min-width:0;
+overflow:hidden
+}
+
+.reg_escopo_item > * {
+min-width:0
+}
+
+.reg_escopo_item:hover {
+border-color:var(--log-border-strong)
+}
+
+.reg_escopo_item.is-on {
+border-color:var(--log-brand);
+background:var(--log-brand-soft)
+}
+
+.reg_escopo_nome {
+font-weight:600;
+color:var(--log-ink);
+overflow:hidden;
+text-overflow:ellipsis;
+white-space:nowrap
+}
+
+.reg_escopo_st {
+margin-left:auto;
+font-size:11px;
+flex:none
+}
+
+.reg_escopo_nota {
+margin:-4px 0 10px;
+font-size:11.5px;
+line-height:1.45
+}
+
+.reg_escopo_chip {
+margin-top:3px;
+align-self:flex-start
+}
+
+.log_fieldset--erro {
+border-color:var(--log-danger);
+box-shadow:0 0 0 3px var(--log-danger-soft)
+}
+
+.cob_escopo {
+align-items:flex-end;
+gap:14px
+}
+
+.cob_escopo_nota {
+margin:0 0 4px;
+font-size:11.5px;
+line-height:1.45;
+max-width:560px
+}
+
+/* ── Toggle pequeno ────────────────────────────────────────────────────────
+   O .log_toggle padrão (42×25) foi desenhado para a coluna de status de uma
+   tabela. Em lista densa — áreas, feriados, escopo da regra — ele domina a
+   linha e empurra o texto. Mesma peça, 34×20. */
+
+.log_toggle--sm .log_toggle_track {
+width:34px;
+height:20px
+}
+
+.log_toggle--sm .log_toggle_track::after {
+width:16px;
+height:16px
+}
+
+.log_toggle--sm input:checked + .log_toggle_track::after {
+transform:translateX(14px)
+}
+
+/* Os três blocos abaixo trocaram checkbox por toggle e precisam ocupar a
+   linha inteira — .log_toggle nasce inline-flex, para caber numa célula. */
+
+.cob_area_chk,.cob_feriado,.reg_escopo_item {
+display:flex;
+width:100%
+}
+
+/* O texto secundário alinhava com a caixa de 16px; agora alinha com o
+   toggle pequeno (34px + 10px de gap). */
+.cob_area_meta,.cob_area_cep {
+margin-left:44px
+}

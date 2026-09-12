@@ -91,6 +91,11 @@ class LogManagerAdapter extends TransportadoraBase
     {
         $cep = preg_replace('/\D/', '', $cep) ?? '';
         if (strlen($cep) !== 8) return false;
+
+        // Área cadastrada é cobertura por si só, mesmo que o `ceps_atendidos`
+        // não a inclua — senão cadastrar área exigiria manter as duas listas.
+        if ($this->areaDoCep($cep)) return true;
+
         $n = (int)$cep;
 
         foreach ($this->cepsAtendidos() as $entrada) {
@@ -155,6 +160,30 @@ class LogManagerAdapter extends TransportadoraBase
     {
         $cepDestino = preg_replace('/\D/', '', (string)($params['cep_destino'] ?? '')) ?? '';
         if (strlen($cepDestino) !== 8) return ['ok' => true, 'opcoes' => []];
+
+        // Áreas cadastradas mandam: cada uma tem custo, prazo e corte próprios.
+        // Sem nenhuma área, cai no `ceps_atendidos` + `d1_valor_base` de antes —
+        // a migração é por transportadora e sem data marcada.
+        $area = $this->areaDoCep($cepDestino);
+        if ($area) {
+            $corte = $area['cutoff_hora'] !== null ? (int)$area['cutoff_hora'] : $this->cutoff();
+            $prazo = $area['prazo_dias'] !== null ? (int)$area['prazo_dias'] : self::prazoD1(null, $corte);
+            $base  = $this->aplicarMargem((float)$area['valor_base']);
+            $nome  = (string)($this->config['d1_nome'] ?? 'Entrega rápida');
+
+            return ['ok' => true, 'opcoes' => [[
+                'servico_codigo' => 'D1',
+                'servico_nome'   => $nome,
+                'prazo_dias'     => $prazo,
+                'valor'          => $base,
+                'tipo_postagem'  => 'entrega',
+                'categoria'      => 'd1',
+                'area_id'        => (int)$area['id'],
+                'area_nome'      => (string)$area['nome'],
+                'avisos'         => [],
+            ]]];
+        }
+
         if (!$this->atendeCep($cepDestino)) return ['ok' => true, 'opcoes' => []]; // fora da área D+1
 
         $base = $this->aplicarMargem((float)($this->config['d1_valor_base'] ?? 19.90));
@@ -168,8 +197,30 @@ class LogManagerAdapter extends TransportadoraBase
             'tipo_postagem'  => 'entrega',
             'categoria'      => 'd1',
             'avisos'         => [],
-            
+
         ]]];
+    }
+
+    /**
+     * Área de entrega que cobre o CEP, quando há áreas cadastradas.
+     *
+     * Devolve null tanto quando não existe área nenhuma (modo antigo) quanto
+     * quando existem e nenhuma cobre — os dois casos levam ao mesmo lugar: o
+     * `ceps_atendidos` decide. Quem cadastrou áreas e quer que elas sejam a
+     * única verdade deve deixar o `ceps_atendidos` vazio.
+     */
+    private function areaDoCep(string $cep): ?array
+    {
+        $id = $this->transportadoraId();
+        if (!$id || !class_exists('AreaEntregaService')) return null;
+        try {
+            return (new AreaEntregaService())->resolver($id, $cep);
+        } catch (\Throwable $e) {
+            LogService::warning('Falha ao resolver área de entrega; usando ceps_atendidos', [
+                'transportadora_id' => $id, 'erro' => $e->getMessage(),
+            ]);
+            return null; // cotar é caminho de checkout: degrada, não quebra
+        }
     }
 
     /* =========================================================

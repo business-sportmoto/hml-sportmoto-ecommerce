@@ -390,6 +390,11 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
                   Criar nova família
                 </button>
               </div>
+
+              <?php // Preenchido por Ajax (/admin/familias/sugerir) conforme o
+                    // nome/marca do produto: sem isto nasce família repetida
+                    // ao lado da que deveria ter sido reaproveitada. ?>
+              <div class="pe-familia-sugestoes" id="pe-familia-sugestoes" hidden></div>
             </div>
             <input type="hidden" name="familia_id" id="campo-familia-id" value="">
             <?php endif; ?>

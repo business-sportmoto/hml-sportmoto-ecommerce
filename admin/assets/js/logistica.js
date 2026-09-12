@@ -852,8 +852,13 @@
        REGRAS
        ========================================================= */
     var RBASE   = window.LOG_REGRAS_BASE || '/admin/logistica/regras';
-    var CAMPOS  = window.LOG_REGRAS_CAMPOS || [];
     var OPERS   = window.LOG_REGRAS_OPERS || [];
+    var TRANSP  = window.LOG_REGRAS_TRANSP || [];
+
+    // `transportadora` sai da lista genérica: virou o seletor de escopo no alto
+    // do formulário. Deixar nos dois lugares seria dar duas fontes para a mesma
+    // informação, e elas divergem no primeiro ajuste.
+    var CAMPOS  = (window.LOG_REGRAS_CAMPOS || []).filter(function (k) { return k !== 'transportadora'; });
 
     function condRow(c) {
         c = c || {};
@@ -872,10 +877,77 @@
         return '<div class="log_field"><label>' + label + '</label><input class="log_input" type="number" step="0.01" data-a="' + nome + '" placeholder="' + (ph || '') + '"></div>';
     }
 
+    /**
+     * Selo de escopo da linha da lista.
+     *
+     * Escopo vazio não é "sem configuração", é "vale para todas" — o estado
+     * que mexe no preço de transportadora que cota por API. Por isso sai em
+     * amarelo e por extenso, não como ausência.
+     */
+    function escopoChip(nomes) {
+        if (nomes && nomes.length) {
+            return '<span class="log_muted reg_escopo_chip">' + esc(nomes.join(', ')) + '</span>';
+        }
+        return '<span class="log_badge is-warn log_badge--plain reg_escopo_chip">todas as transportadoras</span>';
+    }
+
+    /** Ids/slugs de transportadora já no escopo da regra. */
+    function escopoDe(r) {
+        var out = [];
+        ((r && r.condicoes) || []).forEach(function (c) {
+            if (c.campo !== 'transportadora') return;
+            var v = c.valor;
+            (Array.isArray(v) ? v : String(v == null ? '' : v).split(','))
+                .forEach(function (x) { x = String(x).trim(); if (x) out.push(x); });
+        });
+        return out;
+    }
+
+    /**
+     * Seletor de escopo — quais transportadoras a regra atinge.
+     *
+     * Fica no alto e é obrigatório porque, sem ele, a regra vale para TODAS:
+     * `MotorRegras::opcaoNoEscopo()` termina em "sem condição de escopo =>
+     * aplica a todas". A única transportadora cujo preço é nosso é a
+     * LogManager (preço fixo por área); nas outras o valor vem da API delas, e
+     * um desconto global mexe na margem sem ninguém ter decidido isso.
+     */
+    function escopoFieldset(r) {
+        var marcados = escopoDe(r);
+        if (!TRANSP.length) {
+            return '<div class="log_fieldset" id="fld-escopo"><h4>Transportadoras da regra</h4>' +
+                   '<p class="log_muted">Nenhuma transportadora cadastrada.</p></div>';
+        }
+        return '<div class="log_fieldset" id="fld-escopo">' +
+            '<h4>Selecionar transportadoras para a regra <span class="log_req">*</span></h4>' +
+            '<p class="log_muted reg_escopo_nota">A regra só age nas marcadas. ' +
+            'Sem marcar nenhuma ela valeria para todas — inclusive as que cotam por API, ' +
+            'onde alterar o preço mexe na margem sem decisão.</p>' +
+            '<div class="reg_escopo">' + TRANSP.map(function (t) {
+                var id = String(t.id);
+                var on = marcados.indexOf(id) >= 0 || marcados.indexOf(String(t.slug)) >= 0;
+                var fixo = t.adapter === 'LogManagerAdapter';
+                return '<label class="log_toggle log_toggle--sm reg_escopo_item' + (on ? ' is-on' : '') + '"' +
+                    ' title="A regra age nesta transportadora?">' +
+                    '<input type="checkbox" class="js-escopo" value="' + attr(id) + '"' + (on ? ' checked' : '') + '>' +
+                    '<span class="log_toggle_track"></span>' +
+                    '<span class="reg_escopo_nome">' + esc(t.nome) + '</span>' +
+                    '<span class="log_badge ' + (fixo ? 'is-ok' : 'is-neutral') + ' log_badge--plain">' +
+                        (fixo ? 'preço próprio' : 'preço da API') + '</span>' +
+                    (String(t.status) !== 'ativo' ? '<span class="log_muted reg_escopo_st">' + esc(t.status) + '</span>' : '') +
+                '</label>';
+            }).join('') + '</div>' +
+        '</div>';
+    }
+
     function buildRegraForm(r) {
         r = r || {};
         var a = r.acoes || {};
-        var conds = (r.condicoes || []).map(condRow).join('');
+        // As condições de escopo não entram na lista genérica — elas têm o
+        // seletor acima.
+        var conds = (r.condicoes || [])
+            .filter(function (c) { return c.campo !== 'transportadora'; })
+            .map(condRow).join('');
         function chk(k, on, label) { return '<label class="log_check"><input type="checkbox" data-a="' + k + '"' + (on ? ' checked' : '') + '> ' + label + '</label>'; }
         function val(x) { return x != null && x !== '' ? attr(x) : ''; }
 
@@ -896,9 +968,12 @@
                 '</div>' +
             '</div>' +
 
+            escopoFieldset(r) +
+
             '<div class="log_fieldset"><h4>Condições <span class="log_muted">(todas precisam bater — AND)</span> <button type="button" class="log_btn log_btn--sm js-cond-add"><svg class="log_ico" aria-hidden="true" focusable="false"><use href="#i-add"></use></svg> Adicionar</button></h4>' +
                 '<div id="logConds">' + conds + '</div>' +
-                '<p class="log_muted" style="margin-top:6px">Campos <code>transportadora</code>/<code>modalidade</code> definem o escopo (a quais opções o efeito se aplica), não disparam a regra.</p>' +
+                '<p class="log_muted" style="margin-top:6px">Quando disparar. O campo <code>modalidade</code> ' +
+                'restringe o efeito (postagem/coleta) sem disparar a regra; a transportadora fica no seletor acima.</p>' +
             '</div>' +
 
             '<div class="log_fieldset" id="fld-acoes"><h4>Ações</h4>' +
@@ -906,7 +981,9 @@
                     chk('frete_gratis', !!a.frete_gratis, 'Frete grátis') +
                     chk('frete_gratis_mais_barato', !!a.frete_gratis_mais_barato, 'Frete grátis mais barato') +
                     chk('bloquear_frete_gratis', !!a.bloquear_frete_gratis, 'Bloquear frete grátis') +
-                    chk('bloquear_frete', !!a.bloquear_frete_gratis, 'Bloquear frete') +
+                    // lia `bloquear_frete_gratis` por copia-e-cola: a caixa de
+                    // "Bloquear frete" nascia marcada por causa da ação vizinha
+                    chk('bloquear_frete', !!a.bloquear_frete, 'Bloquear frete') +
                 '</div>' +
                 '<div class="log_form_grid" style="margin-top:10px">' +
                     acaoNum('subsidio_max_valor', 'Teto do subsídio (R$)', 'acima disso, cobra a diferença') +
@@ -954,6 +1031,13 @@
             $r.find('[data-k]').each(function () { c[$(this).data('k')] = $(this).val(); });
             if ((c.campo || '').trim() !== '') d.condicoes.push(c);
         });
+        // escopo -> vira uma condição `transportadora in [ids]`, que é o que o
+        // MotorRegras já sabia ler. O seletor é só uma forma melhor de escrever
+        // a mesma coisa; o motor não mudou.
+        var ids = $b.find('.js-escopo:checked').map(function () { return this.value; }).get();
+        if (ids.length) {
+            d.condicoes.push({ campo: 'transportadora', operador: 'in', valor: ids.join(',') });
+        }
         return d;
     }
 
@@ -970,6 +1054,11 @@
 
         drawer.escutar('click', '.js-cond-add', function () { $(drawer.corpo()).find('#logConds').append(condRow({})); });
         drawer.escutar('click', '.js-cond-rm', function (ev) { $(ev.target).closest('.log_cond').remove(); });
+        drawer.escutar('change', '.js-escopo', function (ev) {
+            var $i = $(ev.target);
+            $i.closest('.reg_escopo_item').toggleClass('is-on', $i.is(':checked'));
+            $(drawer.corpo()).find('#fld-escopo').removeClass('log_fieldset--erro');
+        });
         drawer.escutar('click', '.js-salvar', function () {
             var $bb = $(drawer.corpo());
             var dados = comCsrf(coletarRegra($bb));
@@ -982,9 +1071,14 @@
                     Toast.dismiss(tid);
                     var k = Object.keys(res.erros)[0];
                     Toast.error(res.erros[k]);
-                    $bb.find('.log_field--erro').removeClass('log_field--erro');
+                    $bb.find('.log_field--erro, .log_fieldset--erro')
+                       .removeClass('log_field--erro log_fieldset--erro');
                     if (k === 'nome') $bb.find('#fld-nome').addClass('log_field--erro');
-                    if (k === 'acoes') $bb.find('#fld-acoes').addClass('log_field--erro');
+                    if (k === 'acoes') $bb.find('#fld-acoes').addClass('log_fieldset--erro');
+                    if (k === 'escopo') {
+                        $bb.find('#fld-escopo').addClass('log_fieldset--erro')[0]
+                           .scrollIntoView({ block: 'center', behavior: 'smooth' });
+                    }
                 } else {
                     Toast.update(tid, { type: 'error', message: (res && res.erro) || 'Falha ao salvar.', duration: 4000 });
                 }
@@ -1018,7 +1112,8 @@
                 '<button type="button" class="log_btn log_btn--icon log_btn--xs js-mover" data-dir="baixo" title="Descer" aria-label="Descer"><svg class="log_ico" aria-hidden="true" focusable="false"><use href="#i-arrow-down"></use></svg></button>' +
             '</div></td>' +
             '<td><div class="log_transp_info"><strong>' + esc(r.nome) + acum + '</strong>' +
-                (r.descricao ? '<span class="log_muted">' + esc(r.descricao) + '</span>' : '') + '</div></td>' +
+                (r.descricao ? '<span class="log_muted">' + esc(r.descricao) + '</span>' : '') +
+                escopoChip(r.escopo_nomes) + '</div></td>' +
             '<td><span class="log_mono">' + (parseInt(r.condicoes_qtd, 10) || 0) + '</span></td>' +
             '<td><div class="log_chips">' + chips + '</div></td>' +
             '<td><label class="log_toggle"><input type="checkbox" class="js-status"' + (r.ativa == 1 ? ' checked' : '') + '>' +
@@ -2825,6 +2920,558 @@
 
         carregar();
     });
+    })();
+
+    /* ==================================================================
+       TELA: Configuração de envios com logística própria (cobertura.php)
+
+       Pinta tudo a partir de window.COB.dados — o servidor manda a primeira
+       carga já resolvida e o mesmo código repinta depois de salvar. Dois
+       templates, um em PHP e outro em JS, divergem no primeiro ajuste.
+    ================================================================== */
+    (function () {
+
+    var COB = window.COB;
+    if (!COB || !document.getElementById('logCob')) return;
+
+    var BASE  = COB.base;
+    var transp = COB.transp | 0;
+    var dados = COB.dados || null;
+    var mapa = null, camadas = null;
+
+    function api(metodo, caminho, dado) { return LOG.ajax(metodo, BASE + caminho, dado); }
+    function esc(s) { return LOG.esc(s); }
+    function attr(s) { return LOG.attr(s); }
+    function moeda(v) { return 'R$ ' + (parseFloat(v) || 0).toFixed(2).replace('.', ','); }
+
+    /* ------------------------------------------------------- resumo */
+
+    function pintarResumo() {
+        var r = (dados && dados.resumo) || {};
+        var cls = r.exposicao === 'Chegará hoje' ? 'is-ok'
+                : (r.exposicao === 'Sem entrega hoje' ? 'is-neutral' : 'is-info');
+
+        var teto = (r.max_util == null && r.max_sabado == null)
+            ? '<span class="log_muted">Sem teto</span>'
+            : 'Seg–sex: ' + (r.max_util == null ? '—' : r.max_util) +
+              ' &middot; Sáb: ' + (r.max_sabado == null ? '—' : r.max_sabado);
+
+        // O contador de hoje só aparece quando existe teto: sem teto ele é
+        // número solto, e número sem régua não informa nada.
+        var usado = '';
+        if (r.max_util != null || r.max_sabado != null) {
+            usado = '<div class="cob_kpi_sub">' + (r.envios_hoje | 0) + ' hoje</div>';
+        }
+
+        $('#cobResumo').html(
+            '<div class="cob_kpi">' +
+                '<div class="cob_kpi_rot">Exposição atual</div>' +
+                '<span class="log_badge ' + cls + '">' + esc(r.exposicao || '—') + '</span>' +
+                (r.motivo ? '<div class="cob_kpi_sub">' + esc(r.motivo) + '</div>' : '') +
+            '</div>' +
+            '<div class="cob_kpi">' +
+                '<div class="cob_kpi_rot">Cobertura</div>' +
+                '<div class="cob_kpi_val">' + (r.areas_ativas | 0) + ' ' +
+                    ((r.areas_ativas | 0) === 1 ? 'área ativa' : 'áreas ativas') + '</div>' +
+                ((r.areas_total | 0) > (r.areas_ativas | 0)
+                    ? '<div class="cob_kpi_sub">' + ((r.areas_total | 0) - (r.areas_ativas | 0)) + ' desativada(s)</div>' : '') +
+            '</div>' +
+            '<div class="cob_kpi">' +
+                '<div class="cob_kpi_rot">Máximo de envios por dia</div>' +
+                '<div class="cob_kpi_val">' + teto + '</div>' + usado +
+            '</div>'
+        );
+    }
+
+    /* -------------------------------------------------------- áreas */
+
+    function pintarAreas() {
+        var areas = (dados && dados.areas) || [];
+        var bandas = (dados && dados.bandas) || {};
+
+        if (!areas.length) {
+            $('#cobListaAreas').html(
+                '<div class="log_state cob_vazio">' +
+                    '<div class="log_state_title">Nenhuma área cadastrada</div>' +
+                    '<div class="log_state_desc">Enquanto não houver área, a cotação usa a lista de CEPs e o preço único ' +
+                    'da transportadora. A primeira área já passa a valer.</div>' +
+                '</div>');
+            return;
+        }
+
+        var html = '';
+        Object.keys(bandas).forEach(function (b) {
+            var doGrupo = areas.filter(function (a) { return a.banda === b; });
+            if (!doGrupo.length) return;
+            html += '<div class="cob_banda"><div class="cob_banda_tit">' + esc(bandas[b]) + '</div>' +
+                doGrupo.map(linhaArea).join('') + '</div>';
+        });
+        $('#cobListaAreas').html(html);
+    }
+
+    function linhaArea(a) {
+        var extras = [];
+        if (a.prazo_dias != null)  extras.push(parseInt(a.prazo_dias, 10) === 0 ? 'mesmo dia' : 'D+' + a.prazo_dias);
+        if (a.cutoff_hora != null) extras.push('corte ' + a.cutoff_hora + 'h');
+        if (a.max_envios_dia != null) extras.push('até ' + a.max_envios_dia + '/dia');
+
+        return '<div class="cob_area' + (parseInt(a.ativa, 10) ? '' : ' is-off') + '" data-area="' + (a.id | 0) + '">' +
+            '<label class="log_toggle log_toggle--sm cob_area_chk" title="Ativar / desativar a área">' +
+                '<input type="checkbox" class="js-cob-ativa"' + (parseInt(a.ativa, 10) ? ' checked' : '') + '>' +
+                '<span class="log_toggle_track"></span>' +
+                '<span class="cob_area_nome">' + esc(a.nome) + '</span>' +
+            '</label>' +
+            '<div class="cob_area_meta">' +
+                '<span class="cob_area_valor">' + moeda(a.valor_base) + '</span>' +
+                (extras.length ? '<span class="log_muted"> &middot; ' + esc(extras.join(' · ')) + '</span>' : '') +
+            '</div>' +
+            '<div class="cob_area_cep log_mono">' + esc(a.faixas_cep) + '</div>' +
+            '<div class="cob_area_acoes">' +
+                '<button type="button" class="log_btn log_btn--icon log_btn--xs js-cob-editar" title="Editar" aria-label="Editar área">' +
+                    '<svg class="log_ico" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg></button>' +
+                '<button type="button" class="log_btn log_btn--icon log_btn--xs log_btn--danger js-cob-excluir" title="Excluir" aria-label="Excluir área">' +
+                    '<svg class="log_ico" aria-hidden="true" focusable="false"><use href="#i-trash"></use></svg></button>' +
+            '</div>' +
+        '</div>';
+    }
+
+    /* --------------------------------------------------------- mapa */
+
+    var CENTRO_PADRAO = [-30.0346, -51.2177]; // Porto Alegre
+
+    function iniciarMapa() {
+        if (typeof L === 'undefined' || !document.getElementById('cobMapa')) return;
+        if (mapa) { pintarMapa(); return; }
+
+        mapa = L.map('cobMapa', { scrollWheelZoom: false }).setView(CENTRO_PADRAO, 10);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+            attribution: '&copy; OpenStreetMap'
+        }).addTo(mapa);
+        camadas = L.layerGroup().addTo(mapa);
+
+        // O Leaflet mede o container na hora do init. Quando a tela ainda está
+        // assentando (fontes, grid), ele mede menor e as tiles não preenchem —
+        // era o mapa cortado no canto. invalidateSize() remede depois do
+        // layout, e o ResizeObserver cobre a coluna que muda de largura.
+        setTimeout(function () { mapa.invalidateSize(); pintarMapa(); }, 120);
+        if (window.ResizeObserver) {
+            new ResizeObserver(function () { mapa.invalidateSize(); })
+                .observe(document.getElementById('cobMapa'));
+        }
+        pintarMapa();
+    }
+
+    var COR_BANDA = { proxima: '#16a34a', media: '#2563eb', distante: '#9333ea' };
+
+    function pintarMapa() {
+        if (!mapa || !camadas) return;
+        camadas.clearLayers();
+
+        var comMapa = ((dados && dados.areas) || []).filter(function (a) {
+            return a.mapa_lat != null && a.mapa_lng != null;
+        });
+        if (!comMapa.length) { mapa.setView(CENTRO_PADRAO, 10); return; }
+
+        var limites = [];
+        comMapa.forEach(function (a) {
+            var raio = (parseFloat(a.mapa_raio_km) || 3) * 1000;
+            var cor = COR_BANDA[a.banda] || '#2563eb';
+            var ativa = parseInt(a.ativa, 10) === 1;
+            var c = L.circle([parseFloat(a.mapa_lat), parseFloat(a.mapa_lng)], {
+                radius: raio,
+                color: cor, weight: 2,
+                opacity: ativa ? 0.9 : 0.35,
+                fillColor: cor, fillOpacity: ativa ? 0.15 : 0.05
+            }).bindTooltip(a.nome + ' — ' + moeda(a.valor_base) + (ativa ? '' : ' (desativada)'));
+            camadas.addLayer(c);
+            limites.push(c.getBounds());
+        });
+
+        var todos = limites.reduce(function (acc, b) { return acc ? acc.extend(b) : b; }, null);
+        if (todos) mapa.fitBounds(todos, { padding: [24, 24] });
+    }
+
+    /* ---------------------------------------------------- operação */
+
+    // A tela mostra os 3 grupos do desenho; o banco guarda os 7 dias. Editar
+    // "Segunda a Sexta" escreve nos cinco de uma vez.
+    var GRUPOS = [
+        { rot: 'Segunda a Sexta', dias: [1, 2, 3, 4, 5] },
+        { rot: 'Sábados',         dias: [6] },
+        { rot: 'Domingos',        dias: [0] }
+    ];
+
+    function opDo(dia) {
+        return ((dados && dados.operacao) || []).filter(function (o) {
+            return parseInt(o.dia_semana, 10) === dia;
+        })[0] || {};
+    }
+
+    /** Os dias do grupo têm a mesma configuração? Se não, a tela avisa. */
+    function uniforme(dias, campo) {
+        var v = null;
+        for (var i = 0; i < dias.length; i++) {
+            var atual = opDo(dias[i])[campo];
+            if (i === 0) { v = atual; continue; }
+            if (String(atual) !== String(v)) return null;
+        }
+        return v;
+    }
+
+    function horas(sel) {
+        var h = '<option value="">—</option>';
+        for (var i = 0; i <= 23; i++) {
+            h += '<option value="' + i + '"' + (String(sel) === String(i) ? ' selected' : '') + '>' +
+                 (i < 10 ? '0' + i : i) + ':00 hs</option>';
+        }
+        return h;
+    }
+
+    function pintarOperacao() {
+        $('#cobOperacao').html(GRUPOS.map(function (g) {
+            var opera = uniforme(g.dias, 'opera');
+            var misto = opera === null;
+            var ligado = misto ? false : parseInt(opera, 10) === 1;
+            var mesmoDia = uniforme(g.dias, 'mesmo_dia');
+            var corte = uniforme(g.dias, 'cutoff_hora');
+            var ini = uniforme(g.dias, 'entrega_inicio');
+            var fim = uniforme(g.dias, 'entrega_fim');
+            var max = uniforme(g.dias, 'max_envios');
+
+            function hhmm(v) { return v ? String(v).slice(0, 5) : ''; }
+
+            return '<tr data-grupo="' + g.dias.join(',') + '"' + (ligado ? '' : ' class="is-off"') + '>' +
+                '<td><label class="log_toggle" title="Opera nestes dias?">' +
+                    '<input type="checkbox" class="js-op-ativa"' + (ligado ? ' checked' : '') + '>' +
+                    '<span class="log_toggle_track"></span>' +
+                    '<span>' + esc(g.rot) + '</span>' +
+                    (misto ? '<span class="log_badge is-warn log_badge--plain cob_misto">personalizado</span>' : '') +
+                '</label></td>' +
+                '<td><select class="log_select js-op-mesmodia"' + (ligado ? '' : ' disabled') + '>' +
+                    '<option value="1"' + (String(mesmoDia) === '1' ? ' selected' : '') + '>Sim</option>' +
+                    '<option value="0"' + (String(mesmoDia) === '0' ? ' selected' : '') + '>Não</option>' +
+                '</select></td>' +
+                '<td><select class="log_select js-op-corte"' + (ligado ? '' : ' disabled') + '>' + horas(corte) + '</select></td>' +
+                '<td><div class="cob_janela">' +
+                    '<input type="time" class="log_input js-op-ini" value="' + attr(hhmm(ini)) + '"' + (ligado ? '' : ' disabled') + '>' +
+                    '<span>—</span>' +
+                    '<input type="time" class="log_input js-op-fim" value="' + attr(hhmm(fim)) + '"' + (ligado ? '' : ' disabled') + '>' +
+                '</div></td>' +
+                '<td><input type="number" min="0" class="log_input js-op-max" placeholder="sem teto" value="' +
+                    attr(max == null ? '' : max) + '"' + (ligado ? '' : ' disabled') + '></td>' +
+            '</tr>';
+        }).join(''));
+    }
+
+    /* --------------------------------------------------- feriados */
+
+    function pintarFeriados() {
+        var fs = (dados && dados.feriados) || [];
+        if (!fs.length) { $('#cobFeriados').html('<p class="log_muted">Nenhum feriado nos próximos meses.</p>'); return; }
+
+        $('#cobFeriados').html(fs.map(function (f) {
+            var d = f.data.split('-');
+            return '<label class="log_toggle log_toggle--sm cob_feriado" data-data="' + attr(f.data) + '"' +
+                ' title="Opera neste feriado?">' +
+                '<input type="checkbox" class="js-cob-feriado"' + (parseInt(f.opera, 10) ? ' checked' : '') + '>' +
+                '<span class="log_toggle_track"></span>' +
+                '<span>' + esc(f.dia_semana) + ', ' + d[2] + '/' + d[1] + ' — ' + esc(f.nome) + '</span>' +
+                '<span class="log_muted cob_feriado_st">' + (parseInt(f.opera, 10) ? 'opera' : 'não opera') + '</span>' +
+            '</label>';
+        }).join(''));
+    }
+
+    function pintarLimites() {
+        var l = (dados && dados.limites) || {};
+        $('#cobLargura').val(l.largura_cm || '');
+        $('#cobAltura').val(l.altura_cm || '');
+        $('#cobProfundidade').val(l.profundidade_cm || '');
+        $('#cobPeso').val(l.peso_kg || '');
+    }
+
+    function pintarTudo() {
+        pintarResumo(); pintarAreas(); pintarOperacao(); pintarFeriados(); pintarLimites();
+        iniciarMapa();
+    }
+
+    function recarregar() {
+        return api('GET', '/dados', { transportadora: transp }).done(function (r) {
+            if (!r || !r.ok) { Toast.error((r && r.erro) || 'Falha ao carregar.'); return; }
+            dados = r;
+            pintarTudo();
+        }).fail(function () { Toast.error('Erro de comunicação.'); });
+    }
+
+    /* ------------------------------------------------ form da área */
+
+    function formArea(a) {
+        a = a || {};
+        var bandas = (dados && dados.bandas) || {};
+        var opts = Object.keys(bandas).map(function (b) {
+            return '<option value="' + b + '"' + (a.banda === b ? ' selected' : '') + '>' + esc(bandas[b]) + '</option>';
+        }).join('');
+
+        return '<form class="log_form" id="cobAreaForm">' +
+            '<input type="hidden" name="id" value="' + (a.id | 0) + '">' +
+            '<div class="log_fieldset"><h4>Identificação</h4><div class="log_form_grid">' +
+                '<div class="log_field" id="fld-nome"><label>Nome da área *</label>' +
+                    '<input class="log_input" name="nome" value="' + attr(a.nome || '') + '" placeholder="Ex.: Centro, Zona Sul"></div>' +
+                '<div class="log_field"><label>Agrupamento</label><select class="log_select" name="banda">' + opts + '</select></div>' +
+                '<div class="log_field log_field--larga" id="fld-faixas_cep"><label>Faixas de CEP *</label>' +
+                    '<input class="log_input" name="faixas_cep" value="' + attr(a.faixas_cep || '') + '" ' +
+                    'placeholder="90000000-91999999, 92, 94900000-94999999">' +
+                    '<span class="log_hint">Prefixos e/ou faixas, separados por vírgula. ' +
+                    'Faixas podem se sobrepor — a área que aparece antes na lista vence.</span></div>' +
+            '</div></div>' +
+
+            '<div class="log_fieldset"><h4>Custo e prazo</h4><div class="log_form_grid">' +
+                '<div class="log_field" id="fld-valor_base"><label>Custo base (R$) *</label>' +
+                    '<input class="log_input" name="valor_base" value="' + attr(a.valor_base || '') + '">' +
+                    '<span class="log_hint">É o custo da transportadora. Frete grátis e desconto ficam nas regras de frete.</span></div>' +
+                '<div class="log_field log_field--curta"><label>Prazo (dias)</label>' +
+                    '<input class="log_input" type="number" min="0" name="prazo_dias" value="' + attr(a.prazo_dias == null ? '' : a.prazo_dias) + '" placeholder="auto">' +
+                    '<span class="log_hint">0 = mesmo dia. Vazio usa o cálculo pelo corte.</span></div>' +
+                '<div class="log_field log_field--curta"><label>Corte (hora)</label>' +
+                    '<input class="log_input" type="number" min="0" max="23" name="cutoff_hora" value="' + attr(a.cutoff_hora == null ? '' : a.cutoff_hora) + '" placeholder="herda"></div>' +
+                '<div class="log_field log_field--curta"><label>Máx. envios/dia</label>' +
+                    '<input class="log_input" type="number" min="0" name="max_envios_dia" value="' + attr(a.max_envios_dia == null ? '' : a.max_envios_dia) + '" placeholder="sem teto"></div>' +
+                '<div class="log_field log_field--curta"><label>Ordem</label>' +
+                    '<input class="log_input" type="number" name="ordem" value="' + attr(a.ordem == null ? 100 : a.ordem) + '">' +
+                    '<span class="log_hint">Menor vence no empate.</span></div>' +
+                '<div class="log_field"><label>&nbsp;</label><label class="log_toggle">' +
+                    '<input type="checkbox" name="ativa"' + (a.id && !parseInt(a.ativa, 10) ? '' : ' checked') + '>' +
+                    '<span class="log_toggle_track"></span><span>Área ativa</span></label></div>' +
+            '</div></div>' +
+
+            '<div class="log_fieldset"><h4>Desenho no mapa <span class="log_muted">(opcional)</span></h4>' +
+                '<p class="log_muted cob_form_nota">Clique no mapa para posicionar o círculo. Ele é só ilustração — ' +
+                'quem define a cobertura são as faixas de CEP acima.</p>' +
+                '<div id="cobFormMapa" class="cob_form_mapa"></div>' +
+                '<div class="log_form_grid cob_form_geo">' +
+                    '<div class="log_field log_field--curta"><label>Raio (km)</label>' +
+                        '<input class="log_input" type="number" step="0.5" min="0.5" name="mapa_raio_km" value="' + attr(a.mapa_raio_km || 3) + '"></div>' +
+                    '<input type="hidden" name="mapa_lat" value="' + attr(a.mapa_lat || '') + '">' +
+                    '<input type="hidden" name="mapa_lng" value="' + attr(a.mapa_lng || '') + '">' +
+                    '<div class="log_field"><label>&nbsp;</label>' +
+                        '<button type="button" class="log_btn log_btn--sm js-cob-limpar-geo">Remover do mapa</button></div>' +
+                '</div>' +
+            '</div>' +
+        '</form>';
+    }
+
+    function abrirArea(a) {
+        var drawer = adminDrawer({
+            titulo: (a && a.id) ? 'Editar área' : 'Nova área',
+            subtitulo: (a && a.nome) || 'Cobertura e custo',
+            conteudo: formArea(a),
+            tamanho: 'lg',
+            acoes: '<button type="button" class="log_btn log_btn--primary log_btn--sm js-cob-salvar-area">' +
+                   '<svg class="log_ico" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg> Salvar</button>'
+        });
+
+        // mini-mapa do formulário
+        setTimeout(function () {
+            if (typeof L === 'undefined') return;
+            var $b = $(drawer.corpo());
+            var lat = parseFloat($b.find('[name=mapa_lat]').val());
+            var lng = parseFloat($b.find('[name=mapa_lng]').val());
+            var temGeo = !isNaN(lat) && !isNaN(lng);
+            var m = L.map('cobFormMapa', { scrollWheelZoom: false })
+                     .setView(temGeo ? [lat, lng] : CENTRO_PADRAO, temGeo ? 12 : 10);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 18, attribution: '&copy; OpenStreetMap'
+            }).addTo(m);
+
+            var circulo = null;
+            function desenhar(la, ln) {
+                var raio = (parseFloat($b.find('[name=mapa_raio_km]').val()) || 3) * 1000;
+                if (circulo) m.removeLayer(circulo);
+                circulo = L.circle([la, ln], { radius: raio, color: '#2563eb', fillColor: '#2563eb', fillOpacity: 0.15 }).addTo(m);
+            }
+            if (temGeo) desenhar(lat, lng);
+
+            m.on('click', function (ev) {
+                $b.find('[name=mapa_lat]').val(ev.latlng.lat.toFixed(7));
+                $b.find('[name=mapa_lng]').val(ev.latlng.lng.toFixed(7));
+                desenhar(ev.latlng.lat, ev.latlng.lng);
+            });
+            drawer.escutar('input', '[name=mapa_raio_km]', function () {
+                var la = parseFloat($b.find('[name=mapa_lat]').val());
+                var ln = parseFloat($b.find('[name=mapa_lng]').val());
+                if (!isNaN(la) && !isNaN(ln)) desenhar(la, ln);
+            });
+            drawer.escutar('click', '.js-cob-limpar-geo', function () {
+                $b.find('[name=mapa_lat], [name=mapa_lng]').val('');
+                if (circulo) { m.removeLayer(circulo); circulo = null; }
+                Toast.info('A área sai do mapa ao salvar.');
+            });
+            // o drawer abre com o container ainda sem tamanho final
+            setTimeout(function () { m.invalidateSize(); }, 120);
+        }, 60);
+
+        drawer.escutar('click', '.js-cob-salvar-area', function () {
+            var $b = $(drawer.corpo());
+            var d = { transportadora_id: transp };
+            $b.find('#cobAreaForm').find('input, select').each(function () {
+                var $i = $(this), n = $i.attr('name');
+                if (!n) return;
+                d[n] = $i.attr('type') === 'checkbox' ? ($i.is(':checked') ? 1 : 0) : $i.val();
+            });
+
+            var tid = Toast.loading('Salvando área...');
+            api('POST', '/area', LOG.comCsrf(d)).done(function (r) {
+                if (r && r.ok) {
+                    Toast.update(tid, { type: 'success', message: 'Área salva.', duration: 2200 });
+                    drawer.fechar('salvo');
+                    recarregar();
+                } else if (r && r.erros) {
+                    Toast.dismiss(tid);
+                    $b.find('.log_err').remove();
+                    $b.find('.log_field--erro').removeClass('log_field--erro');
+                    Object.keys(r.erros).forEach(function (k) {
+                        var $f = $b.find('#fld-' + $.escapeSelector(k));
+                        if (!$f.length) $f = $b.find('[name="' + k + '"]').closest('.log_field');
+                        $f.addClass('log_field--erro').append('<span class="log_err">' + esc(r.erros[k]) + '</span>');
+                    });
+                    Toast.error(r.erros[Object.keys(r.erros)[0]]);
+                } else {
+                    Toast.update(tid, { type: 'error', message: (r && r.erro) || 'Falha ao salvar.', duration: 3500 });
+                }
+            }).fail(function () {
+                Toast.update(tid, { type: 'error', message: 'Erro de comunicação.', duration: 3500 });
+            });
+        });
+    }
+
+    // `confirmar` das outras telas vive dentro das IIFEs delas — esta tem a sua.
+    function confirmar(titulo, texto, rotuloOk, onOk) {
+        var d = adminDrawer({ titulo: titulo, tamanho: 'sm', conteudo: '<p>' + esc(texto) + '</p>',
+            acoes: '<button type="button" class="log_btn log_btn--sm js-c">Voltar</button> <button type="button" class="log_btn log_btn--primary log_btn--sm js-o" style="background:var(--log-danger);border-color:var(--log-danger)">' + esc(rotuloOk) + '</button>' });
+        d.escutar('click', '.js-c', function () { d.fechar(); });
+        d.escutar('click', '.js-o', function () { onOk(d); });
+    }
+
+    /* ------------------------------------------------------- ações */
+
+    $(function () {
+        if (!dados) { pintarResumo(); return; }
+        pintarTudo();
+
+        $('#cobTransp').on('change', function () {
+            window.location.search = '?transportadora=' + (parseInt($(this).val(), 10) || 0);
+        });
+
+        $('#cobNovaArea').on('click', function () { abrirArea(null); });
+
+        $('#cobListaAreas').on('click', '.js-cob-editar', function () {
+            var id = $(this).closest('[data-area]').data('area') | 0;
+            var a = ((dados && dados.areas) || []).filter(function (x) { return (x.id | 0) === id; })[0];
+            if (a) abrirArea(a);
+        });
+
+        $('#cobListaAreas').on('change', '.js-cob-ativa', function () {
+            var $chk = $(this), $linha = $chk.closest('[data-area]');
+            var id = $linha.data('area') | 0, ativa = $chk.is(':checked');
+            api('POST', '/area/alternar', LOG.comCsrf({ id: id, ativa: ativa ? 1 : 0 })).done(function (r) {
+                if (!r || !r.ok) { $chk.prop('checked', !ativa); Toast.error((r && r.erro) || 'Falha.'); return; }
+                $linha.toggleClass('is-off', !ativa);
+                recarregar();
+            }).fail(function () { $chk.prop('checked', !ativa); Toast.error('Erro de comunicação.'); });
+        });
+
+        $('#cobListaAreas').on('click', '.js-cob-excluir', function () {
+            var id = $(this).closest('[data-area]').data('area') | 0;
+            var a = ((dados && dados.areas) || []).filter(function (x) { return (x.id | 0) === id; })[0] || {};
+            confirmar('Excluir área', 'Remover "' + (a.nome || 'esta área') + '"? Os CEPs dela deixam de ser cobertos por esta configuração.', 'Excluir', function (d) {
+                api('POST', '/area/excluir', LOG.comCsrf({ id: id })).done(function (r) {
+                    if (r && r.ok) { Toast.success('Área excluída.'); d.fechar(); recarregar(); }
+                    else Toast.error((r && r.erro) || 'Falha ao excluir.');
+                }).fail(function () { Toast.error('Erro de comunicação.'); });
+            });
+        });
+
+        // Ligar/desligar um grupo reabilita os campos na hora.
+        $('#cobOperacao').on('change', '.js-op-ativa', function () {
+            var $tr = $(this).closest('tr'), on = $(this).is(':checked');
+            $tr.toggleClass('is-off', !on);
+            $tr.find('select, input').not('.js-op-ativa').prop('disabled', !on);
+            $tr.find('.cob_misto').remove();
+        });
+
+        $('#cobFeriados').on('change', '.js-cob-feriado', function () {
+            var $l = $(this).closest('[data-data]'), opera = $(this).is(':checked');
+            api('POST', '/feriado', LOG.comCsrf({
+                transportadora_id: transp, data: $l.data('data'), opera: opera ? 1 : 0
+            })).done(function (r) {
+                if (!r || !r.ok) { Toast.error((r && r.erro) || 'Falha ao salvar o feriado.'); return; }
+                $l.find('.cob_feriado_st').text(opera ? 'opera' : 'não opera');
+                recarregar();
+            }).fail(function () { Toast.error('Erro de comunicação.'); });
+        });
+
+        $('#cobSalvar').on('click', function () {
+            var dias = [];
+            $('#cobOperacao tr').each(function () {
+                var $tr = $(this), on = $tr.find('.js-op-ativa').is(':checked');
+                String($tr.data('grupo')).split(',').forEach(function (d) {
+                    dias.push({
+                        dia_semana: parseInt(d, 10),
+                        opera: on ? 1 : 0,
+                        mesmo_dia: $tr.find('.js-op-mesmodia').val(),
+                        cutoff_hora: $tr.find('.js-op-corte').val(),
+                        entrega_inicio: $tr.find('.js-op-ini').val(),
+                        entrega_fim: $tr.find('.js-op-fim').val(),
+                        max_envios: $tr.find('.js-op-max').val()
+                    });
+                });
+            });
+
+            var tid = Toast.loading('Salvando...');
+            api('POST', '/operacao', LOG.comCsrf({
+                transportadora_id: transp,
+                dias: dias,
+                limites: {
+                    largura_cm: $('#cobLargura').val(),
+                    altura_cm: $('#cobAltura').val(),
+                    profundidade_cm: $('#cobProfundidade').val(),
+                    peso_kg: $('#cobPeso').val()
+                }
+            })).done(function (r) {
+                if (r && r.ok) {
+                    Toast.update(tid, { type: 'success', message: 'Configuração salva.', duration: 2200 });
+                    recarregar();
+                } else {
+                    Toast.update(tid, { type: 'error', message: (r && r.erro) || 'Falha ao salvar.', duration: 3500 });
+                }
+            }).fail(function () {
+                Toast.update(tid, { type: 'error', message: 'Erro de comunicação.', duration: 3500 });
+            });
+        });
+
+        // Teste de CEP: faixa sobreposta é normal, e sem isto o operador só
+        // descobre qual área venceu quando um cliente reclama do preço.
+        function testarCep() {
+            var cep = String($('#cobCepTeste').val() || '').replace(/\D/g, '');
+            var $res = $('#cobTesteRes');
+            if (cep.length !== 8) { Toast.warning('Informe um CEP com 8 dígitos.'); return; }
+            api('GET', '/testar-cep', { transportadora: transp, cep: cep }).done(function (r) {
+                if (!r || !r.ok) { Toast.error((r && r.erro) || 'Falha no teste.'); return; }
+                if (!r.area) {
+                    $res.prop('hidden', false).html('<span class="log_badge is-neutral">Fora das áreas</span> ' +
+                        '<span class="log_muted">Nenhuma área ativa cobre este CEP.</span>');
+                    return;
+                }
+                var prazo = r.area.prazo_dias == null ? '' :
+                    ' &middot; ' + (r.area.prazo_dias === 0 ? 'mesmo dia' : 'D+' + r.area.prazo_dias);
+                $res.prop('hidden', false).html('<span class="log_badge is-ok">' + esc(r.area.nome) + '</span> ' +
+                    '<strong>' + moeda(r.area.valor_base) + '</strong><span class="log_muted">' + prazo + '</span>');
+            }).fail(function () { Toast.error('Erro de comunicação.'); });
+        }
+        $('#cobTestar').on('click', testarCep);
+        $('#cobCepTeste').on('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); testarCep(); } });
+    });
+
     })();
 
 })(jQuery);

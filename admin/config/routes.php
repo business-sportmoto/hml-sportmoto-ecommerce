@@ -102,6 +102,8 @@ AdminRouter::post('/carrinhos-abandonados/config',              'AdminCarrinhoAb
 AdminRouter::get ('/carrinhos-abandonados/relatorio-templates', 'AdminCarrinhoAbandonadoController@relatorioTemplates');
 AdminRouter::post('/carrinhos-abandonados/{id:\d+}/capturar', 'AdminCarrinhoAbandonadoController@capturar');
 
+AdminRouter::get ('/carrinhos-abandonados/quadro',             'AdminCarrinhoAbandonadoController@quadro');
+AdminRouter::get ('/carrinhos-abandonados/quadro/coluna',      'AdminCarrinhoAbandonadoController@quadroColuna');
 AdminRouter::get ('/carrinhos-abandonados/dashboard',          'AdminCarrinhoAbandonadoController@dashboard');
 AdminRouter::get ('/carrinhos-abandonados/exportar',           'AdminCarrinhoAbandonadoController@exportar');
 AdminRouter::get ('/carrinhos-abandonados/{id:\d+}',           'AdminCarrinhoAbandonadoController@show');
@@ -426,12 +428,18 @@ AdminRouter::post('/produtos/{id:\d+}/sync-bling','ProdutosController@syncBling'
 
 
 // admin/config/routes.php
+AdminRouter::get( '/familias',            'FamiliasController@index');
+AdminRouter::get( '/familias/sugerir',    'FamiliasController@sugerir');
+AdminRouter::post('/familias/salvar',     'FamiliasController@salvar');
 AdminRouter::get( '/familias/buscar',     'FamiliasController@buscar');
 AdminRouter::post('/familias/criar',      'FamiliasController@criar');
 AdminRouter::post('/familias/renomear',   'FamiliasController@renomear');
 AdminRouter::post('/familias/excluir',    'FamiliasController@excluir');
 AdminRouter::post('/familias/vincular',   'FamiliasController@vincular');
 AdminRouter::post('/familias/desvincular','FamiliasController@desvincular');
+// Detalhe por último: o roteador é primeiro-que-casa e {id:\d+} só aceita
+// número, mas manter a ordem evita que uma rota literal nova fique atrás.
+AdminRouter::get( '/familias/{id:\d+}',   'FamiliasController@ver');
 
 // admin/config/routes.php - tinha erro aqui
 AdminRouter::get('/estoque/saldo',      'Estoquecontroller@saldo');

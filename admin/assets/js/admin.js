@@ -6198,9 +6198,124 @@ $(document).on('change', '#pe-categoria', function () {
             Criar nova família
           </button>
         </div>
+        <div class="pe-familia-sugestoes" id="pe-familia-sugestoes" hidden></div>
       </div>
       <input type="hidden" name="familia_id" id="campo-familia-id" value="">`;
+
+    carregarSugestoes();
   }
+
+  // ── Sugestões de família ────────────────────────────────
+  //
+  // Quem cadastra um produto novo não sabe de cor o que já existe. Sem isto
+  // nasce "FF358 Pro Monocolor" ao lado da "FF358 Pro Monocolor" que já
+  // existia — duas famílias de um membro cada, e a loja não mostra seletor
+  // em nenhuma das duas. Quem decide o que combina é o FamiliaService.
+  let sugTimer;
+
+  function carregarSugestoes() {
+    const alvo = document.getElementById('pe-familia-sugestoes');
+    if (!alvo) return;
+
+    const nome  = (document.getElementById('pe-nome')?.value || '').trim();
+    const marca = parseInt(document.getElementById('pe-marca')?.value || 0, 10);
+    const cat   = parseInt(document.getElementById('pe-categoria-principal')?.value || 0, 10);
+
+    // Nome curto demais sugere qualquer coisa: melhor não sugerir nada.
+    if (nome.length < 4) { alvo.hidden = true; return; }
+
+    $.get(BASE_URL + '/admin/familias/sugerir', {
+      nome        : nome,
+      marca_id    : marca || 0,
+      categoria_id: cat   || 0,
+      produto_id  : produtoId() || 0,
+    }, function (res) {
+      const lista = (res && res.sugestoes) || [];
+      if (!lista.length) { alvo.hidden = true; alvo.innerHTML = ''; return; }
+
+      alvo.innerHTML = '';
+
+      const titulo = document.createElement('span');
+      titulo.className = 'pe-familia-sug-titulo';
+      titulo.textContent = 'Famílias parecidas';
+      alvo.appendChild(titulo);
+
+      const hint = document.createElement('p');
+      hint.className = 'pe-familia-sug-hint';
+      hint.textContent = 'Já existem estas — use uma em vez de criar outra igual.';
+      alvo.appendChild(hint);
+
+      lista.forEach(function (s) {
+        const item = document.createElement('div');
+        item.className = 'pe-familia-sug-item';
+
+        const info = document.createElement('div');
+        info.className = 'pe-familia-sug-info';
+
+        const nomeEl = document.createElement('span');
+        nomeEl.className = 'pe-familia-sug-nome';
+        // textContent: nome de família é texto do admin, não markup.
+        nomeEl.textContent = s.nome + ' · ' + s.total_membros + ' produto(s)';
+        info.appendChild(nomeEl);
+
+        if (s.motivo) {
+          const motivo = document.createElement('span');
+          motivo.className = 'pe-familia-sug-motivo';
+          motivo.textContent = s.motivo;
+          info.appendChild(motivo);
+        }
+        if (s.exemplos && s.exemplos.length) {
+          const ex = document.createElement('span');
+          ex.className = 'pe-familia-sug-exemplos';
+          ex.textContent = 'Ex.: ' + s.exemplos.join(' · ');
+          info.appendChild(ex);
+        }
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-sm btn-primary';
+        btn.textContent = 'Usar esta';
+        btn.addEventListener('click', function () { usarSugestao(s); });
+
+        item.appendChild(info);
+        item.appendChild(btn);
+        alvo.appendChild(item);
+      });
+
+      alvo.hidden = false;
+    }, 'json');
+  }
+
+  function usarSugestao(sug) {
+    const pid = produtoId();
+
+    // Produto ainda não salvo: guarda no hidden e confirma no salvar —
+    // mesmo caminho do "criar família" quando o produto é novo.
+    if (!pid) {
+      setFamiliaVinculada({ id: sug.id, nome: sug.nome, total: sug.total_membros + 1 });
+      showToast('Família escolhida. Salve o produto para confirmar o vínculo.', 'info');
+      return;
+    }
+
+    $.post(BASE_URL + '/admin/familias/vincular', {
+      produto_id  : pid,
+      familia_id  : sug.id,
+      _csrf_token : CSRF_TOKEN,
+    }, function (res) {
+      if (!res.ok) { showToast(res.msg || 'Não foi possível vincular.', 'error'); return; }
+      setFamiliaVinculada({ id: res.id, nome: res.nome, total: res.total });
+      showToast('Família vinculada!', 'success');
+    }, 'json');
+  }
+
+  // Nome e marca mudam o que faz sentido sugerir.
+  $(document).on('input', '#pe-nome', function () {
+    clearTimeout(sugTimer);
+    sugTimer = setTimeout(carregarSugestoes, 600);
+  });
+  $(document).on('change', '#pe-marca', carregarSugestoes);
+
+  carregarSugestoes();
 
   // ── Modal: buscar família ───────────────────────────────
   $(document).on('click', '#btn-buscar-familia, #btn-trocar-familia', function () {

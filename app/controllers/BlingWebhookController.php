@@ -66,7 +66,7 @@ class BlingWebhookController extends Controller
                 // Mudança de situação do pedido
                 // ex: "pedido.situacao", "pedido", "pedido.alterado"
                 str_contains($evento, 'pedido') ||
-                str_contains($evento, 'order')                   => (new BlingOrderService())->processarAtualizacaoStatus($dados),
+                str_contains($evento, 'order')                   => $this->processarPedidoWebhook($dados, $eventoId),
  
                 // NF-e autorizada
                 // ex: "notafiscal.autorizada", "nfe.autorizada"
@@ -97,6 +97,41 @@ class BlingWebhookController extends Controller
         exit;
     }
  
+    /**
+     * Webhook de PEDIDO: duas coisas independentes, nesta ordem.
+     *
+     * 1. o que já existia — atualizar o status do pedido local;
+     * 2. enfileirar o evento na ponte de estoque, que é quem transforma o
+     *    pedido em baixa no Syscar (perna B).
+     *
+     * São independentes de propósito: o passo 1 só atende pedido que nasceu no
+     * site (`bling_pedidos_map`), enquanto o passo 2 precisa valer para TODOS
+     * os canais — é o pedido de marketplace que mais precisa baixar estoque.
+     *
+     * O passo 2 vai em try/catch próprio: enfileirar não pode derrubar a
+     * atualização de status, que já funcionava antes dele existir.
+     */
+    private function processarPedidoWebhook(array $dados, string $eventoId = ''): void
+    {
+        (new BlingOrderService())->processarAtualizacaoStatus($dados);
+
+        try {
+            (new EstoquePonteService())->registrarEvento(
+                'bling',
+                'pedido',
+                $eventoId !== '' ? $eventoId : null,
+                $dados,
+                true
+            );
+        } catch (\Throwable $e) {
+            LogService::exception($e, 'error', 'estoque', [
+                'onde'      => 'registrarEvento(pedido)',
+                'bling_id'  => $dados['id'] ?? null,
+                'evento_id' => $eventoId,
+            ]);
+        }
+    }
+
     private function processarEstoqueWebhook(array $dados, string $eventoId = ''): void
     {
         $blingProdutoId = (string)($dados['produto']['id'] ?? '');
