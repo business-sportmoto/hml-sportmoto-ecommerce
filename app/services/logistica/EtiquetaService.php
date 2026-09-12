@@ -140,6 +140,16 @@ class EtiquetaService
         if ($pesoTotal <= 0) {
             foreach ($volumes as $v) $pesoTotal += (int)($v['peso_cobranca_g'] ?? $v['peso_g'] ?? 0);
         }
+
+        // Custo PREVISTO da etiqueta. Sem ele não existe divergência: ela é
+        // `valor_postado - valor`, e o lado esquerdo sozinho não diz nada.
+        // Quem cria a etiqueta a partir do pedido não passa esse número, então
+        // ele é resolvido aqui — um lugar só, valendo para o painel, a API e a
+        // emissão pelo pedido.
+        if (!isset($d['valor']) || $d['valor'] === null || $d['valor'] === '') {
+            $cot = $this->valorCotado($pedidoId, $transportadoraId, $servico);
+            if ($cot !== null) $d['valor'] = $cot;
+        }
         $volPayload = [
             'volumes'         => $volumes,
             'produtos'        => is_array($d['produtos'] ?? null) ? $d['produtos'] : [],
@@ -149,15 +159,20 @@ class EtiquetaService
 
         try {
             $st = $this->pdo->prepare(
+                // `valor` faltava nesta lista. O parâmetro era aceito, resolvido
+                // e descartado no INSERT — por isso o custo previsto estava NULL
+                // em toda etiqueta, e a divergência não tinha com o que comparar.
+                // O INSERT da reversa (abaixo) sempre gravou; só este não.
                 "INSERT INTO log_etiquetas
                  (pedido_id, cotacao_id, transportadora_id, servico_codigo, servico_nome, canal, status,
-                  remetente, destinatario, volumes, peso_total_g, formato, idempotency_key, usuario_id)
+                  remetente, destinatario, volumes, peso_total_g, valor, formato, idempotency_key, usuario_id)
                  VALUES (:ped, :cot, :tid, :sc, :sn, :canal, 'aguardando_postagem',
-                  :rem, :dest, :vol, :peso, :fmt, :key, :usr)"
+                  :rem, :dest, :vol, :peso, :val, :fmt, :key, :usr)"
             );
             $st->execute([
                 ':ped'   => $pedidoId,
                 ':cot'   => !empty($d['cotacao_id']) ? (int)$d['cotacao_id'] : null,
+                ':val'   => isset($d['valor']) && $d['valor'] !== '' ? round((float)$d['valor'], 2) : null,
                 ':tid'   => $transportadoraId,
                 ':sc'    => $servico,
                 ':sn'    => $d['servico_nome'] ?? null,
@@ -428,6 +443,45 @@ class EtiquetaService
         $res = $adapter->consultarAr((string)$e['codigo_rastreio']);
         $res['codigo'] = $e['codigo_rastreio'];
         return $res;
+    }
+
+    /**
+     * O que a transportadora cotou para este pedido, transportadora e serviço.
+     *
+     * Usa `valor_original` e não `valor_final`: o original é o preço da
+     * transportadora, e `valor_final` já passou pelas regras de frete da loja
+     * (markup, desconto, frete grátis). Comparar o cobrado contra o valor
+     * final mediria a margem da loja, não o erro de cotação — e é o erro de
+     * cotação que aponta o produto com peso cadastrado errado.
+     *
+     * O que o cliente pagou entra na divergência por outro campo
+     * (`valor_cliente`), a partir de `pedidos.frete`.
+     */
+    private function valorCotado(?int $pedidoId, int $transportadoraId, string $servico): ?float
+    {
+        if (!$pedidoId || $transportadoraId <= 0 || $servico === '') return null;
+        try {
+            $st = $this->pdo->prepare(
+                "SELECT o.valor_original
+                   FROM log_cotacao_opcoes o
+                   JOIN log_cotacoes c ON c.id = o.cotacao_id
+                  WHERE c.pedido_id = :ped
+                    AND o.transportadora_id = :tid
+                    AND o.servico_codigo = :sc
+                    AND o.valor_original > 0
+                    AND o.erro IS NULL
+                  ORDER BY o.id DESC
+                  LIMIT 1"
+            );
+            $st->execute([':ped' => $pedidoId, ':tid' => $transportadoraId, ':sc' => $servico]);
+            $v = $st->fetchColumn();
+            return ($v !== false && $v !== null) ? round((float)$v, 2) : null;
+        } catch (\Throwable $e) {
+            LogService::warning('Falha ao buscar o valor cotado da etiqueta', [
+                'pedido_id' => $pedidoId, 'erro' => $e->getMessage(),
+            ]);
+            return null; // etiqueta sai mesmo assim; o previsto fica para depois
+        }
     }
 
     /**

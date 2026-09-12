@@ -200,6 +200,14 @@ class CategoryController extends Controller {
         // vira title, canonical, Open Graph e JSON-LD.
         SeoHelper::setColecao([
             'titulo'    => $pageTitle,
+            'tituloProprio'    => !empty($category['meta_title']),
+            'descricaoPropria' => !empty($category['meta_description']),
+            'modeloChave'      => 'seo_titulo_categoria',
+            'modeloDescChave'  => 'seo_desc_categoria',
+            'modeloVars'       => [
+                '[nome_categoria]' => (string) $category['nome'],
+                '[total]'          => (string) (int) ($total ?? count($products)),
+            ],
             'descricao' => $pageDescription
                         ?: $category['nome'] . ': ' . ($total ?? count($products)) . ' produtos com entrega para todo o Brasil.',
             'url'       => BASE_URL . '/categoria/' . $category['slug'],
@@ -318,6 +326,7 @@ class CategoryController extends Controller {
 
         SeoHelper::setColecao([
             'titulo'       => $metaTitle,
+            'tituloProprio' => !empty($marca['meta_title']),
             'descricao'    => $metaDesc,
             'url'          => BASE_URL . '/marca/' . $marca['slug'],
             'produtos'     => $products,

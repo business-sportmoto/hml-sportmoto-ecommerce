@@ -57,10 +57,13 @@ final class ProductFeedService
                       LIMIT 1) AS imagem_principal,
                     (SELECT COUNT(*) FROM produto_skus s
                       WHERE s.produto_id = p.id AND s.ativo = 1) AS qtd_skus,
+                    -- Produto simples guarda o EAN nele mesmo; com variação,
+                    -- em cada SKU. O feed lê os dois, nesta ordem.
+                    COALESCE(NULLIF(p.ean, ''),
                     (SELECT s.ean FROM produto_skus s
                       WHERE s.produto_id = p.id AND s.ativo = 1
                         AND s.ean IS NOT NULL AND s.ean <> ''
-                      ORDER BY s.id ASC LIMIT 1) AS ean
+                      ORDER BY s.id ASC LIMIT 1)) AS ean
                FROM produtos p
                LEFT JOIN marcas m ON m.id = p.marca_id
               WHERE p.ativo = 1 AND p.deleted_at IS NULL

@@ -490,6 +490,8 @@ Router::get('/ir/{token}', 'ChatLinkController@ir');
 // página de conteúdo, e se o curinga pegasse primeiro daria 404.
 Router::get('/mapa-do-site', 'SitemapController@html');
 Router::get('/sitemap.xml',  'SitemapController@xml');
+// A loja explicada em texto puro para modelos de linguagem (llmstxt.org).
+Router::get('/llms.txt',     'SitemapController@llms');
 
 // Deve ser a ÚLTIMA rota do arquivo (curinga)
 Router::get('/{slug}', 'PageController@show');

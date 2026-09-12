@@ -492,3 +492,71 @@ Um clipe leva ~2 min no Seedance. **Sem o cron do worker no servidor, nenhum
 vídeo termina** — fica aguardando até o watchdog falhar aos 15 min. O webhook
 do Replicate só adianta a conclusão; a varredura continua sendo a rede.
 Ver [[../12-decisoes-tecnicas/ia-prompts-visao-e-video]].
+
+# Ponte de estoque — estoque-worker (12/09/2026)
+
+`cli/estoque-worker.php`. Drena a fila da ponte Syscar <-> Bling, que o painel
+assumiu do admin.loja. Lock `flock` em `storage/locks/estoque-worker.lock`.
+
+Três fases por rodada, nesta ordem:
+  1. resgata movimento preso em `enviando` (processo morto no meio do envio)
+  2. traduz `estoque_eventos` pendentes em `estoque_movimentos`
+  3. despacha os movimentos pendentes
+
+    * * * * * cd /CAMINHO && php cli/estoque-worker.php >> storage/logs/estoque-worker.log 2>&1
+
+**Hoje ele não envia nada, de propósito.** Os interruptores
+`estoque_ponte_perna_a` e `estoque_ponte_perna_b` (tabela `configuracoes`)
+nascem em 0, e com a perna desligada o worker nem reivindica o movimento — se
+reivindicasse, contaria uma tentativa e o movimento chegaria ao teto sem
+ninguém ter tentado nada. Ligar a perna é o corte da fase 2.
+
+Esgotadas as tentativas (`estoque_ponte_max_tentativas`, padrão 5), o worker
+chama `LogService::critical` no canal `estoque` **e** dispara o sino para
+todos os admins. Era o pedido original: "o erro sendo computado em LogService
+critico".
+
+Silencioso quando não houve nada — um cron de um minuto que sempre imprime
+enche o log de ruído que ninguém lê. Sai 0 sem trabalho, 1 em erro.
+
+    php cli/estoque-worker.php --verbose
+    php cli/estoque-worker.php --simular --verbose    injeta um evento de teste
+    php cli/estoque-worker.php --limite=100
+
+→ [[../12-decisoes-tecnicas/estoque-modulo-especificacao]]
+
+
+# Logística — rastreio, preço de postagem e divergência
+
+```
+*/10 * * * * cd /home/ploi/hml.sportmoto.com.br && php cli/logistica-rastreio-worker.php --verbose >> storage/logs/logistica-rastreio-worker.log 2>&1
+```
+
+**Nunca esteve agendado.** O arquivo existe desde a construção do módulo, com a
+linha de cron no próprio cabeçalho, mas não entrou em nenhum crontab — e por
+isso `log_etiquetas.valor_postado` estava **NULL em 100% das linhas** e
+`log_divergencias` tinha **zero** registros. Confirmado em 12/09/2026: nenhuma
+execução em `logs` na janela de 29/08 a 12/09.
+
+Quatro fases por rodada, idempotentes, com lock por idade de arquivo
+(`storage/logs/logistica-rastreio-worker.lock`, 240s):
+
+1. abre rastreio para etiqueta emitida que ainda não tem;
+2. atualiza rastreios não-finais cuja cadência venceu (adaptativa por status);
+3. **preço real da postagem** — `GET /prepostagens/postada` dos Correios;
+   grava `valor_postado`, `peso_tarifado_g` e `data_postagem`;
+4. **divergência de frete** — abre onde o cobrado passou do previsto além da
+   tolerância (`DivergenciaService::detectarPendentes`).
+
+**3 e 4 andam nesta ordem e não podem ser separadas:** é o `valor_postado` da
+fase 3 que fecha o par previsto/cobrado que a fase 4 compara.
+
+Só toca em etiqueta Correios, com rastreio, ainda sem `valor_postado`, não
+cancelada e dos últimos 120 dias. Objeto ainda não postado responde 404 e é
+tentado de novo na rodada seguinte — é o estado normal entre emitir e levar ao
+balcão.
+
+A cada 10 minutos basta: a cadência real do rastreio é adaptativa, e o preço de
+postagem só muda uma vez na vida da etiqueta.
+
+→ [[../12-decisoes-tecnicas/frete-divergencia-automatica]]

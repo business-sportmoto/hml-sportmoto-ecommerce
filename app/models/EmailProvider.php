@@ -85,6 +85,18 @@ class EmailProvider
         return (int)$this->db->lastInsertId();
     }
 
+    /**
+     * Liga/desliga só a flag. Statement próprio de propósito: passar pelo
+     * save() exigiria remontar a linha inteira, e foi assim que as credenciais
+     * se perdiam.
+     */
+    public function setAtivo($id, $ativo)
+    {
+        $st = $this->db->prepare("UPDATE email_provedores SET ativo = :a WHERE id = :id");
+        $st->execute([':a' => (int)$ativo ? 1 : 0, ':id' => (int)$id]);
+        return true;
+    }
+
     public function delete($id)
     {
         $st = $this->db->prepare("DELETE FROM email_provedores WHERE id = :id");

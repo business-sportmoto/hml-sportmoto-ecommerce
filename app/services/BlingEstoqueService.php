@@ -69,7 +69,8 @@ class BlingEstoqueService
         string $blingProdutoId,
         string $operacao,
         int    $quantidade,
-        int    $saldoFisico
+        int    $saldoFisico,
+        string $eventoId = ''
     ): bool {
         // ── NÍVEL 1: produto COM variação (produto_skus) ──
         $stmt = $this->db->prepare(
@@ -92,7 +93,8 @@ class BlingEstoqueService
                 (int)$sku['produto_id'],
                 $operacao,
                 $quantidade,
-                $saldoFisico
+                $saldoFisico,
+                $eventoId
             );
             return true;
         }
@@ -109,7 +111,8 @@ class BlingEstoqueService
                 $produtoId,
                 $operacao,
                 $quantidade,
-                $saldoFisico
+                $saldoFisico,
+                $eventoId
             );
             return true;
         }
@@ -215,10 +218,27 @@ class BlingEstoqueService
         int    $produtoId,
         string $operacao,
         int    $quantidade,
-        int    $saldoFisico
+        int    $saldoFisico,
+        string $eventoId = ''
     ): void {
-        $idempotencyKey = 'bling_mov_' . $operacao . '_'
-                        . ($skuId ?? 'p' . $produtoId) . '_' . date('YmdHis');
+        // ── Idempotencia ────────────────────────────────────
+        // A chave NAO pode depender do relogio. O Bling reentrega o mesmo
+        // webhook quando a resposta demora, e com date('YmdHis') a
+        // reentrega dois segundos depois gerava chave nova: a baixa era
+        // aplicada de novo. Em E/S isso e cumulativo.
+        //
+        // 1o) a identidade do evento, quando vem no payload;
+        // 2o) o conteudo do movimento, com o saldo resultante. Duas vendas
+        //     legitimas e iguais em sequencia tem saldoFisico DIFERENTE
+        //     (5, depois 4), entao o conteudo as separa; ja a reentrega do
+        //     mesmo evento repete o saldo e e deduplicada.
+        $alvo = $skuId ?? 'p' . $produtoId;
+
+        $idempotencyKey = $eventoId !== ''
+            ? 'bling_evt_' . $eventoId . '_' . $alvo
+            : 'bling_mov_' . sha1(implode('|', [
+                  strtoupper($operacao), $alvo, $quantidade, $saldoFisico,
+              ]));
 
         $opcoes = [
             'sku_id'          => $skuId,   // NULL = produto sem variação

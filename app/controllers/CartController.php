@@ -62,7 +62,8 @@ class CartController extends Controller {
             $this->json(['ok' => false, 'msg' => 'Produto inválido.']);
         }
 
-        $db = Database::getInstance()->getConnection();
+        $db         = Database::getInstance()->getConnection();
+        $estoqueSvc = new EstoqueService();
 
         // Valida o produto
         $stmt = $db->prepare(
@@ -93,12 +94,16 @@ class CartController extends Controller {
                 $this->json(['ok' => false, 'msg' => 'Variação não encontrada.']);
             }
 
-            if ($sku['estoque'] <= 0) {
+            $preco   = (float)($sku['preco_promo'] ?: $sku['preco']);
+
+            // Saldo vem do espelho do Bling (estoque_saldo), nao de
+            // produto_skus.estoque: a coluna legada e mantida de carona
+            // por EstoqueService::mover() e diverge entre um sync e outro.
+            $estoque = $estoqueSvc->disponivelParaVenda($produtoId, $skuId);
+
+            if ($estoque <= 0) {
                 $this->json(['ok' => false, 'msg' => 'Variação sem estoque.']);
             }
-
-            $preco   = (float)($sku['preco_promo'] ?: $sku['preco']);
-            $estoque = (int)$sku['estoque'];
         } else {
             // Produto sem variação
             $stmt = $db->prepare(
@@ -107,7 +112,7 @@ class CartController extends Controller {
             $stmt->execute([$produtoId]);
             $p = $stmt->fetch();
             $preco   = (float)($p['preco_promo'] ?: $p['preco']);
-            $estoque = (int)$produto['estoque_total'];
+            $estoque = $estoqueSvc->disponivelParaVenda($produtoId);
         }
 
         if ($estoque <= 0) {
@@ -212,7 +217,8 @@ class CartController extends Controller {
             $this->json(['ok' => false, 'msg' => 'Produto inválido.']);
         }
 
-        $db = Database::getInstance()->getConnection();
+        $db         = Database::getInstance()->getConnection();
+        $estoqueSvc = new EstoqueService();
 
         // Valida o produto
         $stmt = $db->prepare(
@@ -243,12 +249,16 @@ class CartController extends Controller {
                 $this->json(['ok' => false, 'msg' => 'Variação não encontrada.']);
             }
 
-            if ($sku['estoque'] <= 0) {
+            $preco   = (float)($sku['preco_promo'] ?: $sku['preco']);
+
+            // Saldo vem do espelho do Bling (estoque_saldo), nao de
+            // produto_skus.estoque: a coluna legada e mantida de carona
+            // por EstoqueService::mover() e diverge entre um sync e outro.
+            $estoque = $estoqueSvc->disponivelParaVenda($produtoId, $skuId);
+
+            if ($estoque <= 0) {
                 $this->json(['ok' => false, 'msg' => 'Variação sem estoque.']);
             }
-
-            $preco   = (float)($sku['preco_promo'] ?: $sku['preco']);
-            $estoque = (int)$sku['estoque'];
         } else {
             // Produto sem variação
             $stmt = $db->prepare(
@@ -257,7 +267,7 @@ class CartController extends Controller {
             $stmt->execute([$produtoId]);
             $p = $stmt->fetch();
             $preco   = (float)($p['preco_promo'] ?: $p['preco']);
-            $estoque = (int)$produto['estoque_total'];
+            $estoque = $estoqueSvc->disponivelParaVenda($produtoId);
         }
 
         if ($estoque <= 0) {

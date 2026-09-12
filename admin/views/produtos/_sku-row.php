@@ -17,6 +17,16 @@ $tiposVar  = array_filter($atributos_tipos, fn($t) => $t['papel'] === 'variacao'
              style="font-family:var(--font-mono);font-size:12px;">
     </div>
 
+    <div class="pe-sku-card-code">
+      <label class="pe-label" style="font-size:11px;">EAN</label>
+      <input type="text"
+             name="skus[<?= $key ?>][ean]"
+             class="form-control form-control--sm"
+             value="<?= View::e($sku['ean'] ?? '') ?>"
+             placeholder="7891234567895" inputmode="numeric" maxlength="20"
+             style="font-family:var(--font-mono);font-size:12px;">
+    </div>
+
     <div class="pe-sku-card-preco">
       <label class="pe-label" style="font-size:11px;">Preço</label>
       <div class="pe-price-input-wrap">

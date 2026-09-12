@@ -457,6 +457,9 @@ class ProdutosController extends Controller {
         $metaKw      = SecurityHelper::sanitizeString($_POST['meta_keywords']     ?? '');
         $googleCat   = SecurityHelper::sanitizeString($_POST['google_category']   ?? '');
         $skuLegado   = SecurityHelper::sanitizeString($_POST['sku_legado']        ?? '');
+        // EAN do produto SIMPLES. Produto com variação guarda o código de
+        // barras em cada variação (produto_skus.ean) — ver a validação.
+        $eanPost     = (string) ($_POST['ean'] ?? '');
         $ativo       = isset($_POST['ativo'])      && $_POST['ativo']      == '1' ? 1 : 0;
         $destaque    = isset($_POST['destaque'])   && $_POST['destaque']   == '1' ? 1 : 0;
         $lancamento  = isset($_POST['lancamento']) && $_POST['lancamento'] == '1' ? 1 : 0;
@@ -479,6 +482,55 @@ class ProdutosController extends Controller {
                 'ok'  => false,
                 'msg' => 'O preço do produto não pode ser zero. Informe um valor válido.',
             ]);
+        }
+
+        // ── EAN (código de barras) ────────────────────────────────
+        //
+        // Validação de verdade: o último dígito confere os anteriores
+        // (padrão GS1). Dígito trocado ao copiar da etiqueta passa batido no
+        // cadastro e só aparece quando o Google Shopping recusa a oferta.
+        //
+        // Produto COM variação ignora o campo do produto: ali o EAN é de cada
+        // variação, e gravar nos dois lugares criaria dois donos do mesmo
+        // código.
+        $ean = null;
+        if (!$temVar) {
+            if ($problema = EanService::problema($eanPost)) {
+                $this->json(['ok' => false, 'msg' => $problema]);
+            }
+            $ean = EanService::normalizar($eanPost);
+            if ($ean !== null && ($dono = EanService::dono($ean, $id, null))) {
+                $this->json(['ok' => false, 'msg' => EanService::mensagemDuplicado($ean, $dono)]);
+            }
+        }
+
+        // O mesmo para cada variação, antes de abrir a transação: erro de
+        // digitação na quarta variação não pode desfazer as três primeiras.
+        $eansSku  = [];
+        $vistosNo = [];
+        foreach (($_POST['skus'] ?? []) as $chave => $linha) {
+            if (trim((string) ($linha['sku'] ?? '')) === '') continue;
+            if (!array_key_exists('ean', $linha)) continue;
+
+            if ($problema = EanService::problema((string) $linha['ean'])) {
+                $this->json(['ok' => false, 'msg' => 'Variação ' . trim((string) $linha['sku']) . ': ' . $problema]);
+            }
+            $e = EanService::normalizar((string) $linha['ean']);
+            if ($e !== null) {
+                // Repetido DENTRO do próprio formulário: o banco só reclamaria
+                // no segundo INSERT, com erro de constraint sem nome de campo.
+                if (isset($vistosNo[$e])) {
+                    $this->json(['ok' => false, 'msg' =>
+                        "O EAN {$e} está repetido em duas variações deste produto."]);
+                }
+                $vistosNo[$e] = true;
+
+                $skuId = is_numeric($chave) && (int) $chave > 0 ? (int) $chave : null;
+                if ($dono = EanService::dono($e, $id, $skuId)) {
+                    $this->json(['ok' => false, 'msg' => EanService::mensagemDuplicado($e, $dono)]);
+                }
+            }
+            $eansSku[(string) $chave] = $e;
         }
 
         // Preço promocional não pode ser maior ou igual ao preço regular
@@ -510,6 +562,16 @@ class ProdutosController extends Controller {
         }
 
         $db   = Database::getInstance()->getConnection();
+
+        // Guardado ANTES de resolver: se a URL mudar, o endereço antigo vira
+        // 301 depois do commit (fase 4 do rastreador de 404).
+        $slugAntigo = '';
+        if ($id > 0) {
+            $stSlug = $db->prepare("SELECT slug FROM produtos WHERE id = ? LIMIT 1");
+            $stSlug->execute([$id]);
+            $slugAntigo = (string) ($stSlug->fetchColumn() ?: '');
+        }
+
         $slug = $this->resolverSlugProduto($db, $id, $nome);
 
         $campos = [
@@ -543,6 +605,9 @@ class ProdutosController extends Controller {
             'destaque'         => $destaque,
             'lancamento'       => $lancamento,
             'tem_variacao'     => $temVar,
+            // NULL, nunca '': o índice uk_produtos_ean é único, e duas strings
+            // vazias colidiriam no segundo produto sem código de barras.
+            'ean'              => $ean,
         ];
 
         
@@ -694,6 +759,9 @@ class ProdutosController extends Controller {
             $skus = $_POST['skus'] ?? [];
 
             if (!empty($skus)) {
+                // `ean = IF(?, ?, ean)`: mesmo motivo do custo logo abaixo —
+                // há telas que salvam SKU sem renderizar o campo de EAN, e um
+                // UPDATE direto apagaria o código de barras sem ninguém pedir.
                 $stmtSkuUpdate = $db->prepare(
                     // custo = IF(?, ?, custo): existem outras tabelas de SKU
                     // no form que não renderizam o campo de custo. Se o
@@ -703,13 +771,14 @@ class ProdutosController extends Controller {
                     // vazio" (limpa de propósito).
                     "UPDATE produto_skus
                     SET sku=?, preco=?, preco_promo=?, ativo=?,
-                        custo = IF(?, ?, custo)
+                        custo = IF(?, ?, custo),
+                        ean   = IF(?, ?, ean)
                     WHERE id=? AND produto_id=?"
                 );
                 $stmtSkuInsert = $db->prepare(
                     "INSERT INTO produto_skus
-                    (produto_id, sku, preco, preco_promo, estoque, ativo, custo)
-                    VALUES (?,?,?,?,?,?,?)"
+                    (produto_id, sku, preco, preco_promo, estoque, ativo, custo, ean)
+                    VALUES (?,?,?,?,?,?,?,?)"
                 );
                 $stmtDelAttrs  = $db->prepare(
                     "DELETE FROM sku_atributos WHERE sku_id=?"
@@ -743,14 +812,17 @@ class ProdutosController extends Controller {
                     // Persiste o SKU
                     if (is_numeric($key) && (int)$key > 0) {
                         $skuId = (int)$key;
+                        $temEan = array_key_exists((string) $key, $eansSku);
                         $stmtSkuUpdate->execute([
                             $skuCodigo, $skuPreco, $skuPromo, $skuAtivo,
                             $temCusto ? 1 : 0, $skuCusto,
+                            $temEan ? 1 : 0, $eansSku[(string) $key] ?? null,
                             $skuId, $id,
                         ]);
                     } else {
                         $stmtSkuInsert->execute([
                             $id, $skuCodigo, $skuPreco, $skuPromo, 0, $skuAtivo, $skuCusto,
+                            $eansSku[(string) $key] ?? null,
                         ]);
                         $skuId = (int)$db->lastInsertId();
                     }
@@ -792,6 +864,13 @@ class ProdutosController extends Controller {
             }
 
             $db->commit();
+
+            // URL trocada de propósito: o endereço antigo ganha 301 sozinho.
+            if ($slugAntigo !== '' && $slugAntigo !== $slug) {
+                (new RedirecionamentoService($db))->aoTrocarSlug(
+                    '/produto/' . $slugAntigo, '/produto/' . $slug, AuthHelper::usuarioId()
+                );
+            }
 
             $this->json([
                 'ok'   => true,

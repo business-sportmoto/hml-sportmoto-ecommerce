@@ -189,6 +189,41 @@ class EstoqueService {
     /**
      * Retorna o estoque do produto ou variação 
      */
+    /**
+     * Quanto da para vender AGORA — a pergunta que o carrinho e o checkout
+     * fazem.
+     *
+     * Le o espelho do Bling (`estoque_saldo`), que e a fonte da verdade
+     * desde que o Bling virou dono do saldo. As colunas legadas
+     * `produtos.estoque_total` e `produto_skus.estoque` sao mantidas de
+     * carona por mover() e divergem entre um sync e outro — validar venda
+     * por elas era vender numero velho.
+     *
+     * O fallback importa: produto que ainda nao tem linha em `estoque_saldo`
+     * (nunca sincronizado) cairia em zero e ficaria intravavel. Nesse caso
+     * usa a coluna legada. E o mesmo criterio que o CheckoutController ja
+     * aplica na checagem de brinde.
+     *
+     * @param int      $produtoId
+     * @param int|null $skuId  NULL = soma o produto inteiro
+     */
+    public function disponivelParaVenda(int $produtoId, ?int $skuId = null): int {
+        $stmt = $this->db->prepare(
+            "SELECT CASE
+                WHEN EXISTS (SELECT 1 FROM estoque_saldo WHERE produto_id = ?)
+                THEN (
+                    SELECT COALESCE(SUM(GREATEST(es.saldo - es.reservado, 0)), 0)
+                    FROM estoque_saldo es
+                    WHERE es.produto_id = ?
+                      AND (? IS NULL OR es.sku_id = ?)
+                )
+                ELSE (SELECT COALESCE(estoque_total, 0) FROM produtos WHERE id = ?)
+             END"
+        );
+        $stmt->execute([$produtoId, $produtoId, $skuId, $skuId, $produtoId]);
+        return max(0, (int)$stmt->fetchColumn());
+    }
+
     public function getDisponivelNivelVar(array $pro_data): array {
         if($pro_data['tem_variacao']){
             $stmt = $this->db->prepare(
@@ -321,7 +356,12 @@ class EstoqueService {
         $referencaTipo  = $opcoes['referencia_tipo'] ?? null;
         $referencaId    = $opcoes['referencia_id']   ?? null;
         $idempotencyKey = $opcoes['idempotency_key'] ?? null;
-        $usuarioId      = $opcoes['usuario_id']      ?? Session::get('admin_id');
+        // Identidade da PESSOA (usuarios.id), nao o id do registro admin.
+        // estoque_log.usuario_id faz JOIN em `usuarios`, e admins.id nao e
+        // usuarios.id — gravar admin_id aqui corrompe a autoria em silencio
+        // (CLAUDE.md 4.1). NULL quando nao ha admin resolvivel (CLI, worker,
+        // cliente): ausente e melhor que errado.
+        $usuarioId      = $opcoes['usuario_id']      ?? (AuthHelper::usuarioId() ?: null);
         $payload        = $opcoes['payload']         ?? null;
         $observacao     = $opcoes['observacao']      ?? null;
         $allowNegative  = $opcoes['allow_negative']  ?? false;

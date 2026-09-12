@@ -138,6 +138,20 @@ class ProductController extends Controller {
         // }
 
         // SEO do produto
+        // EAN para o schema: do produto (simples) ou da variação escolhida /
+        // da primeira que tiver (com variação). É o mesmo código de barras da
+        // etiqueta — o que o Google usa para casar a oferta.
+        $eanSchema = trim((string) ($product['ean'] ?? ''));
+        if ($eanSchema === '' && !empty($product['tem_variacao'])) {
+            $stEan = Database::getInstance()->getConnection()->prepare(
+                "SELECT ean FROM produto_skus
+                  WHERE produto_id = ? AND ativo = 1 AND ean IS NOT NULL AND ean <> ''
+               ORDER BY id ASC LIMIT 1"
+            );
+            $stEan->execute([(int) $product['id']]);
+            $eanSchema = (string) ($stEan->fetchColumn() ?: '');
+        }
+
         // As imagens vão como 2º argumento: é delas que sai o og:image. Sem
         // isto todo produto caía na imagem padrão (que nem existia).
         //
@@ -149,7 +163,23 @@ class ProductController extends Controller {
         SeoHelper::setProduct(array_merge($product, [
             'imagem_principal' => $images[0]['arquivo'] ?? null,
             'review_stats'     => !empty($avaliacoes['total']) ? $avaliacoes : null,
+            'ean'              => $eanSchema,
         ]), $images);
+
+        // ── PERGUNTAS RESPONDIDAS VIRAM FAQPage ─────────────────────
+        // "Serve na minha CG 160?", "vem com parafuso?" — é isto que o
+        // cliente pergunta à IA, e a loja já tem a resposta escrita na ficha.
+        // Só par completo entra (o setFaq descarta pergunta sem resposta).
+        try {
+            $perguntasFaq = (new Pergunta())->listarPorProduto((int) $product['id'], null, 1, 10);
+            SeoHelper::setFaq(array_map(
+                static fn(array $p) => ['pergunta' => $p['pergunta'] ?? '', 'resposta' => $p['resposta'] ?? ''],
+                $perguntasFaq
+            ), 10);
+        } catch (\Throwable $e) {
+            // Schema é enfeite: não pode derrubar a página do produto.
+            LogService::exception($e, 'warning', 'app', ['onde' => 'faq_produto', 'produto' => (int) $product['id']]);
+        }
 
         // Canonical inclui o variant_id se houver
         $canonical = BASE_URL . '/produto/' . $product['slug'];

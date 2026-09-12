@@ -82,6 +82,10 @@ $f = $filtros ?? [];
 
 <script>
     window.LOG_ETQ_BASE = '/admin/logistica/etiquetas';
-    window.LOG_ETQ_TRANSPORTADORAS = <?= json_encode($transportadoras ?? [], JSON_UNESCAPED_UNICODE) ?>;
+    // Os JSON_HEX_* impedem que o nome de uma transportadora feche a tag
+    // <script>. Sem eles, um apóstrofo ou um & no nome derruba o bloco inteiro
+    // e a tela abre sem transportadora nenhuma — sem erro no PHP.
+    window.LOG_ETQ_TRANSPORTADORAS = <?= json_encode($transportadoras ?? [],
+        JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 </script>
 

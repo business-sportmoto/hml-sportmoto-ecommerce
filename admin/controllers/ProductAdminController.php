@@ -252,27 +252,19 @@ class ProductAdminController extends Controller {
 
     public function updateStock(): void {
         $this->verifyCsrf();
-        $productId   = SecurityHelper::sanitizeInt($_POST['produto_id']   ?? 0);
-        $combinacao  = SecurityHelper::sanitizeString($_POST['combinacao']  ?? '');
-        $quantidade  = SecurityHelper::sanitizeInt($_POST['quantidade']    ?? 0);
-        $precoExtra  = SecurityHelper::sanitizeFloat($_POST['preco_extra'] ?? 0);
-        $skuVariacao = SecurityHelper::sanitizeString($_POST['sku_variacao'] ?? '');
 
-        $this->db->prepare(
-            "INSERT INTO produto_estoque (produto_id, combinacao_opcoes, quantidade, preco_extra, sku_variacao)
-             VALUES (?,?,?,?,?)
-             ON DUPLICATE KEY UPDATE quantidade=VALUES(quantidade),
-             preco_extra=VALUES(preco_extra), sku_variacao=VALUES(sku_variacao)"
-        )->execute([$productId, $combinacao, $quantidade, $precoExtra, $skuVariacao]);
-
-        // Atualiza estoque total
-        $this->db->prepare(
-            "UPDATE produtos SET estoque_total = (
-                SELECT COALESCE(SUM(quantidade),0) FROM produto_estoque WHERE produto_id = ?
-             ) WHERE id = ?"
-        )->execute([$productId, $productId]);
-
-        $this->json(['ok' => true, 'msg' => 'Estoque atualizado.']);
+        // Desativado em 12/09/2026. Esta rota gravava `produto_estoque` e
+        // `produtos.estoque_total` DIRETO — sem passar pelo ledger e sem tocar
+        // em `estoque_saldo`, que e o espelho do Bling. Em 11/09 o ajuste
+        // manual saiu do painel (EstoqueController::ajustar responde 410) e
+        // esta porta ficou aberta, ainda chamada pelo admin.js.
+        //
+        // O saldo e do Bling: ajuste na origem (Syscar -> Bling) e use
+        // "Puxar do Bling". Ver 12-decisoes-tecnicas/bling-estoque-modelo.
+        $this->json([
+            'ok'  => false,
+            'msg' => 'O saldo e do Bling: ajuste pela origem (Syscar -> Bling) e use "Puxar do Bling" para trazer o numero.',
+        ], 410);
     }
 
     // ── Helpers privados ──────────────────────────────────────

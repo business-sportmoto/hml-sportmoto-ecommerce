@@ -10,8 +10,23 @@ class SeoHelper {
     // ── Setters básicos ───────────────────────────────────────
 
     public static function setTitle(string $title, bool $withSuffix = true): void {
-        $sufixo = $withSuffix ? ConfigHelper::get('seo_title_sufixo', '') : '';
-        self::$meta['title'] = View::e($title . $sufixo);
+        $sufixo = $withSuffix ? trim((string) ConfigHelper::get('seo_title_sufixo', '')) : '';
+
+        // QUEM JUNTA E O HELPER, nao o espaco que a pessoa digitou.
+        //
+        // O sufixo e um campo de texto em /admin/seo e passa por trim ao
+        // salvar (HTML e quebra de linha nao podem entrar numa meta tag).
+        // Isso comia o espaco de " | Sportmoto" e o titulo saia
+        // "Jaquetas| Sportmoto". Agora: sufixo que comeca com pontuacao cola
+        // direto (": Loja Completa..."), qualquer outro ganha um espaco.
+        if ($sufixo !== '') {
+            // Sem o traco na lista: "- Sportmoto" e separador e precisa do
+            // espaco ("Jaquetas - Sportmoto"); ":" e pontuacao e cola.
+            $cola = in_array(mb_substr($sufixo, 0, 1), [':', ',', '.', ';', '!', '?'], true) ? '' : ' ';
+            $title .= $cola . $sufixo;
+        }
+
+        self::$meta['title'] = View::e($title);
     }
 
     public static function setDescription(string $desc): void {
@@ -101,6 +116,33 @@ class SeoHelper {
     }
 
     /**
+     * Aplica um modelo de título/descrição configurado em /admin/seo.
+     *
+     * O modelo é texto com campos entre colchetes — "[nome_produto] | [loja]".
+     * Campo que o chamador não informou é REMOVIDO em vez de aparecer cru: um
+     * `[marca]` vazando para o `<title>` é pior do que a frase mais curta.
+     *
+     * @param  array $vars  ['[nome_produto]' => 'Capacete X', …]
+     * @return string|null  null quando não há modelo configurado — quem chama
+     *                      então usa o padrão do sistema.
+     */
+    public static function aplicarModelo(string $chaveConfig, array $vars): ?string
+    {
+        $modelo = trim((string) ConfigHelper::get($chaveConfig, ''));
+        if ($modelo === '') return null;
+
+        $vars['[loja]'] = $vars['[loja]'] ?? (string) ConfigHelper::get('site_nome', '');
+
+        $saida = str_replace(array_keys($vars), array_values($vars), $modelo);
+        $saida = preg_replace('~\[[a-z_]+\]~', '', $saida);         // campo desconhecido
+        $saida = trim(preg_replace('/\s+/u', ' ', (string) $saida));
+        // Sobrou só a pontuação do modelo ("| ", "-")? Vale como vazio.
+        $saida = trim($saida, " -|·:—");
+
+        return $saida !== '' ? $saida : null;
+    }
+
+    /**
      * Imagem de último recurso: a logo da loja.
      *
      * Antes o padrão era `assets/images/og-default.jpg`, arquivo que NÃO
@@ -110,6 +152,11 @@ class SeoHelper {
      */
     public static function imagemPadrao(): ?string
     {
+        // Configurada em /admin/seo tem precedência: a logo é um paliativo
+        // (fica com muita margem branca no card do WhatsApp).
+        $daConfig = trim((string) ConfigHelper::get('seo_og_imagem', ''));
+        if ($daConfig !== '') return self::imagemSocial($daConfig);
+
         $logo = ConfigHelper::get('site_logo_vetor', '') ?: ConfigHelper::get('site_logo_png', '');
         if ($logo === '') return null;
 
@@ -153,7 +200,22 @@ class SeoHelper {
                         . ($temEstoque ? 'Em estoque, pronta entrega.' : 'Consulte disponibilidade.'));
         $descricao = mb_substr($descricao, 0, 300);
 
-        self::setTitle($product['meta_title'] ?: $product['nome']);
+        // `meta_title` escrito no painel e o titulo COMPLETO — nao leva o
+        // sufixo da loja. Com sufixo, um titulo bom de 74 caracteres virava
+        // 121 e o Google corta em ~60: a parte escrita para vender sumia.
+        // Sem `meta_title`, o sufixo entra: "Reparo de viseira" sozinho nao
+        // diz de que loja e.
+        // Ordem: 1) título escrito na ficha  2) modelo de /admin/seo
+        //        3) nome do produto + sufixo da loja.
+        // Nos dois primeiros o texto é completo e o sufixo não entra.
+        $tituloFeito = trim((string) ($product['meta_title'] ?? ''));
+        if ($tituloFeito === '') {
+            $tituloFeito = (string) (self::aplicarModelo('seo_titulo_produto', [
+                '[nome_produto]' => (string) $product['nome'],
+                '[marca]'        => $marca,
+            ]) ?? '');
+        }
+        self::setTitle($tituloFeito !== '' ? $tituloFeito : $product['nome'], $tituloFeito === '');
         self::setDescription($descricao);
         self::setCanonical($url);
 
@@ -222,6 +284,15 @@ class SeoHelper {
             $ld['mpn'] = $product['sku_legado'];
         }
 
+        // GTIN: é por ele que o Google casa a oferta com o catálogo global —
+        // vale mais que `sku` e `mpn`, que só existem dentro desta loja. O
+        // nome da propriedade é pelo tamanho (gtin8/12/13/14).
+        $ean = EanService::normalizar((string) ($product['ean'] ?? ''));
+        if ($ean !== null && EanService::valido($ean)) {
+            $ld['gtin' . strlen($ean)] = $ean;
+            $ld['gtin'] = $ean;
+        }
+
         if ($arquivos) {
             // No schema vale a imagem original (o Google lê WebP); a conversão
             // para JPEG existe por causa das redes sociais, não da busca.
@@ -266,8 +337,26 @@ class SeoHelper {
         // Página 2+ com o mesmo título vira conteúdo duplicado aos olhos do
         // Google. O número no título resolve, e o canonical aponta para a
         // própria página — nunca para a 1, senão as demais somem do índice.
-        self::setTitle($titulo . ($pagina > 1 ? " — página {$pagina}" : ''));
-        self::setDescription((string) ($o['descricao'] ?? ''));
+        // `tituloProprio` = veio de `meta_title` escrito no painel; nesse caso
+        // e o titulo completo e o sufixo da loja nao entra (ver setProduct).
+        // Sem titulo proprio, tenta o modelo configurado em /admin/seo.
+        $proprio = !empty($o['tituloProprio']);
+        if (!$proprio && !empty($o['modeloChave'])) {
+            $doModelo = self::aplicarModelo((string) $o['modeloChave'], (array) ($o['modeloVars'] ?? []));
+            if ($doModelo !== null) { $titulo = $doModelo; $proprio = true; }
+        }
+
+        self::setTitle($titulo . ($pagina > 1 ? " — página {$pagina}" : ''), !$proprio);
+
+        // Descrição: a escrita na ficha manda. Não havendo, o modelo
+        // configurado; não havendo modelo, o texto que o controller montou.
+        $descricao = (string) ($o['descricao'] ?? '');
+        if (empty($o['descricaoPropria']) && !empty($o['modeloDescChave'])) {
+            $doModelo = self::aplicarModelo((string) $o['modeloDescChave'], (array) ($o['modeloVars'] ?? []));
+            if ($doModelo !== null) $descricao = $doModelo;
+        }
+        $o['descricao'] = $descricao;
+        self::setDescription($descricao);
 
         // Categoria e busca paginam com `?pagina=`; a listagem por moto usa
         // `?page=`. Quem chama diz qual é o seu, senão o canonical aponta
@@ -371,6 +460,54 @@ class SeoHelper {
         self::setCanonical(BASE_URL . '/categoria/' . $category['slug']);
         self::setOg('type', 'website');
         self::setOg('title', $category['nome']);
+    }
+
+    /**
+     * Perguntas e respostas da página, em JSON-LD (FAQPage).
+     *
+     * ── POR QUE ISTO IMPORTA MAIS QUE O RESTO DO SCHEMA ──────────────
+     *
+     * É o formato que buscador e assistente de IA leem para RESPONDER. Quando
+     * alguém pergunta "qual o prazo de troca?" a um assistente, o que ele
+     * cita é um par pergunta/resposta — e ele prefere o que já vem separado
+     * assim a ter de adivinhar dentro de um parágrafo de página.
+     *
+     * A loja já tinha as duas fontes e nenhuma virava schema: a Central de
+     * Ajuda (`help_perguntas`) e as perguntas de cliente respondidas na ficha
+     * do produto (`produto_perguntas`).
+     *
+     * Só entra par COMPLETO: pergunta sem resposta publicada não vira
+     * FAQPage — o schema pede `acceptedAnswer`, e página que promete resposta
+     * e não entrega é pior do que página sem FAQ.
+     *
+     * @param array $pares [['pergunta' => '…', 'resposta' => '…'], …]
+     */
+    public static function setFaq(array $pares, int $maximo = 20): void
+    {
+        $itens = [];
+        foreach ($pares as $p) {
+            $q = trim(preg_replace('/\s+/u', ' ', strip_tags((string) ($p['pergunta'] ?? ''))));
+            $a = trim(preg_replace('/\s+/u', ' ', strip_tags((string) ($p['resposta'] ?? ''))));
+            if ($q === '' || $a === '') continue;
+
+            $itens[] = [
+                '@type'          => 'Question',
+                'name'           => mb_substr($q, 0, 300),
+                'acceptedAnswer' => [
+                    '@type' => 'Answer',
+                    'text'  => mb_substr($a, 0, 1200),
+                ],
+            ];
+            if (count($itens) >= $maximo) break;
+        }
+
+        if (!$itens) return;
+
+        self::$meta['jsonld'][] = [
+            '@context'   => 'https://schema.org',
+            '@type'      => 'FAQPage',
+            'mainEntity' => $itens,
+        ];
     }
 
     /**

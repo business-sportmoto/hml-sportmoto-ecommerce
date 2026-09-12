@@ -622,18 +622,13 @@ class Cart extends Model {
     }
 
     private function getAvailableStock(int $productId, ?int $estoqueId): int {
-        if ($estoqueId) {
-            $stmt = $this->db->prepare(
-                "SELECT quantidade FROM produto_estoque WHERE id = ? LIMIT 1"
-            );
-            $stmt->execute([$estoqueId]);
-            return (int)$stmt->fetchColumn();
-        }
-        $stmt = $this->db->prepare(
-            "SELECT estoque_total FROM produtos WHERE id = ? LIMIT 1"
-        );
-        $stmt->execute([$productId]);
-        return (int)$stmt->fetchColumn();
+        // O `$estoqueId` aponta para `produto_estoque`, a tabela de variacao
+        // ANTIGA — congelada desde que o ajuste manual saiu do painel e a
+        // rota POST /api/estoque fechou (12/09/2026). Ler dali e ler numero
+        // morto. A consulta vai ao espelho do Bling, no nivel do produto:
+        // a convencao viva de variacao e `sku_id`, e quem chama este metodo
+        // (recomprar no checkout, restaurar carrinho) nao a informa.
+        return (new EstoqueService())->disponivelParaVenda($productId);
     }
 
     private function getCupom(int $cupomId): ?array {

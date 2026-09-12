@@ -13,6 +13,7 @@ AdminRouter::get( '/email-marketing',                          'EmailMarketingCo
 AdminRouter::get( '/email-marketing/provedores',               'EmailProviderAdminController@index');
 AdminRouter::post('/email-marketing/provedores/salvar',        'EmailProviderAdminController@salvar');
 AdminRouter::post('/email-marketing/provedores/testar',        'EmailProviderAdminController@testar');
+AdminRouter::post('/email-marketing/provedores/toggle',        'EmailProviderAdminController@toggleAtivo');
 
 AdminRouter::get( '/email-marketing/contatos',                 'EmailContactAdminController@index');
 AdminRouter::post('/email-marketing/contatos/sincronizar',     'EmailContactAdminController@sincronizar');

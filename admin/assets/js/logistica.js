@@ -1509,7 +1509,15 @@
                     '<div class="log_field"><label>Formato</label><select class="log_select" name="formato"><option value="pdf">PDF</option><option value="termica">Térmica</option><option value="a4">A4</option></select></div>' +
                 '</div>' +
             '</div>' +
-            '<div class="log_fieldset"><h4>Destinatário</h4>' + endFields('destinatario', true) + '</div>' +
+            // O botão fica no destinatário porque o caso é a etiqueta de
+            // retorno: quem recebe é a loja. O remetente não tem o botão — ele
+            // já cai na config da transportadora quando fica vazio.
+            '<div class="log_fieldset"><h4>Destinatário' +
+                '<button type="button" class="log_btn log_btn--sm js-usar-loja" ' +
+                    'title="Preenche com o endereço cadastrado em Configurações → Rodapé">' +
+                    '<svg class="log_ico" aria-hidden="true" focusable="false"><use href="#i-globe-location"></use></svg>' +
+                    ' Usar dados da loja</button>' +
+            '</h4>' + endFields('destinatario', true) + '</div>' +
             '<div class="log_fieldset"><h4>Remetente <span class="log_muted">(opcional — usa a config se vazio)</span></h4>' + endFields('remetente', false) + '</div>' +
             '<div class="log_fieldset"><h4>Volumes <button type="button" class="log_btn log_btn--sm js-vol-add"><svg class="log_ico" aria-hidden="true" focusable="false"><use href="#i-add"></use></svg> Adicionar</button></h4><div id="etqVolumes">' + volRow() + '</div></div>' +
         '</form>';
@@ -1524,6 +1532,48 @@
             var opts = '<option value="">—</option>' + svs.map(function (s) { return '<option value="' + attr(s.codigo) + '" data-nome="' + attr(s.nome) + '">' + esc(s.nome || s.codigo) + '</option>'; }).join('');
             $(drawer.corpo()).find('#etqServico').html(opts);
         });
+        // --- preencher o destinatário com os dados da loja ---
+        // `faltando` vem com as chaves internas do campo; o aviso é para gente.
+        var ROTULO = {
+            nome: 'nome', document: 'CPF/CNPJ', email: 'e-mail', telefone: 'telefone',
+            cep: 'CEP', logradouro: 'logradouro', numero: 'número',
+            complemento: 'complemento', bairro: 'bairro', cidade: 'cidade', uf: 'UF'
+        };
+        drawer.escutar('click', '.js-usar-loja', function (ev) {
+            var $btn = $(ev.target).closest('.js-usar-loja').prop('disabled', true);
+            var $b = $(drawer.corpo());
+            var tid = Toast.loading('Buscando dados da loja...');
+            api('GET', '/dados-loja').done(function (r) {
+                if (!r || !r.ok) {
+                    Toast.update(tid, { type: 'error', message: (r && r.erro) || 'Não foi possível ler os dados da loja.', duration: 4000 });
+                    return;
+                }
+                var end = r.endereco || {}, n = 0;
+                // Preenche, não limpa: campo sem valor na configuração deixa
+                // intacto o que o operador já tinha digitado.
+                Object.keys(end).forEach(function (k) {
+                    if (String(end[k] || '') === '') return;
+                    var $i = $b.find('[data-e="destinatario.' + k + '"]');
+                    if ($i.length) { $i.val(end[k]); n++; }
+                });
+                if (!n) {
+                    Toast.update(tid, { type: 'warning', duration: 5000,
+                        message: 'A loja não tem endereço cadastrado. Preencha em Configurações → Rodapé.' });
+                    return;
+                }
+                var falta = (r.faltando || []).map(function (k) { return ROTULO[k] || k; });
+                Toast.update(tid, {
+                    type: falta.length ? 'warning' : 'success',
+                    duration: falta.length ? 6000 : 2500,
+                    message: falta.length
+                        ? 'Dados da loja preenchidos. Falta preencher à mão: ' + falta.join(', ') + '.'
+                        : 'Dados da loja preenchidos.'
+                });
+            }).fail(function () {
+                Toast.update(tid, { type: 'error', message: 'Erro ao buscar os dados da loja.', duration: 3500 });
+            }).always(function () { $btn.prop('disabled', false); });
+        });
+
         drawer.escutar('click', '.js-vol-add', function () { $(drawer.corpo()).find('#etqVolumes').append(volRow()); });
         drawer.escutar('click', '.js-vol-rm', function (ev) { $(ev.target).closest('[data-vol]').remove(); });
 
@@ -2347,12 +2397,18 @@
                 if (c.transportadora_id) $b.find('[name=transportadora_id]').val(c.transportadora_id);
                 if (c.valor_estimado) $b.find('[name=valor_estimado]').val(c.valor_estimado);
                 if (c.peso_informado_g) $b.find('[name=peso_informado_g]').val(c.peso_informado_g);
+                // Quando o cron pós-postagem já trouxe o real, não faz sentido
+                // pedir que alguém abra a fatura e digite.
+                if (c.valor_transportadora) $b.find('[name=valor_transportadora]').val(c.valor_transportadora);
+                if (c.peso_aferido_g) $b.find('[name=peso_aferido_g]').val(c.peso_aferido_g);
                 if (c.dimensoes_informadas) {
                     $b.find('[data-dim="dimensoes_informadas.altura"]').val(c.dimensoes_informadas.altura || '');
                     $b.find('[data-dim="dimensoes_informadas.largura"]').val(c.dimensoes_informadas.largura || '');
                     $b.find('[data-dim="dimensoes_informadas.comprimento"]').val(c.dimensoes_informadas.comprimento || '');
                 }
-                Toast.info('Dados da etiqueta preenchidos.');
+                Toast.info(c.valor_transportadora
+                    ? 'Dados da etiqueta preenchidos, incluindo o valor real da postagem.'
+                    : 'Dados da etiqueta preenchidos.');
             });
         });
 

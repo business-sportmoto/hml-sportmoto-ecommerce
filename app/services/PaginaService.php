@@ -159,6 +159,16 @@ class PaginaService
 
                 $this->model->atualizar($id, $dados);
                 $novoId = $id;
+
+                // Página vive na raiz (/{slug}): trocar o endereço deixaria o
+                // antigo em 404 — agora ele ganha 301 sozinho (fase 4 do
+                // rastreador de 404).
+                $slugAntigo = (string) ($atual['slug'] ?? '');
+                if ($slugAntigo !== '' && $slugAntigo !== $slug) {
+                    (new RedirecionamentoService())->aoTrocarSlug(
+                        '/' . $slugAntigo, '/' . $slug, AuthHelper::usuarioId()
+                    );
+                }
             } else {
                 $dados['publicado_em'] = $ativo === 1 ? date('Y-m-d H:i:s') : null;
                 $novoId = $this->model->criar($dados);

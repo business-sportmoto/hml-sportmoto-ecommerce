@@ -216,6 +216,21 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
                        value="<?= View::e($p['sku_legado'] ?? '') ?>"
                        placeholder="Ex: AGV-K3-SV-001"
                        style="font-family:var(--font-mono);font-size:13px;">
+
+                <?php
+                // EAN do produto SIMPLES. Fica colado no SKU porque é a mesma
+                // conversa — como este produto é identificado fora da loja.
+                // Produto com variação usa o campo de cada variação.
+                ?>
+                <label class="pe-label" style="margin-top:12px;">EAN / código de barras</label>
+                <input type="text" name="ean" class="form-control"
+                       value="<?= View::e($p['ean'] ?? '') ?>"
+                       placeholder="7891234567895" inputmode="numeric" maxlength="20"
+                       style="font-family:var(--font-mono);font-size:13px;">
+                <small style="display:block;color:var(--text-3);font-size:11.5px;margin-top:4px;line-height:1.45;">
+                  Só números: 8, 12, 13 (o mais comum) ou 14 dígitos — o último dígito é conferido.
+                  <br>Produto com variação: o EAN é de cada variação, na aba Variações.
+                </small>
               </div>
               <div class="form-group">
                 <label class="pe-label">Família de produtos</label>
@@ -1192,6 +1207,7 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
                         <thead>
                         <tr>
                             <th style="width:100px;">Código SKU</th>
+                            <th style="width:130px;">EAN</th>
                             <th>Atributos</th>
                             <th style="width:130px;">Preço</th>
                             <th style="width:130px;">Promo</th>
@@ -1229,6 +1245,22 @@ $statusOpts = ['rascunho' => 'Rascunho', 'ativo' => 'Ativo', 'inativo' => 'Inati
                                        placeholder="SKU-001"
                                        style="font-family:var(--font-mono);font-size:10px;">
                               </div>
+                            </td>
+
+                            <?php
+                            // Código de barras da VARIAÇÃO. Cada uma tem o
+                            // seu: é o que o Google e o marketplace usam para
+                            // casar exatamente esta cor/tamanho.
+                            ?>
+                            <td>
+                              <input type="text"
+                                     name="skus[<?= $sku['id'] ?>][ean]"
+                                     class="form-control form-control--sm"
+                                     value="<?= View::e($sku['ean'] ?? '') ?>"
+                                     placeholder="7891234567895"
+                                     inputmode="numeric" maxlength="20"
+                                     title="8, 12, 13 ou 14 dígitos — o último é conferido"
+                                     style="font-family:var(--font-mono);font-size:10px;">
                             </td>
 
                             <td>

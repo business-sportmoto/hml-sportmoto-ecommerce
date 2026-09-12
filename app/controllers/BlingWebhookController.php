@@ -56,6 +56,10 @@ class BlingWebhookController extends Controller
         // Processa o evento
         try {
             $evento = strtolower($payload['evento'] ?? $payload['event'] ?? '');
+            // Identidade do evento no Bling. E a chave de idempotencia do
+            // movimento de estoque: sem ela, a reentrega do MESMO webhook
+            // vira um movimento novo e a baixa e aplicada duas vezes.
+            $eventoId = (string)($payload['eventId'] ?? $payload['event_id'] ?? '');
             $dados  = $payload['dados']  ?? $payload['data']  ?? [];
  
             match(true) {
@@ -72,7 +76,7 @@ class BlingWebhookController extends Controller
                 // Estoque alterado
                 // ex: "stock.created", "stock.updated", "estoque.alterado"
                 str_contains($evento, 'stock') ||
-                str_contains($evento, 'estoque')                  => $this->processarEstoqueWebhook($dados),
+                str_contains($evento, 'estoque')                  => $this->processarEstoqueWebhook($dados, $eventoId),
  
                 default => null,
             };
@@ -93,7 +97,7 @@ class BlingWebhookController extends Controller
         exit;
     }
  
-    private function processarEstoqueWebhook(array $dados): void
+    private function processarEstoqueWebhook(array $dados, string $eventoId = ''): void
     {
         $blingProdutoId = (string)($dados['produto']['id'] ?? '');
         $operacao       = strtoupper(trim($dados['operacao']       ?? 'B')); // E, S, B
@@ -106,7 +110,8 @@ class BlingWebhookController extends Controller
             $blingProdutoId,
             $operacao,
             $quantidade,
-            $saldoFisico
+            $saldoFisico,
+            $eventoId
         );
     }
 

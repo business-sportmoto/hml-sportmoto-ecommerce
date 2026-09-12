@@ -5,7 +5,16 @@
  * O que faz (idempotente, seguro para rodar em paralelo com lock):
  *   1) abre rastreios para etiquetas emitidas/postadas que ainda nao tem um;
  *   2) atualiza os rastreios nao-finais cuja cadencia ja venceu
- *      (RastreioService::intervaloPorStatus).
+ *      (RastreioService::intervaloPorStatus);
+ *   3) busca nos Correios o preco REAL da postagem das etiquetas ja postadas
+ *      (valor_postado, peso_tarifado_g, data_postagem);
+ *   4) abre divergencia de frete onde o cobrado passou do previsto alem da
+ *      tolerancia (DivergenciaService::detectarPendentes).
+ *
+ * As fases 3 e 4 andam juntas e nesta ordem: e o valor_postado da fase 3 que
+ * fecha o par previsto/cobrado que a fase 4 compara. Sem este worker agendado,
+ * `log_etiquetas.valor_postado` fica NULL para sempre e o modulo de
+ * divergencias so funciona por digitacao manual — foi o estado ate 12/09/2026.
  *
  * Lock: arquivo em storage/logs com verificacao de idade (PHP puro, sem flock
  * externo). Se um lock recente existe, sai sem processar.
@@ -71,6 +80,18 @@ try {
         ));
     }
 
+    // Divergência de frete. Vem DEPOIS do preço de propósito: é o valor_postado
+    // gravado acima que fecha o par previsto/cobrado. Rodar antes só veria o
+    // que a rodada anterior deixou pronto.
+    $div = ['avaliadas' => 0, 'abertas' => 0];
+    if (class_exists('DivergenciaService')) {
+        $div = (new DivergenciaService())->detectarPendentes(50);
+        $log(sprintf(
+            'Divergências: %d etiqueta(s) fora da tolerância, %d aberta(s).',
+            $div['avaliadas'] ?? 0, $div['abertas'] ?? 0
+        ));
+    }
+
     if (class_exists('LogService')) {
         LogService::info('Worker de rastreio executado', [
             'abertos'      => $abertos,
@@ -79,6 +100,7 @@ try {
             'com_novidade' => $res['com_novidade'] ?? 0,
             'preco_consultadas' => $precos['consultadas'] ?? 0,
             'preco_atualizadas' => $precos['atualizadas'] ?? 0,
+            'divergencias_abertas' => $div['abertas'] ?? 0,
             'duracao_ms'   => (int)round((microtime(true) - $t0) * 1000),
         ], 'logistica');
     }

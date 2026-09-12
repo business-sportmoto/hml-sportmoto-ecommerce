@@ -120,6 +120,13 @@ que dispensa tabela de 301. Ver
 
 ## Bugs prioritários
 
+- **Worker de logística nunca foi agendado (12/09/2026).**
+  `cli/logistica-rastreio-worker.php` não está em crontab nenhum, então
+  `log_etiquetas.valor_postado` é NULL em 100% das linhas e a **divergência de
+  frete nunca funcionou** — o BI de frete mostra custo real vazio pelo mesmo
+  motivo. O código das quatro fases está pronto e testado; falta a linha de
+  cron. Ver [[../12-decisoes-tecnicas/frete-divergencia-automatica]].
+
 - **Credenciais dos Correios estão erradas no banco (08/09/2026).** O autofill
   do navegador gravou a senha de login do painel por cima das duas. O defeito
   foi corrigido, mas o valor não volta sozinho: precisa ser redigitado em

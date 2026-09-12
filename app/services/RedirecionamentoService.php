@@ -22,6 +22,9 @@ class RedirecionamentoService
     /** Saltos seguidos ao resolver. Cadeia longa queima autoridade no Google. */
     private const MAX_SALTOS = 3;
 
+    /** Regras por padrão já lidas nesta requisição (são poucas). */
+    private ?array $cachePadroes = null;
+
     private PDO $db;
 
     public function __construct(?PDO $db = null)
@@ -79,19 +82,12 @@ class RedirecionamentoService
     public function resolver(string $caminho): ?array
     {
         $atual = self::normalizar($caminho);
-        $stmt  = $this->db->prepare(
-            "SELECT id, origem, destino, tipo, ativo
-               FROM redirecionamentos
-              WHERE origem_hash = ? AND ativo = 1
-              LIMIT 1"
-        );
 
         $primeiro = null;
         $vistos   = [];
 
         for ($i = 0; $i < self::MAX_SALTOS; $i++) {
-            $stmt->execute([sha1($atual)]);
-            $r = $stmt->fetch(PDO::FETCH_ASSOC);
+            $r = $this->casar($atual);
             if (!$r) break;
 
             $primeiro ??= $r;
@@ -119,6 +115,244 @@ class RedirecionamentoService
         }
 
         return $primeiro;
+    }
+
+    /**
+     * A regra que atende este caminho: **exata primeiro**, padrão depois.
+     *
+     * A exata ganha de propósito — é assim que se abre exceção dentro de um
+     * padrão: `/vestuario/*` manda tudo para a categoria, e `/vestuario/promo`
+     * pode ir para outro lugar.
+     */
+    private function casar(string $caminho): ?array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT id, origem, destino, tipo, ativo, padrao
+               FROM redirecionamentos
+              WHERE origem_hash = ? AND ativo = 1 AND padrao = 0
+              LIMIT 1"
+        );
+        $stmt->execute([sha1($caminho)]);
+        $r = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($r) return $r;
+
+        foreach ($this->padroes() as $regra) {
+            $destino = self::aplicarPadrao(
+                (string) $regra['origem'], (string) $regra['destino'], $caminho
+            );
+            if ($destino !== null) {
+                $regra['destino'] = $destino;
+                return $regra;
+            }
+        }
+
+        return null;
+    }
+
+    /** As regras por padrão ativas, na ordem de prioridade. São poucas. */
+    private function padroes(): array
+    {
+        if ($this->cachePadroes !== null) return $this->cachePadroes;
+
+        $stmt = $this->db->query(
+            "SELECT id, origem, destino, tipo, ativo, padrao
+               FROM redirecionamentos
+              WHERE padrao = 1 AND ativo = 1
+           ORDER BY prioridade ASC, id ASC"
+        );
+
+        return $this->cachePadroes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Casa o caminho com um padrão e devolve o destino já montado.
+     *
+     * O `*` vale UMA vez na origem e captura o resto:
+     *   `/vestuario/*` + `/categoria/*`  →  /vestuario/jaquetas vira /categoria/jaquetas
+     *   `/promo/*`     + `/promocoes`    →  tudo cai no mesmo lugar
+     *
+     * Devolve null quando não casa.
+     */
+    public static function aplicarPadrao(string $origem, string $destino, string $caminho): ?string
+    {
+        $pos = strpos($origem, '*');
+        if ($pos === false) return null;
+
+        $prefixo = substr($origem, 0, $pos);
+        $sufixo  = substr($origem, $pos + 1);
+
+        if ($prefixo !== '' && strncmp($caminho, $prefixo, strlen($prefixo)) !== 0) return null;
+
+        $resto = substr($caminho, strlen($prefixo));
+
+        if ($sufixo !== '') {
+            if (strlen($resto) < strlen($sufixo)) return null;
+            if (substr($resto, -strlen($sufixo)) !== $sufixo) return null;
+            $resto = substr($resto, 0, -strlen($sufixo));
+        }
+
+        // Curinga vazio não conta: /vestuario/* não deve casar /vestuario.
+        if ($resto === '') return null;
+
+        return strpos($destino, '*') === false
+            ? $destino
+            : str_replace('*', $resto, $destino);
+    }
+
+    /**
+     * O slug de um registro mudou: o endereço antigo ganha 301 para o novo.
+     *
+     * Chamado pelos controllers DEPOIS que a gravação deu certo — regra de
+     * redirecionamento para um salvamento que falhou seria pior que nada.
+     *
+     * Antes de criar, apaga uma regra automática cuja origem seja o endereço
+     * NOVO: é o caso de renomear e voltar atrás (`a → b`, depois `b → a`), que
+     * deixaria as duas regras apontando uma para a outra. Regra criada à mão
+     * não é tocada — quem escreveu decide.
+     *
+     * @return array|null null quando não havia troca de fato.
+     */
+    public function aoTrocarSlug(string $antigo, string $novo, int $autorUsuarioId = 0): ?array
+    {
+        $antigo = self::normalizar($antigo);
+        $novo   = self::normalizar($novo);
+
+        if ($antigo === '' || $novo === '' || $antigo === $novo) return null;
+        if ($antigo === '/' || $novo === '/') return null;
+
+        try {
+            $this->db->prepare(
+                "DELETE FROM redirecionamentos WHERE origem_hash = ? AND motivo = 'slug'"
+            )->execute([sha1($novo)]);
+
+            $this->cachePadroes = null;
+
+            return $this->salvar([
+                'origem'     => $antigo,
+                'destino'    => $novo,
+                'tipo'       => 301,
+                'motivo'     => 'slug',
+                'observacao' => 'Criado sozinho ao trocar o endereço no painel.',
+                'ativo'      => 1,
+            ], $autorUsuarioId);
+        } catch (Throwable $e) {
+            // Isto roda DEPOIS do commit do registro. Uma falha aqui (base sem
+            // a migração, banco fora) não pode virar erro 500 num produto que
+            // já foi salvo — vira log, e o endereço antigo fica só como 404 na
+            // tela do rastreador.
+            if (class_exists('LogService')) {
+                LogService::exception($e, 'error', 'seo',
+                    ['onde' => 'aoTrocarSlug', 'antigo' => $antigo, 'novo' => $novo]);
+            }
+            return null;
+        }
+    }
+
+    /**
+     * Palpites de destino para um endereço quebrado.
+     *
+     * O pré-voo da migração descobre o destino perguntando ao site; aqui, na
+     * tela, a resposta vem do banco — mais rápido e sem 4 requisições por
+     * linha.
+     *
+     * Duas passadas, por fonte (produto, categoria, marca, página, montadora):
+     *
+     *   1. **Slug igual.** É o caso da migração: a Tray usava outro prefixo
+     *      (`/vestuario/jaquetas`), o slug final é o mesmo. O último segmento
+     *      vale 100; um segmento anterior (`/vestuario/...` → a categoria
+     *      "vestuario") vale 80.
+     *   2. **Parecido.** Busca pelos pedaços mais longos do slug e ordena por
+     *      `similar_text`. Abaixo de 45% não vira sugestão — palpite ruim na
+     *      tela é pior que nenhum, porque convida a aceitar sem olhar.
+     *
+     * Quem decide é sempre o admin: isto preenche o campo, não grava nada.
+     */
+    public function sugerirDestinos(string $caminho, int $limite = 5): array
+    {
+        $caminho = self::normalizar($caminho);
+        $segs    = array_values(array_filter(explode('/', $caminho)));
+        if (!$segs) return [];
+
+        // Último segmento primeiro: é o que costuma carregar o nome.
+        $alvos = array_values(array_unique(array_reverse($segs)));
+        $alvo  = $alvos[0];
+
+        $fontes = [
+            ['produtos',        'nome',   '/produto/',   'Produto',   'deleted_at IS NULL AND ativo = 1'],
+            ['categorias',      'nome',   '/categoria/', 'Categoria', 'ativo = 1'],
+            ['marcas',          'nome',   '/marca/',     'Marca',     'ativo = 1'],
+            ['paginas',         'titulo', '/',           'Página',    'ativo = 1'],
+            ['moto_montadoras', 'nome',   '/montadora/', 'Montadora', 'ativo = 1'],
+        ];
+
+        $achados = [];
+
+        foreach ($fontes as [$tabela, $colNome, $prefixo, $rotulo, $filtro]) {
+            try {
+                // 1. Slug igual
+                $st = $this->db->prepare(
+                    "SELECT slug, {$colNome} AS nome FROM {$tabela}
+                      WHERE slug = ? AND {$filtro} LIMIT 1"
+                );
+                foreach ($alvos as $i => $candidato) {
+                    $st->execute([$candidato]);
+                    if ($r = $st->fetch(PDO::FETCH_ASSOC)) {
+                        $achados[] = [
+                            'destino' => $prefixo . $r['slug'],
+                            'titulo'  => (string) $r['nome'],
+                            'tipo'    => $rotulo,
+                            'score'   => $i === 0 ? 100 : 80,
+                            'motivo'  => $i === 0 ? 'mesmo endereço final' : 'segmento do caminho',
+                        ];
+                    }
+                }
+
+                // 2. Parecido
+                $tokens = array_values(array_filter(
+                    explode('-', $alvo), static fn($t) => mb_strlen($t) >= 4
+                ));
+                usort($tokens, static fn($a, $b) => mb_strlen($b) <=> mb_strlen($a));
+                $tokens = array_slice($tokens, 0, 3);
+                if (!$tokens) continue;
+
+                $likes = implode(' OR ', array_fill(0, count($tokens), 'slug LIKE ?'));
+                $st2   = $this->db->prepare(
+                    "SELECT slug, {$colNome} AS nome FROM {$tabela}
+                      WHERE ({$likes}) AND {$filtro} LIMIT 40"
+                );
+                $st2->execute(array_map(static fn($t) => '%' . $t . '%', $tokens));
+
+                foreach ($st2->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    similar_text($alvo, (string) $r['slug'], $pct);
+                    if ($pct < 45) continue;
+                    $achados[] = [
+                        'destino' => $prefixo . $r['slug'],
+                        'titulo'  => (string) $r['nome'],
+                        'tipo'    => $rotulo,
+                        'score'   => (int) round($pct),
+                        'motivo'  => 'endereço parecido',
+                    ];
+                }
+            } catch (PDOException $e) {
+                // Tabela ausente numa base antiga não pode derrubar a tela.
+                continue;
+            }
+        }
+
+        // Um destino, o melhor palpite dele. E nunca sugerir o próprio caminho.
+        $porDestino = [];
+        foreach ($achados as $a) {
+            if ($a['destino'] === $caminho) continue;
+            $d = $a['destino'];
+            if (!isset($porDestino[$d]) || $a['score'] > $porDestino[$d]['score']) {
+                $porDestino[$d] = $a;
+            }
+        }
+
+        $lista = array_values($porDestino);
+        usort($lista, static fn($x, $y) => $y['score'] <=> $x['score']);
+
+        return array_slice($lista, 0, max(1, $limite));
     }
 
     /** Contador de uso — mostra na tela quais regras estão vivas. */
@@ -214,12 +448,20 @@ class RedirecionamentoService
         $motivo = (string) ($dados['motivo'] ?? 'manual');
         $ativo  = !empty($dados['ativo']) ? 1 : 0;
         $obs    = trim((string) ($dados['observacao'] ?? '')) ?: null;
+        $prio   = max(0, min(65535, (int) ($dados['prioridade'] ?? 100)));
+
+        // O curinga na origem é o que define a regra por padrão — não um campo
+        // à parte que pudesse discordar do texto digitado.
+        $padrao = substr_count($origem, '*') > 0 ? 1 : 0;
 
         if (!in_array($tipo, self::TIPOS, true)) {
             return ['ok' => false, 'msg' => 'Tipo inválido. Use 301, 302 ou 410.'];
         }
         if ($origem === '' || $origem === '/') {
             return ['ok' => false, 'msg' => 'Informe o endereço de origem (não pode ser a home).'];
+        }
+        if (substr_count($origem, '*') > 1) {
+            return ['ok' => false, 'msg' => 'Use no máximo um * na origem.'];
         }
 
         $destino = trim((string) ($dados['destino'] ?? ''));
@@ -231,6 +473,14 @@ class RedirecionamentoService
             $erro = $this->validarDestino($destino);
             if ($erro !== '') return ['ok' => false, 'msg' => $erro];
 
+            if (substr_count($destino, '*') > 1) {
+                return ['ok' => false, 'msg' => 'Use no máximo um * no destino.'];
+            }
+            if (!$padrao && strpos($destino, '*') !== false) {
+                return ['ok' => false,
+                        'msg' => 'O destino tem * mas a origem não — o * do destino repete o pedaço capturado na origem.'];
+            }
+
             $destino = preg_match('#^https?://#i', $destino)
                 ? $destino
                 : self::normalizar($destino);
@@ -241,6 +491,9 @@ class RedirecionamentoService
         }
 
         $aviso = '';
+        if ($padrao && ($origem === '/*' || $origem === '/**')) {
+            $aviso = 'Esta regra pega o site inteiro. Confira a prioridade e as exceções exatas.';
+        }
         if ($tipo !== 410 && !preg_match('#^https?://#i', $destino)) {
             $encadeia = $this->porOrigem($destino);
             if ($encadeia && (int) $encadeia['ativo'] === 1 && (int) $encadeia['id'] !== $id) {
@@ -254,16 +507,19 @@ class RedirecionamentoService
                 $this->db->prepare(
                     "UPDATE redirecionamentos
                         SET origem = ?, origem_hash = ?, destino = ?, tipo = ?,
-                            motivo = ?, observacao = ?, ativo = ?
+                            padrao = ?, prioridade = ?, motivo = ?, observacao = ?, ativo = ?
                       WHERE id = ?"
-                )->execute([$origem, sha1($origem), $destino, $tipo, $motivo, $obs, $ativo, $id]);
+                )->execute([$origem, sha1($origem), $destino, $tipo, $padrao, $prio,
+                            $motivo, $obs, $ativo, $id]);
             } else {
                 $this->db->prepare(
                     "INSERT INTO redirecionamentos
-                     (origem, origem_hash, destino, tipo, motivo, observacao, ativo, criado_por)
-                     VALUES (?,?,?,?,?,?,?,?)"
+                     (origem, origem_hash, destino, tipo, padrao, prioridade,
+                      motivo, observacao, ativo, criado_por)
+                     VALUES (?,?,?,?,?,?,?,?,?,?)"
                 )->execute([
-                    $origem, sha1($origem), $destino, $tipo, $motivo, $obs, $ativo,
+                    $origem, sha1($origem), $destino, $tipo, $padrao, $prio,
+                    $motivo, $obs, $ativo,
                     $autorUsuarioId > 0 ? $autorUsuarioId : null,
                 ]);
                 $id = (int) $this->db->lastInsertId();
@@ -275,7 +531,10 @@ class RedirecionamentoService
             throw $e;
         }
 
-        return ['ok' => true, 'msg' => 'Redirecionamento salvo.', 'id' => $id, 'aviso' => $aviso];
+        $this->cachePadroes = null;   // a lista de padrões mudou
+
+        return ['ok' => true, 'msg' => 'Redirecionamento salvo.', 'id' => $id,
+                'aviso' => $aviso, 'padrao' => $padrao];
     }
 
     /**

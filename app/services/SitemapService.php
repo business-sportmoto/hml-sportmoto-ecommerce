@@ -43,6 +43,11 @@ class SitemapService
             ],
             ['titulo' => 'Categorias', 'itens' => $this->categorias()],
             ['titulo' => 'Marcas',     'itens' => $this->marcas()],
+            // Peças por moto e Central de ajuda ficavam FORA do sitemap. São
+            // as páginas que respondem "serve na minha moto?" e "qual o prazo
+            // de troca?" — as duas perguntas que mais levam gente ao site.
+            ['titulo' => 'Peças por moto',   'itens' => $this->motos()],
+            ['titulo' => 'Central de ajuda', 'itens' => $this->ajuda()],
             ['titulo' => 'Produtos',   'itens' => $this->produtos()],
             ['titulo' => 'Institucional', 'itens' => $this->paginas()],
         ];
@@ -91,6 +96,44 @@ class SitemapService
               WHERE ativo = 1 AND slug <> '' ORDER BY atualizado_em DESC LIMIT 45000",
             '/produto/'
         );
+    }
+
+    /** Montadoras que têm peça compatível no catálogo, e a lista delas. */
+    private function motos(): array
+    {
+        $itens = [[
+            'url' => BASE_URL . '/motos', 'label' => 'Peças por moto',
+            'lastmod' => null, 'noindex' => false,
+        ]];
+
+        return array_merge($itens, $this->linhas(
+            "SELECT mm.slug, mm.nome
+               FROM moto_montadoras mm
+               JOIN produto_compatibilidade pc ON pc.montadora_id = mm.id
+              WHERE mm.ativo = 1 AND mm.slug <> ''
+           GROUP BY mm.id, mm.slug, mm.nome
+           ORDER BY mm.nome",
+            '/montadora/'
+        ));
+    }
+
+    /** Central de ajuda: a capa e cada categoria de dúvida. */
+    private function ajuda(): array
+    {
+        $itens = [[
+            'url' => BASE_URL . '/ajuda', 'label' => 'Central de ajuda',
+            'lastmod' => null, 'noindex' => false,
+        ]];
+
+        return array_merge($itens, $this->linhas(
+            "SELECT c.slug, c.nome
+               FROM help_categorias c
+               JOIN help_perguntas p ON p.categoria_id = c.id AND p.ativo = 1
+              WHERE c.ativo = 1 AND c.slug <> ''
+           GROUP BY c.id, c.slug, c.nome
+           ORDER BY c.ordem, c.nome",
+            '/ajuda/categoria/'
+        ));
     }
 
     /** Páginas de conteúdo e landing pages, pelo mesmo lugar que o rodapé usa. */

@@ -331,6 +331,10 @@ final class BlingProdutoImportService
         return [
             'nome'            => trim((string)($b['nome'] ?? '')),
             'sku_legado'      => trim((string)($b['codigo'] ?? '')) ?: null,
+            // O EAN do produto só vale para o SIMPLES: com variação, cada
+            // uma tem o seu (importarVariacoes). Era o buraco que deixava
+            // produto simples entrar sempre sem código de barras.
+            'ean'             => $temVar ? null : $this->eanDoProduto($b),
             'preco'           => max(0.01, (float)($b['preco'] ?? 0)),
             // Produto COM variação não tem custo próprio: cada variação tem
             // o seu, e é lá que ele fica. Gravar aqui daria uma margem média
@@ -352,6 +356,36 @@ final class BlingProdutoImportService
             'largura_cm'      => $this->positivo($dim['largura'] ?? 0),
             'altura_cm'       => $this->positivo($dim['altura'] ?? 0),
         ];
+    }
+
+    /**
+     * EAN do produto simples, vindo do `gtin` do Bling.
+     *
+     * Descarta o inválido em vez de gravar: dígito verificador errado no
+     * Bling viraria oferta recusada no Shopping, e o log diz de qual produto
+     * veio. Duplicado também sai — `uk_produtos_ean` é único, e o INSERT
+     * inteiro falharia por causa de um campo acessório.
+     */
+    private function eanDoProduto(array $b): ?string
+    {
+        $ean = EanService::normalizar((string) ($b['gtin'] ?? ''));
+        if ($ean === null) return null;
+
+        if (!EanService::valido($ean)) {
+            LogService::warning('EAN do Bling inválido — produto importado sem EAN', [
+                'codigo' => $b['codigo'] ?? null, 'ean' => $ean,
+            ], 'bling');
+            return null;
+        }
+
+        if (EanService::dono($ean, null, null, $this->db)) {
+            LogService::warning('EAN do Bling já usado no site — produto importado sem EAN', [
+                'codigo' => $b['codigo'] ?? null, 'ean' => $ean,
+            ], 'bling');
+            return null;
+        }
+
+        return $ean;
     }
 
     /** Custo de produto SIMPLES: só existe sob fornecedor. */

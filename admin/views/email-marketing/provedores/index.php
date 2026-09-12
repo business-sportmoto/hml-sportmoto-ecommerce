@@ -23,7 +23,23 @@ $base = defined('BASE_URL') ? BASE_URL : '';
                 <td><?= htmlspecialchars($p['remetente_nome'] ?: '') ?> &lt;<?= htmlspecialchars($p['remetente_email']) ?>&gt;</td>
                 <td><?= (int)$p['limite_por_minuto'] ?></td>
                 <td><?= $p['padrao'] ? 'Sim' : '—' ?></td>
-                <td><?= $p['ativo'] ? 'Sim' : 'Não' ?></td>
+                <td>
+                    <?php // Desativar o padrão derruba todo o envio — o botão
+                          // fica travado até outro provedor virar padrão. O
+                          // servidor recusa do mesmo jeito (não é só visual). ?>
+                    <button type="button"
+                            class="em_toggle<?= $p['ativo'] ? ' is-on' : '' ?>"
+                            data-em-action="toggle-provedor"
+                            data-id="<?= (int)$p['id'] ?>"
+                            role="switch"
+                            aria-checked="<?= $p['ativo'] ? 'true' : 'false' ?>"
+                            <?= ($p['ativo'] && $p['padrao']) ? 'disabled' : '' ?>
+                            title="<?= ($p['ativo'] && $p['padrao'])
+                                    ? 'É o provedor padrão — defina outro antes de desativar'
+                                    : ($p['ativo'] ? 'Desativar' : 'Ativar') ?>">
+                        <span class="em_toggle_kn"></span>
+                    </button>
+                </td>
                 <td>
                     <button type="button" class="em_link" data-em-action="editar-provedor"
                             data-id="<?= (int)$p['id'] ?>"
@@ -40,6 +56,10 @@ $base = defined('BASE_URL') ? BASE_URL : '';
 <div id="em_modal_provedor" class="em_modal" style="display:none;">
     <div class="em_modal_box">
         <h3 id="em_modal_titulo">Novo provedor</h3>
+        <p class="em_cred_aviso" id="em_cred_aviso" style="display:none;">
+            As credenciais já salvas não são exibidas. Deixe em branco para
+            <b>manter</b> a atual; preencha só o que quiser trocar.
+        </p>
         <form id="em_form_provedor" autocomplete="off">
             <input type="hidden" name="id" value="0">
             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '') ?>">

@@ -224,6 +224,7 @@ class BrandController extends Controller {
 
         SeoHelper::setColecao([
             'titulo'       => $metaTitle,
+            'tituloProprio' => !empty($marca['meta_title']),
             'descricao'    => $metaDesc,
             'url'          => BASE_URL . '/marca/' . $marca['slug'],
             'produtos'     => $produtos,

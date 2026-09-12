@@ -84,6 +84,17 @@
         } else {
             $f.find('[name="ativo"]').prop('checked', true);
         }
+        // Campo de credencial nunca recebe valor — o servidor não manda o
+        // segredo. O que dá para mostrar é QUAIS já estão guardadas, senão o
+        // campo vazio parece "não configurado" e o usuário digita de novo.
+        $f.find('[name^="credenciais["]').attr('placeholder', '');
+        var jaTem = (dados && dados.cred_preenchidas) || [];
+        jaTem.forEach(function (k) {
+            $f.find('[name="credenciais[' + k + ']"]')
+              .attr('placeholder', '•••••••• (salvo — em branco mantém)');
+        });
+        $('#em_cred_aviso').toggle(!!(dados && dados.id));
+
         $('#em_modal_titulo').text(dados ? 'Editar provedor' : 'Novo provedor');
         $modal.show();
         toggleCredFields();
@@ -91,8 +102,15 @@
 
     function toggleCredFields() {
         var tipo = $('#em_tipo').val();
-        $('.em_creds_smtp,.em_creds_ses,.em_creds_mailgun,.em_creds_sendgrid,.em_creds_brevo').hide();
-        $('.em_creds_' + tipo).show();
+        var $todos = $('.em_creds_smtp,.em_creds_ses,.em_creds_mailgun,.em_creds_sendgrid,.em_creds_brevo');
+
+        // `disabled`, e não só `.hide()`: TRÊS inputs se chamam
+        // `credenciais[api_key]` (mailgun, sendgrid, brevo). Escondido por CSS
+        // o input continua sendo serializado, e os três viravam um array —
+        // que chegava ao provider como chave de API. Campo desabilitado fica
+        // de fora do serializeArray(), então só o tipo escolhido é enviado.
+        $todos.hide().find('input,select,textarea').prop('disabled', true);
+        $('.em_creds_' + tipo).show().find('input,select,textarea').prop('disabled', false);
     }
 
     $(document).on('click', '[data-em-action="novo-provedor"]', function () { abrirModalProvedor(null); });
@@ -116,6 +134,32 @@
         post('/admin/email-marketing/provedores/salvar', data, function (r) {
             if (r.ok) { flash('Provedor salvo.', true); window.location.reload(); }
             else showError(r);
+        });
+    });
+
+    $(document).on('click', '[data-em-action="toggle-provedor"]', function () {
+        var $b = $(this);
+        if ($b.prop('disabled')) return;
+
+        // Otimista, mas reversível: o toggle vira na hora e volta se o
+        // servidor recusar (é ele que decide, ex.: provedor padrão).
+        var ligando = !$b.hasClass('is-on');
+        $b.prop('disabled', true).toggleClass('is-on', ligando)
+          .attr('aria-checked', ligando ? 'true' : 'false');
+
+        post('/admin/email-marketing/provedores/toggle', { id: $b.data('id') }, function (r) {
+            $b.prop('disabled', false);
+            if (r && r.ok) {
+                var on = !!(+r.ativo);
+                $b.toggleClass('is-on', on)
+                  .attr('aria-checked', on ? 'true' : 'false')
+                  .attr('title', on ? 'Desativar' : 'Ativar');
+                flash(on ? 'Provedor ativado.' : 'Provedor desativado.', true);
+            } else {
+                $b.toggleClass('is-on', !ligando)
+                  .attr('aria-checked', !ligando ? 'true' : 'false');
+                showError(r);
+            }
         });
     });
 

@@ -294,13 +294,10 @@ $(function () {
     $(this).closest('.ficha-row').remove();
   });
 
-  // ── Estoque por combinação ───────────────────────────────
-  $(document).on('submit', '.form-estoque-row', function (e) {
-    e.preventDefault();
-    $.post(ADMIN_URL + '/api/estoque', $(this).serialize(), function (res) {
-      adminToast(res.ok ? res.msg : (res.msg || 'Erro.'), res.ok ? 'success' : 'error');
-    }, 'json');
-  });
+  // ── Estoque por combinação — REMOVIDO em 12/09/2026 ──────
+  // O formulário `.form-estoque-row` já não existe em view nenhuma (o ajuste
+  // manual saiu do painel em 11/09) e a rota POST /api/estoque responde 410.
+  // O saldo é do Bling; para trazer o número use "Puxar do Bling".
 
   // ── Drag and drop para ordenar banners ───────────────────
   if ($('#banners-sortable').length && typeof $.fn.sortable !== 'undefined') {
@@ -5727,6 +5724,14 @@ $(document).on('change', '#pe-categoria', function () {
         <input type="text" name="skus[${key}][sku]"
                class="form-control form-control--sm"
                placeholder="SKU-001"
+               style="font-family:var(--font-mono);font-size:12px;">
+      </td>
+      <td>
+        <input type="text" name="skus[${key}][ean]"
+               class="form-control form-control--sm"
+               placeholder="7891234567895"
+               inputmode="numeric" maxlength="20"
+               title="8, 12, 13 ou 14 dígitos — o último é conferido"
                style="font-family:var(--font-mono);font-size:12px;">
       </td>
       <td>

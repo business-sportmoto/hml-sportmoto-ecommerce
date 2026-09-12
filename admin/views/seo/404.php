@@ -190,6 +190,9 @@ $rotulo = ['interno' => 'Link nosso', 'busca' => 'Busca', 'externo' => 'Site ext
       subtitulo: caminho,
       tamanho  : 'sm',
       conteudo : `
+        <div id="rd-sugestoes" style="margin-bottom:16px;">
+          <p class="pe-field-hint">Procurando destinos parecidos...</p>
+        </div>
         <div class="form-group">
           <label class="pe-label">Para onde deve levar</label>
           <input type="text" id="rd-destino" class="form-control"
@@ -205,6 +208,40 @@ $rotulo = ['interno' => 'Link nosso', 'busca' => 'Busca', 'externo' => 'Site ext
           </select>
         </div>
         <button type="button" class="btn btn-primary" style="width:100%" id="rd-salvar">Salvar</button>`,
+    });
+
+    // ── Palpites de destino ───────────────────────────────
+    // Vêm do banco (slug igual primeiro, depois parecido). Clicar preenche o
+    // campo — nada é gravado sem o admin confirmar.
+    $.get(BASE + '/404/' + id + '/sugestoes', function (res) {
+      const $area = $('#rd-sugestoes');
+      if (!$area.length) return;
+
+      if (!res.ok || !res.sugestoes.length) {
+        $area.html('<p class="pe-field-hint">Nenhum destino parecido no catálogo. '
+                 + 'Escreva o endereço, ou use 410 se a página acabou.</p>');
+        return;
+      }
+
+      let html = '<p class="pe-field-hint" style="margin-bottom:6px;">Sugestões:</p>';
+      res.sugestoes.forEach(s => {
+        html += '<button type="button" class="btn btn-xs btn-ghost rd-sug"'
+             +  ' style="display:block;width:100%;text-align:left;margin-bottom:4px;"'
+             +  ' data-destino="' + $('<div>').text(s.destino).html() + '">'
+             +  '<strong>' + $('<div>').text(s.destino).html() + '</strong>'
+             +  ' <span style="color:var(--text-3)">· ' + s.tipo + ' · ' + s.score + '% · '
+             +  $('<div>').text(s.motivo).html() + '</span><br>'
+             +  '<span style="color:var(--text-3);font-size:11px">'
+             +  $('<div>').text(s.titulo || '').html() + '</span>'
+             +  '</button>';
+      });
+      $area.html(html);
+    }, 'json');
+
+    $(drawer.corpo()).on('click', '.rd-sug', function () {
+      $('#rd-destino').val($(this).data('destino')).focus();
+      $(drawer.corpo()).find('.rd-sug').removeClass('btn-primary');
+      $(this).addClass('btn-primary');
     });
 
     $(drawer.corpo()).on('change', '#rd-tipo', function () {

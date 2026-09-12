@@ -86,6 +86,15 @@ class CategoriasController extends Controller {
         }
 
         $db   = Database::getInstance()->getConnection();
+
+        // Guardado antes: URL trocada vira 301 depois da gravação (fase 4).
+        $slugAntigo = '';
+        if ($id > 0) {
+            $stSlug = $db->prepare("SELECT slug FROM categorias WHERE id = ? LIMIT 1");
+            $stSlug->execute([$id]);
+            $slugAntigo = (string) ($stSlug->fetchColumn() ?: '');
+        }
+
         $slug = $this->resolverSlug($db, $id, $nome);
 
         // Upload de imagem
@@ -116,6 +125,12 @@ class CategoriasController extends Controller {
 
                 $db->prepare($sql)->execute($params);
                 $nav_tree = CacheHelper::delete('menu_categorias');
+
+                if ($slugAntigo !== '' && $slugAntigo !== $slug) {
+                    (new RedirecionamentoService($db))->aoTrocarSlug(
+                        '/categoria/' . $slugAntigo, '/categoria/' . $slug, AuthHelper::usuarioId()
+                    );
+                }
 
                 $this->json(['ok' => true, 'msg' => 'Categoria atualizada!', 'id' => $id]);                
             } else {

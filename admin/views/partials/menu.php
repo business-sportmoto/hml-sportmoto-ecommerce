@@ -132,6 +132,15 @@
         </span>
         Campanhas
       </a>
+      <?php // Segmento alimenta campanha — por isso logo abaixo dela. A tela
+            // existia com rota, controller e view, mas sem nenhum link: só
+            // chegava quem digitasse a URL. ?>
+      <a href="<?= BASE_URL ?>/admin/email-marketing/segmentos" class="admin-nav-item<?= adminIsActive('/admin/email-marketing/segmentos') ?>">
+        <span class="admin-nav-icon">
+          <?= IconLibrary::render('funnel', 'icon icon--md') ?>
+        </span>
+        Segmentos
+      </a>
       <a href="<?= BASE_URL ?>/admin/fluxos" class="admin-nav-item<?= adminIsActive('/admin/fluxos') ?>">
         <span class="admin-nav-icon">
           <?= IconLibrary::render('automation', 'icon icon--md') ?>
@@ -458,6 +467,17 @@
         </span>
         Catálogo Bling
       </a>
+      <?php // Metatags da loja: texto que vai para o Google — gestão. ?>
+      <?php if (AuthHelper::hasLevel('super', 'gerente')): ?>
+      <a href="<?= BASE_URL ?>/admin/seo" class="admin-nav-item<?= adminIsActive('/admin/seo') === '' ? '' : '' ?>">
+        <span class="admin-nav-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+        </span>
+        SEO da loja
+      </a>
+      <?php endif; ?>
       <?php // Rastreador de 404 e redirecionamentos: só super (decisão de 11/09). ?>
       <?php if (AuthHelper::hasLevel('super')): ?>
       <a href="<?= BASE_URL ?>/admin/seo/404" class="admin-nav-item<?= adminIsActive('/admin/seo') ?>">

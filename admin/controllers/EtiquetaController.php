@@ -43,6 +43,18 @@ class EtiquetaController extends Controller
         }
     }
 
+    /**
+     * GET /admin/logistica/etiquetas/dados-loja
+     *
+     * Alimenta o botão "Usar dados da loja" do destinatário — o caso é a
+     * etiqueta de retorno, em que a loja recebe. Só leitura de configuração,
+     * então não leva CSRF (é GET, como buscar-cep e buscar-cliente).
+     */
+    public function dadosLoja(): void
+    {
+        $this->json((new EnderecoLojaService())->paraEtiqueta());
+    }
+
     /** Busca cliente por CPF (mesmo mecanismo da reversa) para autopreencher os dados. */
     public function buscarCliente(): void
     {

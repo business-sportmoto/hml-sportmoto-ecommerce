@@ -26,6 +26,27 @@ class SitemapController extends Controller
     }
 
     // ── GET /sitemap.xml ─────────────────────────────────
+    /**
+     * GET /llms.txt — a loja explicada para um modelo de linguagem.
+     *
+     * Texto puro, montado do banco (LlmsTxtService). Cache de uma hora: o
+     * conteúdo muda com o catálogo, não a cada visita, e robô que relê o
+     * arquivo toda hora não deveria custar consulta ao banco.
+     */
+    public function llms(): void
+    {
+        $texto = (new LlmsTxtService())->gerar();
+
+        while (ob_get_level() > 0) { ob_end_clean(); }
+
+        header('Content-Type: text/plain; charset=utf-8');
+        header('Cache-Control: public, max-age=3600');
+        // O arquivo é para robô ler, não para ranquear como página.
+        header('X-Robots-Tag: noindex');
+
+        echo $texto;
+    }
+
     public function xml(): void
     {
         $urls = (new SitemapService())->urls(true);

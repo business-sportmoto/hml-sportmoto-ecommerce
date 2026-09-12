@@ -27,6 +27,20 @@ class DivergenciaService
     private const TOLERANCIA_PESO_G = 50;   // ruído de balança
     private const TOLERANCIA_DIM_CM = 1.0;  // ruído de medição
 
+    /**
+     * Piso para ABRIR uma divergência automática.
+     *
+     * A régua de impacto acima classifica o que já foi aberto; esta decide se
+     * vale abrir. Sem um piso, centavo de arredondamento da tabela dos
+     * Correios viraria divergência, e uma fila cheia de ruído é uma fila que
+     * ninguém abre.
+     *
+     * Os dois são OU: R$ 1,00 pega o erro absoluto em frete barato, 2% pega o
+     * erro proporcional em frete caro.
+     */
+    public const MIN_ABRIR_VALOR = 1.00;
+    public const MIN_ABRIR_PCT   = 2.0;
+
     private const TRANSICOES = [
         'aberta'     => ['em_analise', 'resolvida', 'ignorada'],
         'em_analise' => ['resolvida', 'ignorada', 'aberta'],
@@ -464,13 +478,138 @@ class DivergenciaService
     }
 
     /* =================================================================
+       DETECÇÃO AUTOMÁTICA (cron)
+       ================================================================= */
+
+    /**
+     * Abre divergências das etiquetas cujo preço real de postagem já chegou.
+     *
+     * Antes disto o módulo só existia por digitação: alguém teria que abrir a
+     * fatura da transportadora e lançar etiqueta por etiqueta — e por isso
+     * `log_divergencias` estava vazia. Agora o par previsto/cobrado vem dos
+     * dois lados sozinho: `valor` da cotação (na criação da etiqueta) e
+     * `valor_postado` do cron pós-postagem.
+     *
+     * A tolerância é aplicada NA QUERY, de propósito. Se ela fosse aplicada em
+     * PHP depois do LIMIT, as etiquetas abaixo do piso voltariam em toda
+     * rodada, ocupando as 50 vagas para sempre e escondendo as novas. Do jeito
+     * que está, toda linha que a query devolve vira divergência e sai do
+     * conjunto na rodada seguinte.
+     *
+     * `registrar()` já é idempotente por etiqueta; o LEFT JOIN evita o
+     * trabalho, não a duplicata.
+     *
+     * @return array{ok:bool, avaliadas:int, abertas:int}
+     */
+    public function detectarPendentes(int $limite = 50): array
+    {
+        $limite = max(1, min(200, $limite));
+        try {
+            $st = $this->pdo->prepare(
+                "SELECT e.id, e.pedido_id, e.transportadora_id, e.servico_codigo,
+                        e.valor, e.valor_postado, e.peso_total_g, e.peso_tarifado_g,
+                        e.volumes, p.frete AS frete_cliente
+                   FROM log_etiquetas e
+                   LEFT JOIN log_divergencias d ON d.etiqueta_id = e.id
+                   LEFT JOIN pedidos p          ON p.id = e.pedido_id
+                  WHERE d.id IS NULL
+                    AND e.valor_postado IS NOT NULL
+                    AND e.valor > 0
+                    AND e.status NOT IN ('cancelada', 'erro')
+                    AND (
+                          ABS(e.valor_postado - e.valor) >= :minv
+                       OR ABS(e.valor_postado - e.valor) / e.valor * 100 >= :minp
+                    )
+                  ORDER BY e.id DESC
+                  LIMIT " . $limite
+            );
+            $st->execute([':minv' => self::MIN_ABRIR_VALOR, ':minp' => self::MIN_ABRIR_PCT]);
+            $linhas = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (\Throwable $e) {
+            LogService::error('Falha ao listar etiquetas para detecção de divergência', ['erro' => $e->getMessage()]);
+            return ['ok' => false, 'avaliadas' => 0, 'abertas' => 0];
+        }
+
+        $abertas = 0;
+        foreach ($linhas as $e) {
+            $etiquetaId = (int)$e['id'];
+            $pedidoId   = !empty($e['pedido_id']) ? (int)$e['pedido_id'] : null;
+            $cobrado    = round((float)$e['valor_postado'], 2);
+            $cliente    = round((float)($e['frete_cliente'] ?? 0), 2);
+
+            $vol   = json_decode((string)$e['volumes'], true) ?: [];
+            $lista = $vol['volumes'] ?? (isset($vol[0]) ? $vol : []);
+            $dims  = $lista[0] ?? null;
+
+            $res = $this->registrar([
+                'etiqueta_id'       => $etiquetaId,
+                'pedido_id'         => $pedidoId,
+                'transportadora_id' => $e['transportadora_id'],
+                'servico_codigo'    => $e['servico_codigo'],
+                'valor_estimado'    => round((float)$e['valor'], 2),
+                'valor_transportadora' => $cobrado,
+                'valor_cliente'     => $cliente,
+                // O que a loja absorveu: só existe quando o cobrado passou do
+                // que o cliente pagou. Frete grátis cai aqui inteiro.
+                'subsidio_loja'     => max(0.0, round($cobrado - $cliente, 2)),
+                'peso_informado_g'  => !empty($e['peso_total_g']) ? (int)$e['peso_total_g'] : null,
+                // O peso tarifado dos Correios é o aferido: é ele que explica
+                // a diferença, e é o que aponta o produto com cadastro errado.
+                'peso_aferido_g'    => !empty($e['peso_tarifado_g']) ? (int)$e['peso_tarifado_g'] : null,
+                'dimensoes_informadas' => $dims ? [
+                    'altura'      => (float)($dims['altura_cm'] ?? $dims['altura'] ?? 0),
+                    'largura'     => (float)($dims['largura_cm'] ?? $dims['largura'] ?? 0),
+                    'comprimento' => (float)($dims['comprimento_cm'] ?? $dims['comprimento'] ?? 0),
+                ] : null,
+                'produtos'      => $this->produtosDoPedido($pedidoId),
+                'observacoes'   => 'Aberta automaticamente pelo cron pós-postagem.',
+            ]);
+
+            if (!empty($res['ok']) && empty($res['existente'])) $abertas++;
+        }
+
+        if ($abertas > 0) {
+            LogService::info('Divergências abertas automaticamente', ['abertas' => $abertas, 'avaliadas' => count($linhas)]);
+        }
+        return ['ok' => true, 'avaliadas' => count($linhas), 'abertas' => $abertas];
+    }
+
+    /**
+     * IDs dos produtos do pedido, para o alerta agregado por produto.
+     *
+     * Não dá para reaproveitar o `produtos` guardado no JSON da etiqueta: lá
+     * eles são descrição/quantidade/valor para a nota da transportadora, sem
+     * `produto_id` — e sem o id não há como acumular o prejuízo no cadastro
+     * que está errado, que é o objetivo do módulo.
+     *
+     * @return array<int,int>
+     */
+    private function produtosDoPedido(?int $pedidoId): array
+    {
+        if (!$pedidoId) return [];
+        try {
+            $st = $this->pdo->prepare(
+                "SELECT DISTINCT produto_id FROM pedido_itens
+                  WHERE pedido_id = :p AND produto_id IS NOT NULL AND produto_id > 0"
+            );
+            $st->execute([':p' => $pedidoId]);
+            return array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN) ?: []);
+        } catch (\Throwable $e) {
+            LogService::warning('Falha ao listar produtos do pedido para a divergência', [
+                'pedido_id' => $pedidoId, 'erro' => $e->getMessage(),
+            ]);
+            return []; // a divergência ainda vale; só não alimenta alerta por produto
+        }
+    }
+
+    /* =================================================================
        Prefill a partir da etiqueta (opcional, para a tela de registro)
        ================================================================= */
 
     public function contextoDaEtiqueta(int $etiquetaId): array
     {
         try {
-            $st = $this->pdo->prepare("SELECT pedido_id, transportadora_id, servico_codigo, valor, volumes FROM log_etiquetas WHERE id = :id LIMIT 1");
+            $st = $this->pdo->prepare("SELECT pedido_id, transportadora_id, servico_codigo, valor, valor_postado, peso_tarifado_g, volumes FROM log_etiquetas WHERE id = :id LIMIT 1");
             $st->execute([':id' => $etiquetaId]);
             $e = $st->fetch(PDO::FETCH_ASSOC);
             if (!$e) return [];
@@ -483,6 +622,10 @@ class DivergenciaService
                 'transportadora_id' => $e['transportadora_id'] ? (int)$e['transportadora_id'] : null,
                 'servico_codigo'    => $e['servico_codigo'] ?? null,
                 'valor_estimado'    => (float)($e['valor'] ?? 0),
+                // Quando o cron pós-postagem já trouxe o preço real, a tela
+                // não precisa mais pedir que alguém digite o valor da fatura.
+                'valor_transportadora' => $e['valor_postado'] !== null ? (float)$e['valor_postado'] : null,
+                'peso_aferido_g'    => !empty($e['peso_tarifado_g']) ? (int)$e['peso_tarifado_g'] : null,
                 'peso_informado_g'  => $peso ?: null,
                 'dimensoes_informadas' => $dims ? [
                     'altura' => (float)($dims['altura_cm'] ?? $dims['altura'] ?? 0),

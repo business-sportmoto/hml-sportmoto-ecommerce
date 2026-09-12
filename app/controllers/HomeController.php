@@ -9,7 +9,17 @@ class HomeController extends Controller {
         $productModel     = new Product();
         // $testimonialModel = new Testimonial();
 
-        SeoHelper::setTitle(ConfigHelper::get('site_nome', 'Minha Loja'));
+        // A HOME NAO LEVA SUFIXO.
+        //
+        // O sufixo (`seo_title_sufixo`) existe para dizer de que loja e a
+        // pagina — "Jaquetas | Sportmoto". Na home isso viraria
+        // "Sportmoto | Sportmoto". Por isso ela tem titulo proprio,
+        // `seo_titulo_home`, configuravel em /admin/seo.
+        $tituloHome = trim((string) ConfigHelper::get('seo_titulo_home', ''));
+        SeoHelper::setTitle(
+            $tituloHome !== '' ? $tituloHome : ConfigHelper::get('site_nome', 'Minha Loja'),
+            $tituloHome === ''   // sem titulo proprio configurado, mantem o antigo
+        );
         SeoHelper::setDescription(ConfigHelper::get('seo_description', ''));
         SeoHelper::setCanonical(BASE_URL);
 

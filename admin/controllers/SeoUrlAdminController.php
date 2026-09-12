@@ -67,6 +67,19 @@ class SeoUrlAdminController extends Controller
         ]);
     }
 
+    /** Palpites de destino — quem decide é o admin; isto só preenche o campo. */
+    public function sugestoes(int $id): void
+    {
+        $url = $this->erros->porId($id);
+        if (!$url) $this->json(['ok' => false, 'msg' => 'Endereço não encontrado.'], 404);
+
+        $this->json([
+            'ok'        => true,
+            'caminho'   => $url['caminho'],
+            'sugestoes' => $this->redir->sugerirDestinos((string) $url['caminho'], 6),
+        ]);
+    }
+
     public function marcarStatus(): void
     {
         $this->verifyCsrf();
@@ -149,10 +162,57 @@ class SeoUrlAdminController extends Controller
             'origem'     => (string) ($_POST['origem'] ?? ''),
             'destino'    => (string) ($_POST['destino'] ?? ''),
             'tipo'       => (int) ($_POST['tipo'] ?? 301),
+            'prioridade' => (int) ($_POST['prioridade'] ?? 100),
             'motivo'     => SecurityHelper::sanitizeString($_POST['motivo'] ?? 'manual'),
             'observacao' => SecurityHelper::sanitizeString($_POST['observacao'] ?? ''),
             'ativo'      => isset($_POST['ativo']) ? (int) $_POST['ativo'] : 1,
         ], AuthHelper::usuarioId()));
+    }
+
+    /**
+     * Importação em massa: uma regra por linha,
+     * `origem;destino;tipo;prioridade` (tipo e prioridade opcionais).
+     *
+     * Passa pelo mesmo `salvar()` da tela — validação, normalização, detecção
+     * de cadeia e autoria ficam iguais. Colar SQL direto no banco pularia tudo
+     * isso.
+     */
+    public function importar(): void
+    {
+        $this->verifyCsrf();
+
+        $linhas = preg_split('/\R/', (string) ($_POST['linhas'] ?? '')) ?: [];
+        $autor  = AuthHelper::usuarioId();
+        $feitas = 0;
+        $erros  = [];
+
+        foreach ($linhas as $n => $linha) {
+            $linha = trim($linha);
+            if ($linha === '' || str_starts_with($linha, '#')) continue;
+
+            $campos = array_map('trim', explode(';', $linha));
+
+            $r = $this->redir->salvar([
+                'origem'     => $campos[0] ?? '',
+                'destino'    => $campos[1] ?? '',
+                'tipo'       => (int) ($campos[2] ?? 301) ?: 301,
+                'prioridade' => isset($campos[3]) && $campos[3] !== '' ? (int) $campos[3] : 100,
+                'motivo'     => 'migracao_tray',
+                'observacao' => 'Importado em massa.',
+                'ativo'      => 1,
+            ], $autor);
+
+            if (!empty($r['ok'])) $feitas++;
+            else $erros[] = 'linha ' . ($n + 1) . ': ' . ($r['msg'] ?? 'erro');
+        }
+
+        $this->json([
+            'ok'         => true,
+            'importados' => $feitas,
+            'erros'      => array_slice($erros, 0, 50),
+            'msg'        => $feitas . ' regra(s) importada(s).'
+                          . ($erros ? ' ' . count($erros) . ' linha(s) com problema.' : ''),
+        ]);
     }
 
     public function alternar(): void

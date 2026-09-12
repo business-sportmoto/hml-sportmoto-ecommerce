@@ -129,6 +129,9 @@ class SearchController extends Controller {
         SeoHelper::setColecao([
             'titulo'     => "Busca: {$q}",
             'descricao'  => "Resultados para \"{$q}\" na " . ConfigHelper::get('site_nome', ''),
+            'modeloChave'     => 'seo_titulo_busca',
+            'modeloDescChave' => 'seo_desc_busca',
+            'modeloVars'      => ['[termo]' => $q],
             'url'        => BASE_URL . '/busca?q=' . urlencode($q),
             'produtos'   => $products ?? [],
             'total'      => (int) ($total ?? 0),

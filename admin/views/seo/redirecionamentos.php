@@ -15,6 +15,7 @@ $tipos   = [301 => 'Definitivo', 302 => 'Temporário', 410 => 'Acabou'];
     </div>
     <div style="display:flex;gap:8px;">
       <a href="<?= BASE_URL ?>/admin/seo/404" class="btn btn-outline">Erros 404</a>
+      <button type="button" class="btn btn-outline" id="btn-importar-redir">Importar em massa</button>
       <button type="button" class="btn btn-primary" id="btn-novo-redir">Novo redirecionamento</button>
     </div>
   </div>
@@ -68,7 +69,15 @@ $tipos   = [301 => 'Definitivo', 302 => 'Temporário', 410 => 'Acabou'];
         <tbody>
           <?php foreach ($regras as $r): ?>
           <tr id="redir-row-<?= (int) $r['id'] ?>" <?= (int) $r['ativo'] ? '' : 'style="opacity:.55"' ?>>
-            <td style="font-family:var(--font-mono);font-size:12px;"><?= View::e($r['origem']) ?></td>
+            <td style="font-family:var(--font-mono);font-size:12px;">
+              <?= View::e($r['origem']) ?>
+              <?php if (!empty($r['padrao'])): ?>
+              <span class="admin-badge admin-badge--muted"
+                    title="Regra por padrão: o * captura o resto do endereço. Prioridade <?= (int) $r['prioridade'] ?> — menor roda antes.">
+                padrão · <?= (int) $r['prioridade'] ?>
+              </span>
+              <?php endif; ?>
+            </td>
 
             <td style="font-family:var(--font-mono);font-size:12px;">
               <?= (int) $r['tipo'] === 410
@@ -142,7 +151,9 @@ $tipos   = [301 => 'Definitivo', 302 => 'Temporário', 410 => 'Acabou'];
         <label class="pe-label">Endereço antigo (origem)</label>
         <input type="text" id="rd-origem" class="form-control"
                value="${$('<div>').text(r.origem || '').html()}" placeholder="/capacetes/com-viseira-solar">
-        <p class="pe-field-hint">Só o caminho. Maiúsculas, barra final e query são ignoradas na comparação.</p>
+        <p class="pe-field-hint">Só o caminho. Maiúsculas, barra final e query são ignoradas na comparação.<br>
+           Use <code>*</code> para uma regra por padrão: <code>/vestuario/*</code> → <code>/categoria/*</code>
+           resolve a árvore inteira numa linha.</p>
       </div>
       <div class="form-group">
         <label class="pe-label">Tipo</label>
@@ -157,6 +168,13 @@ $tipos   = [301 => 'Definitivo', 302 => 'Temporário', 410 => 'Acabou'];
         <input type="text" id="rd-destino" class="form-control"
                value="${$('<div>').text(r.destino || '').html()}" placeholder="/categoria/capacetes">
         <p class="pe-field-hint">Caminho interno com "/" ou URL completa (http/https).</p>
+      </div>
+      <div class="form-group">
+        <label class="pe-label">Prioridade</label>
+        <input type="number" id="rd-prio" class="form-control" style="max-width:120px;"
+               value="${parseInt(r.prioridade || 100, 10)}" min="0" max="65535">
+        <p class="pe-field-hint">Só vale entre regras por padrão: menor roda antes.
+           A regra exata sempre ganha do padrão.</p>
       </div>
       <div class="form-group">
         <label class="pe-label">Observação</label>
@@ -188,6 +206,7 @@ $tipos   = [301 => 'Definitivo', 302 => 'Temporário', 410 => 'Acabou'];
         origem      : $('#rd-origem').val(),
         destino     : $('#rd-destino').val(),
         tipo        : $('#rd-tipo').val(),
+        prioridade  : $('#rd-prio').val(),
         observacao  : $('#rd-obs').val(),
         ativo       : $('#rd-ativo').is(':checked') ? 1 : 0,
         _csrf_token : CSRF,
@@ -203,6 +222,51 @@ $tipos   = [301 => 'Definitivo', 302 => 'Temporário', 410 => 'Acabou'];
   }
 
   $('#btn-novo-redir').on('click', () => abrir(null));
+
+  // ── Importação em massa ───────────────────────────────────
+  //
+  // O pré-voo da migração entrega centenas de linhas. Digitar uma a uma não
+  // é opção, e colar SQL no banco tira o histórico de quem criou a regra.
+  $('#btn-importar-redir').on('click', function () {
+    const drawer = adminDrawer({
+      titulo   : 'Importar em massa',
+      subtitulo: 'Uma regra por linha',
+      tamanho  : 'md',
+      conteudo : `
+        <p class="pe-field-hint">
+          Formato: <code>origem;destino;tipo;prioridade</code> — tipo e prioridade
+          são opcionais (301 e 100). Linha começando com <code>#</code> é ignorada.
+          Origem com <code>*</code> vira regra por padrão; para 410, deixe o destino vazio.
+        </p>
+        <textarea id="rd-linhas" class="form-control" rows="12"
+                  style="font-family:var(--font-mono);font-size:12px;"
+                  placeholder="/vestuario/*;/categoria/*;301&#10;/ano-de-fabricacao/*;;410"></textarea>
+        <div id="rd-import-res" style="margin:12px 0;"></div>
+        <button type="button" class="btn btn-primary" style="width:100%" id="rd-importar">Importar</button>`,
+    });
+
+    $(drawer.corpo()).on('click', '#rd-importar', function () {
+      const $btn = $(this).prop('disabled', true).text('Importando...');
+
+      $.post(BASE + '/importar', {
+        linhas      : $('#rd-linhas').val(),
+        _csrf_token : CSRF,
+      }, function (res) {
+        $btn.prop('disabled', false).text('Importar');
+        if (!res.ok) { showToast(res.msg, 'error'); return; }
+
+        let html = '<p><strong>' + res.importados + '</strong> regra(s) importada(s).</p>';
+        if (res.erros && res.erros.length) {
+          html += '<ul style="color:var(--danger);font-size:12px;max-height:220px;overflow:auto">';
+          res.erros.forEach(e => { html += '<li>' + $('<div>').text(e).html() + '</li>'; });
+          html += '</ul>';
+        }
+        $('#rd-import-res').html(html);
+        showToast(res.msg, res.erros && res.erros.length ? 'warning' : 'success');
+        if (res.importados > 0) setTimeout(() => window.location.reload(), 2500);
+      }, 'json');
+    });
+  });
 
   $(document).on('click', '.btn-editar-redir', function () {
     $.get(BASE + '/' + $(this).data('id'), function (res) {

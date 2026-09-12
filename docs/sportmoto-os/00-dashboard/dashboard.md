@@ -78,6 +78,7 @@ Ver [[../04-bugs/Bugs para resolver]].
 ### Avulsos
 - [[../12-decisoes-tecnicas/modulo-chat-whatsapp|Chat / WhatsApp]]
 - [[../12-decisoes-tecnicas/expedicao-etiqueta-e-impressao|Expedição — etiqueta e impressão]]
+- [[../12-decisoes-tecnicas/frete-divergencia-automatica|Frete — divergência automática]]
 - [[../12-decisoes-tecnicas/conteudo-editavel-rodape-e-paginas|Rodapé e criador de páginas]]
 - [[../12-decisoes-tecnicas/newsletter-cupom-boas-vindas|Newsletter — cupom de boas-vindas]]
 - [[../12-decisoes-tecnicas/admin-produtos-midia-e-clips|Produtos — mídia e Clips]]

@@ -442,6 +442,19 @@ AdminRouter::get( '/estoque/historico',   'Estoquecontroller@historico');
 AdminRouter::post('/estoque/ressincronizar', 'Estoquecontroller@ressincronizar');
 AdminRouter::post('/estoque/ajustar-sku', 'Estoquecontroller@ajustarSku');
 
+// ── Ponte de estoque — Syscar <-> Bling ───────────────────────────
+// Fase 1: a tela existe e o worker roda, mas as duas pernas nascem
+// desligadas (estoque_ponte_perna_a / _b em `configuracoes`).
+// Ver 12-decisoes-tecnicas/estoque-modulo-especificacao.
+//
+// `canais` é declarado ANTES de `movimento/{id}` por disciplina: rota
+// literal nunca deve poder ser engolida por um padrão com parâmetro.
+AdminRouter::get ('/estoque/ponte',                    'EstoquePonteController@index');
+AdminRouter::get ('/estoque/ponte/canais',             'EstoquePonteController@canais');
+AdminRouter::post('/estoque/ponte/canais',             'EstoquePonteController@canaisSalvar');
+AdminRouter::get ('/estoque/ponte/movimento/{id:\d+}', 'EstoquePonteController@movimento');
+AdminRouter::post('/estoque/ponte/reenviar',           'EstoquePonteController@reenviar');
+
 // ─── Admin ───────────────────────────────────────────────────
 AdminRouter::get( '/help-faq',                          'HelpFaqController@index');
  
@@ -612,13 +625,20 @@ AdminRouter::post('/vida-util/pausar',   'VidaUtilAdminController@pausar');
 AdminRouter::post('/vida-util/excluir',  'VidaUtilAdminController@excluir');
 
 # SEO — rastreador de 404 e mapa de redirecionamentos (só super)
+// Configuração de SEO (metatags da loja). Antes de /seo/404 não faz
+// diferença — são literais distintos —, mas fica junto do resto da área.
+AdminRouter::get ('/seo',                            'SeoConfigAdminController@index');
+AdminRouter::post('/seo/salvar',                     'SeoConfigAdminController@salvar');
+
 AdminRouter::get ('/seo/404',                        'SeoUrlAdminController@erros');
 AdminRouter::get ('/seo/404/{id:\d+}/acessos',       'SeoUrlAdminController@acessos');
+AdminRouter::get ('/seo/404/{id:\d+}/sugestoes',     'SeoUrlAdminController@sugestoes');
 AdminRouter::post('/seo/404/status',                 'SeoUrlAdminController@marcarStatus');
 AdminRouter::post('/seo/404/redirecionar',           'SeoUrlAdminController@redirecionarDe404');
 
 AdminRouter::get ('/seo/redirecionamentos',          'SeoUrlAdminController@redirecionamentos');
 AdminRouter::post('/seo/redirecionamentos/salvar',   'SeoUrlAdminController@salvar');
+AdminRouter::post('/seo/redirecionamentos/importar', 'SeoUrlAdminController@importar');
 AdminRouter::post('/seo/redirecionamentos/alternar', 'SeoUrlAdminController@alternar');
 AdminRouter::post('/seo/redirecionamentos/excluir',  'SeoUrlAdminController@excluir');
 AdminRouter::get ('/seo/redirecionamentos/{id:\d+}', 'SeoUrlAdminController@obter');
