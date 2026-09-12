@@ -28,6 +28,9 @@ final class FamiliaService
     /** Família com menos que isto não agrupa nada na loja. */
     public const MINIMO_UTIL = 2;
 
+    /** Quantos produtos aparecem na prévia da listagem e da sugestão. */
+    private const PREVIA_MEMBROS = 4;
+
     /**
      * Palavras que não distinguem um produto do outro.
      *
@@ -108,8 +111,7 @@ final class FamiliaService
         $st = $this->db->prepare(
             "SELECT f.id, f.nome, f.slug, f.descricao, f.ativo, f.criado_em,
                     COUNT(p.id) AS total_membros,
-                    SUM(p.ativo = 1) AS membros_ativos,
-                    GROUP_CONCAT(p.nome ORDER BY p.nome SEPARATOR ' · ') AS membros
+                    SUM(p.ativo = 1) AS membros_ativos
              {$sqlBase}
              ORDER BY total_membros DESC, f.nome ASC
              LIMIT {$porPagina} OFFSET {$offset}"
@@ -119,11 +121,60 @@ final class FamiliaService
         $itens = array_map(static function (array $f): array {
             $f['total_membros']  = (int) $f['total_membros'];
             $f['membros_ativos'] = (int) $f['membros_ativos'];
-            $f['membros']        = $f['membros'] ? explode(' · ', (string) $f['membros']) : [];
             return $f;
         }, $st->fetchAll(PDO::FETCH_ASSOC));
 
+        // Foto e referência vêm em consulta separada: um GROUP_CONCAT com
+        // três campos por membro vira string para a view desmontar, e a
+        // imagem é subconsulta por produto.
+        $membros = $this->membrosResumidos(array_column($itens, 'id'), self::PREVIA_MEMBROS);
+        foreach ($itens as &$f) {
+            $f['membros'] = $membros[(int) $f['id']] ?? [];
+        }
+        unset($f);
+
         return ['itens' => $itens, 'total' => $total];
+    }
+
+    /**
+     * Quem está em cada família, com o mínimo para reconhecer de relance:
+     * foto, nome e referência.
+     *
+     * @param  int[] $familiaIds
+     * @return array<int, array<int, array{id:int,nome:string,sku_legado:?string,imagem:?string}>>
+     */
+    private function membrosResumidos(array $familiaIds, int $porFamilia): array
+    {
+        $ids = array_values(array_filter(array_map('intval', $familiaIds)));
+        if (!$ids) return [];
+
+        $marcas = implode(',', array_fill(0, count($ids), '?'));
+        $st = $this->db->prepare(
+            "SELECT p.familia_id, p.id, p.nome, p.sku_legado, p.ativo,
+                    (SELECT pi.arquivo FROM produto_imagens pi
+                      WHERE pi.produto_id = p.id
+                   ORDER BY pi.principal DESC, pi.ordem ASC, pi.id ASC LIMIT 1) AS imagem
+               FROM produtos p
+              WHERE p.familia_id IN ({$marcas}) AND p.deleted_at IS NULL
+           ORDER BY p.ativo DESC, p.nome ASC"
+        );
+        $st->execute($ids);
+
+        // O corte é aqui, não no SQL: LIMIT por grupo em MySQL exige window
+        // function, e são no máximo 20 famílias por página.
+        $saida = [];
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $fid = (int) $r['familia_id'];
+            if (count($saida[$fid] ?? []) >= $porFamilia) continue;
+            $saida[$fid][] = [
+                'id'         => (int) $r['id'],
+                'nome'       => (string) $r['nome'],
+                'sku_legado' => $r['sku_legado'] ?: null,
+                'imagem'     => $r['imagem'] ?: null,
+                'ativo'      => (int) $r['ativo'],
+            ];
+        }
+        return $saida;
     }
 
     /** Números do topo da tela — o que precisa de atenção. */
@@ -378,9 +429,10 @@ final class FamiliaService
                 'total_membros' => (int) $f['total_membros'],
                 'score'         => round($score, 1),
                 'motivo'        => ucfirst(implode(' · ', $motivo)),
-                'exemplos'      => array_slice(array_map(
-                    static fn(string $n) => mb_strimwidth($n, 0, 60, '…'), $nomes
-                ), 0, 2),
+                // Preenchido depois, só para as que sobrarem: a foto é uma
+                // subconsulta por produto e aqui ainda estamos no laço de
+                // TODAS as famílias.
+                'exemplos'      => [],
             ];
         }
 
@@ -396,7 +448,15 @@ final class FamiliaService
             }
         }
 
-        return array_slice($saida, 0, max(1, $limite));
+        $saida = array_slice($saida, 0, max(1, $limite));
+
+        $exemplos = $this->membrosResumidos(array_column($saida, 'id'), 2);
+        foreach ($saida as &$s) {
+            $s['exemplos'] = $exemplos[$s['id']] ?? [];
+        }
+        unset($s);
+
+        return $saida;
     }
 
     /**

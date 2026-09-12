@@ -6205,6 +6205,56 @@ $(document).on('change', '#pe-categoria', function () {
     carregarSugestoes();
   }
 
+  /**
+   * Bloco pequeno de produto: foto, nome curto e referência embaixo.
+   *
+   * Montado no DOM (e não com template string) porque nome e referência
+   * vêm do cadastro: interpolar direto no innerHTML seria injeção.
+   */
+  function blocoProduto(p) {
+    const bloco = document.createElement('span');
+    bloco.className = 'fam-mini';
+    bloco.title = p.nome || '';
+
+    if (p.imagem) {
+      const img = document.createElement('img');
+      img.className = 'fam-mini-foto';
+      img.loading = 'lazy';
+      img.alt = '';
+      img.src = p.imagem;
+      bloco.appendChild(img);
+    } else {
+      const vazio = document.createElement('span');
+      vazio.className = 'fam-mini-foto fam-mini-foto--vazia';
+      // SVG fixo, sem dado de cadastro — mesmo ícone do produto sem foto
+      // na listagem de famílias.
+      vazio.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"'
+        + ' stroke="currentColor" stroke-width="1.5" stroke-linecap="round">'
+        + '<rect x="3" y="3" width="18" height="18" rx="2"/>'
+        + '<circle cx="8.5" cy="8.5" r="1.5"/>'
+        + '<polyline points="21 15 16 10 5 21"/></svg>';
+      bloco.appendChild(vazio);
+    }
+
+    const texto = document.createElement('span');
+    texto.className = 'fam-mini-texto';
+
+    const nome = document.createElement('span');
+    nome.className = 'fam-mini-nome';
+    nome.textContent = (p.nome || '').length > 44
+      ? (p.nome || '').slice(0, 43) + '…'
+      : (p.nome || '');
+
+    const sku = document.createElement('span');
+    sku.className = 'fam-mini-sku';
+    sku.textContent = p.sku_legado || 'sem ref.';
+
+    texto.appendChild(nome);
+    texto.appendChild(sku);
+    bloco.appendChild(texto);
+    return bloco;
+  }
+
   // ── Sugestões de família ────────────────────────────────
   //
   // Quem cadastra um produto novo não sabe de cor o que já existe. Sem isto
@@ -6266,8 +6316,8 @@ $(document).on('change', '#pe-categoria', function () {
         }
         if (s.exemplos && s.exemplos.length) {
           const ex = document.createElement('span');
-          ex.className = 'pe-familia-sug-exemplos';
-          ex.textContent = 'Ex.: ' + s.exemplos.join(' · ');
+          ex.className = 'fam-minis';
+          s.exemplos.forEach(function (p) { ex.appendChild(blocoProduto(p)); });
           info.appendChild(ex);
         }
 

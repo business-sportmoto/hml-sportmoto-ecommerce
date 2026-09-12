@@ -93,3 +93,8 @@ docs/sportmoto-os/.trash/
 docs/sportmoto-os/.DS_Store
 docs/sportmoto-os/Thumbs.db
 
+# Andaimes de teste de tela. Precisam ficar na raiz web para carregar os assets
+# por caminho relativo, e por isso escapam de qualquer pasta de teste. Um deles
+# foi parar no commit v26.4 — servido sem autenticacao, com dado real embutido.
+harness-*.html
+.harness-*

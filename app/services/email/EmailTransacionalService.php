@@ -140,9 +140,22 @@ class EmailTransacionalService
 
             
 
-            $sucesso = method_exists($resultado, 'isOk') ? $resultado->isOk() : (bool)$resultado;
-            $msgId   = method_exists($resultado, 'getMessageId') ? $resultado->getMessageId() : null;
-            $erro    = (!$sucesso && method_exists($resultado, 'getMessage')) ? $resultado->getMessage() : null;
+            // O DTO de todos os provedores é o EmailSendResult, com PROPRIEDADES
+            // públicas. Antes isto procurava métodos isOk()/getMessageId(), que
+            // não existem, e caía no `(bool)$resultado` — objeto é sempre
+            // verdadeiro, então TODO envio virava "enviado", com msg_id e erro
+            // nulos. O 401 do provedor não aparecia em lugar nenhum.
+            if ($resultado instanceof EmailSendResult) {
+                $sucesso = (bool) $resultado->success;
+                $msgId   = $resultado->providerMessageId;
+                $erro    = $resultado->error;
+            } else {
+                // Provedor fora do contrato: sem confirmação, não é sucesso.
+                $sucesso = false;
+                $msgId   = null;
+                $erro    = 'Provedor devolveu ' . get_debug_type($resultado)
+                         . ' em vez de EmailSendResult.';
+            }
 
             $this->registrarLog(
                 $tipo, (int)$template['id'], $para, $assunto,

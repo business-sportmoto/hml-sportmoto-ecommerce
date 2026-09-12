@@ -357,6 +357,16 @@ $ativos  = count(array_filter($membros, static fn(array $m) => (int) $m['ativo']
 
           const info = document.createElement('div');
           info.className = 'fam-add-item-info';
+
+          if (p.imagem_url) {
+            const img = document.createElement('img');
+            img.className = 'fam-mini-foto';
+            img.loading = 'lazy';
+            img.alt = '';
+            img.src = p.imagem_url;
+            linha.appendChild(img);
+          }
+
           const nome = document.createElement('span');
           nome.className = 'fam-add-item-nome';
           nome.textContent = p.nome;                      // .textContent: nome vem do banco

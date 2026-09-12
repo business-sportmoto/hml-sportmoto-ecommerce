@@ -95,12 +95,32 @@ class EmailProviderService
         $key = $this->keyBytes();
         $expected = hash_hmac('sha256', $iv . $enc, $key, true);
         if (!hash_equals($expected, $mac)) {
+            // Credencial gravada com OUTRA encryption_key. Devolver [] calado
+            // faz o provedor falhar como "credencial inválida" para sempre, sem
+            // pista nenhuma — foi o que escondeu o SES quebrado. Quem grita aqui
+            // é o log; o retorno continua [] para não mudar o comportamento.
+            $this->avisar('HMAC não confere — credencial gravada com outra encryption_key. É preciso regravá-la no painel.');
             return [];
         }
         $dec = openssl_decrypt($enc, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv);
-        if ($dec === false) return [];
+        if ($dec === false) {
+            $this->avisar('openssl_decrypt falhou com a chave atual.');
+            return [];
+        }
         $j = json_decode($dec, true);
-        return is_array($j) ? $j : [];
+        if (!is_array($j)) {
+            $this->avisar('credencial decifrou, mas não é JSON válido.');
+            return [];
+        }
+        return $j;
+    }
+
+    /** Credencial ilegível é problema de operação, não exceção: avisa e segue. */
+    private function avisar(string $motivo): void
+    {
+        if (class_exists('LogService')) {
+            LogService::warning('email_provedor: ' . $motivo, [], 'email');
+        }
     }
 
     private function keyBytes()

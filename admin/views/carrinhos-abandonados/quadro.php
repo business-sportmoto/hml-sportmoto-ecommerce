@@ -47,7 +47,9 @@ $totalGeral = array_sum(array_column($resumo, 'total'));
 .cr-col-vazia { color:var(--text-3); font-size:12px; text-align:center; padding:18px 8px; }
 
 .cr-card { background:var(--surface, #fff); border:1px solid var(--border); border-left:3px solid var(--cr-prio);
-           border-radius:10px; padding:10px 12px; cursor:grab; transition:box-shadow .15s, transform .15s; }
+           border-radius:10px; padding:10px 12px; cursor:pointer; transition:box-shadow .15s, transform .15s; }
+.cr-card:active { cursor:grabbing; }
+.cr-card:focus-visible { outline:2px solid var(--primary, #2563eb); outline-offset:2px; }
 .cr-card:hover { box-shadow:0 4px 14px rgba(0,0,0,.08); transform:translateY(-1px); }
 .cr-card.cr-card--arrastando { opacity:.45; cursor:grabbing; }
 .cr-card-topo { display:flex; align-items:baseline; gap:8px; }
@@ -239,6 +241,33 @@ $totalGeral = array_sum(array_column($resumo, 'total'));
     $col.find('.cr-col-vazia').toggle($col.find('.cr-card').length === 0);
   }
 
+  // ── Card inteiro clicável ─────────────────────────────────
+  //
+  // Cliques em link, botão ou seleção de texto não contam — e o `arrastou`
+  // segura o click que alguns navegadores disparam ao fim do arraste, que
+  // abriria a página no meio da operação.
+  let arrastou = false;
+
+  $(document).on('click', '.cr-card', function (e) {
+    if (arrastou) { arrastou = false; return; }
+    if ($(e.target).closest('a, button, input, label').length) return;
+    if ((window.getSelection() || '').toString().length > 0) return;
+
+    const url = $(this).data('url');
+    if (!url) return;
+
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.which === 2) window.open(url, '_blank');
+    else window.location.href = url;
+  });
+
+  // Teclado: o card é alcançável por Tab (tabindex) e abre com Enter.
+  $(document).on('keydown', '.cr-card', function (e) {
+    if (e.key !== 'Enter') return;
+    if ($(e.target).closest('a, button, input').length) return;
+    const url = $(this).data('url');
+    if (url) window.location.href = url;
+  });
+
   // ── Arrastar ──────────────────────────────────────────────
   let arrastando = null;
 
@@ -250,6 +279,8 @@ $totalGeral = array_sum(array_column($resumo, 'total'));
   });
 
   $(document).on('dragend', '.cr-card', function () {
+    arrastou = true;
+    setTimeout(() => { arrastou = false; }, 250);   // só o click imediato
     $(this).removeClass('cr-card--arrastando');
     $('.cr-col').removeClass('cr-col--alvo');
     arrastando = null;

@@ -53,6 +53,9 @@ $atrasado = $agendado && strtotime($agendado) < time();
 <article class="cr-card" draggable="true"
          data-id="<?= (int) $rec['id'] ?>"
          data-status="<?= View::e((string) $rec['status']) ?>"
+         data-url="<?= ADMIN_URL ?>/carrinhos-abandonados/<?= (int) $rec['id'] ?>"
+         tabindex="0" role="link"
+         title="Abrir o carrinho"
          style="--cr-prio:<?= $corPrio ?>">
 
   <div class="cr-card-topo">

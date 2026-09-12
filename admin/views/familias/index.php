@@ -188,12 +188,36 @@
               <?php if (empty($f['membros'])): ?>
               <span class="admin-muted">—</span>
               <?php else: ?>
-              <?php foreach (array_slice($f['membros'], 0, 3) as $nomeMembro): ?>
-              <span class="fam-chip"><?= View::e(mb_strimwidth($nomeMembro, 0, 42, '…')) ?></span>
-              <?php endforeach; ?>
-              <?php if (count($f['membros']) > 3): ?>
-              <span class="fam-chip fam-chip--mais">+<?= count($f['membros']) - 3 ?></span>
-              <?php endif; ?>
+              <div class="fam-minis">
+                <?php foreach ($f['membros'] as $m): ?>
+                <a href="<?= BASE_URL ?>/admin/produtos/<?= (int) $m['id'] ?>/editar"
+                   class="fam-mini<?= $m['ativo'] ? '' : ' fam-mini--off' ?>"
+                   title="<?= View::e($m['nome']) ?>">
+                  <?php if (!empty($m['imagem'])): ?>
+                  <img src="<?= View::e($m['imagem']) ?>" alt="" loading="lazy" class="fam-mini-foto">
+                  <?php else: ?>
+                  <span class="fam-mini-foto fam-mini-foto--vazia">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/>
+                      <circle cx="8.5" cy="8.5" r="1.5"/>
+                      <polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                  </span>
+                  <?php endif; ?>
+                  <span class="fam-mini-texto">
+                    <span class="fam-mini-nome"><?= View::e(mb_strimwidth($m['nome'], 0, 44, '…')) ?></span>
+                    <span class="fam-mini-sku"><?= $m['sku_legado'] ? View::e($m['sku_legado']) : 'sem ref.' ?></span>
+                  </span>
+                </a>
+                <?php endforeach; ?>
+                <?php $sobram = $f['total_membros'] - count($f['membros']); ?>
+                <?php if ($sobram > 0): ?>
+                <a href="<?= BASE_URL ?>/admin/familias/<?= (int) $f['id'] ?>" class="fam-mini fam-mini--mais">
+                  +<?= $sobram ?>
+                </a>
+                <?php endif; ?>
+              </div>
               <?php endif; ?>
             </td>
 

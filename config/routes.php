@@ -30,6 +30,13 @@ Router::post('/webhooks/cielo', 'WebhookController@cielo');
 // Webhook público (sem auth) — ANTES das rotas admin
 Router::post('/webhook/bling', 'BlingWebhookController@receive');
 
+// Perna A da ponte de estoque: o Syscar empurra o movimento e o painel
+// enfileira. Autenticado por token em CABEÇALHO (nunca query string) e
+// fail-closed: sem segredo configurado, nega. Quem escreve no Bling é o
+// worker — este endpoint só grava e responde 202.
+// Ver 12-decisoes-tecnicas/estoque-modulo-especificacao.
+Router::post('/webhooks/syscar/estoque', 'SyscarWebhookController@estoque');
+
 Router::post('/webhooks/ia/replicate', 'IAWebhookController@replicate');
 
 Router::get('/dica/{id}', 'DicaCuidadoController@abrir');

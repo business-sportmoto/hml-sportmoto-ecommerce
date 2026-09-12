@@ -152,8 +152,12 @@ class AdminApiController extends Controller {
                 'sku_legado'=> $row['sku_legado'],
                 'marca'     => $row['marca_nome'],
                 'preco_fmt' => PriceHelper::format((float)$row['preco']),
+                // produto_imagens.arquivo passou a guardar a URL inteira do
+                // R2; o prefixo antigo só vale para o que sobrou em disco.
                 'imagem_url'=> !empty($row['imagem'])
-                               ? UPLOAD_URL . '/products/' . $row['imagem']
+                               ? (str_starts_with((string) $row['imagem'], 'http')
+                                   ? $row['imagem']
+                                   : UPLOAD_URL . '/products/' . $row['imagem'])
                                : null,
             ];
         }, $stmt->fetchAll());
